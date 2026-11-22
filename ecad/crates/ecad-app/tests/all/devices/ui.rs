@@ -16,7 +16,7 @@ use {ecad_app::commands::tools, ecad_app::library::search};
 use crate::canvas::mouse_acceptance::{Deltas, button, doc, harness_with, ok, prompt, screen, shot, type_enter};
 use crate::common::pointer_to;
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn out() -> Option<PathBuf> {
     let dir = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from)?;

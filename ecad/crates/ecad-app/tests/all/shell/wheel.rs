@@ -3,8 +3,8 @@
 //! Ctrl+K over pages, tags, symbols and actions.
 
 use cadcraft_engine::geom::Vec2;
-use ecad_app::App;
 use ecad_app::commands::actions::ObjectKind;
+use ecad_app::shell::app::App;
 use ecad_app::shell::{Workspace, intent, tool_strip};
 use ecad_model::{DeviceId, PageId, WireId};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};

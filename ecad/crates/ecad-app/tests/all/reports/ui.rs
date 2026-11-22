@@ -15,7 +15,7 @@ use {ecad_app::pages::project_panel, ecad_app::reports::panel};
 use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 use crate::checks::ui::demo_file;
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn out() -> Option<PathBuf> {
     let dir = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from)?;

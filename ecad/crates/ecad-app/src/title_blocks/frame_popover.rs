@@ -13,16 +13,16 @@ use crate::title_blocks::Editor;
 
 /// Element names (design 055 §5).
 pub const SHEET: &str = "library.tb.frame.sheet";
-pub const MARGINS: [&str; 4] =
+pub(crate) const MARGINS: [&str; 4] =
     ["library.tb.frame.margin.left", "library.tb.frame.margin.right", "library.tb.frame.margin.bottom", "library.tb.frame.margin.top"];
 pub const COLUMNS: &str = "library.tb.frame.columns";
 pub const ROWS: &str = "library.tb.frame.rows";
-pub const COLUMN_LABELS: &str = "library.tb.frame.column_labels";
-pub const ROW_LABELS: &str = "library.tb.frame.row_labels";
-pub const LABELS_ALL: &str = "library.tb.frame.labels_all";
-pub const CENTRE_MARKS: &str = "library.tb.frame.centre_marks";
-pub const BORDER: &str = "library.tb.frame.border";
-pub const INNER: &str = "library.tb.frame.inner";
+pub(crate) const COLUMN_LABELS: &str = "library.tb.frame.column_labels";
+pub(crate) const ROW_LABELS: &str = "library.tb.frame.row_labels";
+pub(crate) const LABELS_ALL: &str = "library.tb.frame.labels_all";
+pub(crate) const CENTRE_MARKS: &str = "library.tb.frame.centre_marks";
+pub(crate) const BORDER: &str = "library.tb.frame.border";
+pub(crate) const INNER: &str = "library.tb.frame.inner";
 pub const COLOUR: &str = "library.tb.frame.colour";
 pub const APPLY: &str = "library.tb.frame.apply";
 
@@ -51,8 +51,8 @@ impl FrameEdit {
             margins: parse_margins(f("margins")).unwrap_or_default(),
             labels: ecad_model::naming::words::flag(f("grid_labels")) != Some(false),
             centre: ecad_model::naming::words::flag(f("centre_marks")) != Some(false),
-            border: f("border_weight").parse().unwrap_or(0.5),
-            inner: f("inner_weight").parse().unwrap_or(0.25),
+            border: ecad_electrical::input::frame_weight(f("border_weight"), 0.5),
+            inner: ecad_electrical::input::frame_weight(f("inner_weight"), 0.25),
             colour: if f("line_colour").is_empty() { "none".into() } else { f("line_colour").into() },
         }
     }

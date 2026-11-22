@@ -17,15 +17,15 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Pos2, Rect, Sense, pos2, vec2};
 use serde_json::json;
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Accessible names (design 054 §4.1).
 pub const PICKER: &str = "ecad.newpage.picker";
 /// Panel layout's tooltip (Q3).
-pub const PANEL_LATER: &str = "Panel layout pages come with the panel layout page.";
+pub(crate) const PANEL_LATER: &str = "Panel layout pages come with the panel layout page.";
 /// The list's width and row height.
-pub const WIDTH: f32 = 220.0;
+pub(crate) const WIDTH: f32 = 220.0;
 pub const ROW_H: f32 = 28.0;
 
 /// One generated kind offered under Front sheet or Report.
@@ -159,13 +159,14 @@ impl App {
         let after_number = pk.after.and_then(|a| self.panel.rows().iter().find(|x| x.id == a).map(|x| x.number.clone()));
         match self.run_value("newpage", v) {
             Ok(res) => {
-                let number = res.get("number").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+                let reply = ecad_engine::commands::reply::new_page(&res);
+                let number = reply.as_ref().map(|r| r.number.clone()).unwrap_or_default();
                 let line = match after_number {
                     Some(n) => format!("Added page {number} ({}) after {n}.", r.name),
                     None => format!("Added page {number} ({}).", r.name),
                 };
                 self.cad.session.echo(line);
-                let page = res.get("page").and_then(serde_json::Value::as_str).and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
+                let page = reply.map(|r| r.page);
                 if let Some(page) = page {
                     self.refresh_panel();
                     self.panel.start_rename(page);
@@ -379,7 +380,7 @@ impl App {
 
 /// Where the picker opens for a + at `rect`: centred on it, above it when it is in the lower half
 /// of the window.
-pub fn anchor_of(ctx: &egui::Context, rect: Rect) -> (Pos2, bool) {
+pub(crate) fn anchor_of(ctx: &egui::Context, rect: Rect) -> (Pos2, bool) {
     let above = rect.center().y > ctx.content_rect().center().y;
     (if above { rect.center_top() } else { rect.center_bottom() }, above)
 }

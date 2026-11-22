@@ -19,11 +19,11 @@ use serde_json::{Map, Value, json};
 use {ecad_electrical::checks::Check, ecad_electrical::checks::Severity};
 
 /// The window's id and accessible name.
-pub const RELEASE_ID: &str = "ecad.release";
+pub(crate) const RELEASE_ID: &str = "ecad.release";
 /// Rows shown per group before `Show all N in Checks`.
-pub const ROWS_SHOWN: usize = 5;
+pub(crate) const ROWS_SHOWN: usize = 5;
 /// The clean check's words.
-pub const NOTHING_OPEN: &str = "Nothing open. Ready to release.";
+pub(crate) const NOTHING_OPEN: &str = "Nothing open. Ready to release.";
 
 /// What the dialog asks for.
 #[derive(Debug, Clone, PartialEq)]
@@ -331,26 +331,19 @@ impl ReleaseDialog {
 /// The height of the check's rows.
 const ROWS_HEIGHT: f32 = size::DIALOG_S - size::ROW_GROUP * 2.0;
 
-/// Open `folder` in the system's file manager (a separate process; nothing waits for it).
+/// Open `folder` in the system's file manager (the host's).
 ///
 /// # Errors
 /// The file manager could not be started.
 pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
-    let program = if cfg!(target_os = "windows") {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program).arg(folder).spawn().map(|_| ()).map_err(|e| format!("Could not open {}: {e}", folder.display()))
+    (crate::shell::host::host().open_folder)(folder).map_err(|e| format!("Could not open {}: {e}", folder.display()))
 }
 
 /// The folders of issued rows, resolved against the project, and whether each exists.
-pub fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engine::Project) {
+pub(crate) fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engine::Project) {
     for r in rows {
         r.folder = r.released.as_deref().and_then(|v| ecad_engine::releases::release::from_recorded(p, v));
-        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_engine::releases::release::MANIFEST).exists());
+        r.folder_exists = r.folder.as_deref().is_some_and(ecad_engine::releases::release::has_manifest);
     }
 }
 

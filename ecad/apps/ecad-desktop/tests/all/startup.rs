@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant, SystemTime};
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use std::path::{Path, PathBuf};
 
 use ecad_desktop::startup::{Adapter, Origin, StartupTiming, Step, auxv_clock_ticks, enabled, preferred_folder, process_age, process_age_from};

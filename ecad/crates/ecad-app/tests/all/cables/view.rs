@@ -10,7 +10,7 @@ use eframe::egui::{Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
-use {ecad_app::App, ecad_app::commands::tools};
+use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
 fn harness() -> Harness<'static, App> {
     common::harness(Opts::new().views_nothing())

@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 pub const SHELL_KEY: &str = "shell";
 pub const VIEWS_KEY: &str = "views";
 /// At most this many projects' views are kept (the least recently opened is dropped).
-pub const MAX_PROJECTS: usize = 32;
+pub(crate) const MAX_PROJECTS: usize = 32;
 /// At most this many pages' views are kept per project.
 pub const MAX_PAGES: usize = 4096;
 /// The companion's default share of the main view.
-pub const COMPANION_RATIO: f32 = 0.5;
+pub(crate) const COMPANION_RATIO: f32 = 0.5;
 
 /// The four workspaces (spec §2): a workspace changes the main view and the tool strip only.
 /// UI rev 3 renames Lists to **Project** on screen; the variant keeps its name until the Project
@@ -90,7 +90,7 @@ impl LeftTab {
 }
 
 /// The Book panel's name on the strip (UI rev 3; the Project panel's Pages tab).
-pub const BOOK: &str = "Book";
+pub(crate) const BOOK: &str = "Book";
 
 /// How the Book panel shows its pages (UI rev 3, board 1.02): a thumbnail beside each row, or
 /// plain rows.

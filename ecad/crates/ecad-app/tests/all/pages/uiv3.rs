@@ -4,7 +4,7 @@
 //! board's scale; Wires grouped by potential; Cables with the core table; Reports' list and its
 //! preview. Screenshots `uiv3-E-2.0N-ours.png` when `ECAD_TESTER_SHOTS` names a folder.
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::{RightTab, Workspace};
 use ecad_app::shell::{ListsView, Slots};
 use ecad_app::workspace::frame;

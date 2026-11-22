@@ -38,12 +38,11 @@ pub mod page;
 pub(crate) mod placing_view;
 pub mod slash_picker;
 pub(crate) mod widgets;
-/// Brief 054b: the Page tab on a generated page.
-pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
-pub use details::{ConnRow, DeviceDetails, DrawnRow};
-pub use device::{CONNECTION_ROW, DRAWN_ROW, OWN_CHECKS};
-pub use layout_tab::{CONTACT_TABLE, MIRROR, ROTATION};
-pub use placing_view::{CHANGES, NOT_PLACED, Placing};
+pub use checks_tab::{ELSEWHERE, SCOPE};
+pub use details::{ConnRow, DeviceDetails};
+pub use device::{DRAWN_ROW, OWN_CHECKS};
+pub use layout_tab::{CONTACT_TABLE, ROTATION};
+pub use placing_view::CHANGES;
 pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -56,16 +55,15 @@ use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
 
-use crate::App;
 use crate::shell::Slots;
+use crate::shell::app::App;
 use crate::shell::state::RightTab;
 
 /// Accessible labels.
 pub const COLLAPSE: &str = "Collapse the details panel";
-pub const EXPAND: &str = "Details";
 pub const TITLE: &str = "PROPERTIES";
 /// The right panel's title in the Library (brief 048).
-pub const LIBRARY_TITLE: &str = "DETAILS";
+pub(crate) const LIBRARY_TITLE: &str = "DETAILS";
 /// The header's Row button: the device's row in Project ▸ Devices.
 pub const ROW: &str = "Row";
 /// The header's words (accessible names).
@@ -358,13 +356,14 @@ pub fn shows_word(t: &mut App) -> &'static str {
         return "Page";
     }
     let kind = t.props.lock().ok().and_then(|sh| sh.view.sections.first().map(|s| s.kind));
+    use ecad_electrical::properties::SectionKind;
     match kind {
-        None | Some("page") => "Page",
-        Some("wire") => "Wire",
-        Some("cable" | "reference") => "Cable",
-        Some("box") => "Box",
-        Some("link") => "Link",
-        Some("objects") => "Objects",
+        None | Some(SectionKind::Page) => "Page",
+        Some(SectionKind::Wire) => "Wire",
+        Some(SectionKind::Cable | SectionKind::Reference) => "Cable",
+        Some(SectionKind::Box) => "Box",
+        Some(SectionKind::JumperBar) => "Jumper bar",
+        Some(SectionKind::Objects) => "Objects",
         Some(_) => RightTab::Device.label(),
     }
 }
@@ -410,9 +409,6 @@ fn rail(t: &mut App, ui: &mut egui::Ui, rect: Rect, open: bool) {
     }
 }
 
-/// Accessible names of the inspector's rows: `ecad.inspector.<key>` (the value),
-/// `ecad.origin.<key>` (its badge), `ecad.inspector.reset.<key>`.
-pub const DEFAULTS_TITLE: &str = "ecad.inspector";
 pub const PLACEMENTS: &str = "ecad.inspector.placements";
 /// Brief 047: the part set section; its rows are `ecad.inspector.parts.row.<n>` (0 the main part).
 pub const PARTS: &str = "ecad.inspector.parts";
@@ -686,7 +682,7 @@ pub struct SymbolUpdate {
 }
 
 /// The update row's element name.
-pub const SYMBOL_UPDATE: &str = "ecad.props.symbol.update";
+pub(crate) const SYMBOL_UPDATE: &str = "ecad.props.symbol.update";
 
 fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let mut deps = BTreeSet::from([ObjectRef::Project]);

@@ -5,8 +5,8 @@
 
 use crate::common::{self, Opts};
 use cadcraft_engine::doc::{EntityKind, Handle};
-use ecad_app::App;
 use ecad_app::commands::tools::{self, Kind, TOOLS};
+use ecad_app::shell::app::App;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;

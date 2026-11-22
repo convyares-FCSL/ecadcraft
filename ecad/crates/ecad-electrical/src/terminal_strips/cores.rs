@@ -292,6 +292,33 @@ pub fn cable_offer(props: &ecad_model::Properties) -> Option<(Vec<String>, Offer
     Some((n.labels(), OfferSource::Type, n.text()))
 }
 
+/// How one core of a cable stands against its offer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreState {
+    /// A member is counted as this offered core.
+    Used,
+    /// Offered, and no member uses it.
+    Spare,
+    /// A member beyond the offer.
+    Over,
+}
+
+impl CoreState {
+    /// The word the core table's State column shows.
+    pub fn word(self) -> &'static str {
+        match self {
+            CoreState::Used => "used",
+            CoreState::Spare => "spare",
+            CoreState::Over => "over",
+        }
+    }
+}
+
+/// `3 spare cores`, `1 spare core`.
+pub fn spare_core_words(n: usize) -> String {
+    format!("{n} spare core{}", if n == 1 { "" } else { "s" })
+}
+
 /// How a cable's members meet its offer (§6.2).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CoreCount {
@@ -323,6 +350,11 @@ impl CoreCount {
     pub fn spare_text(&self) -> Option<String> {
         self.offer.as_ref()?;
         Some(if self.spare.is_empty() { "0".into() } else { format!("{} ({})", self.spare.len(), self.spare.join(", ")) })
+    }
+
+    /// The number of spare cores, when the offer is known.
+    pub fn spare_count(&self) -> Option<usize> {
+        self.offer.as_ref().map(|_| self.spare.len())
     }
 
     /// The core a new member takes: the first spare one.

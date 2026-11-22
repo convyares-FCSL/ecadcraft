@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_model::PageId;
 use eframe::egui::vec2;
 use egui_kittest::Harness;

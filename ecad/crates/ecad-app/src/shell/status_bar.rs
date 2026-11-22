@@ -22,20 +22,20 @@ use ecad_model::{FolderId, PageId};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const SAVE_STATE: &str = "Save state";
 /// The standard (brief 042): opens Settings ▸ Standards.
 pub const STANDARD: &str = "Standard: IEC (built in)";
-pub const SHEET_SIZE: &str = "Sheet size";
+pub(crate) const SHEET_SIZE: &str = "Sheet size";
 pub const SHEET_COLOUR: &str = "Sheet colour";
-pub const FIT: &str = "Fit the sheet";
-pub const ZOOM_IN: &str = "Zoom in";
-pub const ZOOM_OUT: &str = "Zoom out";
-pub const ZOOM: &str = "Zoom";
-pub const PREV_GROUP: &str = "Previous group";
+pub(crate) const FIT: &str = "Fit the sheet";
+pub(crate) const ZOOM_IN: &str = "Zoom in";
+pub(crate) const ZOOM_OUT: &str = "Zoom out";
+pub(crate) const ZOOM: &str = "Zoom";
+pub(crate) const PREV_GROUP: &str = "Previous group";
 pub const PREV_PAGE: &str = "Previous page";
 pub const NEXT_PAGE: &str = "Next page";
 pub const NEXT_GROUP: &str = "Next group";
@@ -47,7 +47,8 @@ pub const FOLLOW: &str = "Follow";
 pub const DARK: &str = "Dark";
 /// The sheet colour menu's title and footnote (board 1.18).
 pub const SHEET_MENU_TITLE: &str = "Sheet colour on screen";
-pub const SHEET_MENU_NOTE: &str = "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
+pub(crate) const SHEET_MENU_NOTE: &str =
+    "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
 /// The sheet colour menu's width, px (board 1.18).
 const SHEET_MENU_W: f32 = 260.0;
 /// Kept for the Commands button's old callers: the Text panel opens with Ctrl+/.
@@ -672,9 +673,12 @@ impl App {
             Some(s) if s.file.path.is_none() => "Not saved yet".into(),
             Some(_) => "Saved".into(),
         };
-        // The time it became saved (this session; local time through chrono).
+        // The time it became saved (this session; local time from the host).
         if state == "Saved" && self.shell.saved_was.as_deref() != Some("Saved") {
-            self.shell.saved_at = Some(chrono::Local::now().format("%H:%M").to_string());
+            self.shell.saved_at = Some({
+                let h = crate::shell::host::host();
+                (h.local_time)((h.now_ms)(), false)
+            });
         }
         self.shell.saved_was = Some(state.clone());
         state
@@ -707,7 +711,7 @@ impl App {
 }
 
 /// The sheet colour's name in the bottom bar and the menu.
-pub fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
+pub(crate) fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
     match sheet {
         crate::canvas::Sheet::Paper => PAPER,
         crate::canvas::Sheet::Follow => FOLLOW,

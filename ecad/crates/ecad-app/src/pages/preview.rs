@@ -21,7 +21,7 @@ use ecad_model::{PageId, Pt};
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
 
 /// The preview window's egui id (and element name, design 016 §8).
-pub const WINDOW_ID: &str = "ecad.preview";
+pub(crate) const WINDOW_ID: &str = "ecad.preview";
 /// Accessible label of Open page.
 pub const OPEN_PAGE: &str = "Open page";
 /// Accessible label of the close button.

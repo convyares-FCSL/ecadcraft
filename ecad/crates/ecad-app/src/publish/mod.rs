@@ -23,37 +23,35 @@ use ecad_model::{FolderId, PageId};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, pos2, vec2};
 
-use crate::App;
 use crate::reports::panel::ScopeKind;
+use crate::shell::app::App;
 use crate::shell::bar;
 
-/// Element names.
-pub const SETS: &str = "publish.sets";
 pub const SET_FULL: &str = "publish.set.full_booklet";
 /// A page tile: `publish.page.<hex>`; its tick `publish.page.<hex>.include`.
 pub const PAGE: &str = "publish.page";
 pub const SELECT_ALL: &str = "publish.select_all";
 pub const EXPORT: &str = "publish.export";
-pub const PRINT: &str = "publish.print";
+pub(crate) const PRINT: &str = "publish.print";
 pub const RELEASE: &str = "publish.release";
 pub const PATH: &str = "ecad.printbook.path";
 pub const COLOUR: &str = "publish.colour";
-pub const LINEWEIGHTS: &str = "publish.lineweights";
-pub const PREVIEW: &str = "publish.preview";
+pub(crate) const LINEWEIGHTS: &str = "publish.lineweights";
+pub(crate) const PREVIEW: &str = "publish.preview";
 /// The output sets (board 4.01); only the first exists today.
-pub const OUTPUT_SETS: [(&str, &str); 4] = [
+pub(crate) const OUTPUT_SETS: [(&str, &str); 4] = [
     ("Full booklet", ""),
     ("Panel builder pack", "schematics, terminal plans, parts"),
     ("Customer approval", "schematics only, DRAFT watermark"),
     ("Site wiring", "field pages and cable list"),
 ];
 /// The left column's width (board 4.01).
-pub const SETS_W: f32 = 260.0;
+pub(crate) const SETS_W: f32 = 260.0;
 /// A page tile's thumbnail.
-pub const THUMB_W: f32 = 212.0;
-pub const THUMB_H: f32 = 150.0;
+pub(crate) const THUMB_W: f32 = 212.0;
+pub(crate) const THUMB_H: f32 = 150.0;
 /// Thumbnails drawn in one frame at most.
-pub const THUMBS_PER_FRAME: usize = 3;
+pub(crate) const THUMBS_PER_FRAME: usize = 3;
 
 /// One page's thumbnail.
 struct Thumb {

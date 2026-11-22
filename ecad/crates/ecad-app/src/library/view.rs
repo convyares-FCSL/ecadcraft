@@ -6,13 +6,13 @@ use ecad_electrical::symbols;
 use ecad_model::DefinitionId;
 use eframe::egui::{self, Rect};
 
-use crate::App;
 use crate::library::browser::{self, Listing, Tile};
 use crate::library::builder::{self, Act as BuilderAct};
 use crate::library::details::{self, Info};
 use crate::library::draft::Source;
 use crate::library::review;
 use crate::shell::Workspace;
+use crate::shell::app::App;
 
 impl App {
     /// The Library's main view this frame.
@@ -26,7 +26,7 @@ impl App {
                     BuilderAct::Back => self.set_workspace(Workspace::Draw),
                     BuilderAct::EditVersion(id) => {
                         let rep = match self.library.builder.as_ref().map(|b| &b.draft.source) {
-                            Some(Source::Edit { rep: Some(r), .. }) => u128::from_str_radix(r, 16).ok().map(ecad_model::RepresentationId::from),
+                            Some(Source::Edit { rep: Some(r), .. }) => Some(*r),
                             _ => None,
                         };
                         let back = self.library.back_to_page;
@@ -155,7 +155,7 @@ impl App {
         let Some(b) = self.library.builder.as_ref() else { return Info::default() };
         let draft = b.draft.clone();
         let edited: Option<DefinitionId> = match &draft.source {
-            Source::Edit { definition, .. } => u128::from_str_radix(definition, 16).ok().map(DefinitionId::from),
+            Source::Edit { definition, .. } => Some(*definition),
             _ => None,
         };
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
@@ -224,22 +224,16 @@ impl App {
                     }
                 }
                 review::Act::Close => self.library.compare = None,
-                review::Act::GoTo(rep) => {
-                    if let Some(r) = u128::from_str_radix(&rep, 16).ok().map(ecad_model::RepresentationId::from) {
-                        self.set_workspace(Workspace::Draw);
-                        if let Err(e) = self.goto_symbols(&[r]) {
-                            self.cad.session.echo(e);
-                        }
+                review::Act::GoTo(r) => {
+                    self.set_workspace(Workspace::Draw);
+                    if let Err(e) = self.goto_symbols(&[r]) {
+                        self.cad.session.echo(e);
                     }
                 }
-                review::Act::Update(rep) => {
-                    if let Some(r) = u128::from_str_radix(&rep, 16).ok().map(ecad_model::RepresentationId::from) {
-                        match self.update_symbol(r) {
-                            Ok(()) => self.library.compare = None,
-                            Err(e) => self.cad.session.echo(e),
-                        }
-                    }
-                }
+                review::Act::Update(r) => match self.update_symbol(r) {
+                    Ok(()) => self.library.compare = None,
+                    Err(e) => self.cad.session.echo(e),
+                },
             }
         }
         let _ = compare;

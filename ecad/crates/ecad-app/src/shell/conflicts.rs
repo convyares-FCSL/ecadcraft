@@ -15,15 +15,15 @@ use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 use serde_json::json;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The list (element name).
-pub const LIST: &str = "ecad.prompt.location_conflicts";
+pub(crate) const LIST: &str = "ecad.prompt.location_conflicts";
 /// The buttons.
-pub const MOVE_ALL: &str = "Move all";
-pub const LEAVE_ALL: &str = "Leave all";
+pub(crate) const MOVE_ALL: &str = "Move all";
+pub(crate) const LEAVE_ALL: &str = "Leave all";
 /// A connector half's own location (design 052 §5.3).
-pub const HALF: &str = "Half";
+pub(crate) const HALF: &str = "Half";
 /// Most rows shown; the rest are counted.
 pub const MAX_ROWS: usize = 8;
 

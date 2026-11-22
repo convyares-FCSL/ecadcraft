@@ -329,8 +329,8 @@ impl StartupTiming {
     }
 }
 
-/// The marks `ecad_app::App::start` sets: [`Step::Shell`] and [`Step::Project`].
-impl ecad_app::StartMarks for StartupTiming {
+/// The marks `ecad_app::shell::app::App::start` sets: [`Step::Shell`] and [`Step::Project`].
+impl ecad_app::shell::app::StartMarks for StartupTiming {
     fn shell_built(&mut self) {
         self.mark(Step::Shell);
     }

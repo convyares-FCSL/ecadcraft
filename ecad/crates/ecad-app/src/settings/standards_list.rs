@@ -14,14 +14,14 @@ use ecad_model::Document;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
-pub const SETTING: ColumnId = ColumnId(0);
+pub(crate) const SETTING: ColumnId = ColumnId(0);
 pub const GROUP: ColumnId = ColumnId(1);
 pub const VALUE: ColumnId = ColumnId(2);
 pub const FROM: ColumnId = ColumnId(3);
 pub const KEY: ColumnId = ColumnId(4);
 
 /// The words of a source on a badge.
-pub fn source_word(s: Source) -> &'static str {
+pub(crate) fn source_word(s: Source) -> &'static str {
     match s {
         Source::Builtin => "Built-in",
         Source::Standard => "Standard",
@@ -35,7 +35,7 @@ pub fn source_word(s: Source) -> &'static str {
 }
 
 /// A badge's tone: the built-in and the standard are quiet, the overrides stand out.
-pub fn source_tone(s: Source) -> Tone {
+pub(crate) fn source_tone(s: Source) -> Tone {
     match s {
         Source::Builtin | Source::Standard | Source::Definition => Tone::Neutral,
         Source::Project | Source::Page => Tone::Ok,
@@ -46,18 +46,11 @@ pub fn source_tone(s: Source) -> Tone {
 /// A value as shown: a length with its unit.
 pub fn value_text(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     match r.value {
-        defaults::Value::Length(x) => number_text(x, "mm"),
-        defaults::Value::Number(x) => number_text(x, ""),
-        _ if e.key.ends_with(".prefix") => format!("-{}", r.text().trim_start_matches('-')),
+        defaults::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
+        defaults::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
+        _ if e.key.ends_with(".prefix") => ecad_electrical::input::tag_prefix_shown(&r.text()),
         _ => r.text(),
     }
-}
-
-/// `12.5 mm`, `3`: a number with no trailing zeros, and its unit.
-pub fn number_text(v: f64, unit: &str) -> String {
-    let s = format!("{v:.3}");
-    let n = s.trim_end_matches('0').trim_end_matches('.');
-    if unit.is_empty() { n.to_string() } else { format!("{n} {unit}") }
 }
 
 /// One row: the entry and what the project resolves it to.

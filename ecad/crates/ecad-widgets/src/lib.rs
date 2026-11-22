@@ -112,3 +112,17 @@ impl std::ops::Deref for CurrentShell {
 
 /// The shell's colour set in use (Graphite or light, [`set_theme`]).
 pub const SHELL: CurrentShell = CurrentShell;
+
+/// The plural ending for a count: `""` for one, `"s"` otherwise (`format!("{n} page{}", plural(n))`).
+///
+/// # Semantics
+/// Only the regular English `s`; words with another plural spell it out where they are written.
+///
+/// # Example
+/// ```
+/// assert_eq!(ecad_widgets::plural(1_u64), "");
+/// assert_eq!(ecad_widgets::plural(2_usize), "s");
+/// ```
+pub fn plural<N: PartialEq + From<u8>>(n: N) -> &'static str {
+    if n == N::from(1) { "" } else { "s" }
+}

@@ -634,8 +634,8 @@ pub struct PrintBook {
     /// Brief 038: its workspace is not shown, so it is not drawn.
     pub hidden: bool,
     pub scope: ScopeKind,
-    /// The folders to choose from: (id hex, path), and the chosen one.
-    pub folders: Vec<(String, String)>,
+    /// The folders to choose from: (id, path), and the chosen one.
+    pub folders: Vec<(ecad_model::FolderId, String)>,
     pub folder: usize,
     pub pages: String,
     pub path: String,
@@ -656,7 +656,7 @@ impl PrintBook {
     pub fn params(&self) -> serde_json::Value {
         let scope = match self.scope {
             ScopeKind::All => serde_json::json!("all"),
-            ScopeKind::Folder => serde_json::json!({"folder": self.folders.get(self.folder).map(|f| f.0.clone())}),
+            ScopeKind::Folder => serde_json::json!({"folder": self.folders.get(self.folder).map(|f| f.0.hex())}),
             ScopeKind::Pages => serde_json::json!({"pages": self.pages}),
         };
         serde_json::json!({

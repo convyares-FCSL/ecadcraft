@@ -70,7 +70,67 @@ pub struct Row {
     pub test: crate::plc::signals::TestState,
 }
 
+/// The placeholder a free channel's tag cell shows; it is not a tag.
+pub const FREE: &str = "free";
+
+/// The cells of an I/O row a person edits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    Text,
+    Tag,
+    Safe,
+    Address,
+    Pins,
+}
+
 impl Row {
+    /// The `plcchannel` line an edit of `field` to `value` writes (design 051 §3.7), or `None`
+    /// when the edit changes nothing or is refused: an input has no safe state, the placeholder of
+    /// a free channel is not a tag, the own safe state typed again changes nothing, and pins that
+    /// are not `role:pin` pairs (see [`crate::input::pin_pairs`]).
+    #[must_use]
+    pub fn edit_line(&self, field: Field, value: &str) -> Option<String> {
+        use serde_json::{Value, json};
+        let v = value.trim();
+        let text = |v: &str| if v.is_empty() { Value::Null } else { json!(v) };
+        let mut p = json!({"card": self.card.hex(), "channel": self.channel});
+        match field {
+            Field::Text => p["text"] = text(v),
+            Field::Tag if self.tag.is_none() && (v == FREE || v.is_empty()) => return None,
+            Field::Tag => p["tag"] = text(v),
+            Field::Safe => {
+                self.safe_default.as_ref()?;
+                if self.safe.as_deref().is_some_and(|s| crate::plc::signals::safe_words(s) == v) {
+                    return None;
+                }
+                p["safe"] = text(v);
+            }
+            Field::Address => {
+                // The `*` that marks a typed address is not part of it.
+                p["address"] = text(v.strip_suffix('*').unwrap_or(v).trim());
+            }
+            Field::Pins => {
+                let mut pins = serde_json::Map::new();
+                match self.pins.as_slice() {
+                    [(role, _)] => {
+                        pins.insert(ecad_model::Word::word(*role).to_string(), json!(v));
+                    }
+                    many => {
+                        let roles: Vec<ecad_model::ChannelRole> = many.iter().map(|(r, _)| *r).collect();
+                        for (role, pin) in crate::input::pin_pairs(v, &roles).ok()? {
+                            pins.insert(role, json!(pin));
+                        }
+                    }
+                }
+                if pins.is_empty() {
+                    return None;
+                }
+                p["pins"] = Value::Object(pins);
+            }
+        }
+        Some(format!("plcchannel {p}"))
+    }
+
     /// The safe state shown: the own one, else the default; and whether it is the default.
     pub fn safe_shown(&self) -> Option<(&str, bool)> {
         match (&self.safe, &self.safe_default) {

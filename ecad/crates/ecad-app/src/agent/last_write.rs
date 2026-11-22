@@ -25,21 +25,21 @@ use ecad_model::{ObjectRef, PageId, TxId};
 use ecad_widgets::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The outline's width on the sheet, mm (spec §4).
-pub const OUTLINE_MM: f32 = 0.6;
+pub(crate) const OUTLINE_MM: f32 = 0.6;
 /// Its dashes and gaps, mm.
 const DASH_MM: f32 = 1.5;
 const GAP_MM: f32 = 1.0;
 /// How far the outline stands off the object's extents, mm.
 const MARGIN_MM: f64 = 1.5;
 /// Most objects outlined for one transaction (a large agent call outlines the first ones).
-pub const MAX_OUTLINED: usize = 200;
+pub(crate) const MAX_OUTLINED: usize = 200;
 /// The accessible name of the last-write chip (tests find it).
 pub const CHIP: &str = "agent.lastwrite";
 /// The accessible name of the History selection's chip.
-pub const HISTORY_CHIP: &str = "history.touched";
+pub(crate) const HISTORY_CHIP: &str = "history.touched";
 
 /// What one outline is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,8 +85,8 @@ pub fn outlines(ctx: &egui::Context) -> Vec<Outline> {
 }
 
 /// The wall clock, ms since the epoch, of `at`.
-pub fn wall_ms(at: Instant) -> u64 {
-    let now = u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or(0);
+pub(crate) fn wall_ms(at: Instant) -> u64 {
+    let now = (crate::shell::host::host().now_ms)();
     now.saturating_sub(u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
 
@@ -102,7 +102,7 @@ pub struct LiveSession {
 
 /// [`LiveSession`] for the banner shown; `kept` is returned unchanged when the banner has not
 /// changed since it was taken (no copy per frame).
-pub fn live_session(t: &App, kept: Option<LiveSession>) -> Option<LiveSession> {
+pub(crate) fn live_session(t: &App, kept: Option<LiveSession>) -> Option<LiveSession> {
     let b = t.agent.banner.as_ref().filter(|b| !matches!(b.state, crate::agent::BannerState::Finished | crate::agent::BannerState::Error))?;
     let key = (b.session.clone(), b.steps, b.last_change.as_ref().map(|c| c.seq));
     if kept.as_ref().is_some_and(|k| k.key == key) {

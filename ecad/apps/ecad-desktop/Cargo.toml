@@ -22,5 +22,7 @@ eframe = { version = "0.37", default-features = false, features = ["clipboard", 
 # Reads eframe's app.ron to tell whether a window state was saved (`window::saved_window`); the
 # version eframe uses, so nothing is built twice.
 ron = "0.12"
+# The local clock the app asks the host for (house rule: time goes through chrono).
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 # Brief 015: the start-up timing file.
 serde_json = { workspace = true }

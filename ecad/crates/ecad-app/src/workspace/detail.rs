@@ -14,8 +14,8 @@ use ecad_widgets::prim::{self, Tone};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, vec2};
 
-use crate::App;
 use crate::shell::ListsView;
+use crate::shell::app::App;
 
 /// The selected row of the tab shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,21 +33,21 @@ pub enum Selected {
 /// What the panel says with nothing selected.
 pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
-pub const CATALOGUE_COMES: &str = "The part catalogue comes later.";
-pub const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
+pub(crate) const CATALOGUE_COMES: &str = "The part catalogue comes later.";
+pub(crate) const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
 /// Brief 059 (owner): the Rating section of a cable with nothing to rate yet.
-pub const RATE_NOTE: &str = "Set a cable type to rate this cable.";
+pub(crate) const RATE_NOTE: &str = "Set a cable type to rate this cable.";
 /// Brief 059 (board 2.06): the Details pane's tabs and their accessible name.
 pub const CABLE_TABS: &str = "ecad.project.detail.cable.tabs";
 /// A cross-section's unit.
-const MM2: &str = "mm\u{b2}";
+pub(crate) const MM2: &str = "mm\u{b2}";
 
 fn first<K: Copy + Ord>(t: &ecad_widgets::table::Table<K>) -> Option<K> {
     t.selection.cursor().or_else(|| t.selection.keys().iter().next().copied())
 }
 
 /// The selected row of the tab shown, if any.
-pub fn selected_key(t: &App) -> Option<Selected> {
+pub(crate) fn selected_key(t: &App) -> Option<Selected> {
     let r = t.reports.as_ref();
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
@@ -66,44 +66,44 @@ pub fn selected_key(t: &App) -> Option<Selected> {
 
 /// Where the head's go-to button goes.
 #[derive(Debug, Clone, PartialEq)]
-enum Go {
+pub(crate) enum Go {
     Symbols(Vec<RepresentationId>),
     Place(PageId, Pt),
 }
 
 /// One labelled value.
 #[derive(Debug, Clone, PartialEq)]
-struct Prop {
-    label: &'static str,
-    value: String,
+pub(crate) struct Prop {
+    pub(crate) label: &'static str,
+    pub(crate) value: String,
     /// Where it comes from (`from page`, `auto`), at the right.
-    hint: String,
+    pub(crate) hint: String,
     /// Read from the drawing (grey, no box) or set here (boxed).
-    set: bool,
+    pub(crate) set: bool,
     /// Not built yet: greyed with this reason.
-    later: Option<&'static str>,
+    pub(crate) later: Option<&'static str>,
     /// Its unit (`mm²`), whether it is the key identity value (bold), its colour swatch, and
     /// whether it is one of a list (a chevron).
-    unit: &'static str,
-    bold: bool,
-    swatch: Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)>,
-    choice: bool,
+    pub(crate) unit: &'static str,
+    pub(crate) bold: bool,
+    pub(crate) swatch: Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)>,
+    pub(crate) choice: bool,
 }
 
 impl Prop {
-    fn unit(mut self, unit: &'static str) -> Self {
+    pub(crate) fn unit(mut self, unit: &'static str) -> Self {
         self.unit = unit;
         self
     }
-    fn bold(mut self) -> Self {
+    pub(crate) fn bold(mut self) -> Self {
         self.bold = true;
         self
     }
-    fn choice(mut self) -> Self {
+    pub(crate) fn choice(mut self) -> Self {
         self.choice = true;
         self
     }
-    fn swatch(mut self, code: &str) -> Self {
+    pub(crate) fn swatch(mut self, code: &str) -> Self {
         self.swatch = swatch(code);
         self
     }
@@ -111,20 +111,20 @@ impl Prop {
 
 /// A wire colour code's swatch in its insulation colours (the paper sheet's, on either shell:
 /// black insulation stays black); none for a code that is not a colour.
-fn swatch(code: &str) -> Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)> {
+pub(crate) fn swatch(code: &str) -> Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)> {
     let sheet = &ecad_drawing_style::sheet::PAPER;
     ecad_model::objects::wire::Colours::parse(code).and_then(|c| ecad_engine::cables::draw::wire_colours(&c, sheet)).map(|c| (c.solid, c.dashes))
 }
 
-fn read(label: &'static str, value: impl Into<String>) -> Prop {
+pub(crate) fn read(label: &'static str, value: impl Into<String>) -> Prop {
     Prop { label, value: value.into(), hint: String::new(), set: false, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
-fn set(label: &'static str, value: impl Into<String>, hint: impl Into<String>) -> Prop {
+pub(crate) fn set(label: &'static str, value: impl Into<String>, hint: impl Into<String>) -> Prop {
     Prop { label, value: value.into(), hint: hint.into(), set: true, later: None, unit: "", bold: false, swatch: None, choice: false }
 }
 
-fn later(label: &'static str, why: &'static str) -> Prop {
+pub(crate) fn later(label: &'static str, why: &'static str) -> Prop {
     Prop {
         label,
         value: crate::reports::report::DASH.into(),
@@ -140,420 +140,51 @@ fn later(label: &'static str, why: &'static str) -> Prop {
 
 /// A folding section.
 #[derive(Debug, Clone, PartialEq, Default)]
-struct Section {
-    title: &'static str,
-    hint: String,
-    props: Vec<Prop>,
+pub(crate) struct Section {
+    pub(crate) title: &'static str,
+    pub(crate) hint: String,
+    pub(crate) props: Vec<Prop>,
     /// Plain lines (a part set's lines, the report's columns).
-    lines: Vec<(String, String)>,
+    pub(crate) lines: Vec<(String, String)>,
     /// Greyed buttons with their reason.
-    later: Vec<(&'static str, &'static str)>,
-    note: Option<&'static str>,
+    pub(crate) later: Vec<(&'static str, &'static str)>,
+    pub(crate) note: Option<&'static str>,
     /// Brief 057: the Rating section's result (drawn by [`crate::wires::rating`]).
-    rating: Option<crate::wires::rating::Panel>,
+    pub(crate) rating: Option<crate::wires::rating::Panel>,
 }
 
 /// The panel's contents.
 #[derive(Debug, Clone, PartialEq, Default)]
-struct Detail {
-    title: String,
-    provisional: bool,
-    subtitle: String,
-    go: Option<(String, Go)>,
+pub(crate) struct Detail {
+    pub(crate) title: String,
+    pub(crate) provisional: bool,
+    pub(crate) subtitle: String,
+    pub(crate) go: Option<(String, Go)>,
     /// Its checks (an empty list: "No checks on …").
-    checks: Vec<(String, Tone)>,
+    pub(crate) checks: Vec<(String, Tone)>,
     /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
-    core_fixes: Vec<ecad_electrical::checks::Fix>,
+    pub(crate) core_fixes: Vec<ecad_electrical::checks::Fix>,
     /// The Devices row's property editor goes after the head.
-    editor: bool,
+    pub(crate) editor: bool,
     /// Brief 059: the cable editor goes after the head, with the cable's drawn ends.
-    cable_editor: Option<(ecad_model::CableId, [String; 2])>,
-    sections: Vec<Section>,
+    pub(crate) cable_editor: Option<(ecad_model::CableId, [String; 2])>,
+    pub(crate) sections: Vec<Section>,
 }
 
-fn nonempty(s: &str) -> String {
+pub(crate) fn nonempty(s: &str) -> String {
     if s.trim().is_empty() || s == "?" { crate::reports::report::DASH.into() } else { s.to_string() }
-}
-
-fn device(t: &App, c: DeviceId) -> Option<Detail> {
-    let r = t.panel.devices.source.row(c)?;
-    let e = &r.entry;
-    let prop = |i: usize| e.properties.get(i).cloned().flatten().unwrap_or_default();
-    let tag = e.tag.clone().unwrap_or_default();
-    let place = e.symbols.first().map(|s| s.place.clone());
-    let symbol = e.symbols.first().map(|s| s.name.clone()).unwrap_or_else(|| crate::reports::report::DASH.into());
-    let subtitle = match &place {
-        Some(p) => format!("{} \u{b7} drawn at {p}", nonempty(&e.description)),
-        None => format!("{} \u{b7} not on a page yet", nonempty(&e.description)),
-    };
-    let go = (!e.symbols.is_empty()).then(|| ("Page".to_string(), Go::Symbols(e.symbols.iter().map(|s| s.rep).collect())));
-    let mut checks = Vec::new();
-    if e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional) {
-        checks.push(("The tag is provisional.".to_string(), Tone::Provisional));
-    }
-    if e.symbols.is_empty() {
-        checks.push(("Not on a page yet.".to_string(), Tone::Warning));
-    }
-    if prop(3).is_empty() {
-        checks.push(("No part yet: it has no order code.".to_string(), Tone::Warning));
-    }
-    let maker = prop(2);
-    let part = prop(3);
-    let main = if part.is_empty() { "No parts yet".to_string() } else { part.clone() };
-    let mut lines = vec![(main, if maker.is_empty() { "main part".to_string() } else { format!("{maker} \u{b7} main part") })];
-    if r.parts > 1 {
-        lines.push((
-            format!("{} more line{}", r.parts - 1, if r.parts == 2 { "" } else { "s" }),
-            "listed in Project \u{25b8} Reports \u{25b8} Parts list".into(),
-        ));
-    }
-    let drawn = Section {
-        title: "Where it is drawn",
-        hint: String::new(),
-        lines: e.symbols.iter().map(|s| (s.name.clone(), s.place.clone())).collect(),
-        ..Section::default()
-    };
-    Some(Detail {
-        title: tag,
-        provisional: e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
-        subtitle,
-        go,
-        checks,
-        editor: true,
-        cable_editor: None,
-        core_fixes: Vec::new(),
-        sections: vec![
-            Section {
-                title: "Symbol",
-                hint: "read from the drawing".into(),
-                props: vec![read("Symbol", symbol), read("Location", nonempty(&r.location))],
-                ..Section::default()
-            },
-            Section {
-                title: "Parts",
-                hint: format!("{} line{}", r.parts, if r.parts == 1 { "" } else { "s" }),
-                lines,
-                later: vec![("+ Accessory", CATALOGUE_COMES), ("From catalogue", CATALOGUE_COMES), ("Save as a kit", CATALOGUE_COMES)],
-                note: Some("The main part is first and gives the device its ratings. A line with no order code raises a check."),
-                ..Section::default()
-            },
-            drawn,
-        ],
-    })
-}
-
-fn side_text(cells: &[ecad_electrical::terminal_strips::strip_model::SideCell]) -> String {
-    let v: Vec<String> = cells
-        .iter()
-        .map(|c| {
-            let target = c.target.clone().unwrap_or_else(|| "open end".into());
-            match &c.wire {
-                Some(w) => format!("{target} \u{b7} wire {w}"),
-                None => target,
-            }
-        })
-        .collect();
-    if v.is_empty() { "not wired".into() } else { v.join(", ") }
-}
-
-fn connection_point(t: &App, k: crate::terminal_strips::plan::TermKey) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
-    let row = r.connection_points.source.row(k)?;
-    let crate::terminal_strips::plan::PlanRow::Term { tag, row, place, .. } = row else {
-        return None;
-    };
-    let strip = r.strips.iter().find(|(c, _)| *c == k.0).map_or_else(|| tag.clone(), |(_, t)| t.clone());
-    let mut checks = Vec::new();
-    if row.inside.iter().chain(&row.outside).any(|c| c.target.is_none()) {
-        checks.push(("An end is open.".to_string(), Tone::Error));
-    }
-    let cable = row.outside.iter().find_map(|c| c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_default())).unwrap_or_default();
-    let core = row.outside.iter().find_map(|c| c.core.clone()).unwrap_or_default();
-    let mut outside = side_text(&row.outside);
-    if !cable.is_empty() {
-        outside = format!("{outside} \u{b7} {cable} {core}");
-    }
-    Some(Detail {
-        title: format!("{tag}:{}", row.shown),
-        provisional: false,
-        subtitle: format!("{} \u{b7} {strip}", row.ty.name),
-        go: row.go.map(|(pg, at)| (place.clone(), Go::Place(pg, at))),
-        checks,
-        editor: false,
-        cable_editor: None,
-        core_fixes: Vec::new(),
-        sections: vec![
-            Section {
-                title: "Identity",
-                props: vec![
-                    read("Strip", strip),
-                    set("Position", row.label.clone(), "set in the table"),
-                    read("Level", if row.level_name.is_empty() { row.level.to_string() } else { row.level_name.clone() }),
-                    read("State", row.state()),
-                ],
-                ..Section::default()
-            },
-            Section { title: "Part", hint: "from part set".into(), props: vec![read("Type", row.ty.name)], ..Section::default() },
-            Section {
-                title: "Connections",
-                hint: "read from the drawing".into(),
-                props: vec![
-                    read("Inside", side_text(&row.inside)),
-                    read("Outside", outside),
-                    read("Link", row.bridge_group.map_or_else(|| "none".to_string(), |g| format!("bridge {g}"))),
-                ],
-                ..Section::default()
-            },
-            Section { title: "Where it is drawn", lines: vec![("Schematic".into(), place.clone())], ..Section::default() },
-        ],
-    })
-}
-
-/// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn and its test.
-fn channel(t: &App, k: crate::plc::list::IoKey) -> Option<Detail> {
-    use ecad_electrical::plc::signals;
-    let r = t.reports.as_ref()?;
-    let row = r.io.source.row(k)?;
-    let addr = row.address.clone().unwrap_or_default();
-    let mut subtitle = vec![addr.clone(), row.ty.to_string()];
-    if let Some(tag) = &row.tag {
-        subtitle.push(tag.clone());
-    }
-    let go = row.page.zip(row.at).map(|(pg, at)| (row.place.clone().unwrap_or_else(|| "Page".into()), Go::Place(pg, at)));
-    let checks = Vec::new();
-    let safe = match row.safe_shown() {
-        Some((s, true)) => set("Safe", signals::safe_words(s), "default"),
-        Some((s, false)) => set("Safe", signals::safe_words(s), "set here"),
-        None => read("Safe", crate::reports::report::DASH),
-    };
-    let (drives, through) = signals::drives(&row.targets);
-    let mut drawn: Vec<(String, String)> =
-        drives.iter().map(|d| (format!("{}:{}{}", d.device, d.point, if through { " (passes through)" } else { "" }), d.place.clone())).collect();
-    if drawn.is_empty() {
-        drawn.push(("Drives".into(), crate::reports::report::DASH.into()));
-    }
-    Some(Detail {
-        title: format!("{} channel {}", row.card_tag, row.channel),
-        provisional: false,
-        subtitle: subtitle.join(" \u{b7} "),
-        go,
-        checks,
-        editor: false,
-        cable_editor: None,
-        core_fixes: Vec::new(),
-        sections: vec![
-            Section {
-                title: "Signal",
-                hint: "set in the table".into(),
-                props: vec![
-                    set("PLC tag", nonempty(row.tag.as_deref().unwrap_or_default()), ""),
-                    set("Description", nonempty(row.text.as_deref().unwrap_or_default()), ""),
-                    safe,
-                    set("Address", nonempty(&ecad_electrical::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
-                    set("Pins", nonempty(&ecad_electrical::plc::iolist::pins_words(&row.pins)), ""),
-                ],
-                ..Section::default()
-            },
-            Section {
-                title: "Drawn",
-                hint: "read from the drawing".into(),
-                props: vec![
-                    read("Place", nonempty(row.place.as_deref().unwrap_or_default())),
-                    read("Wire", nonempty(row.wire.as_deref().unwrap_or_default())),
-                ],
-                lines: drawn,
-                ..Section::default()
-            },
-            Section { title: "Test", lines: vec![("No tests yet.".into(), String::new())], ..Section::default() },
-        ],
-    })
-}
-
-fn wire(t: &App, k: usize) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
-    let v = &r.wires;
-    let rows = &v.source.rows;
-    let number = rows.text(k, "Wire number");
-    let (from, to, page) = (rows.text(k, "From"), rows.text(k, "To"), rows.text(k, "Page"));
-    let checks = rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Warning)).collect()).unwrap_or_default();
-    // Board 2.05's hints: a number is given by the numbering ("auto") unless it is provisional; a
-    // colour or size is the category's ("from category") unless the wire sets its own ("set
-    // here"), as the wire report records it.
-    let number_hint = match (v.source.provisional(k), number.trim().is_empty()) {
-        (true, _) => "provisional",
-        (false, false) => "auto",
-        (false, true) => "",
-    };
-    let has_category = !rows.text(k, "Category").trim().is_empty();
-    let (colour_own, size_own) = v.own.get(k).copied().unwrap_or_default();
-    let source = |own: bool, value: &str| match (own, has_category && !value.trim().is_empty()) {
-        (true, _) => "set here",
-        (false, true) => "from category",
-        (false, false) => "",
-    };
-    Some(Detail {
-        title: number.clone(),
-        provisional: v.source.provisional(k),
-        subtitle: format!("Wire \u{b7} {from} to {to} \u{b7} {page}"),
-        go: v.gos.get(k).copied().flatten().map(|(pg, at)| (page.clone(), Go::Place(pg, at))),
-        checks,
-        editor: false,
-        cable_editor: None,
-        core_fixes: Vec::new(),
-        sections: vec![
-            Section {
-                title: "Identity",
-                props: vec![
-                    set("Number", nonempty(&number), number_hint).bold(),
-                    set("Potential", nonempty(&rows.text(k, "Potential")), "from the drawing"),
-                    read("From", nonempty(&from)),
-                    read("To", nonempty(&to)),
-                ],
-                ..Section::default()
-            },
-            Section {
-                title: "Made as",
-                hint: "from the category".into(),
-                props: vec![
-                    set("Category", nonempty(&rows.text(k, "Category")), "").choice(),
-                    set("Colour", nonempty(&rows.text(k, "Colour")), source(colour_own, &rows.text(k, "Colour"))).swatch(&rows.text(k, "Colour")),
-                    set("Size", nonempty(&rows.text(k, "Cross-section")), source(size_own, &rows.text(k, "Cross-section"))).unit(MM2),
-                    read("Cable", nonempty(&rows.text(k, "Cable"))),
-                ],
-                ..Section::default()
-            },
-            rating_section(t, v.source.rating(k), &v.source.rating.methods),
-            Section {
-                title: "Ends",
-                props: vec![later("Ferrules", CABLE_MANAGER_COMES), later("Marker", CABLE_MANAGER_COMES), later("Length", CABLE_MANAGER_COMES)],
-                ..Section::default()
-            },
-        ],
-    })
-}
-
-/// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
-/// result. A wire or cable with no rating data shows none, so a project that does not rate is
-/// not nagged.
-fn rating_section(_t: &App, r: Option<&ecad_electrical::circuits::circuit::Rating>, methods: &[&'static str]) -> Section {
-    let Some(r) = r else { return Section::default() };
-    let methods = if methods.is_empty() { ecad_electrical::devices::ratings::dataset::METHODS.to_vec() } else { methods.to_vec() };
-    Section {
-        title: "Rating",
-        hint: r.summary(),
-        rating: Some(crate::wires::rating::Panel { rating: r.clone(), methods, writable: false }),
-        ..Section::default()
-    }
-}
-
-fn cable(t: &App, k: usize) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
-    let v = &r.cables;
-    let rows = &v.source.rows;
-    let tag = rows.text(k, "Tag");
-    let (from, to) = (rows.text(k, "From"), rows.text(k, "To"));
-    // Brief 059: a cable not drawn has no drawing to flag (no type, no ends yet): its one row is
-    // "not in the drawing yet".
-    let mut checks: Vec<(String, Tone)> = if v.source.drawn(k) {
-        rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    // Brief 057 (owner rule): each open core, as an error, with its two fixes.
-    let mut core_fixes = Vec::new();
-    for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
-        checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
-        if let Some(cable) = v.ids.get(k) {
-            core_fixes.push(ecad_electrical::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
-        }
-    }
-    let spare = rows.text(k, "Spare");
-    if spare.parse::<u32>().is_ok_and(|n| n > 0) {
-        checks.push((format!("{spare} spare core{}.", if spare == "1" { "" } else { "s" }), Tone::Neutral));
-    }
-    // Brief 059 (design 059 §6): a cable not drawn says so (Info), with no core rows.
-    let drawn = v.source.drawn(k);
-    if !drawn {
-        checks.push((format!("{tag} is not in the drawing yet."), Tone::Neutral));
-    }
-    let subtitle = if drawn {
-        format!("{} to {}", nonempty(&rows.text(k, "From location")), nonempty(&rows.text(k, "To location")))
-    } else {
-        "not drawn".to_string()
-    };
-    Some(Detail {
-        title: tag.clone(),
-        provisional: false,
-        subtitle,
-        go: v.gos.get(k).copied().flatten().map(|(pg, at)| ("Page".to_string(), Go::Place(pg, at))),
-        checks,
-        editor: false,
-        cable_editor: v.ids.get(k).map(|c| (*c, [from, to])),
-        core_fixes,
-        // Brief 059: Identity, Part and Ends are the cable editor's; the Rating section stays 057's,
-        // and shows a note when the cable has nothing to rate yet (owner, review of 059).
-        sections: vec![match v.source.rating(k) {
-            Some(r) => rating_section(t, Some(r), &v.source.rating.methods),
-            None => Section { title: "Rating", hint: "not rated".into(), note: Some(RATE_NOTE), ..Section::default() },
-        }],
-    })
-}
-
-fn report(t: &App, k: usize) -> Option<Detail> {
-    let rep = crate::reports::list::REPORTS.get(k)?;
-    let r = t.reports.as_ref()?;
-    let columns: Vec<(String, String)> =
-        if rep.tab == Some(r.tab) { r.table().headers.iter().map(|h| ((*h).to_string(), "shown".to_string())).collect() } else { Vec::new() };
-    // Counted when the copy is taken, not each frame.
-    let flagged = if rep.tab == Some(r.tab) { r.flagged } else { 0 };
-    let checks =
-        if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", if flagged == 1 { "" } else { "s" }), Tone::Warning)] } else { Vec::new() };
-    Some(Detail {
-        title: rep.name.to_string(),
-        provisional: false,
-        subtitle: "Report \u{b7} generated on demand".into(),
-        go: None,
-        checks,
-        editor: false,
-        cable_editor: None,
-        core_fixes: Vec::new(),
-        sections: vec![
-            Section {
-                title: "Contents",
-                props: vec![read("Reads", rep.reads), read("Group by", rep.grouped), later("Merge", crate::workspace::frame::REPORTS_COME)],
-                ..Section::default()
-            },
-            Section {
-                title: "Columns",
-                hint: "as the preview shows them".into(),
-                lines: columns,
-                later: vec![("Choose columns", crate::workspace::frame::REPORTS_COME)],
-                ..Section::default()
-            },
-            Section {
-                title: "Output",
-                props: vec![
-                    later("In the book", crate::workspace::frame::REPORTS_COME),
-                    later("Layout", crate::workspace::frame::REPORTS_COME),
-                    later("Updates", crate::workspace::frame::REPORTS_COME),
-                ],
-                note: Some("Export CSV from the preview."),
-                ..Section::default()
-            },
-        ],
-    })
 }
 
 fn detail(t: &App) -> Option<Detail> {
     match selected_key(t)? {
-        Selected::Device(c) => device(t, c),
-        Selected::ConnectionPoint(k) => connection_point(t, k),
+        Selected::Device(c) => crate::devices::detail::device(t, c),
+        Selected::ConnectionPoint(k) => crate::terminal_strips::detail::connection_point(t, k),
         // A card is edited by `card_editor` (see `show`).
         Selected::Card(_) => None,
-        Selected::Channel(k) => channel(t, k),
-        Selected::Wire(k) => wire(t, k),
-        Selected::Cable(k) => cable(t, k),
-        Selected::Report(k) => report(t, k),
+        Selected::Channel(k) => crate::plc::detail::channel(t, k),
+        Selected::Wire(k) => crate::wires::detail::wire(t, k),
+        Selected::Cable(k) => crate::cables::detail::cable(t, k),
+        Selected::Report(k) => crate::reports::detail::report(t, k),
     }
 }
 
@@ -769,5 +400,19 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             }
             Out::Cable(k, a) => t.cable_ask(k, a),
         }
+    }
+}
+
+/// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
+/// result. A wire or cable with no rating data shows none, so a project that does not rate is
+/// not nagged.
+pub(crate) fn rating_section(_t: &App, r: Option<&ecad_electrical::circuits::circuit::Rating>, methods: &[&'static str]) -> Section {
+    let Some(r) = r else { return Section::default() };
+    let methods = if methods.is_empty() { ecad_electrical::devices::ratings::dataset::METHODS.to_vec() } else { methods.to_vec() };
+    Section {
+        title: "Rating",
+        hint: r.summary(),
+        rating: Some(crate::wires::rating::Panel { rating: r.clone(), methods, writable: false }),
+        ..Section::default()
     }
 }

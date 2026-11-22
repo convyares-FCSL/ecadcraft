@@ -426,7 +426,7 @@ fn has_reference(c: &Context) -> Enabled {
 }
 
 /// Why a flyout item whose tool does not exist yet ([`App::Coming`]) is greyed.
-pub const COMING: &str = "Not available yet: this tool comes later.";
+pub(crate) const COMING: &str = "Not available yet: this tool comes later.";
 
 /// Never runs: the tool does not exist yet.
 fn coming(_: &Context) -> Enabled {
@@ -526,7 +526,7 @@ pub const ACTIONS: &[Action] = &[
         1,
         &["terminals", "across", "row of terminals"],
     ),
-    tool("terminal_block.jumper_bar", "bridge", "Draw a link (bridge)", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "link", "terminal"]),
+    tool("terminal_block.jumper_bar", "bridge", "Draw a jumper bar", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "terminal"]),
     coming_tool("terminal_block.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::TerminalBlock, 3),
     coming_tool("terminal_block.reorder", "Reorder the strip…", Icon::Move, ToolGroup::TerminalBlock, 4),
     group_app(
@@ -1072,7 +1072,7 @@ pub fn wheel_for(target: &Target) -> [Option<&'static Action>; 8] {
 }
 
 /// The action on `key`, if any.
-pub fn on_key(key: Key) -> Option<&'static Action> {
+pub(crate) fn on_key(key: Key) -> Option<&'static Action> {
     ACTIONS.iter().find(|a| a.key == Some(key))
 }
 

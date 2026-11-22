@@ -23,9 +23,7 @@ use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui;
 use serde_json::{Map, Value, json};
 
-/// Element names (design 019 §10).
-pub const PROJECT_PROPS_ID: &str = "ecad.projectprops";
-pub const REVISIONS_ID: &str = "ecad.revisions";
+pub(crate) const REVISIONS_ID: &str = "ecad.revisions";
 pub const ISSUE_UNDO_ID: &str = "ecad.issueundo";
 
 /// The fields of the dialog's top group: key, label.
@@ -63,8 +61,8 @@ pub enum Part {
 }
 
 /// Element names of the two popouts (now the id salts of their Settings sections).
-pub const PROJECT_INFO_ID: &str = "ecad.projectinfo";
-pub const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
+pub(crate) const PROJECT_INFO_ID: &str = "ecad.projectinfo";
+pub(crate) const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
 
 /// The Project info or Project settings popout (design 019 §7.1, split by the owner): a copy of
 /// the project's properties and settings taken when it opens; OK writes the changed fields as one
@@ -288,13 +286,13 @@ impl ProjectProps {
             m.insert("contact_mirror".into(), Value::String(self.mirror.clone()));
         }
         if self.padding.trim() != self.padding_orig {
-            let n: u64 = self.padding.trim().parse().map_err(|_| "Tag digits is a whole number.".to_string())?;
+            let n = ecad_electrical::input::tag_digits(&self.padding).map_err(|e| e.to_string())?;
             m.insert("tag_padding".into(), json!(n));
         }
         let mut px = Map::new();
         for (k, v) in &self.prefixes {
             if !self.prefixes_orig.contains(&(k.clone(), v.clone())) {
-                px.insert(k.clone(), Value::String(v.trim().trim_start_matches('-').to_string()));
+                px.insert(k.clone(), Value::String(ecad_electrical::input::tag_prefix(v)));
             }
         }
         if !px.is_empty() {
@@ -325,20 +323,14 @@ impl ProjectProps {
             m.insert("revision_columns".into(), if t.is_empty() { Value::Null } else { Value::String(t.to_string()) });
         }
         if self.label_height.trim() != self.label_height_orig {
-            let h: f64 = self
-                .label_height
-                .trim()
-                .parse()
-                .ok()
-                .filter(|h| ecad_model::connectivity::wiring::LABEL_HEIGHTS.contains(h))
-                .ok_or_else(|| "Label height is 0.5 to 10 mm.".to_string())?;
+            let h = ecad_electrical::input::label_height(&self.label_height).map_err(|e| e.to_string())?;
             m.insert("label_height".into(), json!(h));
         }
         let sheet = self.sheet()?;
         if sheet != self.sheet_orig {
             m.insert("sheet".into(), Value::String(sheet.text()));
         }
-        let step: u32 = self.step.trim().parse().map_err(|_| "The page number step is a whole number.".to_string())?;
+        let step = ecad_electrical::input::page_number_step(&self.step).map_err(|e| e.to_string())?;
         if step != self.step_orig {
             m.insert("page_number_step".into(), json!(step));
         }
@@ -552,7 +544,7 @@ impl ProjectProps {
                 });
                 g.row("", |ui| Checkbox::new(&mut self.tag_dash, "Leading - on tags").show(ui).accessible_name("ecad.project.props.tag_dash"));
                 let case = self.tag_case;
-                let pad = self.padding.trim().parse::<u8>().unwrap_or(2);
+                let pad = ecad_electrical::input::tag_digits_or_default(&self.padding);
                 let example = ecad_model::naming::tag::normalise("k5", ecad_model::naming::tag::Style { padding: pad, dash: self.tag_dash, case })
                     .unwrap_or_default();
                 g.row("Example", |ui| {
@@ -923,7 +915,7 @@ impl Revisions {
 
 /// The question a plain `u` across an issued revision stops at (owner answer Q7). Returns
 /// `Some(true)` to undo the issue, `Some(false)` to keep it.
-pub fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
+pub(crate) fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
     let shown = Dialog::new(egui::Id::unique(ISSUE_UNDO_ID), "Undo the issue?", ISSUE_UNDO_ID).small().show(
         ctx,
         |ui| prim::body(ui, question, false),
@@ -976,9 +968,9 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
     let view = std::mem::take(&mut sh.view);
     for s in &view.sections {
         ui.add_space(space::XS);
-        prim::body(ui, &s.title, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.props.{}", s.kind)));
+        prim::body(ui, &s.title, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.props.{}", s.kind.word())));
         for row in &s.rows {
-            prop_row(ui, sh, &s.target, s.kind, row);
+            prop_row(ui, sh, &s.target, s.kind.word(), row);
         }
         if let Some(n) = &s.note {
             prim::note(ui, n, Tone::Neutral);
@@ -1087,7 +1079,7 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
 }
 
 /// `Rev A, 2026-11-08: read-only` (the revision bar's text).
-pub fn revision_bar(rev: &str, date: &str) -> String {
+pub(crate) fn revision_bar(rev: &str, date: &str) -> String {
     if date.is_empty() { format!("Rev {rev}: read-only") } else { format!("Rev {rev}, {date}: read-only") }
 }
 
@@ -1130,13 +1122,7 @@ impl WireLabels {
             m.insert("label_rule".into(), Value::String(self.rule.clone()));
         }
         if self.min_length.trim() != self.min_orig {
-            let v: f64 = self
-                .min_length
-                .trim()
-                .parse()
-                .ok()
-                .filter(|x| ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.contains(x))
-                .ok_or_else(|| "Shortest labelled wire is 0 to 100 mm.".to_string())?;
+            let v = ecad_electrical::input::label_min_length(&self.min_length).map_err(|e| e.to_string())?;
             m.insert("label_min_length".into(), json!(v));
         }
         if self.number_by != self.number_by_orig {

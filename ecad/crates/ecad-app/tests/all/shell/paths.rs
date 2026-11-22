@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ecad_app::{App, DialogKind, status_line};
+use ecad_app::shell::app::{App, DialogKind, status_line};
 use ecad_engine::{HOME_UNKNOWN, normalize_with};
 use serde_json::{Value, json};
 
@@ -159,6 +159,7 @@ fn app_with_home(home: Option<&Path>) -> App {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
+    crate::common::save_as_services(&mut t);
     t.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
     t
@@ -249,16 +250,12 @@ fn the_dialog_suggests_the_platform_default_folder() {
     t.after_logic();
     let (kind, suggested, _) = t.dialog().unwrap();
     assert_eq!(kind, DialogKind::SaveAs);
-    let want = if cfg!(windows) { r"C:\dev\ecad-projects\untitled.ecad" } else { "~/ecad-projects/untitled.ecad" };
-    assert_eq!(suggested, want);
-    assert_eq!(ecad_app::DEFAULT_FOLDER, Path::new(want).parent().unwrap().display().to_string());
+    let sep = std::path::MAIN_SEPARATOR;
+    let folder = ecad_app::shell::host::Host::default().default_folder;
+    assert_eq!(suggested, format!("{folder}{sep}untitled.ecad"));
     t.cancel_dialog();
     t.request_open();
-    let sep = std::path::MAIN_SEPARATOR;
-    assert_eq!(t.dialog().unwrap().1, format!("{}{sep}", ecad_app::DEFAULT_FOLDER));
-    assert!(ecad_app::BANNER.contains(ecad_app::DEFAULT_FOLDER));
-    assert!(!ecad_app::BANNER.contains("Linux"), "platform-neutral: {}", ecad_app::BANNER);
-    assert!(!ecad_desktop::USAGE.contains("Linux"), "platform-neutral: {}", ecad_desktop::USAGE);
+    assert_eq!(t.dialog().unwrap().1, format!("{folder}{sep}"));
 }
 
 #[test]

@@ -17,7 +17,7 @@ use serde_json::json;
 use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, shot};
 use crate::checks::ui::demo_file;
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn out() -> Option<PathBuf> {
     let dir = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from)?;
@@ -65,7 +65,11 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     h.run_steps(2);
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
-    assert_eq!(ecad_app::window_title(h.state_mut().branch_info().as_ref()), ecad_app::TITLE, "one branch: the title is as before");
+    assert_eq!(
+        ecad_app::shell::app::window_title(h.state_mut().branch_info().as_ref()),
+        ecad_app::shell::app::TITLE,
+        "one branch: the title is as before"
+    );
 
     // A: the History tab, New version through its dialog.
     click(&mut h, panel::HISTORY_TAB);
@@ -107,7 +111,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     let info = h.state_mut().branch_info().unwrap();
     assert_eq!(info.name, "Option B");
     assert_eq!(info.bar.as_deref(), Some("Branch \"Option B\" · from Before change"));
-    assert!(ecad_app::window_title(Some(&info)).ends_with("demo.ecad · Option B"));
+    assert!(ecad_app::shell::app::window_title(Some(&info)).ends_with("demo.ecad · Option B"));
     save(&h, &deltas, "020-branchbar.png");
 
     // An edit on the branch; Save and switch back to main: main is unchanged.
@@ -145,7 +149,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     let info = h.state_mut().branch_info().unwrap();
     assert_eq!(info.name, "Option B");
     assert!(info.bar.is_some());
-    assert!(ecad_app::window_title(Some(&info)).ends_with("· Option B"));
+    assert!(ecad_app::shell::app::window_title(Some(&info)).ends_with("· Option B"));
     let g = h.state().panel.history.graph().clone();
     let cur = g.branches.iter().find(|b| b.current).map(|b| b.name.clone());
     assert_eq!(cur.as_deref(), Some("Option B"), "the graph's current branch");
@@ -153,6 +157,6 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     ok(&mut h, r#"renamebranch {"branch":"Option B","name":"Option Z"}"#);
     h.run_steps(3);
     assert_eq!(h.state_mut().branch_info().unwrap().name, "Option Z");
-    assert!(ecad_app::window_title(h.state_mut().branch_info().as_ref()).ends_with("· Option Z"));
+    assert!(ecad_app::shell::app::window_title(h.state_mut().branch_info().as_ref()).ends_with("· Option Z"));
     let _ = std::fs::remove_dir_all(&dir);
 }

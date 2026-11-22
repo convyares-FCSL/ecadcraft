@@ -2,10 +2,10 @@
 //! inside the shared bars, and the screenshots for the side-by-side with the boards (written only
 //! when `ECAD_TESTER_SHOTS` names a folder; nothing is asserted about the pictures).
 
-use ecad_app::App;
 use ecad_app::library::browser;
 use ecad_app::library::draft::Picked;
 use ecad_app::shell::Workspace;
+use ecad_app::shell::app::App;
 use ecad_electrical::symbols;
 use ecad_model::Subject;
 use eframe::egui::vec2;

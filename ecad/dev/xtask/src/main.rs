@@ -44,7 +44,8 @@ mod views_guards;
 
 /// The layer of an ECAD crate (design 065 §1 and §4): a crate uses only crates in layers above it
 /// (and in its own layer where §4 says so). Engine and UI kit are siblings: neither uses the other.
-/// The rules apply to normal dependencies; dev-dependencies (tests) are free, except on Dev crates.
+/// The rules apply to normal dependencies; a dev-dependency (tests) is checked only for the layer
+/// order (below), and is otherwise free, except on Dev crates.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Class {
     /// What a project is and means, without a screen or a drawing engine: no `cadcraft-*` crate,
@@ -395,22 +396,31 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             let cadcraft = dep.starts_with("cadcraft-");
             let dep_class = class_of(dep);
             let above_engine = matches!(dep_class, Some(Class::App | Class::Programs));
-            // Dev-dependencies are free here (tests): in particular ecad-app's tests use
-            // ecad-desktop's argument parsing and startup, so App may dev-depend on a program,
-            // never depend on one. Dev crates are checked below, dev-dependencies included.
-            let bad = !dev
-                && match class {
-                    Class::Core => {
-                        let before = |c: &str| CORE_ORDER.iter().position(|x| *x == c);
-                        let out_of_order = dep_class == Some(Class::Core) && !matches!((before(dep), before(name)), (Some(d), Some(n)) if d < n);
-                        cadcraft || ui || out_of_order || dep_class == Some(Class::Engine) || above_engine
-                    }
-                    Class::Engine => ui || (cadcraft && !ENGINE_CADCRAFT.contains(&dep)) || above_engine,
-                    Class::UiKit => !UIKIT_ALLOWED.contains(&dep),
-                    Class::App => dep == "cadcraft-engine" || dep_class == Some(Class::Programs),
-                    Class::Programs => dep == "cadcraft-engine",
-                    Class::Dev | Class::Exempt => false,
-                };
+            // A dev-dependency is held to the layer order only (#53, design `layout.md`): no crate
+            // depends on a layer above it, not even in tests. Dev crates are checked below,
+            // dev-dependencies included.
+            let rank = |c: Class| match c {
+                Class::Core => Some(0),
+                Class::Engine | Class::UiKit => Some(1),
+                Class::App => Some(2),
+                Class::Programs => Some(3),
+                Class::Dev | Class::Exempt => None,
+            };
+            let above = dev && matches!((rank(class), dep_class.and_then(rank)), (Some(own), Some(theirs)) if theirs > own);
+            let bad = above
+                || !dev
+                    && match class {
+                        Class::Core => {
+                            let before = |c: &str| CORE_ORDER.iter().position(|x| *x == c);
+                            let out_of_order = dep_class == Some(Class::Core) && !matches!((before(dep), before(name)), (Some(d), Some(n)) if d < n);
+                            cadcraft || ui || out_of_order || dep_class == Some(Class::Engine) || above_engine
+                        }
+                        Class::Engine => ui || (cadcraft && !ENGINE_CADCRAFT.contains(&dep)) || above_engine,
+                        Class::UiKit => !UIKIT_ALLOWED.contains(&dep),
+                        Class::App => dep == "cadcraft-engine" || dep_class == Some(Class::Programs),
+                        Class::Programs => dep == "cadcraft-engine",
+                        Class::Dev | Class::Exempt => false,
+                    };
             if bad && LAYER_EXCEPTIONS.iter().any(|(n, d, _)| *n == name && *d == dep) {
                 used_exceptions.insert((name, dep));
             } else if bad {
@@ -1789,16 +1799,15 @@ mod tests {
                 "ecad-model"
             ]
         );
-        assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop"]);
+        assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
             ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-electrical", "ecad-engine", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-engine", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
-        // The demo's command list is embedded by ecad-mcp; the app's Checks UI test opens the demo
-        // through it (brief 022).
-        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
+        // The demo's command list is embedded by ecad-mcp (#53: the app's tests no longer open it).
+        assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));
     }
 
@@ -1807,6 +1816,23 @@ mod tests {
         let inv = "| File | Why |\n| --- | --- |\n| `crates/engine/src/lib.rs` | X3 |\n| `README.md` | ours |\n";
         assert_eq!(inventory(inv), vec!["crates/engine/src/lib.rs", "README.md"]);
         assert_eq!(upstream_commit("x\nCommit: `00c7613` (0.6.2)\n").as_deref(), Some("00c7613"));
+    }
+
+    /// #53: a dev-dependency is held to the layer order too: no crate depends on a layer above it, not even in tests.
+    #[test]
+    fn dev_dependencies_may_not_reach_a_layer_above() {
+        let one = |name: &str, dep: &str, kind: Value| serde_json::json!({"packages": [{"name": name, "dependencies": [{"name": dep, "kind": kind}]}], "workspace_root": ""});
+        let rows: &[(&str, &str, Value, usize, &str)] = &[
+            ("ecad-app", "ecad-mcp", serde_json::json!("dev"), 1, "App tests using a program"),
+            ("ecad-app", "ecad-desktop", serde_json::json!("dev"), 1, "App tests using a program"),
+            ("ecad-mcp", "ecad-app", serde_json::json!("dev"), 0, "a program's tests use the app"),
+            ("ecad-electrical", "ecad-engine", serde_json::json!("dev"), 1, "Core tests using the engine"),
+            ("ecad-engine", "ecad-model", serde_json::json!("dev"), 0, "the engine's tests use Core"),
+        ];
+        for (name, dep, kind, n, what) in rows {
+            let v = layer_violations(&one(name, dep, kind.clone())).unwrap();
+            assert_eq!(v.len(), *n, "{what}: {v:?}");
+        }
     }
 
     /// Design §2 (brief 037 criterion 3): the UiKit crate may use egui, epaint, egui_extras and
@@ -2080,7 +2106,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-app", "cadcraft-engine", Value::Null, 1, "the app on the engine"),
             ("ecad-app", "cadcraft-engine", "dev".into(), 0, "the app's tests on the engine"),
             ("ecad-app", "ecad-desktop", Value::Null, 1, "the app on a program"),
-            ("ecad-app", "ecad-desktop", "dev".into(), 0, "the app's tests on a program"),
+            ("ecad-app", "ecad-desktop", "dev".into(), 1, "the app's tests on a program"),
             ("ecad-app", "cadcraft-ui-egui", Value::Null, 0, "the app on CADCraft's window"),
             ("ecad-desktop", "ecad-app", Value::Null, 0, "a program on the app"),
             ("ecad-mcp", "ecad-cli", Value::Null, 0, "a program on another program"),

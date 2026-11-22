@@ -18,14 +18,14 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::{Value, json};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The card (element name).
 pub const CARD: &str = "ecad.projectinfo.designations";
 /// The merge picker (element name).
-pub const MERGE_PICKER: &str = "ecad.designation.merge.picker";
+pub(crate) const MERGE_PICKER: &str = "ecad.designation.merge.picker";
 /// The card's foot.
-pub const FOOT: &str = "Changes here apply at once; undo with u.";
+pub(crate) const FOOT: &str = "Changes here apply at once; undo with u.";
 
 /// The kept rows: the log length read, and the `designations` answer.
 #[derive(Clone, Default)]

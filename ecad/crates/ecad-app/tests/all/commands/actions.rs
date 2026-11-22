@@ -262,7 +262,7 @@ fn tool_groups_list_tools_window_actions_and_greyed_placeholders() {
             vec!["Line", "Polyline", "Rectangle", "Circle", "Arc"],
             vec!["Text", "Note", "Revision cloud"],
             vec!["Symbol", "Connector"],
-            vec!["Terminal", "Terminals across wires", "Draw a link (bridge)", "Swap top and bottom", "Reorder the strip…", "Renumber…"],
+            vec!["Terminal", "Terminals across wires", "Draw a jumper bar", "Swap top and bottom", "Reorder the strip…", "Renumber…"],
             vec!["Rack overview", "Detail page…", "Card…", "Channel…"],
             vec!["Wire", "Bridge", "Continuation"],
             vec!["Cable slash", "Continue cable"],

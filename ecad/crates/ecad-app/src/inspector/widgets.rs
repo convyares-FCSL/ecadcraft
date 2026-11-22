@@ -9,9 +9,9 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Color32, Rect, Response, RichText, Sense, Stroke, vec2};
 
 /// The label column's width.
-pub const LABEL_W: f32 = ecad_widgets::tokens::size::LABEL_COLUMN;
+pub(crate) const LABEL_W: f32 = ecad_widgets::tokens::size::LABEL_COLUMN;
 /// A row's height (a value box is `size::CONTROL_SMALL`, centred in it).
-pub const FIELD_H: f32 = ecad_widgets::tokens::size::CONTROL;
+pub(crate) const FIELD_H: f32 = ecad_widgets::tokens::size::CONTROL;
 
 pub fn font(ui: &egui::Ui, style: ecad_widgets::tokens::ui_type::TypeStyle) -> egui::FontId {
     ecad_widgets::fonts::font(ui.ctx(), style)
@@ -79,7 +79,7 @@ pub fn section(
 }
 
 /// `text` cut to `n` characters with an ellipsis.
-pub fn ellipsis(text: &str, n: usize) -> String {
+pub(crate) fn ellipsis(text: &str, n: usize) -> String {
     if text.chars().count() <= n {
         return text.to_string();
     }
@@ -158,7 +158,7 @@ pub fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: 
 }
 
 /// A severity mark: an error's ring with a bar, a warning's triangle, or a note's ring with an i.
-pub fn severity_mark(p: &egui::Painter, centre: egui::Pos2, severity: ecad_electrical::checks::Severity) {
+pub(crate) fn severity_mark(p: &egui::Painter, centre: egui::Pos2, severity: ecad_electrical::checks::Severity) {
     use ecad_electrical::checks::Severity;
     let s = ecad_widgets::SHELL;
     if severity == Severity::Info {

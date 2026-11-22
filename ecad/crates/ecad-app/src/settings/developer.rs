@@ -3,8 +3,8 @@
 
 use eframe::egui;
 
-use crate::App;
 use crate::shell::DEVELOPER_SWITCH;
+use crate::shell::app::App;
 
 /// Draw the section.
 pub fn show(t: &mut App, ui: &mut egui::Ui) {

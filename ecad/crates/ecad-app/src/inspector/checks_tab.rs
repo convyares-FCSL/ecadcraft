@@ -15,13 +15,13 @@ use crate::pages::project_panel::Action;
 /// Accessible names.
 pub const SCOPE: &str = "ecad.inspector.checks.scope";
 pub const ELSEWHERE: &str = "ecad.inspector.checks.elsewhere";
-pub const GO_TO: &str = "Go to the check";
+pub(crate) const GO_TO: &str = "Go to the check";
 /// At most this many cards, and lines under "Elsewhere in the project" (the rest are in Project
 /// ▸ Check list).
 const MAX_CARDS: usize = 100;
 const MAX_ELSEWHERE: usize = 50;
 /// The footer's words.
-pub const FOOTER: &str =
+pub(crate) const FOOTER: &str =
     "Checks run as you draw. Selecting a check marks it on the page; the counter in the bottom bar opens this tab from anywhere.";
 
 fn words(n: usize, one: &str, many: &str) -> String {
@@ -29,7 +29,7 @@ fn words(n: usize, one: &str, many: &str) -> String {
 }
 
 /// `1 error · 1 warning`.
-pub fn count_words(errors: usize, warnings: usize) -> String {
+pub(crate) fn count_words(errors: usize, warnings: usize) -> String {
     format!("{} \u{b7} {}", words(errors, "error", "errors"), words(warnings, "warning", "warnings"))
 }
 

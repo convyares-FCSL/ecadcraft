@@ -26,8 +26,8 @@ use serde_json::json;
 
 use ecad_widgets::control::{Decor, Select, TextEntry, ValueBox, read_text};
 
-use crate::App;
 use crate::inspector::widgets as w;
+use crate::shell::app::App;
 
 /// Element names.
 pub const PANEL: &str = "ecad.plc.card.editor";
@@ -121,18 +121,11 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
         let mut boxes = ecad_electrical::locations::BoxCache::default();
         let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_electrical::locations::Located| -> (String, &'static str) {
-            let mut hint = "set here";
-            for r in &symbols {
-                let x = ecad_electrical::locations::rep_context_in(doc, a, r, &mut boxes);
-                if x.key.is_some() && x.key == l.key {
-                    let h = source_hint(Some(&x.source));
-                    if h == "from box" || hint == "set here" || (h == "from page" && hint == "from project") {
-                        hint = h;
-                    }
+            match l.value.clone() {
+                Some(code) => {
+                    let hint: ecad_electrical::locations::Hint = ecad_electrical::locations::stored_hint(doc, a, &symbols, &l, &mut boxes);
+                    (code, hint.words())
                 }
-            }
-            match l.value {
-                Some(code) => (code, hint),
                 None if l.missing() => ("?".to_string(), "not in the list"),
                 None => (String::new(), ""),
             }
@@ -187,17 +180,6 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
     .flatten()
 }
 
-/// The source hint of a stored function or location whose code is also the context's there.
-fn source_hint(source: Option<&ecad_electrical::locations::Source>) -> &'static str {
-    use ecad_electrical::locations::Source;
-    match source {
-        Some(Source::Box { .. }) => "from box",
-        Some(Source::Page(_)) => "from page",
-        Some(Source::Project) => "from project",
-        _ => "set here",
-    }
-}
-
 /// The Parts rows as board 2.03 shows them: the card's main part (named for what the card is, its
 /// maker and part number, `main part`), then each accessory line, every quantity as `×1`. Empty
 /// only when the card has no part at all (no maker, no part number, no lines).
@@ -225,16 +207,6 @@ pub fn part_rows(
         .collect()
 }
 
-/// The byte a typed start names: `%Q4.0`, `Q4`, `IW64`, `4`; empty unpins.
-pub fn start_byte(text: &str) -> Option<Option<u32>> {
-    let t = text.trim();
-    if t.is_empty() {
-        return Some(None);
-    }
-    let digits: String = t.trim_start_matches(|c: char| !c.is_ascii_digit()).chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().ok().map(Some)
-}
-
 /// What a field's commit runs, or `None` when nothing changed.
 pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     let v = value.trim();
@@ -244,8 +216,8 @@ pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     Some(match key {
         "tag" => format!("setprop {}", json!({"component": c.hex(), "key": "tag", "value": v, "conflict": "swap"})),
         "description" | "function" | "location" | "maker" | "part_number" => setprop(key),
-        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": v.parse::<u32>().ok()?})),
-        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": start_byte(v)?})),
+        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": ecad_electrical::input::plc_slot(v).ok()?})),
+        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": ecad_electrical::input::plc_start(v).ok()?})),
         _ => return None,
     })
 }

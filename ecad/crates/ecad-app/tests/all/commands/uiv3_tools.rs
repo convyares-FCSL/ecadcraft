@@ -4,7 +4,7 @@
 //! the screenshots for the side-by-side with the boards.
 
 use crate::pages::project_panel::{doc, rev3_app as new_app};
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::RightTab;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
@@ -87,7 +87,7 @@ fn every_group_has_a_flyout_with_the_boards_items_and_placeholders_stay_greyed()
     let labels = |g: ToolGroup| g.tools().iter().map(|a| a.label).collect::<Vec<_>>();
     assert_eq!(
         labels(ToolGroup::TerminalBlock),
-        ["Terminal", "Terminals across wires", "Draw a link (bridge)", "Swap top and bottom", "Reorder the strip…", "Renumber…"]
+        ["Terminal", "Terminals across wires", "Draw a jumper bar", "Swap top and bottom", "Reorder the strip…", "Renumber…"]
     );
     assert_eq!(ToolGroup::TerminalBlock.link().map(|a| a.label), Some("Terminal manager"));
     assert_eq!(labels(ToolGroup::Plc), ["Rack overview", "Detail page…", "Card…", "Channel…"]);

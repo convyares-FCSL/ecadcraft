@@ -2,8 +2,8 @@
 //! menu (Paper, Follow, Dark), the zones numbered across and lettered down, and the screenshots
 //! for the side-by-sides.
 
-use ecad_app::App;
 use ecad_app::canvas::Sheet;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::{RightTab, ShellState, Theme};
 use ecad_app::shell::{status_bar, top_bar};
 use eframe::egui::vec2;

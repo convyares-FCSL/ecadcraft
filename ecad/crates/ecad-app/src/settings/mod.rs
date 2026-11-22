@@ -29,7 +29,7 @@ pub mod text_styles;
 use ecad_widgets::tokens::{Icon, space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
@@ -39,9 +39,9 @@ pub const CLOSE: &str = "Close Settings";
 /// The standard, as shown everywhere until named standards (brief 042 Q1).
 pub const STANDARD: &str = "IEC (built in)";
 /// The list's width at 1920 × 1080 (board 5.01).
-pub const LIST_W: f32 = 232.0;
+pub(crate) const LIST_W: f32 = 232.0;
 /// The title row's height.
-pub const HEAD_H: f32 = 64.0;
+pub(crate) const HEAD_H: f32 = 64.0;
 
 /// A section of Settings.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

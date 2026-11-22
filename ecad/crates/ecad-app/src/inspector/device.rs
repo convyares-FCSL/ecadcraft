@@ -4,7 +4,7 @@
 //! cable…) it shows that object's properties in the same folding sections.
 
 use ecad_electrical::cables::words::Row;
-use ecad_electrical::properties::Section;
+use ecad_electrical::properties::{Section, SectionKind};
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
@@ -15,7 +15,7 @@ use crate::inspector::{Cx, InspectorAction, fields};
 /// Accessible names.
 pub const OWN_CHECKS: &str = "ecad.inspector.own-checks";
 pub const DRAWN_ROW: &str = "ecad.inspector.drawn.row";
-pub const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
+pub(crate) const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
 /// What a button that has nothing behind it yet says.
 pub const NOT_YET: &str = "Not available yet";
 
@@ -40,12 +40,17 @@ const PLACED: [&str; 15] = [
 ];
 
 /// A row the Layout tab draws.
-pub fn on_layout_tab(row: &Row) -> bool {
-    row.key == ecad_electrical::references::devices::parse::MIRROR_KEY || row.label.starts_with("Texts")
+pub(crate) fn on_layout_tab(row: &Row) -> bool {
+    row.key == ecad_electrical::references::devices::parse::MIRROR_KEY || is_text(row)
+}
+
+/// A row that is the visibility of one kind of text.
+pub(crate) fn is_text(row: &Row) -> bool {
+    matches!(row.kind, ecad_electrical::cables::words::RowKind::Text(_))
 }
 
 /// The device's own checks: about it or one of its connection points.
-pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
+pub(crate) fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
     let Some(d) = &cx.insp.device else { return Vec::new() };
     let Some(c) = d.component else { return Vec::new() };
     cx.checks
@@ -61,9 +66,9 @@ pub fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> {
 pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) {
     let view = std::mem::take(&mut cx.sh.view);
     match (&cx.insp.device, view.sections.first()) {
-        (Some(_), Some(s)) if s.kind == "device" => device(ui, cx, s, out),
+        (Some(_), Some(s)) if s.kind == SectionKind::Device => device(ui, cx, s, out),
         _ => {
-            if view.sections.first().is_some_and(|s| s.kind == "page") {
+            if view.sections.first().is_some_and(|s| s.kind == SectionKind::Page) {
                 ui.add_space(space::S);
                 ui.label(w::rich(ui, "Nothing selected: this page's details.", ui_type::SMALL, w::text_3()));
             }
@@ -82,28 +87,25 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
 }
 
 /// The section title of a kind of object.
-fn kind_title(kind: &str) -> &'static str {
+fn kind_title(kind: SectionKind) -> &'static str {
     match kind {
-        "page" => "This page",
-        "wire" => "Wire",
-        "cable" => "Cable",
-        "reference" => "Reference",
-        "box" => "Location box",
-        "continuation" => "Continuation",
-        "link" => "Link",
-        "device" => "Devices",
-        _ => "Selection",
+        SectionKind::Page => "This page",
+        SectionKind::Wire => "Wire",
+        SectionKind::Cable => "Cable",
+        SectionKind::Reference => "Reference",
+        SectionKind::Box => "Location box",
+        SectionKind::Continuation => "Continuation",
+        SectionKind::JumperBar => "Jumper bar",
+        SectionKind::Device => "Devices",
+        SectionKind::Objects => "Selection",
     }
 }
 
-/// A text's name from its row's label (`Texts: connection point labels` → `Pin labels`).
-pub fn text_label(label: &str) -> String {
-    match label.trim_start_matches("Texts: ").trim_start_matches("Texts on this symbol: ") {
-        "connection point labels" => "Pin labels".to_string(),
-        l => {
-            let mut c = l.chars();
-            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-        }
+/// A text row's name (`Pin labels`, `Tag`…).
+pub(crate) fn text_label(row: &Row) -> String {
+    match row.kind {
+        ecad_electrical::cables::words::RowKind::Text(k) => ecad_electrical::styles::text_style::shown_name(k),
+        ecad_electrical::cables::words::RowKind::Value => row.label.clone(),
     }
 }
 
@@ -111,13 +113,13 @@ pub fn text_label(label: &str) -> String {
 /// a second one, folded.
 fn generic(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section) {
     // The page is named in the header already.
-    let summary = if s.kind == "page" { String::new() } else { s.title.trim_start_matches("ECAD \u{b7} ").to_string() };
+    let summary = if s.kind == SectionKind::Page { String::new() } else { s.shown_title().to_string() };
     let full = cx.full;
     let sh = &mut *cx.sh;
-    let (texts, rows): (Vec<&Row>, Vec<&Row>) = s.rows.iter().partition(|r| r.label.starts_with("Texts"));
-    w::section(ui, &mut cx.insp.folded, full, s.kind, kind_title(s.kind), &summary, false, |ui| {
+    let (texts, rows): (Vec<&Row>, Vec<&Row>) = s.rows.iter().partition(|r| is_text(r));
+    w::section(ui, &mut cx.insp.folded, full, s.kind.word(), kind_title(s.kind), &summary, false, |ui| {
         for row in rows {
-            fields::prop(ui, sh, &s.target, s.kind, row, &row.label, if row.inherited { "from project" } else { "" });
+            fields::prop(ui, sh, &s.target, s.kind.word(), row, &row.label, if row.inherited { "from project" } else { "" });
         }
         if let Some(n) = &s.note {
             ui.label(w::rich(ui, n, ui_type::SMALL, w::text_3()));
@@ -127,10 +129,10 @@ fn generic(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section) {
     if !texts.is_empty() {
         let set = texts.iter().filter(|r| !r.inherited).count();
         let summary = if set == 0 { "default".to_string() } else { format!("{set} set") };
-        let id = format!("{}-texts", s.kind);
+        let id = format!("{}-texts", s.kind.word());
         w::section(ui, &mut cx.insp.folded, full, &id, "Texts shown", &summary, true, |ui| {
             for row in texts {
-                fields::prop(ui, sh, &s.target, s.kind, row, &text_label(&row.label), "");
+                fields::prop(ui, sh, &s.target, s.kind.word(), row, &text_label(row), "");
             }
         });
     }
@@ -269,9 +271,9 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
 
 /// The folded Parts section's summary: its part lines, else the main part's maker and number
 /// (a device with only a main part has a part), else `none yet`.
-pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
+pub(crate) fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
     if lines > 0 {
-        return format!("{lines} line{} \u{b7} qty", if lines == 1 { "" } else { "s" });
+        return format!("{lines} line{} \u{b7} qty", ecad_widgets::plural(lines));
     }
     let main: Vec<&str> = [maker, part_number].into_iter().flatten().map(str::trim).filter(|v| !v.is_empty() && *v != "*varies*").collect();
     if main.is_empty() { "none yet".to_string() } else { main.join(" \u{b7} ") }
@@ -325,7 +327,7 @@ pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_electrical::reports::bom::Pa
 }
 
 /// A row of "Where it is drawn"; returns the symbol to go to when clicked.
-fn drawn_row(ui: &mut egui::Ui, r: &crate::inspector::details::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
+fn drawn_row(ui: &mut egui::Ui, r: &crate::references::drawn::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
     let s = ecad_widgets::SHELL;
     let width = ui.available_width();
     let sense = if r.rep.is_some() { Sense::click() } else { Sense::hover() };

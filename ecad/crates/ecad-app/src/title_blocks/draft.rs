@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 /// The eframe storage key of the editor's drafts.
 pub const DRAFTS_KEY: &str = "title_block_drafts";
 /// Most drafts kept per project.
-pub const MAX_DRAFTS: usize = 8;
+pub(crate) const MAX_DRAFTS: usize = 8;
 /// Most undo steps kept.
-pub const MAX_UNDO: usize = 200;
+pub(crate) const MAX_UNDO: usize = 200;
 /// The snap step, mm.
-pub const SNAP_MM: f64 = 1.0;
+pub(crate) const SNAP_MM: f64 = 1.0;
 /// How near a point snaps to an item edge or a line end, mm.
-pub const SNAP_NEAR_MM: f64 = 1.5;
+pub(crate) const SNAP_NEAR_MM: f64 = 1.5;
 
 /// What Save writes: the frame's name, fields and block.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -148,7 +148,7 @@ impl Draft {
 }
 
 /// Move `item` by (dx, dy) mm.
-pub fn move_item(item: &mut BlockItem, dx: f64, dy: f64) {
+pub(crate) fn move_item(item: &mut BlockItem, dx: f64, dy: f64) {
     let r = |at: &mut Rect| {
         at.x += dx;
         at.y += dy;

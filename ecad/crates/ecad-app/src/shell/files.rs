@@ -1,7 +1,12 @@
 //! The app's project files: new, open, save, save as, the file dialog's state, conversion of old
 //! files, snapshots, and closing (the held close, quitting).
 
-use crate::*;
+use crate::shell::app::*;
+use cadcraft_ui_egui::closing::{Choice, Closing};
+use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{Persistence, Project, ProjectHandle, session_seed};
+use serde_json::json;
+use std::path::PathBuf;
 
 impl App {
     /// Create a new, unsaved project (only when none is open).
@@ -29,7 +34,7 @@ impl App {
         if self.project_open() {
             return Err("an ECAD project is already open; close it first".into());
         }
-        let path = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
+        let path = self.resolve_ecad(path).map_err(|e| e.to_string())?;
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -81,18 +86,36 @@ impl App {
     /// # Errors
     /// No project is open, the path is refused, or the save failed (also shown in a dialog).
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
-        self.focus_project()?;
-        let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
-        if let Some(dir) = Path::new(&target).parent()
-            && let Ok(default) = ecad_engine::expand_home(DEFAULT_FOLDER, self.home.as_deref())
-            && ecad_engine::same_path(dir, &default)
-            && !dir.exists()
-        {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        self.save_as_checked(path, true).map_err(|e| e.to_string())
+    }
+
+    /// [`App::save_as`] that refuses to replace another file unless `replace` is set, in the
+    /// same call as the save.
+    ///
+    /// # Errors
+    /// As [`App::save_as`]; [`ecad_engine::file::SaveAsRefused::Exists`] when another file is there.
+    pub(crate) fn save_as_checked(&mut self, path: &str, replace: bool) -> Result<(), ecad_engine::file::SaveAsError> {
+        use ecad_engine::file::SaveAsError;
+        self.focus_project().map_err(SaveAsError::Failed)?;
+        let target = self.resolve_ecad(path).map_err(|e| SaveAsError::Failed(e.to_string()))?;
+        // Without a known home the default folder cannot be made; the save goes on and reports what it finds.
+        if let Ok(default) = self.resolve(&crate::shell::host::host().default_folder) {
+            ecad_engine::ensure_default_folder(std::path::Path::new(&target), &default).map_err(|e| SaveAsError::Failed(format!("{target}: {e}")))?;
         }
-        let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
+        let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
+        let r = ecad_engine::save_project_as(&mut self.cad.session, std::path::Path::new(&target), own.as_deref(), replace);
+        match &r {
+            Ok(v) => {
+                if let Some(m) = v.get("message").and_then(serde_json::Value::as_str) {
+                    for l in m.lines() {
+                        self.cad.session.echo(l.to_string());
+                    }
+                }
+            }
+            Err(e) => self.cad.session.echo(e.to_string()),
+        }
         self.after_logic();
-        r
+        r.map(|_| ())
     }
 
     /// Make a page of the project the active document (Save and Save As act on it).
@@ -139,8 +162,8 @@ impl App {
 
     fn open_dialog(&mut self, kind: DialogKind, then_close: Option<Closing>) {
         let suggested = match (kind, self.status()) {
-            (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
-            _ => in_default_folder(""),
+            (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| self.in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
+            _ => self.in_default_folder(""),
         };
         self.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
     }
@@ -170,18 +193,13 @@ impl App {
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
             DialogKind::SaveAs => {
-                let target = ecad_engine::normalize_with(&path, self.home.as_deref()).map(PathBuf::from);
-                let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
-                match target {
-                    Ok(t)
-                        if t.exists()
-                            && !own.as_deref().is_some_and(|o| ecad_engine::same_path(&t, o))
-                            && d.confirmed_replace.as_deref() != Some(&path) =>
-                    {
+                let replace = d.confirmed_replace.as_deref() == Some(&path);
+                match self.save_as_checked(&path, replace) {
+                    Err(ecad_engine::file::SaveAsError::Refused(ecad_engine::file::SaveAsRefused::Exists(t))) => {
                         d.confirmed_replace = Some(path.clone());
                         Err(format!("{} already exists. Press Save again to replace it.", t.display()))
                     }
-                    _ => self.save_as(&path),
+                    other => other.map_err(|e| e.to_string()),
                 }
             }
         };
@@ -296,18 +314,15 @@ impl App {
         let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
         // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
         let dir = match dir.to_str() {
-            Some(typed) => ecad_engine::expand_home(typed, self.home.as_deref()).map_err(|e| e.to_string())?,
+            Some(typed) => self.resolve(typed).map_err(|e| e.to_string())?,
             None => dir,
         };
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
-        let head = snap.get("seq").and_then(serde_json::Value::as_u64).unwrap_or(0);
         self.snapshot_count += 1;
-        let stamp = ecad_stamp();
-        let path = dir.join(format!("ecad-desktop-{stamp}-{:02}-seq{head:03}-{why}.json", self.snapshot_count));
-        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let bytes = serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?;
-        std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let path =
+            ecad_engine::dev::snapshot::write_snapshot_file(&snap, &dir, why, self.snapshot_count, (crate::shell::host::host().now_ms)() / 1000)
+                .map_err(|e| format!("{}: {e}", dir.display()))?;
         self.cad.session.echo(format!("Snapshot written: {} ({SNAPSHOT_NOTE})", path.display()));
         Ok(path)
     }
@@ -379,25 +394,35 @@ impl App {
     pub(crate) fn report_stem(&mut self) -> String {
         let Some(p) = self.project.clone() else { return "project".into() };
         p.read(&mut self.cad.session, |p, _| match &p.path {
-            Some(path) => std::path::Path::new(path).with_extension("").to_string_lossy().into_owned(),
+            Some(path) => ecad_engine::without_extension(std::path::Path::new(path)),
             None => p.name.clone(),
         })
         .unwrap_or_else(|_| "project".into())
     }
 
+    /// `name` in the default folder, as typed (with the platform's separator; a trailing one when `name` is empty).
+    pub(crate) fn in_default_folder(&self, name: &str) -> String {
+        format!("{}{}{name}", crate::shell::host::host().default_folder, std::path::MAIN_SEPARATOR)
+    }
+
     /// A typed output path with `~` expanded.
     pub(crate) fn report_path(&self, path: &str) -> Result<String, String> {
-        ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
+        self.resolve(path.trim()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
-}
 
-/// `name` in [`DEFAULT_FOLDER`], as typed (with the platform's separator; a trailing one when
-/// `name` is empty).
-pub(crate) fn in_default_folder(name: &str) -> String {
-    format!("{DEFAULT_FOLDER}{}{name}", std::path::MAIN_SEPARATOR)
-}
+    /// A typed path as a path: `~` is [`App::home`].
+    ///
+    /// # Errors
+    /// The path starts with `~` and the home folder is not known.
+    pub(crate) fn resolve(&self, typed: &str) -> Result<PathBuf, ecad_engine::file::PathError> {
+        crate::shell::host::resolve(typed, self.home.as_deref())
+    }
 
-/// Seconds since the epoch, for unique snapshot file names.
-fn ecad_stamp() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+    /// A typed project path as the `.ecad` file it names: `~` resolved, `.ecad` added.
+    ///
+    /// # Errors
+    /// As [`App::resolve`], or the path is not a file name.
+    pub(crate) fn resolve_ecad(&self, typed: &str) -> Result<String, ecad_engine::file::PathError> {
+        self.resolve(typed).and_then(|p| ecad_engine::normalize_resolved(&p))
+    }
 }

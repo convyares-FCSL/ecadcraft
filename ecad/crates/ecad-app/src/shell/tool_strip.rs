@@ -26,7 +26,7 @@ use ecad_widgets::tokens::ui_type::TypeStyle;
 use ecad_widgets::tokens::{Icon, line, size, space};
 use eframe::egui::{self, Key, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{LeftTab, bar};
 
 /// A tool group as the strip shows it.
@@ -388,8 +388,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
 }
 
 /// A flyout's row height, and its narrowest width (UI rev 3, boards 1.09 and 1.10).
-pub const FLYOUT_ROW: f32 = 28.0;
-pub const FLYOUT_MIN_W: f32 = 248.0;
+pub(crate) const FLYOUT_ROW: f32 = 28.0;
+pub(crate) const FLYOUT_MIN_W: f32 = 248.0;
 
 /// What a click in a flyout chose: one of its tools (by index), or its foot's link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -86,6 +86,6 @@ pub fn show(ui: &mut eframe::egui::Ui, tab: Tab, lists: Lists<'_>, writable: boo
 }
 
 /// Copy `csv` to the clipboard (Checks and Devices until the shell gives Lists a save path).
-pub fn copy_csv(ui: &eframe::egui::Ui, csv: String) {
+pub(crate) fn copy_csv(ui: &eframe::egui::Ui, csv: String) {
     ui.ctx().copy_text(csv);
 }

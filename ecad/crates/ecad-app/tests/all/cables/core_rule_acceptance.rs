@@ -3,8 +3,8 @@
 //! open core has no wire of its own, design 072 §4.2), and **Tick Not used** is one transaction
 //! that one undo takes back.
 
-use ecad_app::App;
 use ecad_app::pages::project_panel::Action;
+use ecad_app::shell::app::App;
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};

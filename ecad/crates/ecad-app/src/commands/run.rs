@@ -1,7 +1,11 @@
 //! What the app runs: command lines, Tool Sets buttons, the Project panel's, history's and
 //! debugger's actions, branch and merge questions, Renumber, and going to places in the drawing.
 
-use crate::*;
+use crate::shell::app::*;
+use crate::{developer, settings, shell};
+use ecad_model::PageId;
+use eframe::egui::{self};
+use serde_json::json;
 
 impl App {
     /// Run one whole command line, as typed in the banner's field: `name {json}` runs an ECAD or
@@ -546,7 +550,7 @@ impl App {
                 match r {
                     Ok(v) => {
                         self.refresh_panel();
-                        if let Some(f) = v["folder"].as_str().and_then(ecad_model::FolderId::parse) {
+                        if let Some(f) = ecad_engine::commands::reply::id::<ecad_model::FolderId>(&v, "folder") {
                             self.panel.folded.remove(&f);
                             self.panel.start_folder_rename(f);
                         }
@@ -743,7 +747,7 @@ impl App {
             d = d.for_wires(wire_digits);
         }
         if let Some(f) = folder {
-            d = d.for_folder(&f.hex());
+            d = d.for_folder(f);
         }
         if let Ok((c, v)) = d.params(true) {
             match self.run_click(c, v) {

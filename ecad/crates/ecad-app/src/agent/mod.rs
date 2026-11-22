@@ -42,26 +42,26 @@ use ecad_engine::cables::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
 
-use crate::App;
+use crate::shell::app::App;
 pub use banner::{AgentBanner, BannerAction, BannerState, LastChange};
 
 /// How long a call that may change the project waits while the person is busy (design §6.2).
-pub const AGENT_HOLD: Duration = Duration::from_secs(5);
+pub(crate) const AGENT_HOLD: Duration = Duration::from_secs(5);
 /// Most agent requests answered in one frame, so a burst cannot freeze the window (design §5.3).
-pub const MAX_AGENT_CALLS_PER_FRAME: usize = 8;
+pub(crate) const MAX_AGENT_CALLS_PER_FRAME: usize = 8;
 /// A bridge session without a call for this long is finished (its writer role released).
-pub const SESSION_IDLE: Duration = Duration::from_secs(600);
+pub(crate) const SESSION_IDLE: Duration = Duration::from_secs(600);
 /// Most bridge sessions remembered at once; the oldest finished one is forgotten first.
-pub const MAX_SESSIONS: usize = 64;
+pub(crate) const MAX_SESSIONS: usize = 64;
 /// How long the banner shows a write after it was accepted.
-pub const WRITE_FLASH: Duration = Duration::from_secs(1);
+pub(crate) const WRITE_FLASH: Duration = Duration::from_secs(1);
 /// Requests waiting in the app at once (the listener's own queue holds 64 more).
-pub const MAX_WAITING: usize = 256;
+pub(crate) const MAX_WAITING: usize = 256;
 /// Longest agent name accepted, in bytes, before it is cleaned (larger is refused).
 const MAX_NAME_BYTES: usize = 1024;
 
 /// Said when access is off or was turned off.
-pub const ACCESS_OFF: &str = "agent access is off in the ECAD window; the person turns it on in ECAD Dev ▸ Agent access";
+pub(crate) const ACCESS_OFF: &str = "agent access is off in the ECAD window; the person turns it on in ECAD Dev ▸ Agent access";
 /// Said for a write under the Read only preference.
 pub const READ_ONLY: &str = "Agent access in the ECAD window is Read only.";
 /// Said for a write while paused.
@@ -70,9 +70,11 @@ pub const PAUSED: &str = "Refused: paused by the designer; nothing was changed."
 pub const DISCONNECTED: &str = "the designer disconnected this agent; restart the MCP server to connect again";
 /// Said to agent calls while the person is not yet the author again (the project stayed busy
 /// through every attempt after the last call; the next frames keep trying).
-pub const RESETTING: &str = "Refused: ECAD is still making the designer the author again after the last agent call; nothing was changed. Try again.";
+pub(crate) const RESETTING: &str =
+    "Refused: ECAD is still making the designer the author again after the last agent call; nothing was changed. Try again.";
 /// Logged once when the reset has to wait.
-pub const RESETTING_LOG: &str = "Agent access: the project was busy, so you are not yet the author again; ECAD keeps trying, and agent calls wait.";
+pub(crate) const RESETTING_LOG: &str =
+    "Agent access: the project was busy, so you are not yet the author again; ECAD keeps trying, and agent calls wait.";
 
 /// Said to a write by a session that is not the writer.
 pub fn not_writer(writer: &str) -> String {
@@ -385,7 +387,7 @@ impl Agent {
                 None => i += 1,
                 Some(v) => {
                     let f = self.forwarded.swap_remove(i);
-                    let v = if f.method == "ui.screenshot" { inline_screenshot(v) } else { v };
+                    let v = if f.method == "ui.screenshot" { ecad_engine::agent::inline_screenshot(v) } else { v };
                     let _ = f.req.reply.send(v);
                 }
             }
@@ -473,38 +475,6 @@ fn ok(v: Value) -> Value {
 
 fn failed(e: &str) -> Value {
     json!({"ok": false, "error": e})
-}
-
-/// A pathless screenshot's reply (a private file upstream) turned into the PNG inline, as
-/// `ui.render` replies; the file is removed.
-fn inline_screenshot(v: Value) -> Value {
-    let Some(path) = v.pointer("/result/path").and_then(Value::as_str).map(str::to_string) else { return v };
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(e) => return failed(&format!("the screenshot could not be read back: {e}")),
-    };
-    let _ = std::fs::remove_file(&path);
-    let w = v.pointer("/result/width").cloned().unwrap_or(Value::Null);
-    let h = v.pointer("/result/height").cloned().unwrap_or(Value::Null);
-    ok(json!({"pngBase64": base64(&bytes), "width": w, "height": h, "bytes": bytes.len()}))
-}
-
-/// Standard base64 with padding.
-pub fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3).saturating_mul(4));
-    for c in data.chunks(3) {
-        let b = [c.first().copied().unwrap_or(0), c.get(1).copied().unwrap_or(0), c.get(2).copied().unwrap_or(0)];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for (i, shift) in [18u32, 12, 6, 0].into_iter().enumerate() {
-            if i <= c.len() {
-                out.push(char::from(T.get(((n >> shift) & 63) as usize).copied().unwrap_or(b'A')));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
 }
 
 /// What `control.methods` answers over ECAD's port (design §4.2, §4.3).
@@ -717,8 +687,8 @@ impl App {
     fn open_dialog_title(&self) -> Option<&'static str> {
         if let Some(d) = &self.dialog {
             return Some(match d.kind {
-                crate::DialogKind::Open => "Open",
-                crate::DialogKind::SaveAs => "Save As",
+                crate::shell::app::DialogKind::Open => "Open",
+                crate::shell::app::DialogKind::SaveAs => "Save As",
             });
         }
         if self.held.is_some() || self.cad.closing.is_some() || self.cad.save_loss.is_some() {
@@ -1023,7 +993,7 @@ impl App {
                 b.last_change = Some(LastChange {
                     seq: t.get("seq").and_then(Value::as_u64).unwrap_or(0),
                     label: t.get("label").and_then(Value::as_str).unwrap_or("").to_string(),
-                    time_ms: u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or(0),
+                    time_ms: (crate::shell::host::host().now_ms)(),
                     branch,
                 });
                 b.flash_until = Some(Instant::now() + WRITE_FLASH);
@@ -1154,15 +1124,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_matches_the_standard_alphabet() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
-    }
 
     #[test]
     fn requests_that_may_change_the_project_are_held() {

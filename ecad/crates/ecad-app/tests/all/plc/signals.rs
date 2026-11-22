@@ -4,8 +4,8 @@
 //! editor in the right panel, and the footer's overview page. Screenshots `056-*.png` when
 //! `ECAD_TESTER_SHOTS` names a folder.
 
-use ecad_app::App;
 use ecad_app::plc::list::{self, IoView};
+use ecad_app::shell::app::App;
 use ecad_app::shell::{ListsView, Workspace};
 use ecad_app::workspace::ListAction;
 use ecad_model::DeviceId;
@@ -137,7 +137,7 @@ fn a_b_g_project_plc_is_the_signal_list_of_board_2_03() {
     assert!(list::edit_line(r2, list::TAG, "Valve_In").is_some_and(|l| l.contains(r#""tag":"Valve_In""#)));
     assert!(list::edit_line(r2, list::SAFE, "On").is_some_and(|l| l.contains(r#""safe":"On""#)));
     let r9 = v.source.row((a03, 9)).unwrap();
-    assert_eq!(list::edit_line(r9, list::TAG, list::FREE), None, "the placeholder is not a tag");
+    assert_eq!(list::edit_line(r9, list::TAG, ecad_electrical::plc::iolist::FREE), None, "the placeholder is not a tag");
     assert!(h.query_by_label("ecad.plc.card.editor.tag").is_some(), "the right panel edits the card");
 
     // G: Import an I/O list fills tags and descriptions, one transaction.
@@ -209,7 +209,7 @@ fn run_path(h: &mut H, a: ListAction, path: &std::path::Path) {
 
 #[test]
 fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
-    use ecad_app::plc::card_editor::{field_line, start_byte};
+    use ecad_app::plc::card_editor::field_line;
     let deltas: Deltas = std::sync::Arc::default();
     let mut h = harness(deltas.clone());
     p56(&mut h);
@@ -278,9 +278,9 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     let d = doc(&mut h);
     let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
     assert_eq!(m.channel(2).and_then(|c| c.tag.as_ref()).map(|t| t.as_str()), Some("Valve_Inlet"));
-    assert_eq!(start_byte("%Q4.0"), Some(Some(4)));
-    assert_eq!(start_byte("IW64"), Some(Some(64)));
-    assert_eq!(start_byte(""), Some(None), "empty unpins");
+    assert_eq!(ecad_electrical::input::plc_start("%Q4.0"), Ok(Some(4)));
+    assert_eq!(ecad_electrical::input::plc_start("IW64"), Ok(Some(64)));
+    assert_eq!(ecad_electrical::input::plc_start(""), Ok(None), "empty unpins");
     assert!(field_line(a03, "slot", "x").is_none(), "a slot is a number");
     take(&h, &deltas, "056-card-editor.png");
 }

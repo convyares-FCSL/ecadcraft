@@ -14,7 +14,7 @@ use egui_kittest::kittest::Queryable;
 
 use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, head, ok, shot};
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn save(h: &H, deltas: &Deltas, name: &str) {
     let Some(dir) = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from) else { return };

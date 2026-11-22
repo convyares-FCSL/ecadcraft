@@ -7,17 +7,17 @@ use ecad_electrical::symbols;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, Stroke, pos2, vec2};
 
-use crate::App;
 use crate::inspector::widgets as w;
+use crate::shell::app::App;
 use crate::shell::placing::{Shown, tag_in};
 
 /// Accessible names.
 pub const CHANGES: &str = "ecad.inspector.placing.changes";
-pub const NOT_PLACED: &str = "not placed yet";
+pub(crate) const NOT_PLACED: &str = "not placed yet";
 
 /// What the inspector knows about the device being placed.
 #[derive(Debug, Clone)]
-pub struct Placing {
+pub(crate) struct Placing {
     /// `-K02` (a new device) or `-K01` (another symbol of it); `None` until the tool names it.
     pub tag: Option<String>,
     /// The symbol joins an existing device.
@@ -90,7 +90,7 @@ pub fn of(t: &App) -> Option<Placing> {
 pub fn show(ui: &mut egui::Ui, cx: &mut crate::inspector::Cx<'_>, p: &Placing, standard: &str) {
     let full = cx.full;
     // The page's Function and Location, which the new device takes.
-    let page = cx.sh.view.sections.iter().find(|s| s.kind == "page");
+    let page = cx.sh.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Page);
     let from_page = |key: &str| {
         page.and_then(|s| s.rows.iter().find(|r| r.key == key)).map(|r| (r.value.clone(), if r.inherited { "from project" } else { "from page" }))
     };

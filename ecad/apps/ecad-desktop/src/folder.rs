@@ -1,5 +1,6 @@
 //! The default projects folder: [`DEFAULT_FOLDER`], the [`BANNER`] that names it, and
-//! [`default_folder!`](crate::default_folder) for text built at compile time (ecad-desktop's usage).
+//! [`default_folder!`](crate::default_folder) for text built at compile time. It is platform policy, so it
+//! lives in the program and the app gets it through its host ([`ecad_app::shell::host::Host`]).
 
 /// The default projects folder, as typed (see [`DEFAULT_FOLDER`]): a string literal, so it can go
 /// in `concat!`.
@@ -20,8 +21,7 @@ macro_rules! default_folder {
     };
 }
 
-/// What the app is, in full (the Project panel's experiment line shows [`NOTE`](crate::NOTE) with this as
-/// its hover text; the top banner that showed it was removed, owner 2026-11-08).
+/// What the app is, in full (the top banner that showed it was removed, owner 2026-11-08).
 pub const BANNER: &str = concat!(
     "ECAD DESKTOP (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
     crate::default_folder!(),

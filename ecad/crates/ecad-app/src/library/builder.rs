@@ -12,35 +12,36 @@ use ecad_model::{Primitive, Pt, TextHAlign, TextVAlign};
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Align2, Color32, Key, Pos2, Rect, Shape, Stroke, pos2, vec2};
 
-use crate::library::draft::{self, Draft, GRID_MM, Offer, Picked, TEXT_MM};
+use crate::library::draft::{self, Draft, GRID_MM, Picked, TEXT_MM};
 use crate::library::review::Review;
+use ecad_electrical::symbols::offers::{Offer, on_point_grid};
 
 /// Element names (design 048 §3.1).
-pub const BUILDER: &str = "library.builder";
+pub(crate) const BUILDER: &str = "library.builder";
 pub const CANVAS: &str = "library.builder.canvas";
-pub const BREADCRUMB: &str = "library.builder.breadcrumb";
-pub const HINT: &str = "library.builder.hint";
-pub const INTENT: &str = "library.builder.intent";
+pub(crate) const BREADCRUMB: &str = "library.builder.breadcrumb";
+pub(crate) const HINT: &str = "library.builder.hint";
+pub(crate) const INTENT: &str = "library.builder.intent";
 pub const BACK: &str = "library.builder.back";
-pub const ENTRY: &str = "library.builder.entry";
-pub const VERSION_NEWEST: &str = "library.builder.version.newest";
-pub const VERSION_SHOWN: &str = "library.builder.version.shown";
+pub(crate) const ENTRY: &str = "library.builder.entry";
+pub(crate) const VERSION_NEWEST: &str = "library.builder.version.newest";
+pub(crate) const VERSION_SHOWN: &str = "library.builder.version.shown";
 /// The empty state's hint (design 048 §3.4).
 pub const EMPTY_HINT: &str = "Draw the symbol, then add connection points and a tag slot";
 
 /// Symbol outline weight (spec §4), millimetres.
-pub const OUTLINE_MM: f64 = 0.35;
+pub(crate) const OUTLINE_MM: f64 = 0.35;
 /// The origin cross's arms (`ecad.builder-origin`), millimetres.
-pub const ORIGIN_ARM_MM: f64 = 4.0;
+pub(crate) const ORIGIN_ARM_MM: f64 = 4.0;
 /// A connection point's ring (`sheet.connection_point`), pixels across.
 pub const RING_PX: f32 = 8.0;
 /// How near a click must be to pick or snap, pixels.
-pub const PICK_PX: f32 = 8.0;
+pub(crate) const PICK_PX: f32 = 8.0;
 /// Zoom limits, pixels per millimetre (print size is about 3.78).
-pub const MIN_SCALE: f32 = 2.0;
-pub const MAX_SCALE: f32 = 60.0;
+pub(crate) const MIN_SCALE: f32 = 2.0;
+pub(crate) const MAX_SCALE: f32 = 60.0;
 /// The scale a new builder opens at: a 2.5 mm grid 25 px apart.
-pub const START_SCALE: f32 = 10.0;
+pub(crate) const START_SCALE: f32 = 10.0;
 
 /// The builder's tools (design 048 §3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -519,7 +520,7 @@ fn seg_dist(a: Pt, b: Pt, p: Pt) -> f64 {
 }
 
 /// The points along an arc from `start` to `end` (counter-clockwise), for drawing and picking.
-pub fn arc_points(c: Pt, r: f64, start: f64, end: f64) -> Vec<Pt> {
+pub(crate) fn arc_points(c: Pt, r: f64, start: f64, end: f64) -> Vec<Pt> {
     let mut sweep = end - start;
     while sweep <= 0.0 {
         sweep += std::f64::consts::TAU;
@@ -619,7 +620,7 @@ impl SlotBox {
 }
 
 /// The height a slot's sample is drawn at: the tag's size for the tag, the label size else.
-pub fn slot_height(text: &str) -> f64 {
+pub(crate) fn slot_height(text: &str) -> f64 {
     if text == "tag" { 3.5 } else { 2.5 }
 }
 
@@ -717,13 +718,13 @@ fn dashed_ring(p: &egui::Painter, c: Pos2, r: f32, stroke: Stroke) {
 
 /// Draw the builder in `rect` and act on its input; what it asks of the window.
 /// The paper square the symbol is drawn on, centred in the canvas `rect` (boards 3.02–3.04).
-pub fn paper_rect(rect: Rect) -> Rect {
+pub(crate) fn paper_rect(rect: Rect) -> Rect {
     let side = (rect.width().min(rect.height()) - 2.0 * PAPER_MARGIN).max(160.0);
     Rect::from_center_size(rect.center(), vec2(side, side))
 }
 
 /// The dark canvas round the paper square, px.
-pub const PAPER_MARGIN: f32 = 110.0;
+pub(crate) const PAPER_MARGIN: f32 = 110.0;
 
 pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing_style::Sheet, writable: bool) -> Vec<Act> {
     let _ = writable;
@@ -767,7 +768,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         for i in i0..=i1 {
             for j in j0..=j1 {
                 let q = Pt::new(i as f64 * step, j as f64 * step);
-                let major = draft::on_point_grid(q);
+                let major = on_point_grid(q);
                 let at = b.to_screen(rect, q);
                 if paper.contains(at) {
                     p.circle_filled(at, if major { 1.25 } else { 0.6 }, grid);

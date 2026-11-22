@@ -15,7 +15,7 @@ use ecad_model::{Op, PageId};
 use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use {ecad_app::App, ecad_app::commands::tools};
+use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
 pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;
 

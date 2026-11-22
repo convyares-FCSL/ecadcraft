@@ -5,8 +5,8 @@
 
 use crate::common::{self, Opts};
 use crate::pages::project_panel::{doc, rev3_app as new_app};
-use ecad_app::App;
 use ecad_app::pages::project_panel;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::{LeftTab, ShellState};
 use ecad_app::shell::{layout, left, tool_strip};
 use eframe::egui::{self, Rect, pos2, vec2};

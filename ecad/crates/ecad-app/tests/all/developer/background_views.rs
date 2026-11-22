@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 
 const WAIT: Duration = Duration::from_secs(30);
 

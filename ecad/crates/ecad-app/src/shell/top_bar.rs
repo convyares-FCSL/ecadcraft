@@ -13,19 +13,19 @@
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::pages::project_panel::Action;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const PROJECT_MENU: &str = "Project menu";
 pub const SEARCH: &str = "Search (Ctrl+K)";
 /// The search box's grey text.
-pub const SEARCH_HINT: &str = "Find a page, tag, symbol or command";
+pub(crate) const SEARCH_HINT: &str = "Find a page, tag, symbol or command";
 /// The bottom bar's checks counter (opens the inspector's Checks tab).
 pub const CHECKS_PILL: &str = "Checks pill";
 /// The bottom bar's revision (opens History).
-pub const REVISION_PILL: &str = "Revision pill";
+pub(crate) const REVISION_PILL: &str = "Revision pill";
 /// The agent icon.
 pub const AGENT_PILL: &str = "Agent pill";
 pub const THEME_DARK: &str = "Dark interface";
@@ -33,7 +33,7 @@ pub const THEME_LIGHT: &str = "Light interface";
 pub const HELP: &str = "Help";
 /// Share (coming; it does nothing yet).
 pub const SHARE: &str = "Share";
-pub const ACCOUNT: &str = "Account";
+pub(crate) const ACCOUNT: &str = "Account";
 /// The project menu's entries (the header's labels).
 pub const NEW: &str = "New project";
 pub const OPEN: &str = "Open project…";
@@ -41,7 +41,7 @@ pub const SAVE: &str = "Save";
 pub const SAVE_AS: &str = "Save As…";
 pub const CLOSE: &str = "Close project";
 /// The project menu's last entry.
-pub const STANDARDS: &str = "Standards";
+pub(crate) const STANDARDS: &str = "Standards";
 
 /// Heights inside the bar: the pills and the search box.
 const PILL_H: f32 = 28.0;
@@ -242,10 +242,10 @@ fn agent_state(ui: &egui::Ui, t: &App) -> (Option<egui::Color32>, String, String
 }
 
 /// The account avatar's letters: there are no accounts yet, so two letters of the person's login
-/// name (read from the environment, shown only on this screen): its capitals when it has two
+/// name (the host's, shown only on this screen): its capitals when it has two
 /// (`JaneDoe` → `JD`), else its first two letters, else a neutral mark.
 fn initials() -> String {
-    let name = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let name = crate::shell::host::host().user.clone();
     let caps: String = name.chars().filter(|c| c.is_uppercase()).take(2).collect();
     let letters =
         if caps.chars().count() == 2 { caps } else { name.chars().filter(|c| c.is_alphabetic()).take(2).collect::<String>().to_uppercase() };

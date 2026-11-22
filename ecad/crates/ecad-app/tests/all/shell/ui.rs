@@ -11,7 +11,7 @@ use ecad_app::shell::{layout, layout::Slots, tool_strip, top_bar};
 use eframe::egui::{Event, Key, Modifiers, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use {ecad_app::App, ecad_app::commands::tools, ecad_app::developer, ecad_app::pages::project_panel};
+use {ecad_app::commands::tools, ecad_app::developer, ecad_app::pages::project_panel, ecad_app::shell::app::App};
 
 fn window(w: f32, h: f32) -> Rect {
     Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h))
@@ -169,7 +169,6 @@ fn the_developer_switch_shows_cadcrafts_interface_and_idle_letters_start_nothing
     h.run_steps(1);
     click(&mut h, "Run");
     assert!(!h.state().shell_state().cad_chrome && h.query_by_label("Drafting").is_none());
-    assert!(ecad_desktop::parse_args(["--cad-ui".into()]).is_ok_and(|i| matches!(i, ecad_desktop::Invocation::Run { cad_ui: true, .. })));
 }
 
 #[test]
