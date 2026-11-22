@@ -104,6 +104,29 @@ jobs:
         working-directory: ecad
         run: cargo test --workspace --all-features --no-run
 
+  # CADCraft's web app must still build after our seam edits (UPSTREAM-PATCHES.md: engine, fonts,
+  # io, ui-egui, all of which cadcraft-web depends on), so a change here can't break it before it
+  # goes upstream. A wasm32 `cargo check` of cadcraft-web compiles exactly those crates as the web
+  # app does. Pull requests only (owner, 2026-11-22).
+  cadcraft-wasm:
+    name: CADCraft web app builds for wasm32 (our seam edits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: wasm32-unknown-unknown
+      # No cache: a pull request's copy is visible to that pull request alone and fills the store
+      # (owner, 2026-11-14), and no push runs this job to write one, so every run starts cold.
+      - name: cargo check --target wasm32-unknown-unknown -p cadcraft-web
+        # Upstream's own wasm check (`cargo xtask wasm`) does not deny warnings, and upstream's
+        # canvas/rebuild.rs has wasm-only dead code; any compile error still fails the job.
+        env:
+          RUSTFLAGS: ""
+        run: cargo check --target wasm32-unknown-unknown -p cadcraft-web
+
   fmt:
     name: Format
     # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
