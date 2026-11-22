@@ -44,7 +44,7 @@ fn set(object: ObjectRef, props: Option<&Properties>, key: &str, after: Option<S
 /// A value under the 018 §6.1 rules (trimmed, 200 characters, no control characters; `function`
 /// starts with `=`, `location` with `+`; empty clears).
 fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::devices::property_value(doc, key, v)
+    crate::devices::json::property_value(doc, key, v)
 }
 
 /// The `proposal` word of a page's or the project's function or location (brief 052d):
@@ -686,7 +686,7 @@ pub fn tag_settings(
     };
     let mut changes: Vec<(&'static str, Option<String>)> = Vec::new();
     for (k, v) in prefixes {
-        let symbol = crate::devices::starter(k)?;
+        let symbol = crate::devices::json::starter(k)?;
         let prefix = match v {
             None => None,
             Some(t) => Some(crate::devices::valid_prefix(t).ok_or_else(|| {

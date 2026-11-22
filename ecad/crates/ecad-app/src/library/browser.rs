@@ -176,11 +176,12 @@ impl Listing {
     pub fn read(doc: Option<&Document>, drafts: &[crate::library::Draft]) -> Self {
         let mut entries = Vec::new();
         if let Some(doc) = doc {
-            for v in symbols::project_symbols(doc) {
-                let versions = symbols::versions_of(doc, v.lineage);
+            for v in symbols::project::project_symbols(doc) {
+                let versions = symbols::project::versions_of(doc, v.lineage);
                 let placed: Vec<usize> = versions.iter().map(|x| doc.items_using(x.id).len()).collect();
                 let words: Vec<String> = versions.iter().zip(&placed).rev().map(|(x, n)| format!("v{} ({n} placed)", x.seq)).collect();
-                let from = v.def.derived_from.as_ref().and_then(symbols::starter_of_origin).map(|s| format!("from {} (built-in v1)", s.name));
+                let from =
+                    v.def.derived_from.as_ref().and_then(symbols::project::starter_of_origin).map(|s| format!("from {} (built-in v1)", s.name));
                 entries.push(Entry {
                     tile: Tile::Project(v.lineage),
                     name: v.def.name.clone(),
@@ -209,8 +210,8 @@ impl Listing {
                 prefix: None,
             });
         }
-        for s in symbols::STARTERS {
-            let placed = doc.and_then(|d| symbols::embedded(d, s).map(|id| d.items_using(id).len())).unwrap_or(0);
+        for s in symbols::catalogue::STARTERS {
+            let placed = doc.and_then(|d| symbols::catalogue::embedded(d, s).map(|id| d.items_using(id).len())).unwrap_or(0);
             entries.push(Entry {
                 tile: Tile::Builtin(s.key),
                 name: s.name.to_string(),
@@ -242,7 +243,7 @@ impl Listing {
     /// The tiles shown for the category, the source and the query.
     pub fn shown(&self, b: &Browser) -> Vec<&Entry> {
         let q = b.query.trim().to_lowercase();
-        let starters: Option<Vec<&'static Starter>> = (!q.is_empty()).then(|| symbols::search(&q));
+        let starters: Option<Vec<&'static Starter>> = (!q.is_empty()).then(|| symbols::project::search(&q));
         self.entries
             .iter()
             .filter(|e| match b.category {
@@ -295,7 +296,7 @@ fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
 
 /// Draw definition `d` fitted in `rect` in `ink`; `marks`: its points and slots too (hover).
 pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32, marks: Option<(Color32, Color32)>) {
-    let (lo, hi) = symbols::bounds(d);
+    let (lo, hi) = symbols::graphics::bounds(d);
     let (w, h) = ((hi.x - lo.x).max(5.0), (hi.y - lo.y).max(5.0));
     let s = ((rect.width() as f64) / w).min((rect.height() as f64) / h).min(8.0);
     if !s.is_finite() || s <= 0.0 {

@@ -326,7 +326,7 @@ pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
 
 /// A device in words: `-Q01`, `-F01:3`.
 pub fn device_words(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     match fuse {
         Some(f) => format!("{tag}:{f}"),
         None => tag,

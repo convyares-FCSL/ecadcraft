@@ -949,7 +949,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
         .flat_map(|x| {
             let mut lines: Vec<ecad_model::RouteId> = x.through.iter().flat_map(|t| doc.routes_at(*t)).collect();
             lines.extend(x.route());
-            lines.extend(x.wire().and_then(|w| ecad_electrical::wires::route_of_wire_on(&doc, w, page)));
+            lines.extend(x.wire().and_then(|w| ecad_electrical::wires::routes::route_of_wire_on(&doc, w, page)));
             lines
         })
         .filter_map(|l| doc.routes.get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))

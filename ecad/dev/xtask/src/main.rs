@@ -37,6 +37,8 @@ use serde_json::Value;
 
 mod clean;
 mod engine_guards;
+mod pub_ratchet;
+mod starter_guards;
 mod types_guards;
 mod views_guards;
 
@@ -612,7 +614,7 @@ const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "ecad-electrical/src/locations/commands/",
     "ecad-electrical/src/numbering/commands.rs",
     "ecad-electrical/src/pages/commands/",
-    "ecad-electrical/src/plc/commands.rs",
+    "ecad-electrical/src/plc/commands/",
     "ecad-electrical/src/properties/commands/",
     "ecad-electrical/src/references/commands/",
     "ecad-electrical/src/reports/commands/",
@@ -1200,13 +1202,18 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-fn layers() -> Result<(), String> {
+/// `cargo metadata` of the ECAD workspace, without dependencies.
+fn metadata() -> Result<Value, String> {
     let out = Command::new(env!("CARGO"))
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .current_dir(ecad_root())
         .output()
         .map_err(|e| e.to_string())?;
-    let meta: Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
+    serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())
+}
+
+fn layers() -> Result<(), String> {
+    let meta = metadata()?;
     let mut v = layer_violations(&meta)?;
     v.extend(source_violations(&meta)?);
     v.extend(path_violations(&meta)?);
@@ -1218,12 +1225,26 @@ fn layers() -> Result<(), String> {
     v.extend(types_guards::violations(&meta)?);
     v.extend(views_guards::violations(&meta)?);
     v.extend(engine_guards::violations(&meta)?);
+    v.extend(starter_guards::violations(&meta)?);
+    v.extend(pub_ratchet::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
     } else {
         Err(format!("layering violations:\n  {}", v.join("\n  ")))
     }
+}
+
+/// `cargo xtask pub-unreachable`: the `pub` items no other crate uses ([`pub_ratchet`]).
+fn pub_unreachable() -> Result<(), String> {
+    let meta = metadata()?;
+    for (krate, list) in pub_ratchet::unreachable(&meta)? {
+        println!("{krate}: {}", list.len());
+        for (file, line, name) in list {
+            println!("  {file}:{line}: {name}");
+        }
+    }
+    Ok(())
 }
 
 /// Paths quoted as `path` in the first column of the inventory tables.
@@ -1503,6 +1524,7 @@ fn main() -> ExitCode {
     let rest = args.get(1..).unwrap_or_default();
     let r = match args.first().map(String::as_str).unwrap_or_default() {
         "layers" => layers(),
+        "pub-unreachable" => pub_unreachable(),
         "patches" => patches(),
         "lint" => lint(),
         "ci" => ci(),

@@ -292,7 +292,7 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
     match strip_key {
         PER_CARD_KEY => whole(strip_key, v, 1, MAX_PER_CARD, "a card size").map(Some),
         BAR_KEY => whole(strip_key, v, MIN_BAR, MAX_BAR, "a bar size").map(Some),
-        _ => crate::devices::property_value(doc, "part_number", Some(v)),
+        _ => crate::devices::json::property_value(doc, "part_number", Some(v)),
     }
 }
 
@@ -389,7 +389,8 @@ pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
 /// A placement or jumper bar key on a device that is not a strip, and every refusal of the value.
 pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     let strip = crate::terminal_strips::strip_of(doc, c).is_some();
-    let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
+    let not_strip =
+        || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tags::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
         if !strip {
             return Err(not_strip());
@@ -423,7 +424,7 @@ pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option
         if is_article_key(key) {
             return crate::reports::bom::article_value(value).map(Some);
         }
-        return crate::devices::property_value(doc, "part_number", value).map(Some);
+        return crate::devices::json::property_value(doc, "part_number", value).map(Some);
     }
     if strip && is_part_key(key) {
         return part_value(doc, key, value).map(Some);
@@ -918,7 +919,7 @@ fn renumber_strip(
         return;
     }
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return };
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let moved = |l: &str| map.get(l).cloned().unwrap_or_else(|| l.to_string());
     // Placement keys: the end state, then the difference.
     let mut now: BTreeMap<String, String> = BTreeMap::new();

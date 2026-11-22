@@ -214,12 +214,9 @@ pub(crate) fn unique_tag(base: &str, taken: &BTreeSet<String>) -> String {
 
 /// Whether device `c` passes a conductor through (a terminal or a connector half): it is not what a
 /// channel drives.
-pub(crate) fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
-    let kind_of = |s: &crate::symbols::Starter| matches!(s.kind, crate::symbols::Kind::TerminalBlock | crate::symbols::Kind::ConnectorHalf { .. });
-    if let Some(s) = doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).and_then(crate::symbols::of_definition) {
-        return kind_of(s);
-    }
-    doc.representations_of(ecad_model::Subject::Device(c)).find_map(|(_, r)| crate::devices::rep_starter(doc, r)).is_some_and(kind_of)
+pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
+    use ecad_model::DeviceType;
+    doc.devices.get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::TerminalStrip(_) | DeviceType::Connector(_)))
 }
 
 /// What a channel drives (design 056 §4.5), from its row's targets: the targets that are not

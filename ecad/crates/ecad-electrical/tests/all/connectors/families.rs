@@ -16,7 +16,7 @@ fn families_name_their_halves() {
         for n in f.sizes() {
             for side in [Side::Socket, Side::Plug] {
                 let key = f.half_key(side, *n).unwrap_or_default();
-                let s = symbols::by_key(&key).unwrap_or_else(|| panic!("{key}"));
+                let s = symbols::catalogue::by_key(&key).unwrap_or_else(|| panic!("{key}"));
                 assert_eq!((family_of(s), size_of(s), s.side()), (Some(f), Some(*n), Some(side)), "{key}");
             }
         }

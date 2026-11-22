@@ -31,7 +31,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
     let location = crate::locations::resolve(doc, c).value;
     let number = |w: WireId| ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
-    for (t, _) in crate::devices::shown_connection_points(doc, c, r) {
+    for (t, _) in crate::devices::merge::shown_connection_points(doc, c, r) {
         // Brief 036: the type, and the level of a multi-level position.
         let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, t);
         let kind = if ty.multi() {
@@ -89,7 +89,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
     // Brief 036: counted in positions (a three-level terminal is one).
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let drawn = labels.len();
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     lines.push(match offer_of(doc, c) {
         Some(o) => {
             let spare = (1..=o.positions).filter(|n| !labels.contains(&n.to_string())).count();

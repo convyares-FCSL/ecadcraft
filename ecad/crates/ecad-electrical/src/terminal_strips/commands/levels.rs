@@ -115,7 +115,7 @@ pub(crate) fn plan_terminal_block_label(doc: &Document, input: Terminalblocklabe
     if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused("That device is not a terminal strip."));
     }
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let positions = tt::positions(doc, c);
     let here = positions.iter().find(|x| x.label == pos).ok_or_else(|| CmdError::refused(format!("{tag} has no position {pos}.")))?;
     if n == 0 || n > here.ty.count().max(1) && !here.levels.contains_key(&n) {
@@ -235,7 +235,7 @@ pub(crate) fn plan_toposition(
     doc: &Document, ids: &mut IdAllocator, device: DeviceId, strip: Option<DeviceId>, position: Option<&str>,
 ) -> Result<ToPosition, CmdError> {
     let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
-    let tag = crate::devices::tag_words(doc, device);
+    let tag = crate::devices::tags::tag_words(doc, device);
     if crate::terminal_strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
@@ -267,7 +267,7 @@ pub(crate) fn plan_toposition(
                 return Err(CmdError::refused(format!("{tag} cannot become a position of itself. Name a terminal strip.")));
             }
             if crate::terminal_strips::strip_of(doc, c).is_none() {
-                return Err(CmdError::refused(format!("{} is not a terminal strip.", crate::devices::tag_words(doc, c))));
+                return Err(CmdError::refused(format!("{} is not a terminal strip.", crate::devices::tags::tag_words(doc, c))));
             }
             c
         }
@@ -291,8 +291,8 @@ pub(crate) fn plan_toposition(
             best.map(|(_, c)| c).ok_or(CmdError::refused("Name a strip: there is none on this page."))?
         }
     };
-    let stag = crate::devices::tag_words(doc, strip);
-    let starter = crate::devices::starter("terminalblockfuse")?;
+    let stag = crate::devices::tags::tag_words(doc, strip);
+    let starter = crate::devices::json::starter("terminalblockfuse")?;
     let ty = tt::by_code("fuse").ok_or(CmdError::refused("no fuse type"))?;
     let mut ops = Vec::new();
     let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
@@ -329,7 +329,7 @@ pub(crate) fn plan_toposition(
         moved.insert(*t, to);
     }
     // Its routes land on the strip's points; the commit's rewrite moves the wires.
-    ops.extend(crate::wires::repoint_ops(doc, &moved));
+    ops.extend(crate::wires::routes::repoint_ops(doc, &moved));
     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
     let mut item_after = item_before.clone();
     if let ItemKind::Symbol(si) = &mut item_after.kind {

@@ -98,7 +98,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
         let mut fb = None;
         let mut rcbo = None;
         for (i, (key, prefix, want)) in table.iter().enumerate() {
-            let s = symbols::by_key(key).unwrap_or_else(|| panic!("{key} not in the catalogue"));
+            let s = symbols::catalogue::by_key(key).unwrap_or_else(|| panic!("{key} not in the catalogue"));
             for round in 0..2 {
                 let at = [200 * ((2 * i + round) % 8), 100 * ((2 * i + round) / 8) + 50];
                 let n = c.log().len();

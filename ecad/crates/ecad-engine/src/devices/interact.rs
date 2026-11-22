@@ -17,7 +17,7 @@ use crate::interact::{
 };
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use ecad_electrical::devices::TextOf;
+use ecad_electrical::devices::texts::TextOf;
 use ecad_electrical::symbols::{self, Starter};
 
 /// A prompt that takes a typed text or a click.
@@ -52,7 +52,10 @@ fn yes(i: &Input) -> Option<bool> {
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let default = read(s, |p, _| Ok(p.last_placed.and_then(|l| l.starter))).ok().flatten();
-    let default = default.map(symbols::starter).or_else(|| symbols::STARTERS.first()).ok_or_else(|| other("no starter symbols are built in"))?;
+    let default = default
+        .map(symbols::catalogue::starter)
+        .or_else(|| symbols::catalogue::STARTERS.first())
+        .ok_or_else(|| other("no starter symbols are built in"))?;
     Ok(Box::new(Safe(Place {
         stage: Stage::Symbol,
         default,
@@ -167,8 +170,8 @@ impl Place {
                 let doc = p.ledger.document();
                 let slot = self.slot.or_else(|| ecad_electrical::plc::rack::next_free_slot(doc, r, None));
                 Ok(match slot {
-                    Some(n) => format!(" in {} slot {n}", ecad_electrical::devices::tag_words(doc, r)),
-                    None => format!(" in {}", ecad_electrical::devices::tag_words(doc, r)),
+                    Some(n) => format!(" in {} slot {n}", ecad_electrical::devices::tags::tag_words(doc, r)),
+                    None => format!(" in {}", ecad_electrical::devices::tags::tag_words(doc, r)),
                 })
             })
             .unwrap_or_default(),
@@ -212,8 +215,8 @@ impl Place {
             let doc = p.ledger.document();
             match self.join {
                 Some(c) => {
-                    let labels = ecad_electrical::devices::join_labels(doc, c, sym, &Default::default())?;
-                    let t = ecad_electrical::devices::tag_words(doc, c);
+                    let labels = ecad_electrical::devices::placing::join_labels(doc, c, sym, &Default::default())?;
+                    let t = ecad_electrical::devices::tags::tag_words(doc, c);
                     Ok((format!("joins {t} as {}", labels.join("/")), t, labels))
                 }
                 None => {
@@ -236,7 +239,7 @@ impl Place {
         if t.contains(',') || t.contains('<') {
             return Err(crate::properties::forms::not_a_point(t));
         }
-        let device = read(s, |p, _| Ok(ecad_electrical::devices::holder_of(p.ledger.document(), t, None))).ok().flatten();
+        let device = read(s, |p, _| Ok(ecad_electrical::devices::tags::holder_of(p.ledger.document(), t, None))).ok().flatten();
         if t.starts_with('-')
             && let Some(c) = device
         {
@@ -246,7 +249,7 @@ impl Place {
         self.project = None;
         // Brief 048: a project symbol's key (its newest version), before the starters'.
         let project = read(s, |p, _| {
-            Ok(symbols::project_by_key(p.ledger.document(), t)
+            Ok(symbols::project::project_by_key(p.ledger.document(), t)
                 .and_then(|v| Some(ProjectPick { key: v.key()?.to_string(), name: v.def.name.clone(), def: v.def.clone() })))
         })
         .ok()
@@ -256,9 +259,9 @@ impl Place {
             self.project = Some(pick);
             return Ok(Step::Continue);
         }
-        let found = match symbols::by_key(t) {
+        let found = match symbols::catalogue::by_key(t) {
             Some(exact) => vec![exact],
-            None => symbols::search(t),
+            None => symbols::project::search(t),
         };
         match found.as_slice() {
             [one] => {
@@ -281,7 +284,7 @@ impl Place {
     }
 
     fn list(s: &mut Session) {
-        for x in symbols::STARTERS {
+        for x in symbols::catalogue::STARTERS {
             s.echo(format!("{:<9} {:<28} -{}  {}", x.key, x.name, x.prefix(), x.labels().join("/")));
         }
     }
@@ -355,9 +358,9 @@ impl Place {
         let prefix = self.symbol().prefix();
         read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok(p.last_placed
-                .map(|l| l.device)
-                .filter(|c| ecad_electrical::devices::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(px, _)| px == prefix)))
+            Ok(p.last_placed.map(|l| l.device).filter(|c| {
+                ecad_electrical::devices::tags::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(px, _)| px == prefix)
+            }))
         })
         .ok()
         .flatten()
@@ -401,7 +404,7 @@ impl Place {
                                     return Err(other(PROJECT_JOINS));
                                 }
                                 read(s, |p, _| {
-                                    ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())
+                                    ecad_electrical::devices::placing::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())
                                         .map_err(String::from)
                                 })
                                 .map_err(other)?;
@@ -467,9 +470,9 @@ impl Place {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
                         let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                        let holder = ecad_electrical::devices::holder_of(doc, &normal, None);
+                        let holder = ecad_electrical::devices::tags::holder_of(doc, &normal, None);
                         if let Some(c) = holder {
-                            ecad_electrical::devices::join_labels(doc, c, sym, &Default::default())?;
+                            ecad_electrical::devices::placing::join_labels(doc, c, sym, &Default::default())?;
                         }
                         Ok((holder, normal))
                     })
@@ -494,7 +497,7 @@ impl Place {
                     let (holder, normal) = read(s, |p, _| {
                         let doc = p.ledger.document();
                         let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                        Ok((ecad_electrical::devices::holder_of(doc, &normal, None), normal))
+                        Ok((ecad_electrical::devices::tags::holder_of(doc, &normal, None), normal))
                     })
                     .map_err(other)?;
                     match holder {
@@ -512,7 +515,8 @@ impl Place {
             Stage::ConfirmJoin(c, _) => match (yes(&i), &i) {
                 (Some(true), _) | (None, Input::Enter) => {
                     read(s, |p, _| {
-                        ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)
+                        ecad_electrical::devices::placing::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())
+                            .map_err(String::from)
                     })
                     .map_err(|e| {
                         self.stage = Stage::Tag;
@@ -592,7 +596,7 @@ impl Interactive for Place {
         match &self.stage {
             Stage::Symbol => prompt("Enter symbol", TEXT_OR_POINT, &["List", "Rotate", "Mirror"], Some(self.default.key.to_string())),
             Stage::DeviceSymbol(c) => {
-                let t = read(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), *c))).unwrap_or_default();
+                let t = read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), *c))).unwrap_or_default();
                 prompt(format!("Enter symbol to add to {t}"), Accept::TEXT, &["List"], Some(self.default.key.to_string()))
             }
             Stage::Point => {
@@ -608,7 +612,7 @@ impl Interactive for Place {
             Stage::Device => {
                 let default = self
                     .default_device(s)
-                    .and_then(|c| read(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), c))).ok())
+                    .and_then(|c| read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))).ok())
                     .unwrap_or_else(|| "New".into());
                 // The default device is a keyword too, so a click on it answers (owner's trial,
                 // 2026-11-08: no Enter needed after a click).
@@ -620,7 +624,7 @@ impl Interactive for Place {
                 prompt("Enter tag for the new device", Accept::TEXT, &[], auto)
             }
             Stage::ConfirmJoin(c, t) => {
-                let holder = read(s, |p, _| Ok(ecad_electrical::devices::holder_words(p.ledger.document(), *c))).unwrap_or_default();
+                let holder = read(s, |p, _| Ok(ecad_electrical::devices::tags::holder_words(p.ledger.document(), *c))).unwrap_or_default();
                 let name = self.symbol().name;
                 prompt(format!("{t} exists: {holder}. Add this {name} to it?"), Accept::TEXT, &["Yes", "Choose another"], Some("Yes".into()))
             }
@@ -630,12 +634,16 @@ impl Interactive for Place {
             Stage::Rack => {
                 let tags: Vec<String> = read(s, |p, _| {
                     let doc = p.ledger.document();
-                    Ok(ecad_electrical::plc::rack::racks(doc).into_iter().take(8).map(|c| ecad_electrical::devices::tag_words(doc, c)).collect())
+                    Ok(ecad_electrical::plc::rack::racks(doc)
+                        .into_iter()
+                        .take(8)
+                        .map(|c| ecad_electrical::devices::tags::tag_words(doc, c))
+                        .collect())
                 })
                 .unwrap_or_default();
                 let default = self
                     .default_rack(s)
-                    .and_then(|c| read(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), c))).ok())
+                    .and_then(|c| read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))).ok())
                     .unwrap_or_else(|| "None".into());
                 let mut keywords: Vec<&str> = tags.iter().map(String::as_str).collect();
                 keywords.push("None");
@@ -680,8 +688,8 @@ impl Interactive for Place {
             let at: Vec<(TextOf, String, ecad_model::Pt)> =
                 def.connection_points.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
             // The project's sizes (design 031 §3.2), as the page will draw them.
-            let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::TagSizes::of(p.ledger.document()))) else { return out };
-            for (_, value, p, h, ha, va) in ecad_electrical::devices::texts_for(def, &pl, Some(&tag), &at, sizes) {
+            let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::texts::TagSizes::of(p.ledger.document()))) else { return out };
+            for (_, value, p, h, ha, va) in ecad_electrical::devices::texts::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let (ha, va) = (crate::convert::engine_halign(ha), crate::convert::engine_valign(va));
                 let e = crate::devices::draw::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");
                 out.push(preview_entity(s, e.kind, CONNECTION_POINT_ACI));
@@ -772,7 +780,7 @@ impl Props {
     }
 
     fn set(&mut self, s: &mut Session, c: DeviceId, key: &str, value: &str, merge: bool) -> R<Step> {
-        let before = read(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), c))).unwrap_or_default();
+        let before = read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))).unwrap_or_default();
         let mut params = json!({"component": c.hex(), "key": key, "value": value});
         if merge {
             params["merge"] = Value::Bool(true);
@@ -788,7 +796,7 @@ impl Props {
         let words = read(s, |p, _| {
             let doc = p.ledger.document();
             let n = doc.representations_of(Subject::Device(device)).count();
-            Ok((ecad_electrical::devices::tag_words(doc, device), n, ecad_electrical::devices::pages_words(doc, device)))
+            Ok((ecad_electrical::devices::tags::tag_words(doc, device), n, ecad_electrical::devices::tags::pages_words(doc, device)))
         });
         if !merge && let Ok((tag, n, pages)) = words {
             if key == "tag" {
@@ -851,7 +859,7 @@ impl Props {
                         let holder = read(s, |p, _| {
                             let doc = p.ledger.document();
                             let normal = ecad_model::naming::tag::normalise(&t, ecad_electrical::defaults::print::tag_style(doc))?;
-                            Ok(ecad_electrical::devices::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
+                            Ok(ecad_electrical::devices::tags::holder_of(doc, &normal, Some(c)).map(|h| (h, normal)))
                         })
                         .map_err(other)?;
                         if let Some(found) = holder {
@@ -882,7 +890,7 @@ impl Interactive for Props {
     fn prompt(&self, s: &Session) -> Prompt {
         let Some(c) = self.device else { return Prompt::new("Select a device", Accept::SELECT) };
         if let Some((holder, t)) = &self.merge {
-            let words = read(s, |p, _| Ok(ecad_electrical::devices::holder_words(p.ledger.document(), *holder))).unwrap_or_default();
+            let words = read(s, |p, _| Ok(ecad_electrical::devices::tags::holder_words(p.ledger.document(), *holder))).unwrap_or_default();
             return prompt(
                 format!("{t} exists: {words}. Make this the same device?"),
                 Accept::TEXT,
@@ -930,9 +938,9 @@ impl Interactive for Delete {
         let (tag, n, pages) = read(s, |p, _| {
             let doc = p.ledger.document();
             Ok((
-                ecad_electrical::devices::tag_words(doc, c),
+                ecad_electrical::devices::tags::tag_words(doc, c),
                 doc.representations_of(Subject::Device(c)).count(),
-                ecad_electrical::devices::pages_words(doc, c),
+                ecad_electrical::devices::tags::pages_words(doc, c),
             ))
         })
         .unwrap_or_default();

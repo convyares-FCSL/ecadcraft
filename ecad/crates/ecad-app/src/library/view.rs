@@ -76,10 +76,9 @@ impl App {
                     self.start_pick(crate::library::search::Pick::Symbol(k))
                 }
                 browser::Act::Edit(Tile::Project(l)) => {
-                    let newest = self
-                        .project
-                        .clone()
-                        .and_then(|p| p.read(&mut self.cad.session, |p, _| symbols::newest(p.ledger.document(), l).map(|v| v.id)).ok().flatten());
+                    let newest = self.project.clone().and_then(|p| {
+                        p.read(&mut self.cad.session, |p, _| symbols::project::newest(p.ledger.document(), l).map(|v| v.id)).ok().flatten()
+                    });
                     self.library.back_to_page = false;
                     newest.ok_or_else(|| "No such symbol.".to_string()).and_then(|id: DefinitionId| self.edit_symbol(id, None))
                 }
@@ -165,7 +164,7 @@ impl App {
         p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let version = edited.and_then(|id| doc.definitions.get(&id).map(|d| (id, d)));
-            let lineage = version.and_then(|(id, d)| symbols::Version::of(id, d)).map(|v| v.lineage);
+            let lineage = version.and_then(|(id, d)| symbols::project::Version::of(id, d)).map(|v| v.lineage);
             let missing = draft.missing(doc, lineage);
             let mut accepted = draft.clone();
             let missing_after_offers = match accepted.accept_all() {
@@ -182,7 +181,7 @@ impl App {
                 }
             }
             let versions = lineage.map(|l| {
-                symbols::versions_of(doc, l)
+                symbols::project::versions_of(doc, l)
                     .iter()
                     .rev()
                     .map(|v| format!("v{} ({} placed)", v.seq, doc.items_using(v.id).len()))
@@ -191,7 +190,7 @@ impl App {
             });
             let source = match (&draft.source, version) {
                 (Source::Edit { builtin: true, .. }, Some((_, d))) => format!("Project · from {} (built-in v1) · new copy", d.name),
-                (Source::Edit { version, .. }, Some((_, d))) => match d.derived_from.as_ref().and_then(symbols::starter_of_origin) {
+                (Source::Edit { version, .. }, Some((_, d))) => match d.derived_from.as_ref().and_then(symbols::project::starter_of_origin) {
                     Some(s) => format!("Project · v{version} · from {} (built-in v1)", s.name),
                     None => format!("Project · v{version}"),
                 },

@@ -121,7 +121,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         // Both parts of the wire are on that net.
         // The two parts of the line (design 072 §4.3: routes), each carrying its own wire in
         // place of `w[i]`.
-        let part = |key: &str| ecad_electrical::wires::wire_of_route(&d, id(&v["split"][i], key));
+        let part = |key: &str| ecad_electrical::wires::routes::wire_of_route(&d, id(&v["split"][i], key));
         let (kept, new) = (part("route"), part("new"));
         assert!(kept.is_some() && new.is_some() && !d.wires.contains_key(&w[i]), "{v}");
         let net_of = |x: Option<WireId>| x.and_then(|x| d.connectivity().net_of_conductor(x));
@@ -319,7 +319,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let c: DeviceId = id(&row(&mut h, json!({})), "component");
     let d = h.doc();
     let t = pin(&d, c, ".s", "2");
-    let tag = ecad_electrical::devices::tag_words(&d, c);
+    let tag = ecad_electrical::devices::tags::tag_words(&d, c);
     assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t), Some(format!("{tag}.S:2")));
     assert_eq!(ecad_engine::interact::connection_point_name(&d, t), format!("{tag}.S:2"));
 }
@@ -328,7 +328,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
 fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     let mut h = H::new(4414);
     // A project holding 034's version-1 socket: the definition without bridges, seq 1.
-    let s = symbols::by_key("socket4").unwrap();
+    let s = symbols::catalogue::by_key("socket4").unwrap();
     let mut old = s.definition().unwrap().clone();
     old.bridges.clear();
     let hash = ecad_file::definition_hash(&ecad_model::Definition { origin: None, ..old.clone() }).unwrap();
@@ -336,8 +336,8 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
         o.library_seq = 1;
         o.content_hash = hash;
     }
-    assert!(!symbols::is_mating(&old));
-    assert_eq!(symbols::kind_of_definition(&old), Some(symbols::Kind::Fixed { exclusive: true }));
+    assert!(!symbols::project::is_mating(&old));
+    assert_eq!(symbols::catalogue::kind_of_definition(&old), Some(symbols::Kind::Fixed { exclusive: true }));
     // A new socket half embeds version 2 beside it and is a connector.
     h.cfg(|p| {
         let id: ecad_model::DefinitionId = p.ids.fresh();
@@ -347,22 +347,25 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     let d = h.doc();
     assert!(connectors::connector_of(&d, c).is_some_and(|x| x.mating));
     assert_eq!(
-        d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == ecad_electrical::symbols::StarterKey::Socket4)).count(),
+        d.definitions
+            .values()
+            .filter(|x| symbols::catalogue::of_definition(x).is_some_and(|y| y.key == ecad_electrical::symbols::StarterKey::Socket4))
+            .count(),
         2
     );
 }
 
 #[test]
 fn every_starter_bridges_only_keys_a_placement_writes() {
-    for s in symbols::STARTERS {
+    for s in symbols::catalogue::STARTERS {
         let d = s.definition().unwrap();
         for k in d.bridges.iter().flatten() {
-            assert!(symbols::bridge_key_ok(d, k), "{} bridges {k}", s.key);
+            assert!(symbols::project::bridge_key_ok(d, k), "{} bridges {k}", s.key);
         }
     }
-    let mut d = symbols::by_key("plug4").unwrap().definition().unwrap().clone();
+    let mut d = symbols::catalogue::by_key("plug4").unwrap().definition().unwrap().clone();
     d.bridges = vec![vec![".s".parse().unwrap(), ".in".parse().unwrap()]];
-    assert!(!symbols::bridge_key_ok(&d, &".in".parse().unwrap()));
+    assert!(!symbols::project::bridge_key_ok(&d, &".in".parse().unwrap()));
 }
 
 // ------------------------------------------------------------------------------- fix round 1
@@ -482,9 +485,9 @@ fn checks_fixes_and_typed_search() {
     let lone = ecad_engine::checks::all(&h.doc(), 1e-6).into_iter().find(|r| r.kind.name() == "connector-lone-pin").expect("lone row");
     assert_eq!(lone.fix, Some(ecad_electrical::checks::Fix::PlaceMates(c, Side::Plug)));
     let d = h.doc();
-    let tag = ecad_electrical::devices::tag_words(&d, c);
-    assert_eq!(ecad_electrical::devices::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
-    assert_eq!(ecad_electrical::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
+    let tag = ecad_electrical::devices::tags::tag_words(&d, c);
+    assert_eq!(ecad_electrical::devices::json::devices(&d, Some(&format!("{tag}.S:3"))), vec![c]);
+    assert_eq!(ecad_electrical::devices::json::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
 }
 
 /// Overseer ruling (fix round 1): `pin_names` and `ignore.<check kind>` survive saving and
@@ -527,7 +530,7 @@ fn part_lines_go_under_their_half() {
     h.run("setprop", json!({"component": c.hex(), "key": "half.p.location", "value": "+FIELD"})).unwrap();
     h.run("partline", json!({"component": c.hex(), "add": {"part_number": "CRIMP-1", "description": "Crimp contact", "qty": "4"}})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "part.1.half", "value": "p"})).unwrap();
-    let tag = ecad_electrical::devices::tag_words(&h.doc(), c);
+    let tag = ecad_electrical::devices::tags::tag_words(&h.doc(), c);
     let rows = |h: &mut H| h.run("bom", json!({"limit": 500})).unwrap()["rows"].as_array().cloned().unwrap();
     let flat = rows(&mut h);
     let line = flat.iter().find(|r| r["part_number"] == "CRIMP-1").unwrap_or_else(|| panic!("{flat:?}"));

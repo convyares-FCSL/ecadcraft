@@ -37,7 +37,7 @@ fn terminal_strip_commands_through_execute() {
     let t = c.exec("place", json!({"symbol": "terminal_block", "at": [100, 170]}));
     assert!(t["split"].is_object(), "{t}");
     let (label, ops) = last_by_agent(&mut c);
-    assert_eq!(label, "Place terminal");
+    assert_eq!(label, "Place terminal block");
     assert!(ops.iter().any(|o| matches!(o, Op::CreateWire { .. })));
     let strip = hex(&t, "component");
     // Place Terminals on the other two.

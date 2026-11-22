@@ -2,14 +2,16 @@
 //! symbol joins, or which tag a new one takes, for each form of `place`, and the checks of a
 //! tagless symbol's name and caption. Typed input in, a target or a refusal out.
 //!
-//! Excludes: building the symbol's ops (each form's own planner: [`crate::devices::plan_place`],
+//! Excludes: building the symbol's ops (each form's own planner: [`crate::devices::placing::plan_place`],
 //! the strip, card and connector planners), committing and answering in JSON (the engine crate's
 //! `place` shim).
 
 use ecad_model::naming::tag::{self, Style};
 use ecad_model::{DeviceId, Document, Noun};
 
-use crate::devices::{self, Target};
+use crate::devices::{self};
+
+use crate::devices::placing::Target;
 use crate::error::CmdError;
 use crate::symbols::{Side, Starter};
 
@@ -54,7 +56,7 @@ pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>
                     "{} is the {} half of {}. Pick another tag.",
                     t.trim(),
                     side.word(),
-                    devices::tag_words(doc, c)
+                    devices::tags::tag_words(doc, c)
                 )));
             }
             Ok(Target::New(Some(tag::normalise(t, style(doc))?)))
@@ -72,7 +74,7 @@ pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>
 pub fn project_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
     let Some(t) = tag else { return Ok((device, None)) };
     let t = tag::normalise(t, style(doc))?;
-    match devices::holder_of(doc, &t, None) {
+    match devices::tags::holder_of(doc, &t, None) {
         Some(c) => Ok((Some(c), None)),
         None if !doc.cables_tagged(&t).is_empty() => Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a device."))),
         None => Ok((None, Some(t))),
@@ -86,7 +88,10 @@ pub fn project_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str
 /// No such device; a device that is not a strip; a tag that does not read, or a cable's.
 pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<(Option<DeviceId>, Option<String>), CmdError> {
     let not_strip = |c: DeviceId| {
-        CmdError::refused(format!("{} is not a terminal strip. Name a strip (-X01), or leave it out for a new one.", devices::tag_words(doc, c)))
+        CmdError::refused(format!(
+            "{} is not a terminal strip. Name a strip (-X01), or leave it out for a new one.",
+            devices::tags::tag_words(doc, c)
+        ))
     };
     match (device, tag) {
         (Some(c), _) if !doc.devices.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
@@ -94,7 +99,7 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
         (Some(c), _) => Ok((Some(c), None)),
         (None, Some(t)) => {
             let t = tag::normalise(t, devices::padding(doc))?;
-            match devices::holder_of(doc, &t, None) {
+            match devices::tags::holder_of(doc, &t, None) {
                 Some(c) if crate::terminal_strips::strip_of(doc, c).is_some() => Ok((Some(c), None)),
                 Some(c) => Err(not_strip(c)),
                 None if !doc.cables_tagged(&t).is_empty() => Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a strip."))),
@@ -116,7 +121,7 @@ pub fn card_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) 
         (Some(_), _) => Err(CmdError::NotFound(Noun::Device)),
         (None, Some(t)) => {
             let t = tag::normalise(t, style(doc))?;
-            Ok(match devices::holder_of(doc, &t, None) {
+            Ok(match devices::tags::holder_of(doc, &t, None) {
                 Some(c) => (Some(c), None),
                 None => (None, Some(t)),
             })
@@ -149,16 +154,16 @@ pub fn connector_target(doc: &Document, side: Side, device: Option<&str>, tag: O
                 "{} is the {} half of {}; this symbol is a {} half. Name -{}'s {} half, or Enter for a new connector.",
                 t.trim(),
                 h.word(),
-                devices::tag_words(doc, c),
+                devices::tags::tag_words(doc, c),
                 side.word(),
-                devices::tag_words(doc, c).trim_start_matches('-'),
+                devices::tags::tag_words(doc, c).trim_start_matches('-'),
                 side.word()
             )));
         }
         found = Some(c);
     } else if let Some(t) = tag {
         let t = tag::normalise(t, style(doc))?;
-        match devices::holder_of(doc, &t, None) {
+        match devices::tags::holder_of(doc, &t, None) {
             Some(c) => found = Some(c),
             None if !doc.cables_tagged(&t).is_empty() => {
                 return Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a device.")));

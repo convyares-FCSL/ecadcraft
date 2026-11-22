@@ -46,7 +46,7 @@ impl Words {
 }
 
 fn strip_words(doc: &Document, c: DeviceId) -> String {
-    crate::devices::tag_words(doc, c)
+    crate::devices::tags::tag_words(doc, c)
 }
 
 /// The strip a call names (`strip`, or `connection_point`'s), and the terminal's label.

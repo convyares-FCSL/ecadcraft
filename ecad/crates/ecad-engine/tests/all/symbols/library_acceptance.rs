@@ -1,7 +1,7 @@
 //! Tester 034 (component library build-up): acceptance checks from outside, written from brief 034
 //! and design 034 revision 2 only, before the implementation existed. They drive the JSON commands
 //! (`place`, `symbols`, `setprop`, `tagsettings`, `wire`, `bom`, `checks`) and the catalogue API
-//! that 018 already had (`symbols::STARTERS`, `by_key`, `Starter::definition`, `bounds`), so the
+//! that 018 already had (`symbols::catalogue::STARTERS`, `by_key`, `Starter::definition`, `bounds`), so the
 //! file compiles before the worker's code lands. Tests of behaviour not built yet are
 //!
 //! The new API (`anchors`, `Family`, `Kind::ChangeOver`, quiet lists, the defaults registry) is
@@ -10,7 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_electrical::checks::Object;
-use ecad_electrical::symbols::{self, STARTER_LIBRARY, STARTERS};
+use ecad_electrical::symbols::catalogue::STARTERS;
+use ecad_electrical::symbols::{self, STARTER_LIBRARY};
 use ecad_engine::Persistence;
 use ecad_model::{ConnectionPointId, DeviceId, Document, Pt, Word};
 use serde_json::{Value, json};
@@ -271,7 +272,7 @@ fn net_of(d: &Document, t: ConnectionPointId) -> Option<ecad_model::connectivity
 
 /// The definitions in `d` whose origin is the starter library's `key`.
 fn embeds_of(d: &Document, key: &str) -> usize {
-    let Some(s) = symbols::by_key(key) else { return 0 };
+    let Some(s) = symbols::catalogue::by_key(key) else { return 0 };
     d.definitions.values().filter(|x| x.origin.as_ref().is_some_and(|o| o.library == STARTER_LIBRARY && o.definition == s.id)).count()
 }
 
@@ -316,7 +317,7 @@ fn slot(i: usize) -> (f64, f64) {
 #[test]
 fn a0_the_21_old_starters_keep_their_ids_and_prefixes() {
     for (key, n, prefix) in OLD {
-        let s = symbols::by_key(key).unwrap_or_else(|| panic!("{key} missing"));
+        let s = symbols::catalogue::by_key(key).unwrap_or_else(|| panic!("{key} missing"));
         assert_eq!(s.id.0, DEF_BASE + n, "{key}: definition ID unchanged");
         assert_eq!(s.prefix(), prefix, "{key}: built-in prefix unchanged");
     }
@@ -330,7 +331,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
     assert_eq!(cat.len(), 60, "the test table");
     let mut h = H::new(0x7034_0001);
     for e in &cat {
-        let s = symbols::by_key(&e.key).unwrap_or_else(|| panic!("{} is not in the catalogue", e.key));
+        let s = symbols::catalogue::by_key(&e.key).unwrap_or_else(|| panic!("{} is not in the catalogue", e.key));
         assert_eq!(s.prefix(), e.prefix, "{}: prefix", e.key);
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
@@ -355,7 +356,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         assert!((e.block..e.block + 0x100).contains(&n), "{}: def_id({n:#x}) outside block {:#x}", e.key, e.block);
         // Box.
         if let Some((w, hh)) = e.bx {
-            let (lo, hi) = symbols::bounds(d);
+            let (lo, hi) = symbols::graphics::bounds(d);
             let (gw, gh) = (hi.x - lo.x, hi.y - lo.y);
             assert!((gw - w).abs() < 0.05 && (gh - hh).abs() < 0.05, "{}: box {gw}×{gh}, design {w}×{hh}", e.key);
         }
@@ -443,7 +444,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
     let mut next: BTreeMap<&str, usize> = BTreeMap::new();
     let cat = catalogue();
     for (i, e) in cat.iter().enumerate() {
-        let name = symbols::by_key(&e.key).map(|s| s.name.to_string()).unwrap_or_default();
+        let name = symbols::catalogue::by_key(&e.key).map(|s| s.name.to_string()).unwrap_or_default();
         for round in 0..2 {
             let at = slot(2 * i + round);
             let head = h.head();
@@ -460,7 +461,7 @@ fn b_each_new_symbol_places_as_a_numbered_device_and_embeds_once() {
             // A connector half or pin makes a connector device, whose own description is the
             // registry's `Connector` (design 044 §4.6); the half's BOM description is the half's
             // own (§2.4), not the component's.
-            let want = if symbols::by_key(&e.key).and_then(|s| s.side()).is_some() { "Connector" } else { name.as_str() };
+            let want = if symbols::catalogue::by_key(&e.key).and_then(|s| s.side()).is_some() { "Connector" } else { name.as_str() };
             assert_eq!(prop(&mut h, c, "description").as_deref(), Some(want), "{}: default description", e.key);
             let d = h.doc();
             let shown = ecad_model::connectivity::derive::connection_point_positions(&d, page);
@@ -989,7 +990,7 @@ fn p_old_starters_keep_their_content_hash() {
     ];
     assert_eq!(PINNED.len(), 20, "pin every old starter");
     for (key, want) in PINNED {
-        let s = symbols::by_key(key).unwrap();
+        let s = symbols::catalogue::by_key(key).unwrap();
         let o = s.definition().unwrap().origin.clone().unwrap();
         assert_eq!(o.content_hash.hex(), *want, "{key}");
     }

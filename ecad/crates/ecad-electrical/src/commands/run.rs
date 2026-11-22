@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::CmdError;
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::locations::designations::Uses;
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::StarterKey;

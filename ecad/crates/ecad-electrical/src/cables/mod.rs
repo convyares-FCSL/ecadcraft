@@ -20,7 +20,7 @@ use crate::styles::{self, cable};
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
 pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
     match m.position {
-        ecad_model::CorePosition::Wire(w) => crate::wires::wire_pages(doc, w),
+        ecad_model::CorePosition::Wire(w) => crate::wires::routes::wire_pages(doc, w),
         ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).map(|r| r.page).into_iter().collect(),
         ecad_model::CorePosition::Unplaced => BTreeSet::new(),
     }

@@ -103,7 +103,7 @@ pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
 fn drawn_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some((_, r)) = doc.representations_showing(t).next() else { return "no page".into() };
-    let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
+    let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin);
     match at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)) {
         Some(p) => p.text(doc.settings.reference_style()),
         None => crate::references::cables::page_number_words(doc, r.page),
@@ -156,7 +156,7 @@ pub struct Join {
 /// # Errors
 /// The refusals of §4.4, each with the way out.
 pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>) -> Result<Join, CmdError> {
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let t = cell_type(s).ok_or(CmdError::refused("That symbol is not a PLC channel."))?;
     let ct = match card_type_of(doc, c) {
         Some(ct) => ct,
@@ -195,7 +195,7 @@ pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra:
             CmdError::refused(format!("{who}'s {n} channels are all drawn. Raise its channel count in Properties, or pick another card."))
         })?,
     };
-    let mut used = crate::devices::labels_of(doc, c);
+    let mut used = crate::devices::placing::labels_of(doc, c);
     used.extend(extra.iter().cloned());
     let roles = roles_of(s);
     let pins = pins_for(doc, Some(c), ct, n, index, &roles, &mut used);
@@ -269,7 +269,7 @@ pub fn plan_cell(
 /// A new card device for channel symbols of type `t` (design 045 §4.4 rule 2): prefix `A`, the
 /// body's name as its description, no rack.
 pub fn new_card_ops(
-    ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
+    ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
     tag: Option<String>, ops: &mut Vec<Op>,
 ) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
@@ -278,7 +278,7 @@ pub fn new_card_ops(
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
     let c: DeviceId = ids.fresh();
-    let name = t.body().map(crate::symbols::starter).map_or("PLC card", |b| b.name);
+    let name = t.body().map(crate::symbols::catalogue::starter).map_or("PLC card", |b| b.name);
     ops.push(Op::CreateDevice {
         id: c,
         device: ecad_model::Device {
@@ -311,7 +311,7 @@ pub fn pins_words(pins: &[String]) -> String {
 }
 
 /// A cell placed this close to the line of its card's cells on the page goes onto it, mm.
-pub const SNAP_TO_LINE: f64 = 2.0 * crate::symbols::CELL_TOP;
+pub const SNAP_TO_LINE: f64 = 2.0 * crate::symbols::cells::CELL_TOP;
 
 /// The world point of a cell's first point at `pl`.
 pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
@@ -416,7 +416,9 @@ pub fn landings(doc: &Document, s: &Starter, members: &[crate::cables::slash::Cr
 ///
 /// # Errors
 /// As [`crate::connectors::plan_land`].
-pub(crate) fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: ConnectionPointId) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn land_cell(
+    doc: &Document, ids: &mut IdAllocator, on: crate::wires::placing::OnRoute, t: ConnectionPointId,
+) -> Result<Vec<Op>, CmdError> {
     let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
     let (a_free, b_free) = (route.ends[0] == ecad_model::RouteEnd::Free, route.ends[1] == ecad_model::RouteEnd::Free);
     if a_free == b_free || doc.tees_of(on.route).next().is_some() {
@@ -432,7 +434,7 @@ pub(crate) fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires:
     } else {
         v.get(..=seg).unwrap_or_default().iter().copied().filter(|p| !p.near(on.at, 1e-9)).chain(std::iter::once(on.at)).collect()
     };
-    let mut edits = crate::wires::RouteEdits::new(doc);
+    let mut edits = crate::wires::routes::RouteEdits::new(doc);
     if let Some(x) = edits.get(on.route) {
         x.points = points;
         let end = if a_free { 0 } else { 1 };
@@ -525,19 +527,19 @@ pub fn set_field(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, i: u32, what: &
     };
     let mut fits = true;
     let module = crate::plc::edit::module(doc, ops, c, |m| fits = m.edit_channel(i, &mut *field));
-    if module && fits { Ok(()) } else { Err(CmdError::refused(format!("{} has no channels.", crate::devices::tag_words(doc, c)))) }
+    if module && fits { Ok(()) } else { Err(CmdError::refused(format!("{} has no channels.", crate::devices::tags::tag_words(doc, c)))) }
 }
 
 /// `-A02 channel 3`.
 pub(crate) fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
-    format!("{} channel {}", crate::devices::tag_words(doc, c), i + first_number(doc, c))
+    format!("{} channel {}", crate::devices::tags::tag_words(doc, c), i + first_number(doc, c))
 }
 
 /// The fence's refusal when two crossed wires are closer than a cell is wide (brief 051, design
 /// 051 §2.2): `Wires 24V-12 and 24V-13 are 10 mm apart; a DI cell is 20 mm wide. Space the wires
 /// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
 pub(crate) fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::cables::slash::Crossing]) -> Option<String> {
-    let (w, _) = crate::symbols::cell_shape(s.key)?;
+    let (w, _) = crate::symbols::cells::cell_shape(s.key)?;
     let mut at: Vec<(f64, f64, ecad_model::CorePosition)> = members.iter().map(|m| (m.at.x, m.at.y, m.position)).collect();
     at.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     for pair in at.windows(2) {

@@ -26,13 +26,13 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
 /// The key prefix of a user field's value in `setprop` (`user.Panel row`).
-pub const USER_PREFIX: &str = "user.";
+pub(crate) const USER_PREFIX: &str = "user.";
 
 /// Link devices `a` and `b` with `kind`: one `AddDeviceLink`.
 ///
 /// # Errors
 /// A device that is not there, a device linked to itself, or the same link already there.
-pub fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: DeviceId, b: DeviceId) -> Result<(LinkId, Vec<Op>), CmdError> {
+pub(crate) fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: DeviceId, b: DeviceId) -> Result<(LinkId, Vec<Op>), CmdError> {
     for d in [a, b] {
         if !doc.devices.contains_key(&d) {
             return Err(CmdError::refused(format!("There is no device {d}.")));
@@ -45,8 +45,8 @@ pub fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: Devic
     if doc.device_links.values().any(|l| l.same_as(&link)) {
         return Err(CmdError::refused(format!(
             "{} and {} already have a {} link.",
-            crate::devices::tag_words(doc, a),
-            crate::devices::tag_words(doc, b),
+            crate::devices::tags::tag_words(doc, a),
+            crate::devices::tags::tag_words(doc, b),
             kind.word()
         )));
     }
@@ -58,20 +58,20 @@ pub fn plan_link(doc: &Document, ids: &mut IdAllocator, kind: LinkKind, a: Devic
 ///
 /// # Errors
 /// No such link.
-pub fn plan_unlink(doc: &Document, id: LinkId) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_unlink(doc: &Document, id: LinkId) -> Result<Vec<Op>, CmdError> {
     let link = doc.device_links.get(&id).ok_or_else(|| CmdError::refused(format!("There is no device link {id}.")))?;
     Ok(vec![Op::RemoveDeviceLink { id, link: *link }])
 }
 
 /// The `RemoveDeviceLink`s of every link naming device `d`: deleting it goes after them.
-pub fn unlink_ops(doc: &Document, d: DeviceId) -> Vec<Op> {
+pub(crate) fn unlink_ops(doc: &Document, d: DeviceId) -> Vec<Op> {
     doc.device_links.iter().filter(|(_, l)| l.names(d)).map(|(id, l)| Op::RemoveDeviceLink { id: *id, link: *l }).collect()
 }
 
 /// Links naming device `from` re-pointed at `into` (a merge of two devices): each is removed and
 /// added again with the same id, or only removed when it would join `into` to itself or repeat a
 /// link `into` already has.
-pub fn repoint_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
+pub(crate) fn repoint_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
     let mut ops = Vec::new();
     let mut kept: Vec<DeviceLink> = doc.device_links.values().filter(|l| !l.names(from)).copied().collect();
     for (id, l) in doc.device_links.iter().filter(|(_, l)| l.names(from)) {
@@ -87,7 +87,7 @@ pub fn repoint_ops(doc: &Document, from: DeviceId, into: DeviceId) -> Vec<Op> {
 }
 
 /// The project's user field named `name` (ignoring case).
-pub fn field_named<'a>(doc: &'a Document, name: &str) -> Option<&'a UserFieldDef> {
+pub(crate) fn field_named<'a>(doc: &'a Document, name: &str) -> Option<&'a UserFieldDef> {
     doc.project.user_fields.iter().find(|f| f.name.as_str().eq_ignore_ascii_case(name.trim()))
 }
 
@@ -96,7 +96,7 @@ pub fn field_named<'a>(doc: &'a Document, name: &str) -> Option<&'a UserFieldDef
 /// # Errors
 /// A name that is empty, too long or already used; a choice field with no choices, or one
 /// twice; too many fields ([`ecad_model::objects::user::fields_problem`]).
-pub fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, kind: UserFieldKind) -> Result<(UserFieldId, Vec<Op>), CmdError> {
+pub(crate) fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, kind: UserFieldKind) -> Result<(UserFieldId, Vec<Op>), CmdError> {
     let name = FieldName::new(name.trim()).map_err(|e| CmdError::refused(format!("Field name: {e}")))?;
     if field_named(doc, name.as_str()).is_some() {
         return Err(CmdError::refused(format!("The project already has a field \"{}\".", name.as_str())));
@@ -115,7 +115,7 @@ pub fn plan_add_field(doc: &Document, ids: &mut IdAllocator, name: &str, kind: U
 ///
 /// # Errors
 /// No such field.
-pub fn plan_remove_field(doc: &Document, name: &str) -> Result<(Vec<Op>, usize), CmdError> {
+pub(crate) fn plan_remove_field(doc: &Document, name: &str) -> Result<(Vec<Op>, usize), CmdError> {
     let field = field_named(doc, name).ok_or_else(|| CmdError::refused(format!("The project has no field \"{}\".", name.trim())))?;
     let mut ops = Vec::new();
     for (id, d) in doc.devices.iter().filter(|(_, d)| d.user.contains_key(&field.id)) {
@@ -135,7 +135,7 @@ pub fn plan_remove_field(doc: &Document, name: &str) -> Result<(Vec<Op>, usize),
 ///
 /// # Errors
 /// Not a device, no such field, a value that does not read as the field's kind.
-pub fn user_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn user_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let ObjectRef::Device(c) = o else {
         return Err(CmdError::refused("User fields are set on devices."));
     };
@@ -167,7 +167,7 @@ pub fn shown_value(doc: &Document, d: DeviceId, name: &str) -> Option<String> {
 /// What joins the two devices.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum KindParam {
+pub(crate) enum KindParam {
     /// Two contactors that must not close together.
     MechanicalInterlock,
     /// An auxiliary contact block fitted to a device.
@@ -227,7 +227,7 @@ impl Generic for UnlinkParams {
 /// A user field's kind.
 #[derive(Deserialize, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum FieldKindParam {
+pub(crate) enum FieldKindParam {
     /// Free text.
     Text,
     /// A number, with `unit` shown after it.

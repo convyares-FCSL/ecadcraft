@@ -46,7 +46,7 @@ impl Generic for PlcslotParams {
         };
         let doc = cx.doc;
         let (card, ops) = slot_plan(doc, &self.card, rack, slot, swap)?;
-        let who = crate::devices::tag_words(doc, card);
+        let who = crate::devices::tags::tag_words(doc, card);
         let was = place_words(doc, card);
         let before = crate::plc::moved_blocks_before(doc, card);
         if ops.is_empty() {

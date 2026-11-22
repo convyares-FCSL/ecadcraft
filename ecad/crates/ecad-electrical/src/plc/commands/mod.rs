@@ -26,7 +26,7 @@ use ecad_model::{
 };
 
 use crate::defaults;
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::plc::address::{MAX_BYTE, MAX_SIZE, snapshot};
 use crate::plc::card_type_of;
@@ -107,7 +107,7 @@ pub(crate) struct CardTypePlan {
 /// drawn) at or past the new type's channel count.
 pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: CardType) -> Result<CardTypePlan, CmdError> {
     let c = card_named(doc, card)?;
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let from = card_type_of(doc, c).ok_or_else(|| CmdError::refused(format!("{who} is not a PLC card.")))?;
     if !IO_TYPES.contains(&from) {
         return Err(CmdError::refused(format!("{who} is a {}; only an I/O card's type can be changed.", from.noun())));
@@ -135,9 +135,9 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
             n(outside, "signal", "signals")
         )));
     }
-    let new_starter = to.body().map(crate::symbols::starter).ok_or(CmdError::refused("No card body for that type."))?;
+    let new_starter = to.body().map(crate::symbols::catalogue::starter).ok_or(CmdError::refused("No card body for that type."))?;
     let mut ops = Vec::new();
-    let def = match crate::symbols::embedded(doc, new_starter) {
+    let def = match crate::symbols::catalogue::embedded(doc, new_starter) {
         Some(d) => d,
         None => {
             let d: ecad_model::DefinitionId = ids.fresh();
@@ -148,7 +148,7 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
     let mut bodies = 0;
     let mut old_defs = BTreeSet::new();
     for (_, r) in doc.representations_of(Subject::Device(c)) {
-        let Some(st) = crate::devices::rep_starter(doc, r) else { continue };
+        let Some(st) = crate::devices::tags::rep_starter(doc, r) else { continue };
         if CardType::of_symbol(st) != Some(from) {
             continue;
         }
@@ -190,7 +190,7 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
     }
     crate::plc::edit::module(doc, &mut ops, c, |m| m.function = function);
     // A description that was the old body's name (placing writes it) follows the type.
-    let old_name = from.body().map(crate::symbols::starter).map(|s| s.name);
+    let old_name = from.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
     if comp.description.as_ref().is_some_and(|d| Some(d.as_str()) == old_name) {
         // The device as the definition swap and retype above leave it.
         let swapped = comp.definition.is_some_and(|d| old_defs.contains(&d));
@@ -220,12 +220,12 @@ pub(crate) fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) 
     match (card, rack) {
         (Some(c), None) => {
             let c = card_named(doc, c)?;
-            Ok((vec![c], crate::devices::tag_words(doc, c)))
+            Ok((vec![c], crate::devices::tags::tag_words(doc, c)))
         }
         (None, Some(r)) => {
             let r = rack_named(doc, r)?;
             let cards: Vec<DeviceId> = rack::cards_naming(doc, r).into_iter().map(|(c, _)| c).collect();
-            Ok((cards, format!("rack {}", crate::devices::tag_words(doc, r))))
+            Ok((cards, format!("rack {}", crate::devices::tags::tag_words(doc, r))))
         }
         _ => Err(CmdError::input("Give `card` or `rack` (an ID or tag).")),
     }
@@ -323,7 +323,7 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
         } else {
             String::new()
         };
-        return Ok(AddressPlan { who: crate::devices::tag_words(doc, r), rack: Some(r), tail, ops });
+        return Ok(AddressPlan { who: crate::devices::tags::tag_words(doc, r), rack: Some(r), tail, ops });
     }
     let c = card_named(doc, input.card.as_deref().ok_or(CmdError::input("`card` (a card's ID or tag) is required"))?)?;
     for (key, value, max) in [("start", &input.start, MAX_BYTE), ("size", &input.size, MAX_SIZE)] {
@@ -343,7 +343,7 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
         RackRef::Rack(r) => Some(r),
         _ => None,
     };
-    Ok(AddressPlan { who: crate::devices::tag_words(doc, c), rack: r, tail: String::new(), ops })
+    Ok(AddressPlan { who: crate::devices::tags::tag_words(doc, c), rack: r, tail: String::new(), ops })
 }
 
 // ---------------------------------------------------------------- channels
@@ -369,7 +369,7 @@ pub fn channel_card(doc: &Document, card: &str) -> Result<(DeviceId, CardType), 
     let c = card_named(doc, card)?;
     let t = card_type_of(doc, c).ok_or(CmdError::refused("Not a PLC card."))?;
     if !t.has_channels() {
-        return Err(CmdError::refused(format!("{} is a {}; it has no channels.", crate::devices::tag_words(doc, c), t.noun())));
+        return Err(CmdError::refused(format!("{} is a {}; it has no channels.", crate::devices::tags::tag_words(doc, c), t.noun())));
     }
     Ok((c, t))
 }
@@ -430,7 +430,7 @@ pub fn plan_channels(
     if found.members.is_empty() {
         return Err(CmdError::refused("The line crosses no wire. Draw it across the wires to land."));
     }
-    let starter = t.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
+    let starter = t.cell().map(crate::symbols::catalogue::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
     let point_role = match &input.point {
         Some(w) => Some(role_named(starter, w)?),
         None => None,
@@ -444,7 +444,7 @@ pub fn plan_channels(
     let mut ops = Vec::new();
     let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     let (card, tag, new) = match card {
-        Some((c, _)) => (c, crate::devices::tag_words(doc, c), false),
+        Some((c, _)) => (c, crate::devices::tags::tag_words(doc, c), false),
         None => {
             let (c, tag) = new_card_ops(ledger, ids, high, starter, def, t, None, &mut ops)?;
             (c, tag, true)
@@ -454,7 +454,7 @@ pub fn plan_channels(
     let first = first_number(doc, card);
     let roles = roles_of(starter);
     let pts = if new { BTreeMap::new() } else { points(doc, card) };
-    let mut used: BTreeSet<String> = if new { BTreeSet::new() } else { crate::devices::labels_of(doc, card) };
+    let mut used: BTreeSet<String> = if new { BTreeSet::new() } else { crate::devices::placing::labels_of(doc, card) };
     let mut next = match input.first {
         Some(x) => x.checked_sub(first).ok_or_else(|| CmdError::refused(format!("{tag}'s channels start at {first}.")))?,
         None => (0..MAX_INDEX).find(|i| !pts.contains_key(i)).unwrap_or(0),
@@ -481,7 +481,7 @@ pub fn plan_channels(
         let cell = plan_cell(ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
         for (role, m) in &l.points {
             let at = role_at(def_terms, *role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
-            let on = crate::wires::on_route_of(doc, m.route, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
+            let on = crate::wires::placing::on_route_of(doc, m.route, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
             let tid = cell.connection_points.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
             let land = land_cell(doc, ids, on, tid)
                 .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::cables::slash::position_name(doc, m.position))))?;
@@ -502,7 +502,7 @@ pub fn plan_channels(
 pub fn plan_rest(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, c: DeviceId, t: CardType, at: Option<Pt>,
 ) -> Result<ChannelsPlan, CmdError> {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let n = channel_count(doc, c);
     let pts = points(doc, c);
     let missing: Vec<u32> = (0..n).filter(|i| !pts.contains_key(i)).collect();
@@ -510,7 +510,7 @@ pub fn plan_rest(
     if missing.is_empty() {
         return Err(CmdError::refused(format!("Every channel of {tag} is drawn ({n}).")));
     }
-    let starter = t.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
+    let starter = t.cell().map(crate::symbols::catalogue::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
     let width = starter.size().0;
     // To the right of the card's last cell on this page, else at `at`, else under the body.
     let start = match at {
@@ -518,11 +518,11 @@ pub fn plan_rest(
         None => {
             let mut right: Option<Pt> = None;
             for (_, r) in doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page) {
-                let Some(st) = crate::devices::rep_starter(doc, r) else { continue };
+                let Some(st) = crate::devices::tags::rep_starter(doc, r) else { continue };
                 if crate::plc::channels::cell_type(st).is_none() {
                     continue;
                 }
-                if let Some((_, pl)) = crate::devices::rep_definition(doc, r) {
+                if let Some((_, pl)) = crate::devices::tags::rep_definition(doc, r) {
                     let q = Pt::new(pl.origin.x + width, pl.origin.y);
                     if right.is_none_or(|x| q.x > x.x) {
                         right = Some(q);
@@ -535,7 +535,7 @@ pub fn plan_rest(
     let mut ops = Vec::new();
     let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, &mut ops)?;
     let roles = roles_of(starter);
-    let mut used = crate::devices::labels_of(doc, c);
+    let mut used = crate::devices::placing::labels_of(doc, c);
     for (k, i) in missing.iter().enumerate() {
         let pins = pins_for(doc, Some(c), t, n, *i, &roles, &mut used);
         let j = Join { index: *i, pins: roles.iter().copied().zip(pins).collect() };
@@ -585,7 +585,7 @@ pub(crate) struct ChannelPlan {
 /// already.
 pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<ChannelPlan, CmdError> {
     let (c, t) = channel_card(doc, card)?;
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let first = first_number(doc, c);
     let shown = input.channel.or(input.index.map(|i| i.saturating_add(first))).unwrap_or(first);
     let i = shown.checked_sub(first).ok_or_else(|| CmdError::refused(format!("{who}'s channels start at {first}.")))?;
@@ -623,7 +623,7 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
     if let Some(pins) = &input.pins {
         let m = pins.as_ref().ok_or(CmdError::input("`pins` must be {role: pin}"))?;
         let mine = pts.get(&i).cloned().unwrap_or_default();
-        let mut labels = crate::devices::labels_of(doc, c);
+        let mut labels = crate::devices::placing::labels_of(doc, c);
         for (role, pin) in m {
             let pin = pin.trim();
             if pin.is_empty() || pin.chars().count() > MAX_PIN || pin.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
@@ -692,24 +692,25 @@ const MAX_AFTER: usize = 64;
 pub fn title(doc: &Document, card: DeviceId, ty: CardType) -> String {
     let pattern = defaults::resolve(doc, &defaults::plc::PAGE_TITLE, defaults::Scope::project()).text();
     let (rack, slot) = match (rack::rack_ref(doc, card), rack::slot_of(doc, card)) {
-        (RackRef::Rack(r), s) => (crate::devices::tag_words(doc, r), s),
+        (RackRef::Rack(r), s) => (crate::devices::tags::tag_words(doc, r), s),
         (_, s) => (String::new(), s),
     };
     let channels = if ty.has_channels() { rack::channel_count(doc, card).to_string() } else { String::new() };
     let t = pattern
-        .replace("{tag}", &crate::devices::tag_words(doc, card))
+        .replace("{tag}", &crate::devices::tags::tag_words(doc, card))
         .replace("{type}", ty.code())
         .replace("{channels}", &channels)
         .replace("{rack}", &rack)
         .replace("{slot:02}", &slot.map(|s| format!("{s:02}")).unwrap_or_default())
         .replace("{slot}", &slot.map(|s| s.to_string()).unwrap_or_default());
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
-    if t.is_empty() { crate::devices::tag_words(doc, card) } else { t }
+    if t.is_empty() { crate::devices::tags::tag_words(doc, card) } else { t }
 }
 
 /// Whether `c` has a card body drawn anywhere.
 fn body_drawn(doc: &Document, c: DeviceId) -> bool {
-    doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()))
+    doc.representations_of(Subject::Device(c))
+        .any(|(_, r)| crate::devices::tags::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()))
 }
 
 /// What a card's page shows (design 051 §3.6).
@@ -734,7 +735,7 @@ pub struct PageCard {
 pub fn page_card(doc: &Document, card: &str) -> Result<PageCard, CmdError> {
     let card = card_named(doc, card)?;
     let ty = card_type_of(doc, card).ok_or(CmdError::refused("Not a PLC card."))?;
-    let tag = crate::devices::tag_words(doc, card);
+    let tag = crate::devices::tags::tag_words(doc, card);
     if ty.is_rack() {
         return Err(CmdError::refused(format!("{tag} is a rack; Make its page is for a card.")));
     }
@@ -812,12 +813,12 @@ pub fn plan_page_contents(
     let mut y = y0;
     let mut cell_point: Option<Pt> = None;
     if !pc.missing.is_empty() {
-        let starter = ty.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
+        let starter = ty.cell().map(crate::symbols::catalogue::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
         let def = crate::terminal_strips::commands::terminal_strips::definition_for(doc, ids, starter, ops)?;
         let w = starter.size().0;
         let per_row = (((r - l - LEFT_MM) / w).floor() as usize).max(1);
         let roles = roles_of(starter);
-        let mut used = crate::devices::labels_of(doc, card);
+        let mut used = crate::devices::placing::labels_of(doc, card);
         let local = starter.definition()?.connection_points.first().map(|td| td.at).unwrap_or(Pt::new(0.0, 0.0));
         for (j, i) in pc.missing.iter().enumerate() {
             let col = j % per_row;
@@ -834,7 +835,7 @@ pub fn plan_page_contents(
         }
     }
     if pc.body {
-        let starter = ty.body().map(crate::symbols::starter).ok_or(CmdError::refused("No body symbol for that type."))?;
+        let starter = ty.body().map(crate::symbols::catalogue::starter).ok_or(CmdError::refused("No body symbol for that type."))?;
         let def = starter.definition()?;
         let (bw, _) = starter.size();
         // Its points on the line of the cells' points (it is the run's power end).
@@ -849,7 +850,7 @@ pub fn plan_page_contents(
             None => Pt::new(x * k, y * k),
         };
         let pl = Placement { origin, rotation: rot, mirror: false, scale: 1.0 };
-        let plan = crate::devices::plan_place(ledger, ids, high, id, style, starter, pl, crate::devices::Target::Join(card))?;
+        let plan = crate::devices::placing::plan_place(ledger, ids, high, id, style, starter, pl, crate::devices::placing::Target::Join(card))?;
         ops.extend(plan.ops);
     }
     Ok(())

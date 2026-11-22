@@ -389,7 +389,7 @@ pub fn key_of_code(doc: &Document, a: Aspect, code: &str) -> Option<String> {
 /// # Errors
 /// Empty, too long or a control character.
 pub fn normalise(doc: &Document, a: Aspect, text: &str) -> Result<String, CmdError> {
-    crate::devices::property_value(doc, a.property(), Some(text))?
+    crate::devices::json::property_value(doc, a.property(), Some(text))?
         .ok_or_else(|| CmdError::refused(format!("A {} needs a code, such as {}.", a.word(), example(a))))
 }
 

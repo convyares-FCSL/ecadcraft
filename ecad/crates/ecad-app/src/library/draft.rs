@@ -11,8 +11,8 @@ use ecad_model::geometry::units::Degrees;
 use ecad_model::geometry::units::Radians;
 use std::collections::BTreeMap;
 
-use ecad_electrical::symbols::POINT_GRID_MM;
 use ecad_electrical::symbols::commands::{self as symbol_rules, Content};
+use ecad_electrical::symbols::graphics::POINT_GRID_MM;
 use ecad_model::{ConnectionPointDef, Document, PointKey, Primitive, Pt, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

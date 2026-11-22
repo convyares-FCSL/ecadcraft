@@ -104,7 +104,7 @@ pub fn size_words(s: &ecad_electrical::styles::text_style::TextStyle) -> String 
 /// Build the details of device `c` with symbol `rep` selected, adding what they read to `deps`.
 pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
-    d.tag = ecad_electrical::devices::tag_words(doc, c);
+    d.tag = ecad_electrical::devices::tags::tag_words(doc, c);
     d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
     let dev = ecad_electrical::references::devices::device(doc, c);
@@ -114,7 +114,8 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     };
     if let Some(r) = doc.representations.get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
-        d.symbol_name = ecad_electrical::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
+        d.symbol_name =
+            ecad_electrical::devices::tags::rep_definition(doc, r).map_or_else(|| "Drawn symbol".to_string(), |(d, _)| d.name.to_string());
         let role = if dev.head == Some(rep) {
             "coil".to_string()
         } else if dev.children.contains(&rep) {
@@ -148,7 +149,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let what = if id == rep {
             "this symbol".to_string()
         } else {
-            ecad_electrical::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_lowercase())
+            ecad_electrical::devices::tags::rep_definition(doc, r).map_or_else(|| "drawn".to_string(), |(d, _)| d.name.to_lowercase())
         };
         let labels = rep_labels(doc, c, r);
         let first = if dev.head == Some(id) { format!("Coil {}", pins(&labels)) } else { pins(&labels) };
@@ -194,7 +195,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             let Some(oc) = ot.device() else { continue };
             deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.
-            let Some(tag) = ecad_electrical::devices::tag_of(doc, oc) else { continue };
+            let Some(tag) = ecad_electrical::devices::tags::tag_of(doc, oc) else { continue };
             if others.len() < MAX_OTHERS {
                 others.push(format!("{tag}:{}", ot.label.as_deref().unwrap_or("?")));
             } else {

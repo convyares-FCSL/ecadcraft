@@ -27,8 +27,9 @@ use ecad_model::{
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
 use {
-    ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::ShownOnce, ecad_electrical::wires::first_near, ecad_electrical::wires::on_route_of,
-    ecad_electrical::wires::path_vertices, ecad_electrical::wires::route_at, ecad_electrical::wires::route_item,
+    ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::label_rule::ShownOnce, ecad_electrical::wires::label_rule::first_near,
+    ecad_electrical::wires::labels::path_vertices, ecad_electrical::wires::placing::on_route_of, ecad_electrical::wires::placing::route_at,
+    ecad_electrical::wires::routes::route_item,
 };
 
 /// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
@@ -44,7 +45,7 @@ pub(crate) struct Ctx<'a> {
     pub ids: &'a mut IdAllocator,
     pub tol: f64,
     /// Tag numbers for copied devices (brief 018), caught up with the ledger before the edit.
-    pub tags: &'a mut ecad_electrical::devices::TagHigh,
+    pub tags: &'a mut ecad_electrical::devices::tags::TagHigh,
 }
 
 /// The result: ops plus the handles of objects the engine created.
@@ -435,7 +436,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::connectivity::jumper_bars::key(n);
         if let Some(v) = props.get(&key) {
-            t.notes.push(format!("Deleted link {} {v}.", ecad_electrical::devices::tag_words(cx.ledger.document(), c)));
+            t.notes.push(format!("Deleted link {} {v}.", ecad_electrical::devices::tags::tag_words(cx.ledger.document(), c)));
         }
         for k in std::iter::once(key.clone()).chain(ecad_electrical::terminal_strips::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
@@ -566,7 +567,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     // Erased device symbols (design 018 §3.3): the terminals only they showed go, and a device
     // whose last symbol went is deleted.
-    let (more, notes) = ecad_electrical::devices::erase_followups(cx.ledger.document(), &unlinked);
+    let (more, notes) = ecad_electrical::devices::merge::erase_followups(cx.ledger.document(), &unlinked);
     t.ops.extend(more);
     t.notes.extend(notes);
     // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
@@ -713,7 +714,7 @@ fn copy_batch(
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
         if comp.tag.is_some() {
-            let tag = ecad_electrical::devices::copy_tag(cx.ledger.document(), cx.tags, &comp);
+            let tag = ecad_electrical::devices::merge::copy_tag(cx.ledger.document(), cx.tags, &comp);
             comp = comp.with_tag(tag.as_deref());
         }
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });

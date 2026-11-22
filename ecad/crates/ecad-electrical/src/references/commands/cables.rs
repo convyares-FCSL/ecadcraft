@@ -128,7 +128,8 @@ pub fn continue_cable(
             }
             lines.push(Op::ModifyRoute { id: stub.line, before: line.clone(), after });
         }
-        let (r, i, add) = crate::wires::add_route(ids, page, style.clone(), vec![stub.a, stub.b], [RouteEnd::Point(points[1]), RouteEnd::Free]);
+        let (r, i, add) =
+            crate::wires::routes::add_route(ids, page, style.clone(), vec![stub.a, stub.b], [RouteEnd::Point(points[1]), RouteEnd::Free]);
         stub_ops.extend(add);
         routes.push(StubRoute { core: stub.core, points, route: r, item: i, free_end: stub.free_end });
     }

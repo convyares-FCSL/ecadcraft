@@ -82,7 +82,7 @@ pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::dev
 
 /// Whether representation `r` draws a PE terminal.
 pub(crate) fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool {
-    crate::devices::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
+    crate::devices::tags::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
 }
 
 /// A strip's drawn terminals: (terminal, its representation, whether PE).
@@ -91,7 +91,7 @@ pub fn drawn_connection_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPo
     let mut seen = BTreeSet::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
         let pe = rep_is_pe(doc, r);
-        for (t, _) in crate::devices::shown_connection_points(doc, c, r) {
+        for (t, _) in crate::devices::merge::shown_connection_points(doc, c, r) {
             if seen.insert(t) {
                 out.push((t, rid, pe));
             }
@@ -107,8 +107,8 @@ fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, Representati
     let mut seen = BTreeSet::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
         let pe = rep_is_pe(doc, r);
-        let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
-        for (t, p) in crate::devices::shown_connection_points(doc, c, r) {
+        let placement = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl);
+        for (t, p) in crate::devices::merge::shown_connection_points(doc, c, r) {
             let at = match (r.form, placement) {
                 (ecad_model::Form::Symbol, Some(pl)) => Some(pl.apply(p)),
                 (ecad_model::Form::Symbol, None) => None,
@@ -255,7 +255,7 @@ pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;
     }
-    let tag = c.and_then(|c| crate::devices::tag_of(doc, c)).unwrap_or("?");
+    let tag = c.and_then(|c| crate::devices::tags::tag_of(doc, c)).unwrap_or("?");
     format!("{tag}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t))
 }
 

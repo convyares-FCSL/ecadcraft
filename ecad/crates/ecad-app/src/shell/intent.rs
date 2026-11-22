@@ -164,7 +164,7 @@ impl App {
     fn intent_title(&self) -> (ecad_widgets::tokens::Icon, String) {
         let tool = self.cad.session.running.as_ref().map(|r| r.id.to_lowercase()).unwrap_or_default();
         if tool == "place"
-            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_electrical::symbols::starter)
+            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_electrical::symbols::catalogue::starter)
         {
             return (ecad_widgets::tokens::Icon::Pin, sym.name.to_string());
         }

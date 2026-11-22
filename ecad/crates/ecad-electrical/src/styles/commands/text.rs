@@ -15,7 +15,8 @@ use ecad_model::{
 };
 
 use crate::defaults::{self, Scope};
-use crate::devices::{self, TextOf};
+use crate::devices::texts::TextOf;
+use crate::devices::{self};
 use crate::error::CmdError;
 use crate::styles::text_style::{self, Shown, TextKind, kind_words};
 
@@ -428,7 +429,7 @@ pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option
         None => "Reset",
     };
     let of = match level {
-        ShowLevel::Symbol(_, c) | ShowLevel::Device(c) => format!(" {}", devices::tag_words(doc, c)),
+        ShowLevel::Symbol(_, c) | ShowLevel::Device(c) => format!(" {}", devices::tags::tag_words(doc, c)),
         _ => String::new(),
     };
     format!("{verb} {}{of}", kind_words(kind))
@@ -491,7 +492,7 @@ pub fn move_target(
             if doc.connection_points.get(&t).is_none_or(|x| x.device() != Some(c)) {
                 return Err(CmdError::refused(format!("No connection point {} on that symbol.", t.hex())));
             }
-            (devices::point_label_key(doc, rep, t), TextOf::ConnectionPoint(t))
+            (devices::texts::point_label_key(doc, rep, t), TextOf::ConnectionPoint(t))
         }
         _ => return Err(CmdError::refused("Only a tag or a connection point label can be moved.")),
     };
@@ -519,7 +520,7 @@ pub fn plan_move(
     current: Option<(TextHAlign, TextVAlign)>,
 ) -> Result<MovePlan, CmdError> {
     let r = doc.representations.get(&rep).ok_or(CmdError::NotFound(Noun::Representation))?;
-    let (_, pl) = devices::rep_definition(doc, r).ok_or(CmdError::refused("That symbol cannot be drawn."))?;
+    let (_, pl) = devices::tags::rep_definition(doc, r).ok_or(CmdError::refused("That symbol cannot be drawn."))?;
     let after = match to {
         None => None,
         Some(to) => {
@@ -531,7 +532,7 @@ pub fn plan_move(
     let c = t.component;
     let before = doc.devices.get(&c).and_then(|x| x.properties.get(&t.key)).cloned();
     let what = match kind {
-        TextKind::Tag => format!("tag {}", devices::tag_words(doc, c)),
+        TextKind::Tag => format!("tag {}", devices::tags::tag_words(doc, c)),
         _ => "label".to_string(),
     };
     let label = if after.is_some() { format!("Move {what}") } else { format!("Reset {what}") };

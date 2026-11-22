@@ -3,13 +3,17 @@
 //! text (reported): `Starter::quiet` is a `Quiet` enum read through `is_quiet`, `changeover_labels`
 //! takes a set, and the prefix is `Starter::prefix()`, read from the defaults registry.
 
-use ecad_electrical::symbols::{self, Anchor, Family, HAlign, Kind, STARTERS, TextRole, VAlign};
+use ecad_electrical::symbols::{self, Family, Kind};
+
+use ecad_electrical::symbols::anchors::{Anchor, HAlign, TextRole, VAlign};
+
+use ecad_electrical::symbols::catalogue::STARTERS;
 use ecad_model::Word;
 
 use crate::symbols::library_acceptance::catalogue;
 
 fn s(key: &str) -> &'static symbols::Starter {
-    symbols::by_key(key).unwrap_or_else(|| panic!("{key} missing"))
+    symbols::catalogue::by_key(key).unwrap_or_else(|| panic!("{key} missing"))
 }
 
 fn close(a: f64, b: f64) -> bool {
@@ -109,7 +113,7 @@ fn quiet_lists() {
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
         let mut got: Vec<String> =
-            d.connection_points.iter().filter(|t| symbols::is_quiet(st, &t.key.to_string())).map(|t| t.key.to_string()).collect();
+            d.connection_points.iter().filter(|t| symbols::rules::is_quiet(st, &t.key.to_string())).map(|t| t.key.to_string()).collect();
         got.sort();
         let mut want: Vec<String> = cat.iter().find(|e| e.key == st.key.word()).map(|e| e.quiet.clone()).unwrap_or_default();
         want.sort();
@@ -163,12 +167,15 @@ fn prefixes_are_registered_defaults() {
 fn changeover_rule() {
     let set = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<std::collections::BTreeSet<String>>();
     let used = |v: &[&str]| v.iter().map(|x| (*x).to_string()).collect::<Vec<String>>();
-    assert_eq!(symbols::changeover_labels(&set(&["A1", "A2"]), "-K01"), Ok(used(&["11", "12", "14"])));
-    assert_eq!(symbols::changeover_labels(&set(&["A1", "A2", "13", "14"]), "-K01"), Ok(used(&["21", "22", "24"])));
-    assert_eq!(symbols::changeover_labels(&set(&["81", "82", "84"]), "-K01"), Ok(used(&["91", "92", "94"])));
-    assert_eq!(symbols::changeover_labels(&set(&["93", "94"]), "-K01").map_err(|e| e.to_string()), Err("-K01 already has 9 contacts.".to_string()));
+    assert_eq!(symbols::rules::changeover_labels(&set(&["A1", "A2"]), "-K01"), Ok(used(&["11", "12", "14"])));
+    assert_eq!(symbols::rules::changeover_labels(&set(&["A1", "A2", "13", "14"]), "-K01"), Ok(used(&["21", "22", "24"])));
+    assert_eq!(symbols::rules::changeover_labels(&set(&["81", "82", "84"]), "-K01"), Ok(used(&["91", "92", "94"])));
+    assert_eq!(
+        symbols::rules::changeover_labels(&set(&["93", "94"]), "-K01").map_err(|e| e.to_string()),
+        Err("-K01 already has 9 contacts.".to_string())
+    );
     // Only `[1-9][1-4]` counts: odd labels never overflow or count.
-    assert_eq!(symbols::changeover_labels(&set(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
+    assert_eq!(symbols::rules::changeover_labels(&set(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
 }
 
 /// §10: the default rule for the 20 starters (none for the continuation) and every
@@ -176,7 +183,7 @@ fn changeover_rule() {
 #[test]
 fn anchors() {
     for st in STARTERS {
-        let v = symbols::anchors(st);
+        let v = symbols::anchors::anchors(st);
         if st.key.word() == "continuation" {
             assert!(v.is_empty(), "{}", st.key);
             continue;
@@ -189,7 +196,7 @@ fn anchors() {
             continue;
         }
         let Ok(d) = st.definition() else { panic!("{}", st.key) };
-        let (lo, hi) = symbols::bounds(d);
+        let (lo, hi) = symbols::graphics::bounds(d);
         let mid = (lo.y + hi.y) / 2.0;
         let tag = one(&v, |r| matches!(r, TextRole::Tag), "Tag", st.key.word());
         let desc = one(&v, |r| matches!(r, TextRole::Description), "Description", st.key.word());

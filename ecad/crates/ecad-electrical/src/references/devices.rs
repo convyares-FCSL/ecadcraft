@@ -416,7 +416,7 @@ fn raw_class(doc: &Document, r: &Representation) -> Class {
     if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
         return Class::Head;
     }
-    match crate::devices::rep_starter(doc, r) {
+    match crate::devices::tags::rep_starter(doc, r) {
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -453,7 +453,7 @@ pub struct Device {
 /// middle of its connection points.
 pub fn anchor(doc: &Document, r: &Representation) -> Option<Pt> {
     if r.form == Form::Symbol {
-        let (_, pl) = crate::devices::rep_definition(doc, r)?;
+        let (_, pl) = crate::devices::tags::rep_definition(doc, r)?;
         return (pl.is_valid() && pl.origin.is_finite()).then_some(pl.origin);
     }
     let pts: Vec<Pt> = r.connection_points.values().copied().filter(|p| p.is_finite()).collect();
@@ -477,8 +477,8 @@ fn bounds(pts: &[Pt]) -> Option<(Pt, Pt)> {
 /// The page positions of a representation's connection points, in its definition's terminal
 /// order.
 pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) -> Vec<(ecad_model::ConnectionPointId, Pt)> {
-    let shown = crate::devices::shown_connection_points(doc, c, r);
-    match (r.form, crate::devices::rep_definition(doc, r)) {
+    let shown = crate::devices::merge::shown_connection_points(doc, c, r);
+    match (r.form, crate::devices::tags::rep_definition(doc, r)) {
         (Form::Symbol, Some((_, pl))) if pl.is_valid() => shown.into_iter().map(|(t, p)| (t, pl.apply(p))).filter(|(_, p)| p.is_finite()).collect(),
         (Form::Symbol, _) => Vec::new(),
         (Form::Drawn, _) => shown,
@@ -502,12 +502,12 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
             continue;
         }
         children.push(rid);
-        let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
+        let Some(s) = crate::devices::tags::rep_starter(doc, r) else { continue };
         let kinds = poles_of(s);
-        let pts = crate::devices::shown_connection_points(doc, c, r);
+        let pts = crate::devices::merge::shown_connection_points(doc, c, r);
         let at = anchor(doc, r);
         for (i, (kind, power)) in kinds.iter().enumerate() {
-            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::label_of(doc, *t));
+            let label = |j: usize| pts.get(2 * i + j).map_or_else(|| "?".to_string(), |(t, _)| crate::devices::merge::label_of(doc, *t));
             poles.push(DrawnPole { rep: rid, labels: [label(0), label(1)], kind: *kind, power: *power, page: r.page, at });
         }
     }
@@ -760,7 +760,7 @@ pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> 
             "Added {} contact {} to {}; its part offers {offered} {} ({text}), now {drawn} drawn (see Checks).",
             kind.upper(),
             labels.join("/"),
-            crate::devices::tag_words(doc, c),
+            crate::devices::tags::tag_words(doc, c),
             kind_words(false, kind),
         )
     })
@@ -842,8 +842,8 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     let r = doc.representations.get(&rep)?;
     let k = unit(doc);
     let pts = connection_point_points(doc, dev.component, r);
-    let vertical = match crate::devices::rep_definition(doc, r) {
-        Some((_, pl)) if r.form == Form::Symbol => crate::devices::vertical(&pl),
+    let vertical = match crate::devices::tags::rep_definition(doc, r) {
+        Some((_, pl)) if r.form == Form::Symbol => crate::devices::texts::vertical(&pl),
         _ => {
             let xs: Vec<f64> = pts.iter().map(|(_, p)| p.x).collect();
             xs.windows(2).all(|w| (w[0] - w[1]).abs() < 1e-6)
@@ -854,8 +854,8 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
         let y = pts.iter().map(|(_, p)| p.y).fold(f64::INFINITY, f64::min);
         (Pt::new(x + 1.0 * k, y - 1.0 * k), HAlign::Left)
     } else {
-        let (lo, hi) = match (r.form, crate::devices::rep_definition(doc, r)) {
-            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl)?,
+        let (lo, hi) = match (r.form, crate::devices::tags::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::texts::placed_box(def, &pl)?,
             _ => bounds(&pts.iter().map(|(_, p)| *p).collect::<Vec<_>>())?,
         };
         (Pt::new((lo.x + hi.x) / 2.0, lo.y - 1.5 * k), HAlign::Center)
@@ -1016,8 +1016,8 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
         Placement::At(d) => Pt::new(origin.x + d.x * k, origin.y + d.y * k),
         Placement::Below => below(),
         Placement::Right => {
-            let hi = match crate::devices::rep_definition(doc, r) {
-                Some((def, pl)) if r.form == Form::Symbol => crate::devices::placed_box(def, &pl).map(|(_, hi)| hi),
+            let hi = match crate::devices::tags::rep_definition(doc, r) {
+                Some((def, pl)) if r.form == Form::Symbol => crate::devices::texts::placed_box(def, &pl).map(|(_, hi)| hi),
                 _ => bounds(&pts.iter().map(|(_, p)| *p).collect::<Vec<_>>()).map(|(_, hi)| hi),
             };
             let hi = hi?;
@@ -1130,8 +1130,8 @@ pub fn connector_parts(doc: &Document, places: &mut Places<'_>, c: DeviceId) -> 
         if more > 0 {
             value.push_str(&format!(" +{more}"));
         }
-        let Some((lo, hi)) = (match (r.form, crate::devices::rep_definition(doc, r)) {
-            (Form::Symbol, Some((def, pl))) => crate::devices::placed_box(def, &pl),
+        let Some((lo, hi)) = (match (r.form, crate::devices::tags::rep_definition(doc, r)) {
+            (Form::Symbol, Some((def, pl))) => crate::devices::texts::placed_box(def, &pl),
             _ => None,
         }) else {
             continue;
@@ -2218,7 +2218,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     let head = dev.head.and_then(|h| doc.representations.get(&h).map(|r| (h, r)));
     Ok(json!({
         "component": c.hex(),
-        "tag": crate::devices::tag_of(doc, c),
+        "tag": crate::devices::tags::tag_of(doc, c),
         "offer": stored,
         "head": head.map(|(h, r)| json!({"representation": h.hex(), "page": crate::references::cables::page_number(doc, r.page), "place": places.text(r.page, anchor(doc, r))})),
         "placement": placement.word(),
@@ -2348,7 +2348,7 @@ pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> 
     let mut places = Places::new(doc);
     let t = table_measured(doc, &mut places, &dev, m)?;
     let r = t.rows.get(i)?;
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let what = if r.power { "power" } else { "auxiliary" };
     Some(vec![match (r.state, r.page) {
         (State::Spare, _) | (_, None) => format!("{tag} {} {}, {what}, offered, not drawn", r.label_pair(), r.kind.upper()),
@@ -2370,7 +2370,7 @@ pub fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<PageId>,
     }
     let mut places = Places::new(doc);
     let rows = rows(&mut places, &dev, Some(&offer));
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     counts(&dev, &offer)
         .into_iter()
         .filter(|(_, (drawn, offered))| drawn > offered)
@@ -2425,7 +2425,7 @@ pub fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Option<(
     }
     let which = format!(
         "The contact table of {} overlaps the title block on {}.",
-        crate::devices::tag_words(doc, c),
+        crate::devices::tags::tag_words(doc, c),
         crate::references::cables::page_number_words(doc, t.page)
     );
     Some((which, t.page, t.top))

@@ -202,7 +202,7 @@ fn all_in(doc: &Document, a: Aspect, c: DeviceId, key: &str, extra: &[LocBox], c
 /// `old_key` is a conflict (moved with [`Mode::Move`]); a device with any other value is not
 /// listed. [`Mode::Keep`] proposes nothing.
 /// `base` are the caller's planned ops these follow.
-pub fn plan_change(
+pub(crate) fn plan_change(
     doc: &Document, base: &[Op], a: Aspect, candidates: &[Spot], old_key: Option<&str>, new_key: &str, new_code: &str, mode: &Mode,
 ) -> Planned {
     let mut out = Planned::default();
@@ -247,7 +247,7 @@ pub fn plan_change(
 
 /// The spots of the device symbols on `page` whose context for aspect `a` is the page's own value
 /// (no box carrying `a` holds them): what a page's value proposes for.
-pub fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
+pub(crate) fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
     let boxes = locations::boxes_on(doc, page);
     doc.representations_on(page)
         .filter_map(|(_, r)| {
@@ -263,7 +263,7 @@ pub fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
 
 /// Every device symbol whose context for aspect `a` falls back to the project (no box carrying
 /// `a`, no page value): what the project's value proposes for. The one project-wide case.
-pub fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
+pub(crate) fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
     doc.pages
         .iter()
         .filter(|(_, pg)| crate::locations::designations::page_key(pg, a).is_none())
@@ -371,7 +371,7 @@ pub fn follow_up_label(p: &Planned) -> String {
 
 /// The spots of the device symbols on `page` whose anchor lies inside box `b` (a planned or
 /// existing box): what drawing it proposes for (design 052 §5.6).
-pub fn spots_inside(doc: &Document, b: &LocBox) -> Vec<Spot> {
+pub(crate) fn spots_inside(doc: &Document, b: &LocBox) -> Vec<Spot> {
     doc.representations_on(b.page)
         .filter_map(|(_, r)| {
             let ecad_model::Subject::Device(c) = r.subject else { return None };
@@ -396,7 +396,7 @@ pub fn json(doc: &Document, p: &Planned) -> Value {
             .filter(|x| x.aspect == a)
             .map(|x| {
                 json!({
-                    "component": x.component.hex(), "tag": crate::devices::tag_words(doc, x.component), "aspect": a.word(),
+                    "component": x.component.hex(), "tag": crate::devices::tags::tag_words(doc, x.component), "aspect": a.word(),
                     a.word(): x.from, "proposed": x.to, "all_symbols": x.all_symbols,
                 })
             })
@@ -424,7 +424,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
     let mut out = vec![head];
     for c in conflicts {
         let note = if c.all_symbols { format!("    (all its symbols are now in {})", c.to) } else { String::new() };
-        out.push(format!("  {}  {} → {}{note}", crate::devices::tag_words(doc, c.component), c.from, c.to));
+        out.push(format!("  {}  {} → {}{note}", crate::devices::tags::tag_words(doc, c.component), c.from, c.to));
     }
     out
 }
@@ -432,7 +432,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
 /// The echo of a placement's proposal (design 052 §5.3): `Placed -K01 in +CP1.`, `Placed -K01 (no
 /// location).`, `-K01 is now in +CP1.`, and the conflict rows with what stayed.
 pub fn place_words(doc: &Document, c: DeviceId, joined: bool, p: &Planned) -> Vec<String> {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let values: Vec<String> =
         Aspect::ALL.into_iter().filter_map(|a| p.set.iter().find(|(x, y, _)| *x == c && *y == a).map(|(_, _, code)| code.clone())).collect();
     let mut out = Vec::new();
@@ -451,7 +451,7 @@ pub fn place_words(doc: &Document, c: DeviceId, joined: bool, p: &Planned) -> Ve
 }
 
 /// The label of the transaction moving `conflicts`: `Set location +CP1 (2 devices)`.
-pub fn move_label(conflicts: &[Conflict]) -> String {
+pub(crate) fn move_label(conflicts: &[Conflict]) -> String {
     let devices: BTreeSet<DeviceId> = conflicts.iter().map(|c| c.component).collect();
     let n = devices.len();
     let what = match conflicts {
@@ -464,11 +464,11 @@ pub fn move_label(conflicts: &[Conflict]) -> String {
 }
 
 /// The words of the conflicts left as they are: `-K07 stays +CP2 (shown +CP2-K07 here).`
-pub fn left_words(doc: &Document, conflicts: &[Conflict]) -> String {
+pub(crate) fn left_words(doc: &Document, conflicts: &[Conflict]) -> String {
     conflicts
         .iter()
         .map(|c| {
-            let tag = crate::devices::tag_words(doc, c.component);
+            let tag = crate::devices::tags::tag_words(doc, c.component);
             format!("{tag} stays {} (shown {}{tag} here).", c.from, c.from)
         })
         .collect::<Vec<_>>()
@@ -494,30 +494,10 @@ pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
         .collect()
 }
 
-/// The `proposal` parameter of boxes, pages and the project: "propose" (default), "move" or
-/// "keep"; anything else, a value that is not text included, is refused (tester 052d,
-/// finding 3).
-///
-/// # Errors
-/// Not one of the three words.
-pub fn proposal_param(params: &Value) -> Result<Mode, CmdError> {
-    const WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
-    match params.get("proposal") {
-        None | Some(Value::Null) => Ok(Mode::Propose),
-        Some(Value::String(m)) => match m.trim().to_ascii_lowercase().as_str() {
-            "propose" => Ok(Mode::Propose),
-            "move" => Ok(Mode::Move),
-            "keep" => Ok(Mode::Keep),
-            _ => Err(CmdError::refused(WORDS)),
-        },
-        Some(_) => Err(CmdError::refused(WORDS)),
-    }
-}
-
 /// The waiting `conflicts` that still hold on `doc` (tester 052d, finding 1): the device is still
 /// there, the proposed entry is still in the list, and the device's value still differs. An
 /// undo, a redo or another edit may have taken any of these away.
-pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
+pub(crate) fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
     conflicts
         .iter()
         .filter(|c| {
@@ -530,7 +510,7 @@ pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
 }
 
 /// The ops moving `conflicts` to their proposals (the answer **Move**).
-pub fn move_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
+pub(crate) fn move_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
     let mut ops = Vec::new();
     for c in conflicts {
         crate::devices::edit_planned(doc, &mut ops, c.component, |d| *d = designations::with_device_key(d, c.aspect, Some(&c.to_key), false));

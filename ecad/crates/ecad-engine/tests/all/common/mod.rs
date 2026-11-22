@@ -190,9 +190,9 @@ impl H {
         out
     }
 
-    /// The route drawing wire `c` on `page` (`wires::route_of_wire_on`).
+    /// The route drawing wire `c` on `page` (`wires::routes::route_of_wire_on`).
     pub fn route_of(&mut self, page: PageId, c: WireId) -> ecad_model::RouteId {
-        ecad_electrical::wires::route_of_wire_on(&self.doc(), c, page).expect("route")
+        ecad_electrical::wires::routes::route_of_wire_on(&self.doc(), c, page).expect("route")
     }
 
     /// The handle of wire `c`'s line on `page`.
@@ -204,7 +204,7 @@ impl H {
     /// The handle of route `r`'s line on `page`.
     pub fn line_handle(&mut self, page: PageId, r: ecad_model::RouteId) -> Handle {
         let doc = self.doc();
-        let (_, item, _) = ecad_electrical::wires::route_item(&doc, r).expect("route item");
+        let (_, item, _) = ecad_electrical::wires::routes::route_item(&doc, r).expect("route item");
         self.handle_of(page, item)
     }
 
@@ -489,7 +489,8 @@ pub fn wired_lines(
             });
             cps.insert(t, at);
         }
-        let (r, item, add) = ecad_electrical::wires::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);
+        let (r, item, add) =
+            ecad_electrical::wires::routes::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);
         ops.extend(add);
         let w: WireId = ids.fresh();
         ops.push(Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), ta, tb) });
@@ -510,11 +511,11 @@ pub fn wired_lines(
     (ops, out)
 }
 
-/// Wire `w`'s line on `page`: the item drawing its route there (`wires::route_of_wire_on`) and
+/// Wire `w`'s line on `page`: the item drawing its route there (`wires::routes::route_of_wire_on`) and
 /// the item's path (design 072 §4.3; what `derive::route_on_page` gave before routes).
 pub fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {
-    let r = ecad_electrical::wires::route_of_wire_on(doc, w, page)?;
-    let (_, item, it) = ecad_electrical::wires::route_item(doc, r)?;
+    let r = ecad_electrical::wires::routes::route_of_wire_on(doc, w, page)?;
+    let (_, item, it) = ecad_electrical::wires::routes::route_item(doc, r)?;
     match &it.kind {
         ItemKind::Primitive(p) => Some((item, p.clone())),
         ItemKind::Symbol(_) => None,

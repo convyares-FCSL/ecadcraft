@@ -127,7 +127,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             }
         }
         if let Some((_, r, end)) = best {
-            let w = ecad_electrical::wires::wire_of_route(doc, r);
+            let w = ecad_electrical::wires::routes::wire_of_route(doc, r);
             t.kind = ObjectKind::WireEnd;
             t.conductor = w;
             t.route = Some(r);
@@ -154,7 +154,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
         // Lane 072 D: a T's dot stands for the line that ends there.
-        Some(Mapped::Tee(r)) => ecad_electrical::wires::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
+        Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
         _ => h,
     };
     match map.get(h) {
@@ -181,7 +181,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.handles = vec![h];
             if let Some(Subject::Device(c)) = doc.representations.get(&r).map(|x| x.subject) {
                 t.component = Some(c);
-                t.name = format!("tag of {}", ecad_electrical::devices::tag_words(doc, c));
+                t.name = format!("tag of {}", ecad_electrical::devices::tags::tag_words(doc, c));
             } else {
                 t.name = "tag".into();
             }
@@ -214,7 +214,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
                 Subject::Route(r) => {
-                    let w = ecad_electrical::wires::wire_of_route(doc, r);
+                    let w = ecad_electrical::wires::routes::wire_of_route(doc, r);
                     t.kind = ObjectKind::Wire;
                     t.conductor = w;
                     t.route = Some(r);
@@ -245,7 +245,7 @@ fn device(p: &Project, page: PageId, mut t: Target, c: DeviceId, rep: Option<Rep
     t.kind = ObjectKind::Device;
     t.component = Some(c);
     t.representation = rep;
-    t.name = ecad_electrical::devices::tag_of(doc, c).map_or_else(|| "component".to_string(), str::to_string);
+    t.name = ecad_electrical::devices::tags::tag_of(doc, c).map_or_else(|| "component".to_string(), str::to_string);
     let map = p.pages.get(&page).map(|v| &v.map);
     // The symbol clicked (its outline), so turning or copying acts on that symbol only.
     t.handles = rep
@@ -262,7 +262,7 @@ fn connection_point(p: &Project, page: PageId, mut t: Target, strip: DeviceId, t
     t.kind = ObjectKind::TerminalBlock;
     t.component = Some(strip);
     t.connection_point = term;
-    let tag = ecad_electrical::devices::tag_words(doc, strip);
+    let tag = ecad_electrical::devices::tags::tag_words(doc, strip);
     t.name = match term {
         // Brief 044: a connector pin is named by its half (`-X10.S:3`).
         Some(x) => ecad_electrical::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
@@ -289,7 +289,7 @@ fn cable(p: &Project, page: PageId, mut t: Target, k: CableId) -> Target {
     let doc = p.ledger.document();
     t.kind = ObjectKind::Cable;
     t.cable = Some(k);
-    t.name = ecad_electrical::devices::cable_tag_of(doc, k).map_or_else(|| "cable".to_string(), str::to_string);
+    t.name = ecad_electrical::devices::tags::cable_tag_of(doc, k).map_or_else(|| "cable".to_string(), str::to_string);
     t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Cable(k));
     t.others = doc.representations_of(Subject::Cable(k)).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).count();
     t

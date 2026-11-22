@@ -283,11 +283,11 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
 /// The type a terminal is drawn as: the starter of the first symbol that shows it, else (an old
 /// strip's first symbol, matched by key) the strip's own definition.
 pub(crate) fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
-    let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
+    let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::tags::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
         let c = doc.connection_points.get(&t)?.device()?;
         let d = doc.devices.get(&c)?.definition?;
-        crate::symbols::of_definition(doc.definitions.get(&d)?)
+        crate::symbols::catalogue::of_definition(doc.definitions.get(&d)?)
     });
     starter.and_then(|s| of_starter(s.key)).map_or_else(feedthrough, |(t, _)| t)
 }
@@ -409,7 +409,7 @@ pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[Connectio
     let gone: BTreeSet<ConnectionPointId> = dropped.iter().copied().collect();
     let left: Vec<(String, u32)> =
         doc.connection_points_of(c).filter(|(t, _)| !gone.contains(t)).filter_map(|(t, x)| Some((x.label.clone()?, level_of(doc, t).0))).collect();
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let remove = |key: String, ops: &mut Vec<ecad_model::Op>, notes: &mut Vec<String>| {
         if let Some(v) = props.get(&key)
             && !ops.iter().any(|o| matches!(o, ecad_model::Op::SetProperty { key: k, .. } if *k == key))
@@ -554,7 +554,7 @@ impl Chooser {
         &mut self, doc: &Document, c: Option<DeviceId>, t: &'static TermType, n: Option<u32>, named: Option<&str>,
     ) -> Result<String, CmdError> {
         let ps = c.map(|c| positions(doc, c)).unwrap_or_default();
-        let tag = c.map(|c| crate::devices::tag_words(doc, c)).unwrap_or_default();
+        let tag = c.map(|c| crate::devices::tags::tag_words(doc, c)).unwrap_or_default();
         let new = |me: &mut Chooser| {
             let mut label = me.next.to_string();
             while ps.iter().any(|p| p.label == label) || me.made.contains_key(&label) {
@@ -803,7 +803,7 @@ pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> 
             }
         }
     }
-    (!words.is_empty()).then(|| format!("Jumper bar {} {}.", crate::devices::tag_words(doc, c), words.join("; ")))
+    (!words.is_empty()).then(|| format!("Jumper bar {} {}.", crate::devices::tags::tag_words(doc, c), words.join("; ")))
 }
 
 // ---------------------------------------------------------------- geometry (§3.1)
@@ -845,7 +845,7 @@ fn ticks(n: u32) -> Vec<Primitive> {
 pub fn graphics(key: StarterKey) -> Option<Vec<Primitive>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     Some(match (t.key, n) {
-        (StarterKey::Terminalblockfuse, _) => crate::symbols::graphics_of(StarterKey::Fuseterminalblock),
+        (StarterKey::Terminalblockfuse, _) => crate::symbols::graphics::graphics_of(StarterKey::Fuseterminalblock),
         (StarterKey::Termdisc, _) => {
             vec![rect((-3.5, -7.5), (3.5, 7.5)), line((0.0, 10.0), (0.0, 3.0)), line((0.0, 3.0), (2.5, -3.0)), line((0.0, -3.0), (0.0, -10.0))]
         }
@@ -902,7 +902,7 @@ pub fn bridges(key: StarterKey) -> Vec<Vec<PointKey>> {
 /// whole terminal: every level).
 pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static TermType, Option<u32>)> {
     let Subject::Device(_) = r.subject else { return None };
-    of_starter(crate::devices::rep_starter(doc, r)?.key)
+    of_starter(crate::devices::tags::rep_starter(doc, r)?.key)
 }
 
 pub fn short(hex: &str) -> &str {

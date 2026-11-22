@@ -149,9 +149,9 @@ pub(crate) fn first_place(doc: &Document, c: DeviceId) -> Option<String> {
 
 /// Where `c` is first drawn on `page` (a symbol's origin), for a go-to.
 pub fn at_on(doc: &Document, c: DeviceId, page: PageId) -> Option<ecad_model::Pt> {
-    doc.representations_of(Subject::Device(c))
-        .filter(|(_, r)| r.page == page)
-        .find_map(|(_, r)| crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied()))
+    doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page).find_map(|(_, r)| {
+        crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied())
+    })
 }
 
 /// Card `card`'s Checks rows, and the channels they name (`ChannelTwice`, `ChannelOver`,
@@ -264,7 +264,7 @@ pub fn type_name(t: CardType) -> &'static str {
 
 /// The card's own description (not the body's name a placement writes), if any.
 pub fn description(doc: &Document, card: &CardData) -> Option<String> {
-    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
     doc.devices
         .get(&card.id)
         .and_then(|x| x.description.as_ref())
@@ -276,7 +276,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 /// `DQ 16`, or the card's description when it has one.
 pub(crate) fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
-    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
     let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
@@ -401,7 +401,7 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
             .get(&rack.id)
             .and_then(|x| x.description.as_ref())
             .map(|v| v.to_string())
-            .filter(|v| !v.is_empty() && rack.ty.body().map(crate::symbols::starter).is_none_or(|s| s.name != v))
+            .filter(|v| !v.is_empty() && rack.ty.body().map(crate::symbols::catalogue::starter).is_none_or(|s| s.name != v))
             .unwrap_or_else(|| type_name(rack.ty).to_string()),
     }];
     for (head, slot, card) in layout(plc, rack) {

@@ -119,9 +119,9 @@ impl App {
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let d = doc.definitions.get(&def)?;
-            let newer =
-                symbols::Version::of(def, d).and_then(|v| symbols::newest(doc, v.lineage).filter(|n| n.seq > v.seq).map(|n| (n.id, v.seq, n.seq)));
-            Some((Content::of(d), d.origin.as_ref().map_or(0, |o| o.library_seq), symbols::is_project_symbol(d), newer))
+            let newer = symbols::project::Version::of(def, d)
+                .and_then(|v| symbols::project::newest(doc, v.lineage).filter(|n| n.seq > v.seq).map(|n| (n.id, v.seq, n.seq)));
+            Some((Content::of(d), d.origin.as_ref().map_or(0, |o| o.library_seq), symbols::project::is_project_symbol(d), newer))
         })?;
         let (content, seq, project, newer) = found.ok_or("No such symbol.")?;
         let source = Source::Edit { definition: def.hex(), version: seq, builtin: !project, rep: rep.map(|r| r.hex()) };
@@ -141,9 +141,9 @@ impl App {
     /// Edit symbol on a built-in starter from the browser: its embedded definition when the
     /// project uses it, else a new symbol drawn from it (design 048 §8.3).
     pub fn edit_starter(&mut self, key: symbols::StarterKey) -> Result<(), String> {
-        let s = symbols::starter(key);
+        let s = symbols::catalogue::starter(key);
         let p = self.project.clone().ok_or("No project is open.")?;
-        let embedded = p.read(&mut self.cad.session, |p, _| symbols::embedded(p.ledger.document(), s))?;
+        let embedded = p.read(&mut self.cad.session, |p, _| symbols::catalogue::embedded(p.ledger.document(), s))?;
         if let Some(id) = embedded {
             return self.edit_symbol(id, None);
         }
@@ -214,7 +214,7 @@ impl App {
                     })
                     .collect();
                 let graphics = prims.iter().map(|g| ecad_electrical::symbols::commands::shifted(g, o)).collect();
-                let tag = ecad_electrical::devices::tag_words(doc, c);
+                let tag = ecad_electrical::devices::tags::tag_words(doc, c);
                 Some((graphics, points, tag, [o.x, o.y]))
             })?;
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
@@ -396,9 +396,9 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (shown, _, _) = ecad_electrical::symbols::update_available(doc, rep)?;
-            let lineage = symbols::Version::of(shown, doc.definitions.get(&shown)?)?.lineage;
-            let newest = symbols::newest(doc, lineage)?;
+            let (shown, _, _) = ecad_electrical::symbols::graphics::update_available(doc, rep)?;
+            let lineage = symbols::project::Version::of(shown, doc.definitions.get(&shown)?)?.lineage;
+            let newest = symbols::project::newest(doc, lineage)?;
             Some((shown, Content::of(newest.def), newest.def.name.clone()))
         });
         let Ok(Some((shown, content, name))) = found else {

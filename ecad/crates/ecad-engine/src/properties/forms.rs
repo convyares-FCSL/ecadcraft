@@ -320,7 +320,7 @@ impl Wire {
     /// The open end of another wire within the pick radius of `p` (design 032 §2.4).
     fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
         let tol = crate::interact::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
-        read(s, |proj, page| Ok(ecad_electrical::wires::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page))))
+        read(s, |proj, page| Ok(ecad_electrical::wires::joining::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page))))
             .ok()
             .flatten()
     }
@@ -571,9 +571,9 @@ impl Interactive for Wire {
             let seen = read(s, |p, page| {
                 let doc = p.ledger.document();
                 let quiet = quiet_on(p, page);
-                let at = ecad_electrical::wires::open_end_near(doc, page, pt(cursor), tol, &quiet)
-                    .or_else(|| ecad_electrical::wires::route_at(doc, page, pt(cursor), tol, None).map(|on| on.at));
-                Ok(at.and_then(|at| ecad_electrical::wires::join_preview(doc, page, at, &quiet, potential.as_deref())))
+                let at = ecad_electrical::wires::joining::open_end_near(doc, page, pt(cursor), tol, &quiet)
+                    .or_else(|| ecad_electrical::wires::placing::route_at(doc, page, pt(cursor), tol, None).map(|on| on.at));
+                Ok(at.and_then(|at| ecad_electrical::wires::joining::join_preview(doc, page, at, &quiet, potential.as_deref())))
             });
             if let Ok(Some((at, text, refused))) = seen {
                 let aci = if refused { REFUSE_ACI } else { ATTACHED_ACI };
@@ -1120,12 +1120,12 @@ pub(crate) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable."
 /// The cable a mapped object names (design 005 §3.3): a slash, a fan line, or a wire in a cable
 /// (and, brief 010, a cable reference's point or text).
 /// The wire a clicked line stands for when picking cable members: the first wire it carries that
-/// is in a cable, else the wire it stands for ([`ecad_electrical::wires::wire_of_route`]).
+/// is in a cable, else the wire it stands for ([`ecad_electrical::wires::routes::wire_of_route`]).
 fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) -> Option<WireId> {
-    ecad_electrical::wires::wires_of_route(doc, r)
+    ecad_electrical::wires::routes::wires_of_route(doc, r)
         .into_iter()
         .find(|w| !doc.cables_of(*w).is_empty())
-        .or_else(|| ecad_electrical::wires::wire_of_route(doc, r))
+        .or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, r))
 }
 
 pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
@@ -1372,7 +1372,7 @@ impl Interactive for CableCore {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
         let route = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(ecad_electrical::wires::route_of_wire_on(doc, *w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+            Ok(ecad_electrical::wires::routes::route_of_wire_on(doc, *w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
         });
         match route {
             Ok(Some(points)) => {

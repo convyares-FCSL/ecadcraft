@@ -34,7 +34,7 @@ fn a_new_project_draws_tags_bold_and_labels_small() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c));
     let fonts = h.p(|p| ecad_engine::styles::draw::Fonts::resolve(p.ledger.document()));
     let bold_lw = fonts.bold_lineweight.map_or(Lineweight::ByLayer, Lineweight::Mm100);
     assert_eq!(drawn(&mut h, page, &tag), vec![(2.5, STYLE_BOLD.to_string(), bold_lw)]);
@@ -81,7 +81,7 @@ fn textstyle_redraws_the_open_page_in_one_transaction() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "height": 3, "weight": "regular"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
@@ -141,7 +141,7 @@ fn a_kind_may_have_its_own_font() {
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| ecad_electrical::devices::tag_words(p.ledger.document(), c));
+    let tag = h.p(|p| ecad_electrical::devices::tags::tag_words(p.ledger.document(), c));
     let head = h.head();
     h.run("textstyle", json!({"kind": "tag", "font": "Kind Font 031"})).unwrap();
     assert_eq!(h.head(), head + 1);

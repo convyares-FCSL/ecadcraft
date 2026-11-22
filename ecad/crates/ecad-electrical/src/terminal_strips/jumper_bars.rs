@@ -158,7 +158,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
 
 /// The hover line of a jumper bar (§5.3): `-X01 jumper bar 1-4 (4 positions, 1 bar JB-10)`.
 pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::strip_model::StripData>, c: DeviceId, n: u32) -> String {
-    let tag = crate::devices::tag_words(doc, c);
+    let tag = crate::devices::tags::tag_words(doc, c);
     let Some(l) = data.and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)) else { return format!("{tag} jumper bar {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };
     let part = l.part_number.clone().map_or_else(String::new, |p| format!(" {p}"));

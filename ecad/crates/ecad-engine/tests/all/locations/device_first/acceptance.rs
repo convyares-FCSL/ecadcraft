@@ -175,7 +175,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     assert!(lm.contains(&hex(OLD_CP1).as_str()) && lm.contains(&hex(OLD_FIELD).as_str()), "{v}");
     assert_eq!(v["functions"]["missing"], json!([hex(OLD_F1)]), "{v}");
     // The tag and the head are kept: the contact is a contact, the coil the head.
-    let tags = ecad_electrical::devices::tag_words(&d, k);
+    let tags = ecad_electrical::devices::tags::tag_words(&d, k);
     assert_eq!(tags, "-K01");
     let heads = ecad_electrical::symbols::reps::heads(&d, k);
     assert_eq!(heads.len(), 1);

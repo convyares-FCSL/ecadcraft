@@ -27,7 +27,7 @@ pub use ecad_electrical::connectors::strip_connection_point_at;
 pub use ecad_electrical::connectors::{Land, plan_land};
 pub use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
-use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::OnRoute};
+use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::placing::OnRoute};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<BridgeParams>("bridge")];
@@ -52,7 +52,7 @@ fn land_words(doc: &Document, t: ConnectionPointId, land: &Land) -> String {
 /// Where a terminal starter placed at `at` lands on a route (018's `place`), or `None` when `at`
 /// is on no route (or on a route's free end): it is then placed as before.
 pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
-    let on = ecad_electrical::wires::route_at(doc, page, at, ON_WIRE, None)?;
+    let on = ecad_electrical::wires::placing::route_at(doc, page, at, ON_WIRE, None)?;
     let route = doc.routes.get(&on.route)?;
     let [first, last] = route.end_points()?;
     for (p, e) in [first, last].into_iter().zip(route.ends) {
@@ -96,9 +96,9 @@ fn wire_words(doc: &Document, w: WireId) -> String {
     ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| ecad_electrical::cables::slash::wire_name(doc, w))
 }
 
-/// The words for the wire route `r` carries ([`ecad_electrical::wires::wire_of_route`]), `?` for none.
+/// The words for the wire route `r` carries ([`ecad_electrical::wires::routes::wire_of_route`]), `?` for none.
 fn route_words(doc: &Document, r: RouteId) -> String {
-    ecad_electrical::wires::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
+    ecad_electrical::wires::routes::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
 }
 
 /// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}` (brief 036
@@ -124,7 +124,7 @@ pub(crate) fn place_level(
         let mut chooser = tt::Chooser::new(doc, strip);
         let position = chooser.choose(doc, strip, ty, level, position.as_deref())?;
         let (c, tag_text) = match strip {
-            Some(c) => (c, ecad_electrical::devices::tag_words(doc, c)),
+            Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c)),
             None => {
                 let c: DeviceId = p.ids.fresh();
                 let t = match new_tag {
@@ -225,7 +225,7 @@ impl Command for BridgeParams {
                 }
                 Bridge::Drawn { ops, label, route, same, message } => {
                     p.apply_edit(pg, "bridge", &label, ops)?;
-                    let conductor = ecad_electrical::wires::wire_between(p.ledger.document(), self.from, self.to);
+                    let conductor = ecad_electrical::wires::routes::wire_between(p.ledger.document(), self.from, self.to);
                     Ok(json!({"conductor": conductor.map(|c| c.hex()), "route": route.hex(), "bridge": same, "changed": true, "message": message}))
                 }
             }

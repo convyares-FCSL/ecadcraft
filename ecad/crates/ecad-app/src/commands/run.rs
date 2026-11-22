@@ -240,15 +240,15 @@ impl App {
                 let items = doc.items.values().filter(|it| it.page == *page).count();
                 out.push(format!("  {:>3}  {title}  ({items} items)  {}", i + 1, page.hex()));
             }
-            let devices = ecad_electrical::devices::devices(doc, None);
+            let devices = ecad_electrical::devices::json::devices(doc, None);
             out.push(String::new());
             out.push(format!("Devices ({}):", devices.len()));
             for c in &devices {
                 out.push(format!(
                     "  {:<8} {}  ({})  {}",
-                    ecad_electrical::devices::tag_words(doc, *c),
-                    ecad_electrical::devices::description(doc, *c),
-                    ecad_electrical::devices::pages_words(doc, *c),
+                    ecad_electrical::devices::tags::tag_words(doc, *c),
+                    ecad_electrical::devices::tags::description(doc, *c),
+                    ecad_electrical::devices::tags::pages_words(doc, *c),
                     c.hex()
                 ));
             }
@@ -457,7 +457,9 @@ impl App {
             // halves, draw), as a person answers them.
             A::PlaceMates(c, side) => {
                 let tag = self.project.clone().and_then(|p| {
-                    p.read(&mut self.cad.session, |p, _| ecad_electrical::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                    p.read(&mut self.cad.session, |p, _| ecad_electrical::devices::tags::tag_of(p.ledger.document(), c).map(str::to_string))
+                        .ok()
+                        .flatten()
                 });
                 if let Some(tag) = tag {
                     let half = if side == ecad_electrical::symbols::Side::Socket { "Socket" } else { "Plug" };

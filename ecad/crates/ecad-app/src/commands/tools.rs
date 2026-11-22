@@ -434,7 +434,7 @@ impl Picked {
                         // A route's line names the wire it carries (design 072 §4); a loose line
                         // carries none.
                         Some(Subject::Route(r)) => {
-                            if let Some(w) = ecad_electrical::wires::wire_of_route(doc, *r) {
+                            if let Some(w) = ecad_electrical::wires::routes::wire_of_route(doc, *r) {
                                 subjects.insert(Subject::Wire(w));
                             }
                         }
@@ -471,7 +471,7 @@ impl Picked {
                 }
                 // A T's dot names the wire its line carries (lane 072 D).
                 Some(Mapped::Tee(r)) => {
-                    if let Some(w) = ecad_electrical::wires::wire_of_route(doc, r) {
+                    if let Some(w) = ecad_electrical::wires::routes::wire_of_route(doc, r) {
                         subjects.insert(Subject::Wire(w));
                     }
                 }

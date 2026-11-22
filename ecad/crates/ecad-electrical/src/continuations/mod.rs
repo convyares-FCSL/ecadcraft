@@ -173,7 +173,7 @@ pub fn arrow(doc: &Document, rid: RepresentationId) -> Option<Arrow> {
     if r.form != Form::Symbol || continuation(doc, c).is_none() {
         return None;
     }
-    let (_, pl) = crate::devices::rep_definition(doc, r)?;
+    let (_, pl) = crate::devices::tags::rep_definition(doc, r)?;
     if !pl.is_valid() {
         return None;
     }

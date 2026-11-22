@@ -1,7 +1,9 @@
 //! Lane 072 B (design 072 §2.3, acceptance A7 and A8): a device's type comes from its symbol and
 //! agrees with what today's predicates say it is.
 
-use ecad_electrical::symbols::{STARTERS, StarterKey};
+use ecad_electrical::symbols::StarterKey;
+
+use ecad_electrical::symbols::catalogue::STARTERS;
 use ecad_model::objects::devices::DeviceGroup;
 use ecad_model::{DeviceId, Document, Word};
 use serde_json::json;
@@ -30,7 +32,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     // Lane C (design 072 §3) removed the PLC predicates; the oracle reads the card body drawn.
     let body = doc
         .representations_of(ecad_model::Subject::Device(c))
-        .find_map(|(_, r)| ecad_electrical::devices::rep_starter(doc, r).and_then(ecad_electrical::plc::rack::CardType::of_symbol));
+        .find_map(|(_, r)| ecad_electrical::devices::tags::rep_starter(doc, r).and_then(ecad_electrical::plc::rack::CardType::of_symbol));
     match body {
         Some(t) if t.is_rack() => return Some(DeviceGroup::PlcRack),
         Some(_) => return Some(DeviceGroup::PlcModule),

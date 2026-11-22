@@ -103,7 +103,7 @@ impl StripAccessory {
                 let Some((c, _)) = self.last_strip.clone() else {
                     return Err(other("Pick a terminal first, so the tool knows the strip; then Start or End act on its ends."));
                 };
-                let tag = read(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), c))).unwrap_or_default();
+                let tag = read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))).unwrap_or_default();
                 let at = k.to_ascii_lowercase();
                 self.at = Some((c, at.clone(), format!("{at} of {tag}"), None));
                 Ok(Step::Continue)
@@ -205,7 +205,7 @@ impl Jumper {
                     None => {
                         let found = read(s, |p, _| {
                             let doc = p.ledger.document();
-                            let tag = ecad_electrical::devices::tag_words(doc, c);
+                            let tag = ecad_electrical::devices::tags::tag_words(doc, c);
                             let order = ecad_electrical::terminal_strips::accessories::positions(doc, c);
                             let n = doc.devices.get(&c).and_then(|x| {
                                 ecad_model::connectivity::jumper_bars::of(&x.properties)

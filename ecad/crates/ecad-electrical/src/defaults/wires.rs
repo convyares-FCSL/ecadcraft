@@ -1,8 +1,8 @@
 //! Lane W's defaults (032, wires and nets). Owned by lane W: append `pub static` entries and list them in
 //! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
 //!
-//! Read them through `crate::wires::commands::wires::join_by_default`, `wires::label_rule`, `wires::label_rule_word` and
-//! `wires::label_min_length`, not by key. Their built-ins are data (`defaults/wires.toml`, brief
+//! Read them through `crate::wires::commands::wires::join_by_default`, `wires::label_rule::label_rule`, `wires::label_rule::label_rule_word` and
+//! `wires::label_rule::label_min_length`, not by key. Their built-ins are data (`defaults/wires.toml`, brief
 //! 066); a project's chosen value is its `settings.wiring` field, absent when it chose none.
 
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};

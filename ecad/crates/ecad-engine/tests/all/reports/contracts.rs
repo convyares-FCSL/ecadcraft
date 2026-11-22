@@ -201,7 +201,7 @@ fn a_contact_away_from_its_coil_shows_the_location_prefix() {
     h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(loc(&doc, k), (s("+CP1"), "device"), "the stored value, wherever its symbols are");
-    let tag = ecad_electrical::devices::tag_of(&doc, k).unwrap().to_string();
+    let tag = ecad_electrical::devices::tags::tag_of(&doc, k).unwrap().to_string();
     let texts2: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p2).into_iter().map(|t| t.value).collect();
     assert!(texts2.contains(&format!("+CP1{tag}")), "{texts2:?}");
     let texts1: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p1).into_iter().map(|t| t.value).collect();
@@ -237,7 +237,8 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     assert!(rows.iter().all(|r| r["location"] == "+CP1"), "{bom}");
     assert!(bom["flagged"].as_u64().unwrap() >= 2, "X2 has no maker or part number: {bom}");
     let doc = h.doc();
-    let (ta, tb) = (ecad_electrical::devices::tag_of(&doc, a).unwrap().to_string(), ecad_electrical::devices::tag_of(&doc, b).unwrap().to_string());
+    let (ta, tb) =
+        (ecad_electrical::devices::tags::tag_of(&doc, a).unwrap().to_string(), ecad_electrical::devices::tags::tag_of(&doc, b).unwrap().to_string());
     let flagged_row = rows.iter().find(|r| r["tags"] == tb.as_str()).unwrap();
     assert!(flagged_row["flags"].as_array().unwrap().contains(&json!("maker")));
     let wires = h.run("wirelist", json!({})).unwrap();

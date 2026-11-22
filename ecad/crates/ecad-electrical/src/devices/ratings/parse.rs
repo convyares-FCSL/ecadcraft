@@ -3,9 +3,9 @@
 //! indexes, and returns `None` for anything not finite or out of range.
 
 /// Most characters a value parser reads (design 057 §6.1).
-pub const MAX_CHARS: usize = 32;
+pub(crate) const MAX_CHARS: usize = 32;
 /// Most characters of a device's `rating` text scanned for its current (design 057 §4.1).
-pub const MAX_RATING_CHARS: usize = 64;
+pub(crate) const MAX_RATING_CHARS: usize = 64;
 /// The largest current anything here accepts, in amperes.
 pub const MAX_AMPS: f64 = 6300.0;
 

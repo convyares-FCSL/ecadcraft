@@ -121,7 +121,7 @@ pub fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) ->
                 let mut ns = Vec::new();
                 for fields in &lines {
                     let n = next_line(&used).ok_or_else(|| {
-                        CmdError::refused(format!("{} has {MAX_LINES} part lines; remove one first.", crate::devices::tag_words(doc, *c)))
+                        CmdError::refused(format!("{} has {MAX_LINES} part lines; remove one first.", crate::devices::tags::tag_words(doc, *c)))
                     })?;
                     used.insert(n);
                     let mut fields = fields.clone();
@@ -138,7 +138,7 @@ pub fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) ->
             }
             let lines_words = if lines.len() == 1 { "a part line".to_string() } else { format!("{} part lines", lines.len()) };
             let to = match cs {
-                [one] => crate::devices::tag_words(doc, *one),
+                [one] => crate::devices::tags::tag_words(doc, *one),
                 _ => format!("{} devices", cs.len()),
             };
             match (&kit, lines.len()) {
@@ -154,7 +154,7 @@ pub fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) ->
             for c in cs {
                 let props = doc.devices.get(c).map(|x| &x.properties).ok_or_else(no_component)?;
                 if !used_lines(props).contains(&n) {
-                    return Err(CmdError::refused(format!("{} has no part line {n}.", crate::devices::tag_words(doc, *c))));
+                    return Err(CmdError::refused(format!("{} has no part line {n}.", crate::devices::tags::tag_words(doc, *c))));
                 }
                 if remove {
                     let prefix = format!("{PART_PREFIX}{n}.");
