@@ -145,7 +145,7 @@ fn height(doc: &Document, folder: FolderId) -> usize {
 ///
 /// # Errors
 /// No such parent, a sibling of that name, or too deep.
-pub fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Option<FolderId>) -> Result<(FolderId, Op), CmdError> {
+pub(crate) fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Option<FolderId>) -> Result<(FolderId, Op), CmdError> {
     check_folder(doc, parent)?;
     check_sibling_name(doc, parent, name, None)?;
     if depth_of(doc, parent) + 1 > MAX_FOLDER_DEPTH {
@@ -160,7 +160,7 @@ pub fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Opt
 ///
 /// # Errors
 /// No such folder, or a sibling of that name.
-pub fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<Option<Op>, CmdError> {
+pub(crate) fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<Option<Op>, CmdError> {
     let old = folder(doc, f)?;
     if old.name == name {
         return Ok(None);
@@ -187,7 +187,7 @@ fn folder_slot(doc: &Document, folder: FolderId, parent: Option<FolderId>, index
 ///
 /// # Errors
 /// No such folder or parent, into itself, a sibling of that name, or too deep.
-pub fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
     let old = folder(doc, f)?;
     check_folder(doc, parent)?;
     // Onto itself or one of its own sub-folders.
@@ -220,7 +220,7 @@ pub fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index:
 
 /// What `deletefolder` does.
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeletedFolder {
+pub(crate) struct DeletedFolder {
     pub ops: Vec<Op>,
     /// How many pages moved to its parent.
     pub pages: usize,
@@ -232,7 +232,7 @@ pub struct DeletedFolder {
 ///
 /// # Errors
 /// No such folder, or a sub-folder whose name its new place already has.
-pub fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder, CmdError> {
+pub(crate) fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder, CmdError> {
     let old = folder(doc, f)?;
     let mut ops = Vec::new();
     let pages = doc.pages_in_folder(f);
@@ -296,7 +296,7 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
 ///
 /// # Errors
 /// No such folder or page.
-pub fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
     check_folder(doc, folder)?;
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let mut ops = Vec::new();
@@ -418,7 +418,7 @@ pub fn stamp_new_page(ops: &mut [Op], kind: &NewPageKind, page_type: Option<&Sty
 /// A page renamed or moved: its title, its 1-based position, and the ops (empty when nothing
 /// changes).
 #[derive(Debug, Clone, PartialEq)]
-pub struct PageMoved {
+pub(crate) struct PageMoved {
     pub title: String,
     pub index: usize,
     pub ops: Vec<Op>,
@@ -429,7 +429,7 @@ pub struct PageMoved {
 ///
 /// # Errors
 /// A title that does not read ([`page_title`]); no such page.
-pub fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMoved, CmdError> {
+pub(crate) fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMoved, CmdError> {
     let title = page_title(title)?;
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
     let index = doc.page_order.iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
@@ -447,7 +447,7 @@ pub fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMove
 ///
 /// # Errors
 /// `index` not from 1 to the number of pages; no such page.
-pub fn move_page_to(doc: &Document, page: PageId, index: Option<usize>) -> Result<PageMoved, CmdError> {
+pub(crate) fn move_page_to(doc: &Document, page: PageId, index: Option<usize>) -> Result<PageMoved, CmdError> {
     let n = doc.page_order.len();
     let to = index.filter(|i| (1..=n).contains(i)).ok_or_else(|| CmdError::input(format!("`index` must be a whole number from 1 to {n}")))?;
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
@@ -508,7 +508,7 @@ fn code_with(doc: &Document, pending: &Pending, a: Aspect, key: &str) -> String 
 ///
 /// # Errors
 /// No such page, a page number in use, a bad function, location or sheet.
-pub fn page_props(
+pub(crate) fn page_props(
     doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, reports: Option<&ReportModels>,
 ) -> Result<PropsPlan, CmdError> {
     let old = doc.pages.get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
@@ -571,7 +571,7 @@ pub fn page_props(
 ///
 /// # Errors
 /// A key written by another command, a reserved key, or not 1 to 40 characters a-z, 0-9 or _.
-pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
+pub(crate) fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
     // Brief 052: the project's list of functions and locations changes through its commands.
     if ecad_model::naming::keys::is_reserved_on(ecad_model::naming::keys::Holder::Project, key) && key.starts_with("designation.") {
         return Err(CmdError::refused(
@@ -672,7 +672,7 @@ pub struct ProjectChange {
 ///
 /// # Errors
 /// A padding out of 1 to [`tag::MAX_PADDING`], no such symbol, or a bad prefix; nothing is written.
-pub fn tag_settings(
+pub(crate) fn tag_settings(
     settings: &mut ProjectSettings, padding_key: &str, padding: Option<u64>, prefixes: &[(String, Option<String>)],
 ) -> Result<(), CmdError> {
     let padding = match padding {
@@ -723,7 +723,7 @@ pub fn tag_case(word: &str) -> Result<Case, CmdError> {
 /// # Errors
 /// A bad case word, or (never expected: the key ignores what changes) two different tags
 /// rewritten to the same text.
-pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> Result<(Vec<Op>, Option<String>), CmdError> {
+pub(crate) fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let before = crate::defaults::print::tag_style(doc);
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
@@ -930,7 +930,7 @@ pub struct RevisionFields {
 /// # Errors
 /// A bad or used rev, a value refused, an issued or unknown row, or a field name issuing sets or
 /// that is not a field name.
-pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
     let n = revisions::pending_n(doc);
     let mut project = doc.project.clone();
     let mut given = false;
@@ -981,6 +981,28 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
         project = revisions::with_field(&project, n, "rev", Some(&revisions::pending_rev(doc)))?;
     }
     Ok(revisions::modify(&doc.project, project).into_iter().collect())
+}
+
+/// The revision fields given, as the rules take them.
+pub fn revision_fields(
+    standard: [Option<Option<String>>; 6], n: Option<u64>, custom: Option<std::collections::BTreeMap<String, Option<String>>>,
+) -> RevisionFields {
+    RevisionFields {
+        standard: FIELDS.into_iter().zip(standard).filter_map(|(k, v)| v.map(|v| (k, v))).collect(),
+        n,
+        custom: custom.map(|m| m.into_iter().collect()).unwrap_or_default(),
+    }
+}
+
+/// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
+/// owner answer 10): on another branch (`off_line`, its name), the refusal names the way forward.
+pub fn release_line_refusal(off_line: Option<&str>, issuing: bool) -> Option<String> {
+    let name = off_line?;
+    Some(if issuing {
+        format!("Revisions are issued on main. Merge \"{name}\" into main first.")
+    } else {
+        format!("The pending revision is edited on main; on branch \"{name}\" its fields are read-only.")
+    })
 }
 
 /// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
@@ -1071,7 +1093,7 @@ pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, posit
 /// [`default_number`], or for the first page of a folder with a start number (brief 054, design
 /// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
 /// width (`01` gives `01`, `02`), from the start or from the page before.
-pub fn default_number_from(
+pub(crate) fn default_number_from(
     doc: &Document, book: &Book, before: Option<PageId>, position: usize, reports: Option<&ReportModels>, start: Option<&str>,
 ) -> String {
     // Brief 033: every sheet's number, continuation sheets included, is in use.
@@ -1096,7 +1118,7 @@ pub fn default_number_from(
 }
 
 /// Where a new page in `folder` goes in book order: the page before it, and its position.
-pub fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
+pub(crate) fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
     let in_folder: Vec<PageId> =
         doc.page_order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
     if let Some(last) = in_folder.last() {
@@ -1146,7 +1168,7 @@ pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place:
 }
 
 /// The page's properties as `pageprops` reports them.
-pub fn page_json(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> Value {
+pub(crate) fn page_json(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> Value {
     let pg = doc.pages.get(&page);
     use crate::locations::designations::{Aspect, default_key, page_key};
     let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
@@ -1177,7 +1199,7 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, reports: Option<&Rep
     })
 }
 
-pub fn style_word(s: ReferenceStyle) -> &'static str {
+pub(crate) fn style_word(s: ReferenceStyle) -> &'static str {
     match s {
         ReferenceStyle::PageColumnRow => "page-column-row",
         ReferenceStyle::PageColumn => "page-column",
@@ -1186,7 +1208,7 @@ pub fn style_word(s: ReferenceStyle) -> &'static str {
 }
 
 /// Everything `projectprops` reports.
-pub fn project_json(doc: &Document) -> Value {
+pub(crate) fn project_json(doc: &Document) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
         // Brief 052: the function and location show their codes (design 072 §5.3: fields of the

@@ -115,6 +115,7 @@ fn commit<P: Generic>(
     };
     let change_count = proj.change_count();
     let plain = crate::commands::plain_style(proj);
+    let off_release_line = proj.file.project().filter(|v| !v.branch_record().release_line).map(|v| v.branch_record().name.clone());
     let Outcome { edit, answer, writes, echo } = {
         let state = match &mut held {
             Held::None => Slot::None,
@@ -132,6 +133,7 @@ fn commit<P: Generic>(
             tag_high: &mut proj.tag_high,
             designation_uses: &mut proj.designation_uses,
             derived: &mut proj.derived,
+            off_release_line,
             metrics: &crate::styles::draw::EngineMetrics,
             read,
             state,

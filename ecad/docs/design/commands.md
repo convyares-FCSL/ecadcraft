@@ -37,7 +37,7 @@ generic halves of device, output, page, sheet, symbol, terminal, text, wire and 
 | rating.rs | G | rating, ratingtable, ratings | Plan and commit; `ratingtable` declares a CSV read or write. |
 | reference.rs | G/S | G: cableref, cablecontinue, cablereferences. S: cablegoto | `cablegoto` opens a page, zooms and selects. |
 | release.rs | S | prerelease, release | The release folder renders every page to PDF (export). |
-| sheet.rs | G/S | G: pageprops, projectprops, newfolder, renamefolder, movefolder, deletefolder, revision, issuerevision. S: openrevision, closerevision, undoissue | Revision views redraw pages; `undoissue` drives the engine's undo history. |
+| sheet.rs | G/S | G: pageprops, projectprops, newfolder, renamefolder, movefolder, deletefolder, revision. S: issuerevision, openrevision, closerevision, undoissue | Revision views redraw pages; `undoissue` drives the engine's undo history. `issuerevision` stays session (S4, 2026-11-22): it may Finalise numbering first, a refusal with choices decides in between, and it needs the branch and the clock; it is not a pure function of a `&Document`. |
 | style.rs | G | standard, setstyle, deletestyle, promote, styles | Plan and commit; `standard` declares reading another `.ecad`. |
 | symbol.rs | G/S | G: symbolnew, symboledit, symbolimpact, symbolupdate. S: makesymbol | `makesymbol` reads the selection's CADCraft entities. |
 | terminal.rs | G/S | G: terminalblocks, stripplan, cablecores. S: bridge | `bridge` places through the drawing's place planner. |

@@ -51,13 +51,13 @@ use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget
 /// The manifest's file name.
 pub const MANIFEST: &str = "release.json";
 /// The manifest's version (`ecad_release`); a breaking change bumps it.
-pub const MANIFEST_VERSION: u64 = 1;
+pub(crate) const MANIFEST_VERSION: u64 = 1;
 /// The folder that holds release folders, beside the project file.
-pub const RELEASE_DIR: &str = "release";
+pub(crate) const RELEASE_DIR: &str = "release";
 /// Where a replaced folder is moved, inside [`RELEASE_DIR`].
-pub const REPLACED_DIR: &str = "replaced";
+pub(crate) const REPLACED_DIR: &str = "replaced";
 /// The staging folder's suffix.
-pub const PARTIAL: &str = ".partial";
+pub(crate) const PARTIAL: &str = ".partial";
 /// The empty file that marks a staging folder as a release's own (only such a folder is ever
 /// cleared); removed just before the folder is renamed into place.
 pub const STAGING_MARK: &str = ".ecad-release-staging";
@@ -166,7 +166,7 @@ pub mod numbering_seam {
 // ---------------------------------------------------------------- slots (design 027 §7.2)
 
 /// Every slot id `reports` may name.
-pub fn slot_ids() -> Vec<&'static str> {
+pub(crate) fn slot_ids() -> Vec<&'static str> {
     let mut v = vec!["book"];
     v.extend(LISTS.iter().map(|s| s.id));
     v.extend(["checks", "manifest"]);
@@ -292,7 +292,7 @@ fn same_or_below(a: &Path, b: &Path) -> bool {
 ///
 /// # Errors
 /// In words, with the way out.
-pub fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
+pub(crate) fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
     let f = lexical(folder);
     let bad = match project_dir(p) {
         Some(dir) => {
@@ -428,7 +428,7 @@ pub struct Build<'a> {
 ///
 /// # Errors
 /// A projection, plot or write failure, in words.
-pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
+pub(crate) fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
     // An old staging folder (a crash, or a folder left to finish) is cleared only when it is one
     // of ours; a folder of that name made by someone else is never deleted.
     if dir.exists() {
@@ -481,7 +481,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
 
 /// What to do with a folder already there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Existing {
+pub(crate) enum Existing {
     AddMissing,
     Replace,
     KeepBoth,
@@ -516,7 +516,7 @@ pub struct OldFolder {
 }
 
 /// Read `folder`'s manifest, if any.
-pub fn read_old(folder: &Path) -> OldFolder {
+pub(crate) fn read_old(folder: &Path) -> OldFolder {
     let path = folder.join(MANIFEST);
     let small = std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_MANIFEST_BYTES);
     let Some(raw) = small.then(|| std::fs::read(&path).ok()).flatten().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else {
@@ -743,7 +743,7 @@ pub fn app() -> String {
 }
 
 /// Now, UTC, `2026-11-12T14:30:05Z` (through `chrono`).
-pub fn now_utc() -> Option<String> {
+pub(crate) fn now_utc() -> Option<String> {
     let ms = crate::project::now_ms()?;
     Some(chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)?.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
@@ -752,7 +752,7 @@ pub fn now_utc() -> Option<String> {
 
 /// Why the pending revision cannot be released now, with the way out (design 027 §6); `None`
 /// when it can.
-pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
+pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
     if p.path.is_none() {
         return Some(SAVE_FIRST.into());
     }
@@ -1192,7 +1192,7 @@ fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {
 /// # Errors
 /// Not issued, no place for the folder, a write failure (no `.partial` left), or an existing
 /// folder without `existing`.
-pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
+pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
     let chosen = chosen(params)?;
     let existing = Existing::parse(params)?;
     let o = options(p.ledger.document(), params)?;

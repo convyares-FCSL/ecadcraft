@@ -35,13 +35,13 @@ use ecad_model::GenKind;
 pub const MAX_NUMBER_CHARS: usize = 12;
 
 /// Most characters of a start number.
-pub const MAX_START_DIGITS: usize = 6;
+pub(crate) const MAX_START_DIGITS: usize = 6;
 /// The refusal for a start number that is not 1–6 digits.
 pub const BAD_START: &str = "A start number is 1 to 6 digits.";
 /// The refusal for deleting a drawn page (design 054 §8.3, Q9).
 pub const DRAWN_PAGE: &str = "Deleting a drawn page comes later; move its content first.";
 /// Whether `t` is a start number: 1 to 6 ASCII digits.
-pub fn is_start(t: &str) -> bool {
+pub(crate) fn is_start(t: &str) -> bool {
     t.len() <= MAX_START_DIGITS && ecad_model::naming::words::is_digits(t)
 }
 
@@ -142,7 +142,7 @@ pub fn overlaps(doc: &Document, reports: Option<&ReportModels>) -> Vec<(Option<F
 }
 
 /// The overlap row's words: `Folder Schematic's numbers run into Terminal's (300).`
-pub fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<FolderId>, n: u64) -> String {
+pub(crate) fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<FolderId>, n: u64) -> String {
     let mut a = run_name(doc, from);
     if let Some(c) = a.get(..1) {
         a = format!("{}{}", c.to_uppercase(), a.get(1..).unwrap_or_default());
@@ -219,7 +219,7 @@ pub fn renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<Fo
 ///
 /// # Errors
 /// In words: no such type, a generated-only type with no kind, a kind the type does not hold.
-pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> Result<Option<StyleRef>, CmdError> {
+pub(crate) fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> Result<Option<StyleRef>, CmdError> {
     let Some(t) = ty.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(kind.map(|k| ptype::derived(Some(k))));
     };
@@ -269,7 +269,7 @@ impl PageFix {
 /// Whether `effect` changes which pages have checks and references off (design 054 §3.4): a
 /// page's type moved to or from such a type, such a page added or removed, a type record whose
 /// `checks` changed. Looked up in `doc` (call it on the state before and after).
-pub fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> bool {
+pub(crate) fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> bool {
     use ecad_model::document::effect::Effect;
     let off = |page: &ecad_model::Page| !ecad_model::document::sheet::type_checks(doc, &ecad_model::document::sheet::page_type_of(doc, page));
     match effect {
@@ -306,7 +306,7 @@ pub fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Eff
 }
 
 /// Whether `effect` can change [`check_rows`].
-pub fn touches_checks(effect: &ecad_model::document::effect::Effect<'_>) -> bool {
+pub(crate) fn touches_checks(effect: &ecad_model::document::effect::Effect<'_>) -> bool {
     use ecad_model::document::effect::Effect;
     match effect {
         Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {

@@ -1,7 +1,7 @@
-//! The commands of brief 019 (design 019 §5–§7): page and project properties, folders,
-//! revisions. Each write is one transaction committed through [`Project::apply_edit`]; the
-//! no-field forms of `pageprops` and `projectprops`, and `openrevision`/`closerevision`, only
-//! read.
+//! The commands of brief 019 (design 019 §5–§7) that need the session: `issuerevision` (it may
+//! Finalise numbering as a transaction of its own first), `openrevision`, `closerevision` and
+//! `undoissue`. Page and project properties, folders and the pending revision are generic
+//! ([`ecad_electrical::pages::commands`]).
 //!
 //! Page number, `=`/`+` overrides, sheet and folder are page properties; title, drawing number,
 //! customer, status, defaults and revisions are project properties (decision FP1, FP4); folders
@@ -10,25 +10,24 @@
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
 //! [`ecad_electrical::pages::commands::sheets`] decide, and the shim commits the ops and answers in JSON.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::pages::commands::sheets::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
+use ecad_electrical::pages::commands::sheets::{self as rules, RevisionFields, revision_fields};
 use ecad_model::document::book::Book;
-use ecad_model::{Document, FolderId, Op, Page, PageId, ReferenceStyle};
+use ecad_model::{Document, FolderId, Op, Page, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
-use crate::commands::{err, on_any_page, on_project};
+use crate::commands::{on_any_page, on_project};
 use crate::project::Project;
 use ecad_electrical::commands::input::nullable;
 pub use ecad_electrical::pages::commands::sheets::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
+use ecad_electrical::releases::revisions;
 pub use ecad_electrical::releases::revisions::folder_path;
-use ecad_electrical::releases::revisions::{self, FIELDS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
@@ -47,7 +46,7 @@ pub struct RevisionView {
 }
 
 /// A fresh [`RevisionView::id`].
-pub fn next_view_id() -> u64 {
+pub(crate) fn next_view_id() -> u64 {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
@@ -60,13 +59,6 @@ pub fn issue_undo_question(rev: &str, date: &str) -> String {
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
-    Typed::of::<PagepropsParams>("pageprops"),
-    Typed::of::<ProjectpropsParams>("projectprops"),
-    Typed::of::<NewfolderParams>("newfolder"),
-    Typed::of::<RenamefolderParams>("renamefolder"),
-    Typed::of::<MovefolderParams>("movefolder"),
-    Typed::of::<DeletefolderParams>("deletefolder"),
-    Typed::of::<RevisionParams>("revision"),
     Typed::of::<IssuerevisionParams>("issuerevision"),
     Typed::of::<OpenrevisionParams>("openrevision"),
     Typed::of::<CloserevisionParams>("closerevision"),
@@ -77,35 +69,6 @@ pub const TYPED: &[Typed] = &[
 pub fn specs() -> Vec<CommandSpec> {
     use crate::commands::input::typed;
     vec![
-        CommandSpec::new("pageprops", "Page Properties", typed::<PagepropsParams>)
-            .params(
-                "{page?: id (default: the active page), number?, title?, function?, location?, sheet?} (each null \
-clears; no fields: the current values, read only)",
-            )
-            .noundo(),
-        CommandSpec::new("projectprops", "Project Properties", typed::<ProjectpropsParams>)
-            .params(
-                "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
-page_number_step?: n, reference_style?: \"page-zone\"|\"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
-tag_prefixes?: {symbol: prefix|null}, colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm, \
-tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date, ecr:ECR@20, description\"|null, \
-revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)",
-            )
-            .noundo(),
-        CommandSpec::new("newfolder", "New Folder", typed::<NewfolderParams>).params("{name, parent?: id|null}").noundo(),
-        CommandSpec::new("renamefolder", "Rename Folder", typed::<RenamefolderParams>).params("{folder: id, name}").noundo(),
-        CommandSpec::new("movefolder", "Move Folder", typed::<MovefolderParams>)
-            .params("{folder: id, parent: id|null, index?: n} (1 = first among its new siblings; default last)")
-            .noundo(),
-        CommandSpec::new("deletefolder", "Delete Folder", typed::<DeletefolderParams>)
-            .params("{folder: id} (its pages and sub-folders move to its parent)")
-            .noundo(),
-        CommandSpec::new("revision", "Revision", typed::<RevisionParams>)
-            .params(
-                "{rev?, date?, description?, drawn?, checked?, approved?, fields?: {field: text|null}, n?} (the pending revision's \
-fields, custom fields by name; an issued row is refused)",
-            )
-            .noundo(),
         CommandSpec::new("issuerevision", "Issue Revision", typed::<IssuerevisionParams>)
             .params(
                 "{rev?, date?, description?, drawn?, checked?, approved?, provisional?: \"finalise\"|\"issue\"} (issues the \
@@ -128,101 +91,6 @@ present, `provisional` says whether to finalise them first or issue them as they
 pub use ecad_electrical::pages::page_types::MAX_NUMBER_CHARS;
 
 // ---------------------------------------------------------------- folders
-
-/// `newfolder {name, parent?}`: a folder, last among its siblings.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct NewfolderParams {
-    /// The folder's name: 1 to 100 characters.
-    name: String,
-    /// The folder it goes in (absent or null: the top level).
-    #[serde(default)]
-    parent: Option<FolderId>,
-}
-
-impl Command for NewfolderParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let name = rules::folder_name(&self.name).map_err(|e| err(e.to_string()))?;
-        on_project(s, |p, pg, _| {
-            let (id, op) = rules::new_folder(p.ledger.document(), &mut p.ids, &name, self.parent)?;
-            p.apply_edit(pg, "newfolder", "New folder", vec![op])?;
-            Ok(json!({"folder": id.hex(), "name": name}))
-        })
-    }
-}
-
-/// `renamefolder {folder, name}`: the same name changes nothing.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct RenamefolderParams {
-    /// The folder.
-    folder: FolderId,
-    /// Its new name: 1 to 100 characters.
-    name: String,
-}
-
-impl Command for RenamefolderParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let folder = self.folder;
-        let name = rules::folder_name(&self.name).map_err(|e| err(e.to_string()))?;
-        on_project(s, |p, pg, _| {
-            let Some(op) = rules::rename_folder(p.ledger.document(), folder, &name)? else {
-                return Ok(json!({"folder": folder.hex(), "name": name, "changed": false}));
-            };
-            p.apply_edit(pg, "renamefolder", "Rename folder", vec![op])?;
-            Ok(json!({"folder": folder.hex(), "name": name, "changed": true}))
-        })
-    }
-}
-
-/// `movefolder {folder, parent, index?}`: into another folder or the top level.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct MovefolderParams {
-    /// The folder.
-    folder: FolderId,
-    /// The folder it goes in, or null for the top level.
-    #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<FolderId>")]
-    parent: Option<Option<FolderId>>,
-    /// Its place among its new siblings, 1 = first (default last).
-    #[serde(default)]
-    index: Option<usize>,
-}
-
-impl Command for MovefolderParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let (folder, parent, index) = (self.folder, self.parent.flatten(), self.index);
-        on_project(s, |p, pg, _| {
-            let ops = rules::move_folder(p.ledger.document(), folder, parent, index)?;
-            if ops.is_empty() {
-                return Ok(json!({"folder": folder.hex(), "changed": false}));
-            }
-            p.apply_edit(pg, "movefolder", "Move folder", ops)?;
-            Ok(json!({"folder": folder.hex(), "changed": true}))
-        })
-    }
-}
-
-/// `deletefolder {folder}`: its pages and sub-folders move to its parent.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DeletefolderParams {
-    /// The folder.
-    folder: FolderId,
-}
-
-impl Command for DeletefolderParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let folder = self.folder;
-        on_project(s, |p, pg, _| {
-            let done = rules::delete_folder(p.ledger.document(), folder)?;
-            p.apply_edit(pg, "deletefolder", "Delete folder", done.ops)?;
-            pg.echo(done.message.clone());
-            Ok(json!({"folder": folder.hex(), "pages_moved": done.pages, "message": done.message}))
-        })
-    }
-}
 
 // ---------------------------------------------------------------- pages
 
@@ -255,111 +123,6 @@ pub(crate) fn new_page_ops_at(
     Ok((id, number, vec![Op::AddPage { id, page, index }]))
 }
 
-/// Commit `plan` (with `label`), keep its conflicts when it moved nothing, echo them, and answer
-/// with `json` of the document after it.
-fn commit_props(p: &mut Project, pg: &mut crate::access::Pages<'_>, id: &str, label: &str, plan: PropsPlan) -> Result<(), CmdError> {
-    p.apply_edit(pg, id, label, plan.ops)?;
-    if plan.proposed.moved == 0 {
-        p.conflicts = plan.proposed.conflicts.clone();
-    }
-    for l in ecad_electrical::symbols::proposals::conflict_words(p.ledger.document(), &plan.proposed.conflicts) {
-        pg.echo(l);
-    }
-    Ok(())
-}
-
-/// `pageprops {page?, number?, title?, function?, location?, sheet?, proposal?}`: a page's
-/// properties (each null clears; no fields: the current values, read only).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct PagepropsParams {
-    /// The page (default: the active page).
-    #[serde(default)]
-    page: Option<PageId>,
-    /// The page number: 1 to 12 letters, digits or _ (null: back to the book position).
-    #[serde(default, deserialize_with = "nullable")]
-    number: Option<Option<String>>,
-    /// The page title: 1 to 200 characters.
-    #[serde(default, deserialize_with = "nullable")]
-    title: Option<Option<String>>,
-    /// The page's function (=…), or null for the project's.
-    #[serde(default, deserialize_with = "nullable")]
-    function: Option<Option<String>>,
-    /// The page's location (+…), or null for the project's.
-    #[serde(default, deserialize_with = "nullable")]
-    location: Option<Option<String>>,
-    /// The page's sheet ("A3", "A2 12x8"…), or null (or "project") for the project's.
-    #[serde(default, deserialize_with = "nullable")]
-    sheet: Option<Option<String>>,
-    /// What a new function or location does to the page's device symbols: "propose" (default),
-    /// "move" or "keep".
-    #[serde(default)]
-    proposal: Option<String>,
-    /// Refused: a page's kind is set when it is made.
-    #[serde(default, deserialize_with = "nullable")]
-    generated: Option<Option<Value>>,
-    /// Refused for `text.` keys (Text styles); page properties are fields of their own.
-    #[serde(default)]
-    props: Option<Map<String, Value>>,
-}
-
-impl Command for PagepropsParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        if self.generated.is_some() {
-            return Err(err(ecad_electrical::pages::generated::KIND_FIXED));
-        }
-        // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked
-        // for as `props`.
-        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| ecad_electrical::styles::text_style::is_reserved_key(k))) {
-            return Err(err(ecad_electrical::styles::text_style::RESERVED_KEY));
-        }
-        let page = self.page;
-        let title = match self.title {
-            None => None,
-            Some(t) => Some(rules::page_title(t.as_deref().unwrap_or_default()).map_err(|e| err(e.to_string()))?),
-        };
-        let mut change =
-            PageChange { number: self.number, title, function: self.function, location: self.location, sheet: self.sheet, mode: Default::default() };
-        if !change.writes() {
-            return on_any_page(s, |p, _| {
-                if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-                    p.reports();
-                }
-                let doc = p.ledger.document();
-                let page = page.or(p.active_page()).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
-                if !doc.pages.contains_key(&page) {
-                    return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
-                }
-                Ok(rules::page_json(doc, &Book::of(doc), page, p.kept_reports()))
-            });
-        }
-        let proposal = self.proposal;
-        on_project(s, |p, pg, active| {
-            let page = page.unwrap_or(active);
-            if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
-                p.reports();
-            }
-            if !p.ledger.document().pages.contains_key(&page) {
-                return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
-            }
-            change.mode = rules::proposal_mode(proposal.as_deref())?;
-            let kept = p.derived.kept_reports();
-            let plan = rules::page_props(p.ledger.document(), &mut p.ids, page, &change, kept)?;
-            if plan.ops.is_empty() {
-                let doc = p.ledger.document();
-                let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_reports());
-                v["changed"] = json!(false);
-                return Ok(v);
-            }
-            commit_props(p, pg, "pageprops", "Page properties", plan)?;
-            let doc = p.ledger.document();
-            let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_reports());
-            v["changed"] = json!(true);
-            Ok(v)
-        })
-    }
-}
-
 // ---------------------------------------------------------------- project
 
 /// Status suggestions (owner answer Q9: any text is allowed).
@@ -372,252 +135,14 @@ pub use {
     ecad_electrical::pages::front::NOTES_KEY as COVER_NOTES, ecad_electrical::pages::front::NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
 };
 
-/// How cross-references are written.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
-enum ReferenceStyleParam {
-    /// Page and zone (`12.C4`).
-    #[serde(rename = "page-zone")]
-    Zone,
-    /// Page, column and row.
-    #[serde(rename = "page-column-row")]
-    ColumnRow,
-    /// Page and column.
-    #[serde(rename = "page-column")]
-    Column,
-}
-
-/// `projectprops {title?, drawing_number?, customer?, status?, function?, location?, sheet?,
-/// page_number_step?, reference_style?, contact_mirror?, tag_padding?, tag_prefixes?,
-/// colour_style?, label_height?, tag_dash?, tag_case?, revision_columns?, revision_pending?,
-/// provisional?, props?, proposal?}`: the project's properties and settings, in one transaction
-/// (no fields: everything, read only).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ProjectpropsParams {
-    /// The project title (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    title: Option<Option<String>>,
-    /// The drawing number (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    drawing_number: Option<Option<String>>,
-    /// The customer (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    customer: Option<Option<String>>,
-    /// The status, any text (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    status: Option<Option<String>>,
-    /// The project's function (=…; null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    function: Option<Option<String>>,
-    /// The project's location (+…; null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    location: Option<Option<String>>,
-    /// The sheet: "A3", "A2 12x8"…
-    #[serde(default, deserialize_with = "nullable")]
-    sheet: Option<Option<String>>,
-    /// The page-number step, 1 to 1000.
-    #[serde(default, deserialize_with = "nullable")]
-    page_number_step: Option<Option<u64>>,
-    /// How cross-references are written.
-    #[serde(default, deserialize_with = "nullable")]
-    reference_style: Option<Option<ReferenceStyleParam>>,
-    /// Where contact tables go by default: "auto", "below", "right" or "off".
-    #[serde(default, deserialize_with = "nullable")]
-    contact_mirror: Option<Option<String>>,
-    /// Digits of a tag's number, 1 to 6.
-    #[serde(default, deserialize_with = "nullable")]
-    tag_padding: Option<Option<u64>>,
-    /// Tag prefixes by symbol: a prefix, or null for the built-in one.
-    #[serde(default, deserialize_with = "nullable")]
-    tag_prefixes: Option<Option<BTreeMap<String, Option<String>>>>,
-    /// How label colours are written: "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name".
-    #[serde(default, deserialize_with = "nullable")]
-    colour_style: Option<Option<String>>,
-    /// Wire label height in mm, 0.5 to 10.
-    #[serde(default, deserialize_with = "nullable")]
-    label_height: Option<Option<f64>>,
-    /// Whether tags have a leading `-`.
-    #[serde(default, deserialize_with = "nullable")]
-    tag_dash: Option<Option<bool>>,
-    /// "upper" or "typed": whether tags keep the case they are typed in.
-    #[serde(default, deserialize_with = "nullable")]
-    tag_case: Option<Option<String>>,
-    /// The revision table's columns ("rev, date, ecr:ECR@20, description"), or null for the
-    /// built-in ones.
-    #[serde(default, deserialize_with = "nullable")]
-    revision_columns: Option<Option<String>>,
-    /// How the pending revision shows: "star", "draft" or "off".
-    #[serde(default, deserialize_with = "nullable")]
-    revision_pending: Option<Option<String>>,
-    /// Provisional tags until Finalise.
-    #[serde(default, deserialize_with = "nullable")]
-    provisional: Option<Option<bool>>,
-    /// Free properties: key: value, or null to clear.
-    #[serde(default)]
-    props: Option<BTreeMap<String, Option<String>>>,
-    /// What a new function or location does to the device symbols: "propose" (default), "move" or
-    /// "keep".
-    #[serde(default, deserialize_with = "nullable")]
-    proposal: Option<Option<String>>,
-}
-
-impl ProjectpropsParams {
-    /// Whether no field is given (`projectprops` then only reads).
-    fn is_empty(&self) -> bool {
-        let fields = [&self.title, &self.drawing_number, &self.customer, &self.status, &self.function, &self.location];
-        fields.iter().all(|f| f.is_none())
-            && self.sheet.is_none()
-            && self.page_number_step.is_none()
-            && self.reference_style.is_none()
-            && self.contact_mirror.is_none()
-            && self.tag_padding.is_none()
-            && self.tag_prefixes.is_none()
-            && self.colour_style.is_none()
-            && self.label_height.is_none()
-            && self.tag_dash.is_none()
-            && self.tag_case.is_none()
-            && self.revision_columns.is_none()
-            && self.revision_pending.is_none()
-            && self.provisional.is_none()
-            && self.props.is_none()
-            && self.proposal.is_none()
-    }
-}
-
-impl Command for ProjectpropsParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        if self.is_empty() {
-            return on_any_page(s, |p, _| Ok(rules::project_json(p.ledger.document())));
-        }
-        let given = [self.title, self.drawing_number, self.customer, self.status, self.function, self.location];
-        let fields = PROJECT_KEYS.into_iter().zip(given).filter_map(|(k, v)| v.map(|v| (k, v))).collect();
-        let proposal = self.proposal.flatten();
-        let mut change = ProjectChange {
-            fields,
-            props: self.props.map(|m| m.into_iter().collect()).unwrap_or_default(),
-            provisional: self.provisional.flatten(),
-            sheet: self.sheet.flatten(),
-            page_number_step: self.page_number_step.flatten(),
-            reference_style: self.reference_style.flatten().map(|r| match r {
-                ReferenceStyleParam::Zone => ReferenceStyle::PageZone,
-                ReferenceStyleParam::ColumnRow => ReferenceStyle::PageColumnRow,
-                ReferenceStyleParam::Column => ReferenceStyle::PageColumn,
-            }),
-            contact_mirror: self.contact_mirror.flatten(),
-            tag_padding: self.tag_padding.flatten(),
-            tag_prefixes: self.tag_prefixes.flatten().map(|m| m.into_iter().collect()).unwrap_or_default(),
-            colour_style: self.colour_style.flatten(),
-            label_height: self.label_height.flatten(),
-            revision_columns: self.revision_columns,
-            revision_pending: self.revision_pending.flatten(),
-            tag_dash: self.tag_dash.flatten(),
-            tag_case: None,
-            mode: Default::default(),
-        };
-        let case_word = self.tag_case.flatten();
-        on_project(s, |p, pg, _| {
-            change.mode = rules::proposal_mode(proposal.as_deref())?;
-            change.tag_case = case_word.as_deref().map(rules::tag_case).transpose()?;
-            let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
-            if plan.ops.is_empty() {
-                let mut v = rules::project_json(p.ledger.document());
-                v["changed"] = json!(false);
-                return Ok(v);
-            }
-            let message = plan.message.clone();
-            commit_props(p, pg, "projectprops", "Project properties", plan)?;
-            let doc = p.ledger.document();
-            let mut v = rules::project_json(doc);
-            v["changed"] = json!(true);
-            if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
-                v["narrowed"] = json!(revisions::NARROWED);
-            }
-            if let Some(m) = message {
-                v["message"] = json!(m);
-            }
-            Ok(v)
-        })
-    }
-}
-
 // ---------------------------------------------------------------- revisions
-
-/// The revision fields given, as the rules take them.
-fn revision_fields(standard: [Option<Option<String>>; 6], n: Option<u64>, custom: Option<BTreeMap<String, Option<String>>>) -> RevisionFields {
-    RevisionFields {
-        standard: FIELDS.into_iter().zip(standard).filter_map(|(k, v)| v.map(|v| (k, v))).collect(),
-        n,
-        custom: custom.map(|m| m.into_iter().collect()).unwrap_or_default(),
-    }
-}
 
 /// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
 /// owner answer 10): on another branch, the refusal names the way forward.
 pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
     let v = p.file.project()?;
-    if v.branch_record().release_line {
-        return None;
-    }
-    let name = &v.branch_record().name;
-    Some(if issuing {
-        format!("Revisions are issued on main. Merge \"{name}\" into main first.")
-    } else {
-        format!("The pending revision is edited on main; on branch \"{name}\" its fields are read-only.")
-    })
-}
-
-/// `revision {rev?, date?, description?, drawn?, checked?, approved?, fields?, n?}`: the pending
-/// revision's fields, custom fields by name; an issued row is refused.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct RevisionParams {
-    /// The rev (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    rev: Option<Option<String>>,
-    /// The date (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    date: Option<Option<String>>,
-    /// The description (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    description: Option<Option<String>>,
-    /// Who drew it (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    drawn: Option<Option<String>>,
-    /// Who checked it (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    checked: Option<Option<String>>,
-    /// Who approved it (null clears).
-    #[serde(default, deserialize_with = "nullable")]
-    approved: Option<Option<String>>,
-    /// Custom fields by name: text, or null to clear.
-    #[serde(default)]
-    fields: Option<BTreeMap<String, Option<String>>>,
-    /// The revision row meant; refused unless it is the pending one.
-    #[serde(default)]
-    n: Option<u64>,
-}
-
-impl RevisionParams {
-    fn fields(self) -> RevisionFields {
-        revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], self.n, self.fields)
-    }
-}
-
-impl Command for RevisionParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let f = self.fields();
-        on_project(s, |p, pg, _| {
-            if let Some(r) = release_line_refusal(p, false) {
-                return Err(CmdError::refused(r));
-            }
-            let ops = rules::revision_ops(p.ledger.document(), &f)?;
-            if ops.is_empty() {
-                return Ok(json!({"changed": false, "pending_rev": revisions::pending_rev(p.ledger.document())}));
-            }
-            p.apply_edit(pg, "revision", "Revision", ops)?;
-            Ok(json!({"changed": true, "pending_rev": revisions::pending_rev(p.ledger.document())}))
-        })
-    }
+    let off_line = (!v.branch_record().release_line).then(|| v.branch_record().name.as_str());
+    rules::release_line_refusal(off_line, issuing)
 }
 
 /// Plan issuing the pending revision with the field writes `f` (as `issuerevision`).

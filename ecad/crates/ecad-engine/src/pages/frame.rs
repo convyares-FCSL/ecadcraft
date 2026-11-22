@@ -83,7 +83,7 @@ pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc:
 
 /// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;
 /// texts and parts with a colour of their own keep theirs.
-pub fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::doc::color::Rgb>) -> Entity {
+pub(crate) fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::doc::color::Rgb>) -> Entity {
     let mut e = entity(part, handle);
     if let Some(rgb) = rgb
         && part.layer == LAYER
@@ -98,7 +98,7 @@ pub fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::d
 /// How a page's frame and title block are drawn from what they show (owner note of 2026-11-08:
 /// users will define their own borders and title blocks). Brief 055: the frame style's block
 /// ([`frames::FrameInput::block`]) is the user-defined part; [`BuiltIn`] draws the border and that block.
-pub trait FrameLayout: Send + Sync {
+pub(crate) trait FrameLayout: Send + Sync {
     /// Every line and text of the frame `input` describes, in model coordinates (the paper's
     /// bottom-left corner at the origin).
     fn parts(&self, input: &frames::FrameInput) -> Vec<Part>;
@@ -106,7 +106,7 @@ pub trait FrameLayout: Send + Sync {
 
 /// The frame drawn from its style: border, zones, centre marks and the block (design 055 §3).
 #[derive(Debug, Clone, Copy, Default)]
-pub struct BuiltIn;
+pub(crate) struct BuiltIn;
 
 impl FrameLayout for BuiltIn {
     fn parts(&self, input: &frames::FrameInput) -> Vec<Part> {
@@ -147,7 +147,7 @@ impl std::ops::Deref for FrameText {
 }
 
 impl FrameText {
-    /// The looks of `doc`'s frame.
+    /// The text styles of `doc`'s frame.
     pub fn of(doc: &Document) -> FrameText {
         FrameText(frames::FrameText::with(doc, &EngineMetrics))
     }

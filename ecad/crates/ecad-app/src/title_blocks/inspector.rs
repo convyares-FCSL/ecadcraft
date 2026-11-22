@@ -1,4 +1,4 @@
-//! The editor's right panel (design 055 §4.4): per selection, Value (fields), Look (fields and
+//! The editor's right panel (design 055 §4.4): per selection, Value (fields), Style (fields and
 //! texts) and Box (every item), folding; with nothing selected, the block itself with Save,
 //! Discard, Duplicate for… and Delete….
 
@@ -224,13 +224,13 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                 }
             });
         }
-        // Look (fields and texts).
+        // Style (fields and texts).
         let draw = match &item {
             BlockItem::Field { draw, .. } | BlockItem::Text { draw, .. } => Some(*draw),
             _ => None,
         };
         if let Some(draw) = draw {
-            section(ui, "Look", &format!("{} mm{}", draw.size, if draw.bold { ", bold" } else { "" }), |ui| {
+            section(ui, "Style", &format!("{} mm{}", draw.size, if draw.bold { ", bold" } else { "" }), |ui| {
                 if let BlockItem::Text { text, .. } = &item {
                     ui.label(RichText::new("Text").small().color(c32(s.text_2)));
                     let mut t = text.clone();
@@ -456,7 +456,7 @@ fn set_fields(d: &mut Draft, sel: &[usize], f: impl Fn(&mut BlockItem)) {
     }
 }
 
-/// Apply `f` to the look of every selected field and text (one undo step).
+/// Apply `f` to the style of every selected field and text (one undo step).
 fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
     set_fields(d, sel, |it| {
         if let BlockItem::Field { draw, .. } | BlockItem::Text { draw, .. } = it {
@@ -465,7 +465,7 @@ fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
     });
 }
 
-/// Make field (design 055 §4.6): a text becomes a field that keeps its box and look; its text
+/// Make field (design 055 §4.6): a text becomes a field that keeps its box and style; its text
 /// becomes the label and the binding a project field named after it.
 pub fn make_field(d: &mut Draft, i: usize) {
     let Some(BlockItem::Text { at, text, draw }) = d.now.layout.items.get(i).cloned() else { return };

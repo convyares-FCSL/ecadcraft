@@ -22,14 +22,14 @@ use crate::checks::{Check, Severity};
 use crate::reports::{Cell, Table};
 
 /// Most characters of a file stem.
-pub const MAX_STEM: usize = 80;
+pub(crate) const MAX_STEM: usize = 80;
 /// Rows per group `prerelease` returns by default, and at most.
 pub const DEFAULT_ROWS: usize = 50;
 pub const MAX_ROWS: usize = 2000;
 
 /// Said by 028's slots for a project with no strips or no cables (design 027 §7.2, Q7).
 pub const NO_STRIPS: &str = "No terminal strips in this project.";
-pub const NO_CABLES: &str = "No cables in this project.";
+pub(crate) const NO_CABLES: &str = "No cables in this project.";
 /// Said for a project that was never saved.
 pub const SAVE_FIRST: &str = "Save the project first, so the revision is kept with it and the folder has a place.";
 

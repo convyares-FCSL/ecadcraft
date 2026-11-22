@@ -39,7 +39,7 @@ pub const SHEET_GAP: f64 = 50.0;
 pub const A3_AREA: f64 = 390.0;
 /// The height of that A3 drawing area ([`area`] of an A3 sheet in the house frame): what the rows
 /// per sheet are computed from (brief 066c).
-pub const A3_TABLE_MM: f64 = 230.0;
+pub(crate) const A3_TABLE_MM: f64 = 230.0;
 
 /// `ecad.table-row`: a report table's row height, millimetres (the `[layout]` value
 /// `page.report.row_height` in `pages.toml`, data since brief 066c).
@@ -120,7 +120,7 @@ pub fn paginate(heads: &[Option<String>]) -> Vec<(usize, usize, Option<String>)>
 
 /// [`paginate`], with every heading after a sheet's first row starting a new sheet when
 /// `break_on_heading` (the terminal plan: each strip from a new sheet).
-pub fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(usize, usize, Option<String>)> {
+pub(crate) fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(usize, usize, Option<String>)> {
     let n = heads.len();
     let mut out = Vec::new();
     let mut start = 0;
@@ -142,41 +142,6 @@ pub fn paginate_with(heads: &[Option<String>], break_on_heading: bool) -> Vec<(u
         start = end;
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn continuation_sheets_are_numbered_in_sequence() {
-        for (n, i, want) in [
-            ("400", 0, "400"),
-            ("400", 1, "401"),
-            ("400", 2, "402"),
-            ("0090", 1, "0091"),
-            ("B10", 1, "B11"),
-            ("099", 1, "100"),
-            ("BOM", 1, "BOM2"),
-            ("BOM", 2, "BOM3"),
-            ("18446744073709551615", 1, "184467440737095516152"),
-        ] {
-            assert_eq!(sheet_number(n, i), want, "{n} sheet {i}");
-        }
-    }
-
-    #[test]
-    fn a_continued_heading_takes_a_row_of_its_sheet() {
-        let mut heads = vec![Some("+CP1".to_string())];
-        heads.extend(std::iter::repeat_n(None, 88));
-        let sheets = paginate(&heads);
-        assert_eq!(sheets.len(), 3);
-        for (start, end, cont) in &sheets {
-            assert!(end - start + usize::from(cont.is_some()) <= rows_per_sheet());
-        }
-        assert_eq!(sheets[1].2.as_deref(), Some("+CP1"));
-        assert_eq!(paginate(&[]).len(), 1);
-    }
 }
 
 /// How many sheets `page` prints on.
@@ -227,7 +192,7 @@ pub fn sheet_numbers(doc: &Document, book: &Book, page: PageId, reports: Option<
 
 /// The number column of `page` where pages are listed (contents): `400`, or `400–402` for a
 /// generated page of several sheets.
-pub fn number_range(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> String {
+pub(crate) fn number_range(doc: &Document, book: &Book, page: PageId, reports: Option<&ReportModels>) -> String {
     let n = book.number(doc, page);
     match sheets_of(doc, page, reports) {
         0 | 1 => n,
@@ -245,7 +210,7 @@ pub fn continuation_of(doc: &Document, book: &Book, number: &str, reports: Optio
 }
 
 /// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
-pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
+pub(crate) fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
     let title = doc.pages.get(&page).map(|p| p.title.as_str()).unwrap_or_default();
     let owner = ecad_model::document::book::page_number(doc, page);
     format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
@@ -254,7 +219,7 @@ pub fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) 
 /// The Checks rows of continuation sheets that took another page's number (design 033 §5.3): a
 /// table grew, so the book still prints and the two sheets share the number until the user
 /// renumbers. Each row is on the other page. O(pages + generated pages × their sheets).
-pub fn continuation_checks(doc: &Document, reports: Option<&ReportModels>) -> Vec<crate::checks::Check> {
+pub(crate) fn continuation_checks(doc: &Document, reports: Option<&ReportModels>) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Fix, Kind, Object};
     let book = Book::of(doc);
     let mut by_number: std::collections::HashMap<String, PageId> = std::collections::HashMap::new();
@@ -321,7 +286,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKi
 /// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
 /// shows was drawn again, or the layout settings changed. Either style redraws when the project's
 /// style changed and the page has no style of its own. O(strips shown).
-pub fn connection_points_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
+pub(crate) fn connection_points_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
     let sp = &o.strip_pages;
     let style = &crate::defaults::strip_pages::STYLE;
     let own_style = doc.pages.get(&page).and_then(|p| p.display.get(style.key)).is_some_and(|v| style.parse(v).is_some());
@@ -353,7 +318,7 @@ pub fn refusal(doc: &Document, ops: &[Op]) -> Option<String> {
 }
 
 /// `Page 900 is generated (BOM by location). Draw on another page, or add one after it with +.`
-pub fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
+pub(crate) fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> String {
     format!("Page {} is generated ({}). Draw on another page, or add one after it with +.", book::page_number(doc, page), kind.title())
 }
 

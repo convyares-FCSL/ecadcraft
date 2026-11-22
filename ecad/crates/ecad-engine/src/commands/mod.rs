@@ -8,7 +8,7 @@
 //! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
 //! view is presentation only ([`crate::cables::views`]).
 //! Brief 010 adds `cablereference`, `cablecontinue` and `cablegoto` (with interactive forms),
-//! `cablereferences` (read only), `renamepage` and `movepage` ([`crate::references`]).
+//! `cablereferences` (read only) ([`crate::references`]).
 //! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
 //! prompt.
 //!
@@ -106,6 +106,15 @@ fn generic_specs() -> Vec<CommandSpec> {
         crate::generic::spec::<numbering::NumberingParams>(),
         crate::generic::spec::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
         crate::generic::spec::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::page_edits::RenamepageParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::page_edits::MovepageParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::folders::NewfolderParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::folders::RenamefolderParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::folders::MovefolderParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::folders::DeletefolderParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::props::PagepropsParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::props::ProjectpropsParams>(),
+        crate::generic::spec::<ecad_electrical::pages::commands::props::RevisionParams>(),
         crate::generic::spec::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
         crate::generic::spec::<ecad_electrical::references::commands::devices::ContactsParams>(),
         crate::generic::spec::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
@@ -176,6 +185,15 @@ const GENERIC_TYPED: &[input::Typed] = &[
     crate::generic::typed::<numbering::NumberingParams>(),
     crate::generic::typed::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
     crate::generic::typed::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::page_edits::RenamepageParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::page_edits::MovepageParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::folders::NewfolderParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::folders::RenamefolderParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::folders::MovefolderParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::folders::DeletefolderParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::props::PagepropsParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::props::ProjectpropsParams>(),
+    crate::generic::typed::<ecad_electrical::pages::commands::props::RevisionParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::devices::ContactsParams>(),
     crate::generic::typed::<ecad_electrical::references::commands::devices::MirrormoveParams>(),
@@ -260,10 +278,6 @@ end's spine; null: the middle)",
             )
             .noundo(),
         CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).params("{page: id}").noundo(),
-        CommandSpec::new("renamepage", "Rename Page", crate::commands::input::typed::<crate::pages::commands::pages::RenamepageParams>).params("{page: id, title}").noundo(),
-        CommandSpec::new("movepage", "Move Page", crate::commands::input::typed::<crate::pages::commands::pages::MovepageParams>)
-            .params("{page: id, index: n} (1 = first) | {page: id, folder: id|null, index?: n} (into a folder, 1 = first of its pages)")
-            .noundo(),
         CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::typed::<crate::pages::commands::pages::EcadinspectParams>)
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),

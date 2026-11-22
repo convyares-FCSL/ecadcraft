@@ -21,16 +21,16 @@ pub const FIELDS: [&str; 6] = ["rev", "date", "description", "drawn", "checked",
 /// The old key prefix of revision properties (reserved on the project).
 pub const PREFIX: &str = ecad_model::document::project::REVISIONS_KEY;
 /// The field set by issuing.
-pub const ISSUED: &str = "issued";
+pub(crate) const ISSUED: &str = "issued";
 /// The field set by issuing through a release (brief 027, FP1): the release folder, relative to
 /// the project file's folder (absolute on another drive). Unknown to older builds, which skip it.
 pub const RELEASED: &str = "released";
 /// Most revisions a project may hold (a bound on hostile files).
 pub const MAX_REVISIONS: usize = ecad_model::document::project::MAX_REVISIONS;
 /// Rev text: 1 to 8 characters `0-9 A-Z a-z`.
-pub const MAX_REV_CHARS: usize = 8;
+pub(crate) const MAX_REV_CHARS: usize = 8;
 /// The fields issuing needs (owner answer Q7).
-pub const NEEDED: [&str; 3] = ["rev", "description", "drawn"];
+pub(crate) const NEEDED: [&str; 3] = ["rev", "description", "drawn"];
 /// Said when a needed field is empty.
 pub const FILL_FIRST: &str = "Fill in Rev, Description and Drawn first.";
 
@@ -126,7 +126,7 @@ pub fn with_field(project: &Project, n: u32, field: &str, value: Option<&str>) -
 
 /// Whether a `ModifyProject` from `before` to `after` issued a row or took an issue back (what the
 /// title block's Rev box and the issued-revision lists show).
-pub fn issue_changed(before: &Project, after: &Project) -> bool {
+pub(crate) fn issue_changed(before: &Project, after: &Project) -> bool {
     let issued = |p: &Project| p.revisions.iter().map(|r| r.issued.clone()).collect::<Vec<_>>();
     issued(before) != issued(after)
 }
@@ -153,18 +153,18 @@ pub const COLUMNS_KEY: &str = "revisions.columns";
 /// The project property of the pending-revision marker (FP3): `star`, `draft` or `off`.
 pub const PENDING_KEY: &str = "revisions.pending";
 /// Most columns.
-pub const MAX_COLUMNS: usize = 10;
+pub(crate) const MAX_COLUMNS: usize = 10;
 /// Most characters of a custom field name and of a header.
 pub const MAX_FIELD_CHARS: usize = 20;
 /// Column widths a project may set, millimetres on A3 (a bound on hostile values).
 pub const MIN_WIDTH_MM: f64 = 6.0;
 pub const MAX_WIDTH_MM: f64 = 200.0;
 /// Most characters of a stored column list (a bound on hostile values).
-pub const MAX_COLUMNS_CHARS: usize = 600;
+pub(crate) const MAX_COLUMNS_CHARS: usize = 600;
 /// Description is never narrowed below this before the other columns are (design 033 §7.1).
 pub const MIN_DESCRIPTION_MM: f64 = 30.0;
 /// The revision table's width on A3, millimetres (design 019 §4).
-pub const A3_TABLE_MM: f64 = 200.0;
+pub(crate) const A3_TABLE_MM: f64 = 200.0;
 /// Said when the fixed widths leave Description too narrow.
 pub const NARROWED: &str = "Columns are narrowed to fit the 200 mm revision table on A3.";
 
@@ -173,7 +173,7 @@ const BUILTIN_HEADERS: [&str; 6] = ["Rev", "Date", "Description", "Drawn", "Chec
 
 /// Whether `field` may name a custom revision field: 1 to [`MAX_FIELD_CHARS`] of `a-z 0-9 _`,
 /// not a built-in, not `issued` or `released`.
-pub fn is_custom_field(field: &str) -> bool {
+pub(crate) fn is_custom_field(field: &str) -> bool {
     (1..=MAX_FIELD_CHARS).contains(&field.len())
         && field.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
         && !FIELDS.contains(&field)
@@ -242,7 +242,7 @@ pub fn parse_columns(text: &str) -> Result<Vec<ColumnSpec>, CmdError> {
 }
 
 /// Whether `text` is a column list [`parse_columns`] accepts (the registry's parser).
-pub fn columns_ok(text: &str) -> bool {
+pub(crate) fn columns_ok(text: &str) -> bool {
     parse_columns(text).is_ok()
 }
 
@@ -321,7 +321,7 @@ impl PendingStyle {
 }
 
 /// Most undo-stack entries the pending walk reads; more count as pending.
-pub const MAX_PENDING_WALK: usize = 10_000;
+pub(crate) const MAX_PENDING_WALK: usize = 10_000;
 
 /// Whether `ops` only fill in the pending row `pending` or set the revision table's own
 /// settings: not a drawing change (design 033 §6.1).
@@ -410,7 +410,7 @@ pub fn pending(doc: &Document) -> Option<Revision> {
 }
 
 /// The `n` the pending row has or would get.
-pub fn pending_n(doc: &Document) -> u32 {
+pub(crate) fn pending_n(doc: &Document) -> u32 {
     let all = list(doc);
     match all.last() {
         Some(r) if r.issued.is_none() => r.n,
@@ -478,7 +478,7 @@ pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
 ///
 /// # Errors
 /// In words.
-pub fn check_rev(doc: &Document, rev: &str) -> Result<(), CmdError> {
+pub(crate) fn check_rev(doc: &Document, rev: &str) -> Result<(), CmdError> {
     let n = rev.chars().count();
     if !(1..=MAX_REV_CHARS).contains(&n) || !rev.chars().all(|c| c.is_ascii_alphanumeric()) {
         return Err(CmdError::refused("Rev is 1 to 8 letters or digits."));
@@ -487,16 +487,6 @@ pub fn check_rev(doc: &Document, rev: &str) -> Result<(), CmdError> {
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     Ok(())
-}
-
-/// The ops that set the pending row's `field` to `value` (`None` clears), creating the row on its
-/// first field. Nothing when it already holds that value.
-///
-/// # Errors
-/// As [`with_field`].
-pub fn set_pending_ops(doc: &Document, field: &str, value: Option<String>) -> Result<Vec<Op>, CmdError> {
-    let after = with_field(&doc.project, pending_n(doc), field, value.as_deref())?;
-    Ok(modify(&doc.project, after).into_iter().collect())
 }
 
 /// The version name of an issued rev.
@@ -543,88 +533,4 @@ pub fn folder_path(doc: &Document, folder: Option<FolderId>) -> String {
     }
     names.reverse();
     names.join(" / ")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn next_revs() {
-        for (last, next) in [(None, "A"), (Some("A"), "B"), (Some("Z"), "AA"), (Some("AZ"), "BA"), (Some("0"), "1"), (Some("P3"), "P4")] {
-            assert_eq!(next_rev(last), next, "{last:?}");
-        }
-    }
-
-    #[test]
-    fn the_column_grammar() {
-        let c = parse_columns("rev, date, ecr:ECR@20, description, validated:Validated").unwrap();
-        assert_eq!(c.len(), 5);
-        assert_eq!(c[2], ColumnSpec { field: "ecr".into(), header: Some("ECR".into()), width: Some(20.0) });
-        assert_eq!(parse_columns("").unwrap(), Vec::new());
-        for (bad, words) in [
-            ("rev, ecr!, description", "\"ecr!\" is not a field name"),
-            ("rev, date", "Rev and Description must be columns."),
-            ("rev, released, description", "\"released\" is set by issuing."),
-            ("rev, x@NaN, description", "is not a width"),
-            ("rev, x@-5, description", "is not a width"),
-            ("rev, x@1e308, description", "is not a width"),
-            ("rev, rev, description", "a column twice"),
-        ] {
-            let e = parse_columns(bad).unwrap_err().to_string();
-            assert!(e.contains(words), "{bad}: {e}");
-        }
-        let many = (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(", ");
-        assert!(parse_columns(&format!("rev, description, {many}")).is_err());
-    }
-
-    #[test]
-    fn hostile_settings_read_as_absent() {
-        let mut doc = Document::default();
-        for v in ["x".repeat(10_000), "rev, ecr@NaN, description".into(), (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(","), "".into()]
-        {
-            doc.display.insert(COLUMNS_KEY.into(), v);
-            let cols = columns(&doc);
-            // Brief 055 (FP5): the built-in columns, ECR after Rev.
-            assert_eq!(
-                cols.iter().map(|c| c.field.as_str()).collect::<Vec<_>>(),
-                ["rev", "ecr", "date", "description", "drawn", "checked", "approved"],
-                "the built-in columns"
-            );
-        }
-        for v in ["", "x", "STAR?"] {
-            doc.display.insert(PENDING_KEY.into(), v.into());
-            assert_eq!(PendingStyle::of(&doc), PendingStyle::Star);
-        }
-        doc.display.insert("tags.case".into(), "x".into());
-        doc.display.insert("tags.dash".into(), "maybe".into());
-        assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::from(doc.settings.tag_padding()));
-    }
-
-    #[test]
-    fn the_registry_and_ecad_model_read_the_tag_style_alike() {
-        let mut doc = Document::default();
-        for (dash, case) in [("yes", "upper"), ("no", "typed"), ("NO", "Typed"), ("", "")] {
-            doc.display.insert("tags.dash".into(), dash.into());
-            doc.display.insert("tags.case".into(), case.into());
-            assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::naming::tag::Style::of(&doc), "{dash} {case}");
-        }
-    }
-
-    #[test]
-    fn widths_narrow_rather_than_refuse() {
-        let cols = |w: &[Option<f64>]| w.iter().map(|w| Column { field: "f".into(), header: "F".into(), width: *w }).collect::<Vec<_>>();
-        let (w, narrowed) = widths(&cols(&[Some(12.0), None, Some(22.0)]), 170.0);
-        assert_eq!((w, narrowed), (vec![12.0, 136.0, 22.0], false));
-        let (w, narrowed) = widths(&cols(&[Some(100.0), None, Some(100.0)]), 170.0);
-        assert!(narrowed && (w[1] - MIN_DESCRIPTION_MM).abs() < 1e-9 && (w.iter().sum::<f64>() - 170.0).abs() < 1e-9, "{w:?}");
-    }
-
-    #[test]
-    fn dates_go_through_chrono() {
-        for (ms, date) in [(0, "1970-01-01"), (951_782_400_000, "2000-02-29"), (1_794_441_600_000, "2026-11-12"), (4_107_542_399_999, "2100-02-28")] {
-            assert_eq!(date_of_ms(ms).as_deref(), Some(date), "{ms}");
-        }
-        assert_eq!(date_of_ms(u64::MAX), None);
-    }
 }

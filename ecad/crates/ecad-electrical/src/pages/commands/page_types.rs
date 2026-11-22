@@ -1,7 +1,7 @@
 //! The rules of the page type and folder commands (brief 054, design 054): a folder's start number
 //! (`folderprops`), the page numbers `renumberpages` writes, and which generated pages
 //! `deletepage` removes. The numbering rules themselves are [`crate::pages::page_types`]; the engine
-//! crate's shims bring the outputs up to date, open the page shown, commit the ops and answer in
+//! crate's shims bring the reports up to date, open the page shown, commit the ops and answer in
 //! JSON.
 
 use std::collections::BTreeSet;
@@ -28,7 +28,7 @@ pub const MAX_PAGES: usize = 1_000;
 ///
 /// # Errors
 /// Anything else.
-pub fn start_value(text: &str) -> Result<Option<String>, CmdError> {
+pub(crate) fn start_value(text: &str) -> Result<Option<String>, CmdError> {
     let t = text.trim();
     if t.is_empty() {
         return Ok(None);
@@ -38,7 +38,7 @@ pub fn start_value(text: &str) -> Result<Option<String>, CmdError> {
 
 /// What `folderprops` reads or writes.
 #[derive(Debug, Clone, PartialEq)]
-pub struct FolderStart {
+pub(crate) struct FolderStart {
     /// The folder's name (`(gone)` for a start key whose folder is gone).
     pub name: String,
     /// The start number before.
@@ -52,7 +52,7 @@ pub struct FolderStart {
 ///
 /// # Errors
 /// No such folder (a start key whose folder is gone may only be cleared).
-pub fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<String>>) -> Result<FolderStart, CmdError> {
+pub(crate) fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<String>>) -> Result<FolderStart, CmdError> {
     let old = doc.folders.get(&folder).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     let before = old.start.as_ref().map(|s| s.as_str().to_string());
     let write = match start {
@@ -71,7 +71,7 @@ pub fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<S
 }
 
 /// The echo of a folder's new start number.
-pub fn start_words(name: &str, after: Option<&str>) -> String {
+pub(crate) fn start_words(name: &str, after: Option<&str>) -> String {
     match after {
         Some(n) => format!("Folder \"{name}\" starts at {n}. Press Renumber pages to number its pages from it."),
         None => format!("Folder \"{name}\" has no start number now."),
@@ -85,7 +85,7 @@ pub fn start_words(name: &str, after: Option<&str>) -> String {
 ///
 /// # Errors
 /// No such folder.
-pub fn folder_scope(doc: &Document, folder: Option<FolderId>) -> Result<Option<FolderId>, CmdError> {
+pub(crate) fn folder_scope(doc: &Document, folder: Option<FolderId>) -> Result<Option<FolderId>, CmdError> {
     match folder {
         Some(f) if !doc.folders.contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
         f => Ok(f),
@@ -105,7 +105,7 @@ pub struct Renumbered {
 
 /// `renumberpages {folder?}`: each folder from its start number, the rest from 1; with `scope`,
 /// that folder and its sub-folders only. `reports` are the generated pages kept.
-pub fn plan_renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<FolderId>) -> Renumbered {
+pub(crate) fn plan_renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<FolderId>) -> Renumbered {
     let pages = renumber(doc, reports, scope);
     let overlaps = overlaps(doc, reports).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
     let ops = pages

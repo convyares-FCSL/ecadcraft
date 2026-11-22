@@ -1,6 +1,6 @@
 //! Brief 055 (design 055 §12.1 H, I) in the app, headless (egui_kittest): Library ▸ Title
 //! blocks lists the built-in read only; a frame made from it opens in the editor; a palette row
-//! dropped on the block is selected on whole millimetres with Value, Look and Box on the right;
+//! dropped on the block is selected on whole millimetres with Value, Style and Box on the right;
 //! Sample off; Save is one transaction after the consequence line; Discard asks only when the
 //! draft changed. Screenshots (board 3.05 side by side, a page with the house block) are written
 //! when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists (never committed).
@@ -84,7 +84,7 @@ fn the_editor_drops_a_field_saves_once_and_keeps_built_ins_read_only() {
         }
         other => panic!("{other:?}"),
     }
-    // The right panel: Value, Look, Box.
+    // The right panel: Value, Style, Box.
     for name in [inspector::SOURCE, inspector::IFEMPTY, inspector::SIZE, inspector::ALIGN, inspector::COLOUR, inspector::BOX[0], inspector::BOX[3]] {
         assert!(h.query_by_label(name).is_some(), "{name}");
     }

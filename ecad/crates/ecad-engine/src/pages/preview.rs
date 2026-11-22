@@ -91,7 +91,7 @@ pub fn other_end(p: &Project, reference: RepresentationId) -> Result<(PageId, Pt
 /// Said when Preview Reference has no cable reference to work on.
 pub const NOT_A_REFERENCE: &str = "Select a cable reference (its point or text), then click Preview Reference.";
 /// Said when the selected reference is an orphan.
-pub const ORPHAN: &str = "This reference has no other end (orphan).";
+pub(crate) const ORPHAN: &str = "This reference has no other end (orphan).";
 
 /// Project `page` of `p` into a fresh drawing, as its page window would show it (cable views and
 /// reference texts included). Hold the project only for this call.
