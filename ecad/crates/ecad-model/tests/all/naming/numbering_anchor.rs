@@ -12,34 +12,34 @@ use ecad_model::{Document, Placement, Pt, Subject};
 /// Two pages. Each symbol: (representation, device, tag, page, x, y, role).
 fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     let mut d = Document::default();
-    for i in 0..2u128 {
-        let p = PageId(1000 + i);
-        d.edit_parts(|parts| parts.pages.insert(p, Page::titled(format!("P{i}")).unwrap()));
-        d.edit_parts(|parts| parts.page_order.push(p));
-    }
     let style = Style { layer: LayerId(1), color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    for (rid, c, tag, page, x, y, role) in syms {
-        let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
-        d.edit_parts(|parts| {
+    d.edit_parts(|parts| {
+        for i in 0..2u128 {
+            let p = PageId(1000 + i);
+            parts.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
+            parts.page_order.push(p);
+        }
+        for (rid, c, tag, page, x, y, role) in syms {
+            let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
             parts.devices.entry(DeviceId(*c)).or_insert(comp);
-        });
-        let item = ItemId(5000 + rid);
-        let pg = d.page_order()[*page];
-        let kind = ItemKind::Symbol(SymbolInstance {
-            definition: DefinitionId(9),
-            placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
-        });
-        d.edit_parts(|parts| parts.items.insert(item, Item { page: pg, style: style.clone(), kind }));
-        let rep = Representation {
-            subject: Subject::Device(DeviceId(*c)),
-            page: pg,
-            form: Form::Symbol,
-            role: <ecad_model::Role as ecad_model::Word>::parse(role).expect("a role word"),
-            items: vec![item],
-            connection_points: BTreeMap::new(),
-        };
-        d.edit_parts(|parts| parts.representations.insert(RepresentationId(*rid), rep));
-    }
+            let item = ItemId(5000 + rid);
+            let pg = parts.page_order[*page];
+            let kind = ItemKind::Symbol(SymbolInstance {
+                definition: DefinitionId(9),
+                placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
+            });
+            parts.items.insert(item, Item { page: pg, style: style.clone(), kind });
+            let rep = Representation {
+                subject: Subject::Device(DeviceId(*c)),
+                page: pg,
+                form: Form::Symbol,
+                role: <ecad_model::Role as ecad_model::Word>::parse(role).expect("a role word"),
+                items: vec![item],
+                connection_points: BTreeMap::new(),
+            };
+            parts.representations.insert(RepresentationId(*rid), rep);
+        }
+    });
     d.rebuild_index();
     d
 }

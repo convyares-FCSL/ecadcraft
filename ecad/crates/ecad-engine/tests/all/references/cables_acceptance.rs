@@ -820,13 +820,18 @@ fn ref_rep(subject: Subject, page: PageId, items: Vec<ItemId>) -> Representation
 
 /// Add a reference representation holding one Point item to a hand-built document.
 fn add_ref(doc: &mut Document, n: u128, at: Pt, page: PageId, subject: Subject) {
+    add_refs(doc, std::iter::once((n, at)), page, subject);
+}
+
+/// Adds many references in ONE `edit_parts` call (each call rebuilds every index).
+fn add_refs(doc: &mut Document, refs: impl IntoIterator<Item = (u128, Pt)>, page: PageId, subject: Subject) {
     let style = doc.items().values().next().unwrap().style.clone();
-    let item = ItemId::from(0xdead_0000 + n);
     doc.edit_parts(|parts| {
-        parts.items.insert(item, Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at }) });
-    });
-    doc.edit_parts(|parts| {
-        parts.representations.insert(RepresentationId::from(0xbeef_0000 + n), ref_rep(subject, page, vec![item]));
+        for (n, at) in refs {
+            let item = ItemId::from(0xdead_0000 + n);
+            parts.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at }) });
+            parts.representations.insert(RepresentationId::from(0xbeef_0000 + n), ref_rep(subject, page, vec![item]));
+        }
     });
 }
 
@@ -942,9 +947,7 @@ fn ac6_hostile_documents_never_panic() {
         (
             "1 000 references of one cable",
             Box::new(move |d| {
-                for n in 0..1_000u128 {
-                    add_ref(d, 100_000 + n, Pt::new(n as f64, 0.0), page, Subject::Cable(cable));
-                }
+                add_refs(d, (0..1_000u128).map(|n| (100_000 + n, Pt::new(n as f64, 0.0))), page, Subject::Cable(cable));
             }),
         ),
     ];
@@ -1109,9 +1112,7 @@ fn many_references_of_one_cable_derive_in_bounded_time() {
     // (references added, seconds allowed for one derivation)
     for (n, secs) in [(2_000u128, 2u64), (20_000, 5)] {
         let mut doc = base.clone();
-        for i in 0..n {
-            add_ref(&mut doc, 1_000_000 + i, Pt::new(i as f64, 0.0), page, Subject::Cable(cable));
-        }
+        add_refs(&mut doc, (0..n).map(|i| (1_000_000 + i, Pt::new(i as f64, 0.0))), page, Subject::Cable(cable));
         let started = Instant::now();
         let references = cable_references(&doc);
         let took = started.elapsed();

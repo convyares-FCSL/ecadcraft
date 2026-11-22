@@ -389,6 +389,8 @@ impl Document {
     ///
     /// For test fixtures and the file reader. Production changes go through ops and the ledger,
     /// which keep the history, the checks and the indexes.
+    ///
+    /// Call it once per fixture: each call rebuilds every index.
     pub fn edit_parts<R>(&mut self, edit: impl FnOnce(&mut DocumentParts) -> R) -> R {
         let mut parts = std::mem::take(self).into_parts();
         let out = edit(&mut parts);

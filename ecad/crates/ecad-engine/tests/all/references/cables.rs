@@ -688,12 +688,10 @@ fn hostile_documents_derive_without_panicking() {
         parts.cables.insert(cable, Cable::default());
     });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
-        let item = ItemId::from(100 + i as u128);
-        doc.edit_parts(|parts| {
+    doc.edit_parts(|parts| {
+        for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
+            let item = ItemId::from(100 + i as u128);
             parts.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }) });
-        });
-        doc.edit_parts(|parts| {
             parts.representations.insert(
                 RepresentationId::from(200 + i as u128),
                 Representation {
@@ -705,8 +703,8 @@ fn hostile_documents_derive_without_panicking() {
                     connection_points: Default::default(),
                 },
             );
-        });
-    }
+        }
+    });
     // As a file's document on open: the maps were set directly, so the index is built (brief
     // 053: a page's markers read the page index).
     doc.rebuild_index();
@@ -740,12 +738,10 @@ fn hostile_documents_derive_without_panicking() {
     two.edit_parts(|parts| {
         parts.cables.insert(cable, Cable::default());
     });
-    for (i, pg) in [page, lost_page].into_iter().enumerate() {
-        let item = ItemId::from(300 + i as u128);
-        two.edit_parts(|parts| {
+    two.edit_parts(|parts| {
+        for (i, pg) in [page, lost_page].into_iter().enumerate() {
+            let item = ItemId::from(300 + i as u128);
             parts.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
-        });
-        two.edit_parts(|parts| {
             parts.representations.insert(
                 RepresentationId::from(400 + i as u128),
                 Representation {
@@ -757,8 +753,8 @@ fn hostile_documents_derive_without_panicking() {
                     connection_points: Default::default(),
                 },
             );
-        });
-    }
+        }
+    });
     two.rebuild_index();
     let references = cable_references(&two);
     let on_lost = references.iter().find(|r| r.page == lost_page).unwrap();
@@ -793,25 +789,28 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
-    for i in 0..n {
-        let item = ItemId::from(1_000_000 + i as u128);
+    let fill = |doc: &mut Document, n: usize| {
         doc.edit_parts(|parts| {
-            parts.items.insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }) });
-        });
-        doc.edit_parts(|parts| {
-            parts.representations.insert(
-                RepresentationId::from(2_000_000 + i as u128),
-                Representation {
-                    subject: Subject::Cable(cable),
-                    page,
-                    form: Form::Drawn,
-                    role: ecad_model::Role::Reference,
-                    items: vec![item],
-                    connection_points: Default::default(),
-                },
-            );
-        });
-    }
+            for i in 0..n {
+                let item = ItemId::from(1_000_000 + i as u128);
+                parts
+                    .items
+                    .insert(item, Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(i as f64, 0.0) }) });
+                parts.representations.insert(
+                    RepresentationId::from(2_000_000 + i as u128),
+                    Representation {
+                        subject: Subject::Cable(cable),
+                        page,
+                        form: Form::Drawn,
+                        role: ecad_model::Role::Reference,
+                        items: vec![item],
+                        connection_points: Default::default(),
+                    },
+                );
+            }
+        })
+    };
+    fill(&mut doc, n);
     let started = std::time::Instant::now();
     let references = cable_references(&doc);
     let took = started.elapsed();
@@ -823,7 +822,15 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     assert!(took < std::time::Duration::from_secs(10), "one derivation took {took:?}");
     let _ = ecad_electrical::references::cables::diagnostics(&doc);
     // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing (`quiet`).
-    let _ = ecad_engine::cables::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
+    // Drawing is quadratic in the references of one cable once the page index exists (a loaded
+    // file always has it; this fixture used to have none), so it runs on a smaller document.
+    let mut small = doc.clone();
+    small.edit_parts(|parts| {
+        parts.items.clear();
+        parts.representations.clear();
+    });
+    fill(&mut small, 200);
+    let _ = ecad_engine::cables::views::drawings_on_page(&small, page, &Default::default(), 1e-6);
 }
 
 /// The per-page movement rule (design 010 §0, translate M3) with named points (design 072 §4.4,

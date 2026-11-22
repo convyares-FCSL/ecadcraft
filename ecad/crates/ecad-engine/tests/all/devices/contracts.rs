@@ -348,11 +348,11 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
         parts.representations.get_mut(&rid).unwrap().connection_points.clear();
     });
     let ts: Vec<ConnectionPointId> = doc.connection_points_of(k2).map(|(t, _)| t).collect();
-    for t in ts {
-        doc.edit_parts(|parts| {
+    doc.edit_parts(|parts| {
+        for t in ts {
             parts.connection_points.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
-        });
-    }
+        }
+    });
     let mut ids = ecad_model::IdAllocator::seeded(5);
     let e = ecad_electrical::devices::merge::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
     assert!(e.starts_with("Cannot merge -K02: its symbol on page"), "{e}");

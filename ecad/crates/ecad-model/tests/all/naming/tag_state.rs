@@ -7,9 +7,11 @@ use ecad_model::{Device, DeviceId, Document, ObjectRef, Op};
 
 fn doc_with(devices: &[(u128, &str, TagState)]) -> Document {
     let mut d = Document::default();
-    for (id, t, state) in devices {
-        d.edit_parts(|parts| parts.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), *state)));
-    }
+    d.edit_parts(|parts| {
+        for (id, t, state) in devices {
+            parts.devices.insert(DeviceId(*id), Device::default().with_tag(Some(t), *state));
+        }
+    });
     d.rebuild_index();
     d
 }
