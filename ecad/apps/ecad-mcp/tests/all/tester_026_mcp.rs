@@ -28,7 +28,7 @@ fn tag_of(doc: &Document, comp: &str) -> Option<String> {
 
 fn assert_unique(doc: &Document, step: &str) {
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.properties.get("tag").map(String::as_str))) {
+    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.tag())) {
         assert!(seen.insert(tag::key(t)), "{step}: duplicate tag {t}");
     }
 }

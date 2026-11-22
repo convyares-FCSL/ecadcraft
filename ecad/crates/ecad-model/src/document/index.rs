@@ -304,7 +304,7 @@ impl Index {
         for m in &c.cores {
             self.cable_member(id, m, delta);
         }
-        if let Some(t) = c.properties.get(crate::naming::tag::TAG_KEY) {
+        if let Some(t) = c.tag() {
             self.cable_tag(id, t, delta);
         }
         // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.

@@ -7,7 +7,6 @@ pub mod commands;
 pub mod layout;
 pub mod slash;
 pub mod words;
-use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
@@ -198,7 +197,7 @@ pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
     if field == CableField::CableType {
         return c.cable_type.as_ref().filter(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, id)).map(StyleRef::text);
     }
-    let v = c.properties.get(field.key())?;
+    let v = c.get(field.key())?;
     valid(doc, field, v).then(|| v.trim().to_string())
 }
 
@@ -235,7 +234,7 @@ pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)
     checked
         .into_iter()
         .filter_map(|f| {
-            let v = c.properties.get(f.key())?;
+            let v = c.get(f.key())?;
             (!valid(doc, f, v)).then(|| (f, v.chars().take(24).filter(|c| !c.is_control()).collect()))
         })
         .collect()
@@ -511,7 +510,7 @@ pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
 
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
-    match doc.cables.get(&cable).and_then(|c| c.properties.text(ecad_model::naming::keys::TAG)) {
+    match doc.cables.get(&cable).and_then(|c| c.tag()) {
         Some(t) => t.to_string(),
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }

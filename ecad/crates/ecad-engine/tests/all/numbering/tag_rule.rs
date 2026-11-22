@@ -12,9 +12,7 @@ use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::new_cable_tag}
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 
 fn cable(tag: &str) -> Cable {
-    let mut properties = ecad_model::document::doc::Properties::new();
-    properties.insert("tag".into(), tag.into());
-    Cable { properties, cores: Vec::new(), ..Default::default() }
+    Cable { tag: ecad_model::naming::tag::Tag::new(tag).ok(), cores: Vec::new(), ..Default::default() }
 }
 
 #[test]

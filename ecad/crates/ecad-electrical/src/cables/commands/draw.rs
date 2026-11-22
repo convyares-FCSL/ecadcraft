@@ -97,7 +97,7 @@ pub fn slash_new(
     let mut c = ecad_model::Cable::default();
     // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
     let t = crate::devices::new_cable_tag(ledger, high, tag)?;
-    c.properties.insert(ecad_model::naming::tag::TAG_KEY.into(), t);
+    let _ = c.set_value(ecad_model::naming::tag::TAG_KEY, Some(&t));
     c.cores = found.members.iter().map(|m| Core { position: m.position, ..Core::unplaced(None) }).collect();
     let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
@@ -227,7 +227,7 @@ pub fn add_to_cable(
             let mut cable = ecad_model::Cable::default();
             // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
             let t = crate::devices::new_cable_tag(ledger, high, tag)?;
-            cable.properties.insert(ecad_model::naming::tag::TAG_KEY.into(), t);
+            let _ = cable.set_value(ecad_model::naming::tag::TAG_KEY, Some(&t));
             (c, None, cable)
         }
     };

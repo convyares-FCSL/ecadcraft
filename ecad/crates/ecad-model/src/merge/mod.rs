@@ -581,7 +581,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(n) => format!("Wire {n}"),
             None => format!("Wire {}", c.short()),
         },
-        Obj::Cable(c) => match docs.iter().find_map(|d| d.cables.get(&c)).and_then(|w| w.properties.get(tag::TAG_KEY).cloned()) {
+        Obj::Cable(c) => match docs.iter().find_map(|d| d.cables.get(&c)).and_then(|w| w.tag().map(str::to_string)) {
             Some(n) => format!("Cable {n}"),
             None => format!("Cable {}", c.short()),
         },
@@ -891,6 +891,22 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Cable(id) => {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
+                    tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| {
+                        v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
+                    }),
+                    tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
+                        crate::naming::words::flag_word(*v).into()
+                    }),
+                    description: field(
+                        ctx,
+                        obj,
+                        crate::objects::devices::DESCRIPTION_KEY,
+                        format!("{what} · description"),
+                        &a.description,
+                        &t.description,
+                        &s.description,
+                        &|v| v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string()),
+                    ),
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                     cores: merge_members(&a.cores, &t.cores, &s.cores),
                     cable_type: field(ctx, obj, "cable_type", format!("{what} · cable type"), &a.cable_type, &t.cable_type, &s.cable_type, &|x| {
@@ -1706,7 +1722,7 @@ impl Holder {
     fn tag(self, d: &Document) -> Option<&str> {
         match self {
             Holder::Device(c) => d.devices.get(&c).and_then(|x| x.tag()),
-            Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.properties.get(tag::TAG_KEY)).map(String::as_str),
+            Holder::Cable(c) => d.cables.get(&c).and_then(|x| x.tag()),
         }
     }
 
@@ -1759,7 +1775,7 @@ fn top_provisional(m: &Document, prefix: &str) -> u64 {
     m.devices
         .values()
         .filter_map(|c| c.tag())
-        .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY).map(String::as_str)))
+        .chain(m.cables.values().filter_map(|c| c.tag()))
         .filter_map(|x| tag::key(x).strip_prefix(&lo).and_then(|n| n.parse::<u64>().ok()))
         .max()
         .unwrap_or(0)
@@ -1772,13 +1788,8 @@ fn top_provisional(m: &Document, prefix: &str) -> u64 {
 fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let t = ctx.inp.target;
     let mut high = ctx.inp.high.clone();
-    let present: Vec<String> = m
-        .devices
-        .values()
-        .filter_map(|c| c.tag())
-        .chain(m.cables.values().filter_map(|c| c.properties.get(tag::TAG_KEY).map(String::as_str)))
-        .map(str::to_string)
-        .collect();
+    let present: Vec<String> =
+        m.devices.values().filter_map(|c| c.tag()).chain(m.cables.values().filter_map(|c| c.tag())).map(str::to_string).collect();
     for x in &present {
         tag::note(&mut high, x);
     }

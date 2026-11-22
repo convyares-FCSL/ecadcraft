@@ -277,6 +277,14 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
 fn take_fields(mut cable: ecad_model::Cable) -> ecad_model::Cable {
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
     cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
+    // The tag, its fixed flag and the description, likewise (#2).
+    cable.tag = cable.properties.remove(CableField::Tag.key()).and_then(|t| ecad_model::naming::tag::Tag::new(t.trim()).ok());
+    cable.tag_fixed = cable.properties.remove(ecad_model::naming::tag::FIXED_KEY).and_then(|f| ecad_model::naming::words::flag(&f)) == Some(true);
+    cable.description = cable
+        .properties
+        .remove(CableField::Description.key())
+        .and_then(|d| Some(d.trim().to_string()).filter(|d| !d.is_empty()))
+        .and_then(|d| ecad_model::objects::devices::Description::new(&d).ok());
     cable
 }
 
@@ -346,6 +354,9 @@ pub(crate) fn edit_ops(
     // The typed fields are read back from the properties at the end (`take_fields`).
     after.extend(cab.cable_type.as_ref().map(|t| (CableField::CableType.key().to_string(), t.text())));
     after.extend(cab.shield.map(|s| (CableField::Shield.key().to_string(), s.word().to_string())));
+    after.extend(cab.tag().map(|t| (CableField::Tag.key().to_string(), t.to_string())));
+    after.extend(cab.description().map(|d| (CableField::Description.key().to_string(), d.to_string())));
+    after.extend(cab.tag_fixed.then(|| (ecad_model::naming::tag::FIXED_KEY.to_string(), ecad_model::naming::words::flag_word(true).to_string())));
     let mut changed = Vec::new();
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {

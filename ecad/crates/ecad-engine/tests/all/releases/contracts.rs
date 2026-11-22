@@ -530,7 +530,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
             .map(|k| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.properties.insert("tag".into(), "-W?1".into());
+                after.tag = ecad_model::naming::tag::Tag::new("-W?1").ok();
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();

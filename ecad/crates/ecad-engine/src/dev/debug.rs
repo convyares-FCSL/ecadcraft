@@ -26,7 +26,6 @@
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
-use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -1246,15 +1245,11 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     }
 }
 
-fn tag(p: &ecad_model::Properties) -> Option<String> {
-    p.text(ecad_model::naming::keys::TAG).map(str::to_string)
-}
-
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
-        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Cable(c) => doc.cables.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Route(r) => doc.routes.get(&r).map(|x| format!("line on {}", x.page.short())),
         Subject::Aid(a) => doc.aids.get(&a).map(|x| match x {
             ecad_model::Aid::Continuation { name: Some(n), .. } => format!("continuation {n}"),

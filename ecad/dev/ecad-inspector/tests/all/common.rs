@@ -127,11 +127,13 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let (_, op2) = wire(&mut ids, "101", 2, x1t[0], x1t[1]);
     l.commit(Author::User, "Wires", vec![op1, op2]).unwrap();
     let cable: CableId = ids.fresh();
-    let mut cprops = ecad_model::document::doc::Properties::new();
-    cprops.insert("tag".into(), "-W1".into());
     let cable_op = Op::CreateCable {
         id: cable,
-        cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())], ..Default::default() },
+        cable: Cable {
+            tag: ecad_model::naming::tag::Tag::new("-W1").ok(),
+            cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())],
+            ..Default::default()
+        },
     };
     l.commit(Author::User, "Cable", vec![cable_op]).unwrap();
     for i in 0..20 {

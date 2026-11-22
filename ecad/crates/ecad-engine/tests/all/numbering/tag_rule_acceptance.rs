@@ -13,10 +13,8 @@ use serde_json::json;
 
 const PROJECT: ProjectId = ProjectId(0x0029_7e57_0000_0000_0000_0000_0000_0001);
 
-fn tagged(tag: &str) -> ecad_model::document::doc::Properties {
-    let mut p = ecad_model::document::doc::Properties::new();
-    p.insert("tag".into(), tag.into());
-    p
+fn tagged(tag: &str) -> Option<ecad_model::naming::tag::Tag> {
+    ecad_model::naming::tag::Tag::new(tag).ok()
 }
 
 #[test]
@@ -55,17 +53,13 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         Author::User,
         "Cables",
         vec![
-            Op::CreateCable { id: w1, cable: Cable { properties: tagged("-W01"), cores: Vec::new(), ..Default::default() } },
-            Op::CreateCable { id: w2, cable: Cable { properties: tagged("-W02"), cores: Vec::new(), ..Default::default() } },
+            Op::CreateCable { id: w1, cable: Cable { tag: tagged("-W01"), cores: Vec::new(), ..Default::default() } },
+            Op::CreateCable { id: w2, cable: Cable { tag: tagged("-W02"), cores: Vec::new(), ..Default::default() } },
         ],
     )
     .unwrap();
-    l.commit(
-        Author::User,
-        "Delete",
-        vec![Op::DeleteCable { id: w2, cable: Cable { properties: tagged("-W02"), cores: Vec::new(), ..Default::default() } }],
-    )
-    .unwrap();
+    l.commit(Author::User, "Delete", vec![Op::DeleteCable { id: w2, cable: Cable { tag: tagged("-W02"), cores: Vec::new(), ..Default::default() } }])
+        .unwrap();
     Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "tester 029", 16).unwrap();
     // As a build before 026 wrote it: device marks only (-K, -X), no rule in the row.
     {
@@ -94,7 +88,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
     let r = s.execute("cableadd", &json!({"conductors": [wire.hex()]})).unwrap();
     let cable = r["cable"].as_str().unwrap().to_string();
     let tag = project
-        .read(&mut s, |p, _| p.ledger.document().cables.iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.properties.get("tag").cloned()))
+        .read(&mut s, |p, _| p.ledger.document().cables.iter().find(|(id, _)| id.hex() == cable).and_then(|(_, c)| c.tag().map(str::to_string)))
         .unwrap();
     assert_eq!(tag.as_deref(), Some("-W03"), "-W02 was used before the snapshot");
     while !s.docs.is_empty() {

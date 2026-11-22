@@ -1015,7 +1015,7 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
                 json!({
                     "reference": r.reference.hex(),
                     "cable": r.cable.hex(),
-                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.properties.get("tag")),
+                    "cable_tag": doc.cables.get(&r.cable).and_then(|c| c.tag()),
                     "page": r.page.hex(),
                     "page_number": r.page_number,
                     "page_title": doc.pages.get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),

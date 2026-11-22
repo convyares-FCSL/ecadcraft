@@ -651,8 +651,8 @@ fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
 
 /// The label box on the trunk (design §4.4): its parts and the trunk clipped by it.
 fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<Part> {
-    let props = doc.cables.get(&cable).map(|c| &c.properties);
-    let get = |k: &str| props.and_then(|p| p.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
+    let cab = doc.cables.get(&cable);
+    let get = |k: &str| cab.and_then(|c| c.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
     let mut lines = vec![get("tag").unwrap_or_else(|| "?".to_string())];
     lines.extend(get("designation"));
     lines.extend(get("type"));

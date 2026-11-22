@@ -741,7 +741,7 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
             .devices
             .iter()
             .filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Device(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t.as_str()))));
+            .chain(doc.cables.iter().filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Cable(*id), t))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
             if let Some(k) = seen.get(&new)

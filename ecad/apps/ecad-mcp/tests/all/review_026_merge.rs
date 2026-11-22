@@ -85,7 +85,7 @@ fn make_them_one_cable_in_a_merge_moves_the_slash_drawings() {
     let mk = c.exec("cableslash", json!({"from": [30, 115], "to": [30, 125]}))["cable"].as_str().unwrap().to_string();
     let doc = c.doc();
     let mid = CableId::parse(&mk).unwrap();
-    assert_eq!(doc.cables[&mid].properties.get("tag").map(String::as_str), Some("-W01"));
+    assert_eq!(doc.cables[&mid].tag(), Some("-W01"));
     let pv = c.exec("merge", json!({"from": "Option C", "preview": true}));
     let k = tag_row(&pv);
     assert!(k["choices"].as_array().unwrap().contains(&json!("one")), "{k}");

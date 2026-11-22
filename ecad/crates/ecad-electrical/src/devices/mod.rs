@@ -412,7 +412,7 @@ pub fn tag_holder(doc: &Document, t: &str, except: Option<ecad_model::ObjectRef>
 
 /// A cable's tag as stored.
 pub fn cable_tag_of(doc: &Document, k: ecad_model::CableId) -> Option<&str> {
-    doc.cables.get(&k)?.properties.get(TAG_KEY).map(String::as_str)
+    doc.cables.get(&k)?.tag()
 }
 
 /// `-K03 (Contactor / relay coil, 101-C-1)` or `-W01 (cable, 3 wires)`.

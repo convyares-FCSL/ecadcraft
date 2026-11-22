@@ -438,11 +438,6 @@ pub fn highest_in_use(doc: &Document, prefix: &str) -> u64 {
     doc.tag_keys_starting(&p).filter_map(tag::parse).filter(|(q, _)| *q == p).map(|(_, n)| n).max().unwrap_or(0)
 }
 
-/// The fixed flag stored on a provisional tag, which does not count (see [`is_fixed`]).
-fn stale_flag(props: &crate::document::doc::Properties) -> Option<String> {
-    props.get(TAG_KEY).filter(|t| tag::is_provisional(t)).and(props.get(FIXED_KEY)).cloned()
-}
-
 /// One tagged item (device or cable).
 struct Tagged {
     object: ObjectRef,
@@ -570,13 +565,13 @@ fn plan_tags(
     }
     for (_, k) in doc.tagged_cables() {
         let Some(c) = doc.cables.get(&k) else { continue };
-        let tag = c.properties.get(TAG_KEY).cloned();
+        let tag = c.tag().map(str::to_string);
         items.push(Tagged {
             object: ObjectRef::Cable(k),
             kind: Kind::Cables,
             tag,
-            fixed: is_fixed(&c.properties),
-            stale_flag: stale_flag(&c.properties),
+            fixed: c.is_fixed(),
+            stale_flag: (c.tag_fixed && !c.is_fixed()).then(|| crate::naming::words::flag_word(true).to_string()),
             anchor: None,
             id: k.0,
         });
@@ -703,9 +698,9 @@ fn plan_tags(
                     ObjectRef::Cable(k) => {
                         let stale = it.stale_flag.is_some();
                         Op::edit_cable(doc, ops, k, |c| {
-                            c.properties.insert(TAG_KEY.into(), new.clone());
+                            let _ = c.set_value(TAG_KEY, Some(&new));
                             if stale {
-                                c.properties.remove(FIXED_KEY);
+                                c.tag_fixed = false;
                             }
                         });
                     }

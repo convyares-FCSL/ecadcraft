@@ -822,6 +822,12 @@ pub const CABLE_TYPE_KEY: &str = "cable_type";
 /// A cable groups existing conductors (DOC-04).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
+    /// Its tag (`-W01`), if it has one (design 026; the identity of the cable).
+    pub tag: Option<crate::naming::tag::Tag>,
+    /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
+    pub tag_fixed: bool,
+    /// What it is for, in words (`setprop` key `description`).
+    pub description: Option<crate::objects::devices::Description>,
     pub properties: Properties,
     /// The whole core set, in core order (design 072 §4.5).
     pub cores: Vec<Core>,
@@ -841,6 +847,65 @@ pub struct Cable {
     /// The device named as its protection (`rating {protected_by}`), over the trace's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protected_by: Option<crate::objects::wire::ProtectedBy>,
+}
+
+impl Cable {
+    /// Its tag as text.
+    pub fn tag(&self) -> Option<&str> {
+        self.tag.as_ref().map(|t| t.as_str())
+    }
+
+    /// Its description as text.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_ref().map(|t| t.as_str())
+    }
+
+    /// Whether its tag is fixed (FP1): flagged, and not provisional.
+    pub fn is_fixed(&self) -> bool {
+        self.tag_fixed && !self.tag().is_some_and(crate::naming::tag::is_provisional)
+    }
+
+    /// The text `setprop`'s key `key` names on this cable: its tag, its description, else the
+    /// property. (The fixed flag is not text: [`Cable::value`].)
+    pub fn get(&self, key: &str) -> Option<&str> {
+        match key {
+            crate::naming::tag::TAG_KEY => self.tag(),
+            crate::objects::devices::DESCRIPTION_KEY => self.description(),
+            _ => self.properties.get(key).map(String::as_str),
+        }
+    }
+
+    /// The value key `key` names as stored text: [`Cable::get`], and the fixed flag.
+    pub fn value(&self, key: &str) -> Option<String> {
+        match key {
+            crate::naming::tag::FIXED_KEY => self.tag_fixed.then(|| crate::naming::words::flag_word(true).to_string()),
+            _ => self.get(key).map(str::to_string),
+        }
+    }
+
+    /// Set the value key `key` names (`None`, or text blank once trimmed, clears it): the tag, its
+    /// fixed flag (a word), the description, else the property.
+    ///
+    /// # Errors
+    /// The [`crate::naming::text::TextError`] of a tag or description that is too long or holds a
+    /// hidden character.
+    pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
+        let trimmed = value.map(str::trim).filter(|v| !v.is_empty());
+        match key {
+            crate::naming::tag::TAG_KEY => self.tag = trimmed.map(crate::naming::tag::Tag::new).transpose()?,
+            crate::naming::tag::FIXED_KEY => self.tag_fixed = value.and_then(crate::naming::words::flag) == Some(true),
+            crate::objects::devices::DESCRIPTION_KEY => {
+                self.description = trimmed.map(crate::objects::devices::Description::new).transpose()?;
+            }
+            _ => {
+                match value {
+                    Some(v) => self.properties.insert(key.to_string(), v.to_string()),
+                    None => self.properties.remove(key),
+                };
+            }
+        }
+        Ok(())
+    }
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.

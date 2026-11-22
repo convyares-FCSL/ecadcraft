@@ -1593,8 +1593,7 @@ impl Scope {
                 self.cable_references.insert(*k);
                 // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                 self.cables.insert(*k);
-                let tags: Vec<String> =
-                    before.iter().chain(after.iter()).filter_map(|c| c.properties.get(ecad_model::naming::tag::TAG_KEY).cloned()).collect();
+                let tags: Vec<String> = before.iter().chain(after.iter()).filter_map(|c| c.tag().map(str::to_string)).collect();
                 self.tag_holders(doc, tags.iter().map(String::as_str));
                 // A cable's tag and cores are part of its members' words.
                 if let Some(cable) = doc.cables.get(k) {

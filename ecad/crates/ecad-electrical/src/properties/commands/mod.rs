@@ -314,7 +314,11 @@ pub struct ValueSet {
 /// The rule's refusal; [`NO_SUCH_OBJECT`].
 pub fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<ValueSet, CmdError> {
     let after = value(doc, object, key, typed)?;
-    let before = props_of(doc, object).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).cloned();
+    let before = match object {
+        // A cable's tag and description are fields: read them as `setprop` does.
+        ObjectRef::Cable(c) => doc.cables.get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).map(str::to_string),
+        _ => props_of(doc, object).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).cloned(),
+    };
     if before == after {
         return Ok(ValueSet { op: None, note: None });
     }
@@ -456,12 +460,11 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
 }
 
 /// The tag `o` holds and whether its fixed flag is stored: a device's fields (design 072 §2.1), a
-/// cable's properties. `None` for anything else, or an object that is not there.
+/// cable's fields. `None` for anything else, or an object that is not there.
 fn tag_of(doc: &Document, o: ObjectRef) -> Option<(Option<String>, bool)> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|d| (d.tag().map(str::to_string), d.tag_fixed)),
-        ObjectRef::Cable(_) => props_of(doc, o)
-            .map(|p| (p.get(TAG_KEY).cloned(), ecad_model::naming::keys::PropsExt::flag(p, ecad_model::naming::keys::TAG_FIXED) == Some(true))),
+        ObjectRef::Cable(c) => doc.cables.get(&c).map(|d| (d.tag().map(str::to_string), d.tag_fixed)),
         _ => None,
     }
 }
@@ -470,7 +473,8 @@ fn tag_of(doc: &Document, o: ObjectRef) -> Option<(Option<String>, bool)> {
 fn fixed_of(doc: &Document, o: ObjectRef) -> bool {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).is_some_and(ecad_model::Device::is_fixed),
-        _ => props_of(doc, o).is_some_and(ecad_model::naming::numbering::is_fixed),
+        ObjectRef::Cable(c) => doc.cables.get(&c).is_some_and(ecad_model::Cable::is_fixed),
+        _ => false,
     }
 }
 
@@ -485,8 +489,10 @@ fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> 
         }
         ObjectRef::Cable(k) => {
             let mut ops = Vec::new();
-            Op::set_cable_property(doc, &mut ops, k, TAG_KEY, tag);
-            Op::set_cable_property(doc, &mut ops, k, FIXED_KEY, fixed.then(|| ecad_model::naming::words::flag_word(true).to_string()));
+            Op::edit_cable(doc, &mut ops, k, |c| {
+                let _ = c.set_value(TAG_KEY, tag.as_deref());
+                c.tag_fixed = fixed;
+            });
             ops
         }
         ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => Vec::new(),

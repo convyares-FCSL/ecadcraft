@@ -1292,7 +1292,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             }
             let cable = doc.cables_of(w).into_iter().next().map(|k| {
                 d.cables.insert(k);
-                let tag = doc.cables.get(&k).and_then(|x| clean(x.properties.get("tag")));
+                let tag = doc.cables.get(&k).and_then(|x| clean(x.tag()));
                 (k, tag)
             });
             let core =

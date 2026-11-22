@@ -22,7 +22,6 @@
 // Brief 047: Reports ▸ BOM ▸ + Item.
 // Brief 041: what is under the cursor (the wheel) and the running tool's intent.
 
-use ecad_model::naming::keys::PropsExt;
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::color::Color as CColor;
@@ -355,10 +354,6 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     out
 }
 
-fn tag(props: &ecad_model::Properties) -> Option<&str> {
-    props.text(ecad_model::naming::keys::TAG)
-}
-
 /// What hovering drawing object `h` on page drawing `uid` shows (design §4.3): its name or ID and
 /// its connections, or `None` for plain geometry and objects ECAD does not know. Read only.
 pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
@@ -591,7 +586,7 @@ fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
 /// ends on `page`, and its members in stored order with their cores.
 fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let cable = doc.cables.get(&k);
-    let mut lines = vec![format!("Cable {}", cable.and_then(|x| tag(&x.properties)).unwrap_or("(no tag)")), format!("id {}", k.hex())];
+    let mut lines = vec![format!("Cable {}", cable.and_then(|x| x.tag()).unwrap_or("(no tag)")), format!("id {}", k.hex())];
     for (key, label) in [("designation", "Designation"), ("type", "Type")] {
         if let Some(v) = cable.and_then(|x| x.properties.get(key)) {
             lines.push(format!("{label}: {}", ecad_electrical::cables::words::shorten(v, 64)));
@@ -633,7 +628,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
         None => vec!["Wire line (no connection points yet)".to_string()],
     };
     if let Some((w, k)) = w.and_then(|w| doc.cables_of(w).first().map(|k| (w, *k))) {
-        let name = match doc.cables.get(&k).and_then(|x| tag(&x.properties)) {
+        let name = match doc.cables.get(&k).and_then(|x| x.tag()) {
             Some(t) => t.to_string(),
             None => format!("{}…", short(&k.hex())),
         };
