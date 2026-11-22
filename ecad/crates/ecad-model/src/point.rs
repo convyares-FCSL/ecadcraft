@@ -260,7 +260,6 @@ impl<'de> Deserialize<'de> for PointKey {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for PointKey {
     fn inline_schema() -> bool {
         true

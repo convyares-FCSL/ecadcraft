@@ -311,7 +311,7 @@ fn with_writes_off_every_catalogued_command_but_the_read_ones_is_refused_and_not
     for spec in cadcraft_engine::command_specs() {
         let id = spec.id;
         // Brief 019: `pageprops {}` and `projectprops {}` only read.
-        if policy::READ_COMMANDS.contains(&id) || policy::reads_only(id, &json!({})) {
+        if policy::is_read_command(id) || policy::reads_only(id, &json!({})) {
             continue;
         }
         let r = c.exec_raw(id, json!({}));
@@ -324,7 +324,7 @@ fn with_writes_off_every_catalogued_command_but_the_read_ones_is_refused_and_not
     assert_eq!(c.log(), log, "the head never moved");
     assert_eq!(c.doc(), doc);
     // The read commands themselves record nothing, even with odd parameters.
-    for id in policy::READ_COMMANDS {
+    for id in policy::read_commands() {
         for params in [json!({}), json!({"page": "ffff", "index": 99, "name": "x"})] {
             let _ = c.exec_raw(id, params);
         }

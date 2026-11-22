@@ -166,13 +166,12 @@ pub fn unknown_word_message(word: &str, what: &str, allowed: &[&str]) -> String 
 }
 
 #[doc(hidden)]
-#[cfg(feature = "schema")]
 pub use schemars as __schemars;
 #[doc(hidden)]
 pub use serde as __serde;
 
 /// Declares an enum whose values are stored as words, and implements [`Word`], `Serialize`,
-/// `Deserialize` and (with ecad-model's `schema` feature) `JsonSchema` for it.
+/// `Deserialize` and `JsonSchema` for it.
 ///
 /// The words are snake case of the variant names unless a variant says otherwise with
 /// `#[strum(serialize = "…")]`. The crate using it depends on `strum`.
@@ -246,7 +245,6 @@ macro_rules! word_enum {
 
 /// The JSON Schema of a [`Word`] enum: a string, one of its words.
 #[doc(hidden)]
-#[cfg(feature = "schema")]
 #[macro_export]
 macro_rules! __word_schema {
     ($name:ident) => {
@@ -267,12 +265,4 @@ macro_rules! __word_schema {
             }
         }
     };
-}
-
-/// Without ecad-model's `schema` feature a [`Word`] enum has no schema.
-#[doc(hidden)]
-#[cfg(not(feature = "schema"))]
-#[macro_export]
-macro_rules! __word_schema {
-    ($name:ident) => {};
 }

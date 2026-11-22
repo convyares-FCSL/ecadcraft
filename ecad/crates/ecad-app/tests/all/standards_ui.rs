@@ -173,7 +173,12 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     let (mut h, rep) = fixture(None);
     let before = head(&mut h);
     // The row's list sets it on this symbol (one `setdefault`); Reset takes it off.
-    let line = ecad_engine::default_cmds::line("text.tag.show", defaults::Level::Object, ecad_engine::default_cmds::Target::Symbol(rep), Some("off"));
+    let line = ecad_electrical::cmd::default::line(
+        "text.tag.show",
+        defaults::Level::Object,
+        ecad_electrical::cmd::default::Target::Symbol(rep),
+        Some("off"),
+    );
     h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.show", line));
     h.run_steps(3);
     assert_eq!(head(&mut h), before + 1);

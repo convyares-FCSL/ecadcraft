@@ -1,11 +1,17 @@
 //! The rules of the commands of the project's list of functions and locations (brief 052, design
 //! 052 §5.9): adding, renaming and describing, merging and removing entries. Each function reads
 //! the document (and the use index, [`Uses`], caught up by the caller) and returns the ops to
-//! commit and what to report.
+//! commit and what to report. The commands are generic ([`crate::cmd::run`]).
 
 use ecad_model::{Document, IdAllocator, ListDescription, ObjectRef, Op};
 
 use crate::designations::{self, Aspect, Entry, Uses};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::cmd::input::nullable;
+use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 
 /// The aspect `word` names: "function" or "location" (also `f`, `l`, `=`, `+`).
@@ -280,4 +286,211 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
         }
         _ => false,
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// The list with its counts, as `designations` answers (`only`: one aspect), for the command and
+/// for Settings ▸ Project info (design 052 §9.4). `uses` must be caught up.
+pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
+    let mut out = serde_json::Map::new();
+    for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
+        let default = designations::default_key(&doc.project, a);
+        let rows: Vec<Value> = designations::entries(doc, a)
+            .into_iter()
+            .map(|e| {
+                let c = uses.counts(a, &e.key);
+                json!({
+                    "key": e.key, "code": e.code, "description": e.description,
+                    "devices": c.devices, "overrides": c.overrides, "boxes": c.boxes, "pages": c.pages,
+                    "default": default.as_ref() == Some(&e.key), "unused": c.unused(), "uses": c.words(),
+                })
+            })
+            .collect();
+        // Stored keys with no entry (design 052 §5.9: only merges of branches make them).
+        let missing: Vec<&str> = uses.keys(a).filter(|k| designations::code_of(doc, a, k).is_none()).collect();
+        out.insert(a.plural().into(), json!({"entries": rows, "missing": missing}));
+    }
+    Value::Object(out)
+}
+
+/// `designations {aspect?}` (read only): each entry's key, code, description and counts.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DesignationsParams {
+    /// "function" or "location" (default: both).
+    #[serde(default)]
+    aspect: Option<String>,
+}
+
+impl Generic for DesignationsParams {
+    const ID: &'static str = "designations";
+    const TITLE: &'static str = "Functions and Locations";
+    const HELP: &'static str = "{aspect?: \"function\" | \"location\"} (read only: each entry's key, code, description and counts)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn check(&self) -> Result<(), CmdError> {
+        opt_aspect(self.aspect.as_deref()).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let only = opt_aspect(self.aspect.as_deref())?;
+        let doc = cx.doc;
+        Ok(Outcome::answer(rows(doc, cx.uses(), only)))
+    }
+}
+
+/// `designationadd {aspect, code, description?}`: a new entry of the list.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AddParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The code: "=F1", "+CP1".
+    code: String,
+    /// What it is.
+    #[serde(default)]
+    description: Option<String>,
+}
+
+impl Generic for AddParams {
+    const ID: &'static str = "designationadd";
+    const TITLE: &'static str = "Add Function or Location";
+    const HELP: &'static str = "{aspect: \"function\" | \"location\", code, description?} (one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        aspect(&self.aspect).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let a = aspect(&self.aspect)?;
+        let plan = plan_add(cx.doc, cx.ids, a, &self.code, self.description.as_deref())?;
+        Ok(Outcome::edit(plan.label, plan.ops, json!({"changed": true, "key": plan.key, "code": plan.code})))
+    }
+}
+
+/// `designationedit {aspect, key | code, code?, to?, description?}`: an entry renamed (everything
+/// storing its key shows the new code) or described.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EditParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The entry's key; with it, `code` is the new code.
+    #[serde(default)]
+    key: Option<String>,
+    /// The new code (with `key`), or the entry's code (without).
+    #[serde(default)]
+    code: Option<String>,
+    /// The new code (without `key`).
+    #[serde(default)]
+    to: Option<String>,
+    /// The old name of `to`.
+    #[serde(default)]
+    new_code: Option<String>,
+    /// The description, or null to clear it.
+    #[serde(default, deserialize_with = "nullable")]
+    description: Option<Option<String>>,
+}
+
+impl Generic for EditParams {
+    const ID: &'static str = "designationedit";
+    const TITLE: &'static str = "Rename Function or Location";
+    const HELP: &'static str = "{aspect, key, code?: the new code (a rename), description?: text | null} | {aspect, code: the entry, to: the new code, description?} (one transaction; a code another entry has is refused: merge instead)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        aspect(&self.aspect).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let a = aspect(&self.aspect)?;
+        let edit = EditInput { key: self.key, code: self.code, to: self.to, new_code: self.new_code, description: self.description };
+        let plan = plan_edit(cx.doc, a, edit)?;
+        if plan.ops.is_empty() {
+            return Ok(Outcome::answer(json!({"changed": false, "key": plan.key, "code": plan.code})));
+        }
+        Ok(Outcome::edit(plan.label, plan.ops, json!({"changed": true, "key": plan.key, "code": plan.code})))
+    }
+}
+
+/// `designationmerge {aspect, from, into}` (Q11): every user of `from` takes `into`; `from` is
+/// removed.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MergeParams {
+    /// "function" or "location".
+    aspect: String,
+    /// The entry merged away: its key or code.
+    from: String,
+    /// The entry kept: its key or code.
+    into: String,
+}
+
+impl Generic for MergeParams {
+    const ID: &'static str = "designationmerge";
+    const TITLE: &'static str = "Merge Functions or Locations";
+    const HELP: &'static str = "{aspect, from: key | code, into: key | code} (every user of `from` takes `into`; `from` is removed; one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        aspect(&self.aspect).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let a = aspect(&self.aspect)?;
+        let doc = cx.doc;
+        let m = plan_merge(doc, cx.uses(), a, &self.from, &self.into)?;
+        Ok(Outcome::edit(m.label, m.ops, json!({"changed": true, "from": m.from, "into": m.into, "key": m.key, "moved": m.moved})))
+    }
+}
+
+/// `designationremove {aspect, key | code}`, or `{aspect?, unused: true}`: every entry nothing
+/// uses, in one transaction (design 052 §9.4, **Remove unused**).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveParams {
+    /// "function" or "location" (with `unused`, default both).
+    #[serde(default)]
+    aspect: Option<String>,
+    /// The entry's key.
+    #[serde(default)]
+    key: Option<String>,
+    /// The entry's code.
+    #[serde(default)]
+    code: Option<String>,
+    /// Remove every entry nothing uses.
+    #[serde(default)]
+    unused: Option<bool>,
+}
+
+impl Generic for RemoveParams {
+    const ID: &'static str = "designationremove";
+    const TITLE: &'static str = "Remove Function or Location";
+    const HELP: &'static str =
+        "{aspect, key | code} (only an entry nothing uses) | {aspect?, unused: true} (every entry nothing uses) (one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        match self.unused == Some(true) {
+            true => opt_aspect(self.aspect.as_deref()).map(|_| ()),
+            false => required_aspect(self.aspect.as_deref()).map(|_| ()),
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doc = cx.doc;
+        if self.unused == Some(true) {
+            let only = opt_aspect(self.aspect.as_deref())?;
+            let (ops, codes) = plan_remove_unused(doc, cx.uses(), only);
+            if codes.is_empty() {
+                return Ok(Outcome::answer(json!({"changed": false, "removed": []})));
+            }
+            let n = codes.len();
+            let label = format!("Remove {n} unused {}", if n == 1 { "entry" } else { "entries" });
+            return Ok(Outcome::edit(label, ops, json!({"changed": true, "removed": codes})));
+        }
+        let a = required_aspect(self.aspect.as_deref())?;
+        let (ops, code) = plan_remove(doc, cx.uses(), a, self.key.as_deref(), self.code.as_deref())?;
+        Ok(Outcome::edit(format!("Remove {} {code}", a.word()), ops, json!({"changed": true, "code": code})))
+    }
 }

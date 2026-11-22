@@ -128,9 +128,9 @@ pub struct Project {
     pub open_reports: bool,
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
     /// clears this).
-    pub agent_access_request: Option<crate::agent_access::Preference>,
+    pub agent_access_request: Option<crate::agent::access::Preference>,
     /// Brief 035: the desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
-    pub agent_access_status: Option<crate::agent_access::Status>,
+    pub agent_access_status: Option<crate::agent::access::Status>,
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
@@ -802,6 +802,13 @@ impl Project {
     }
 
     /// How many pages are open.
+    /// The functions and locations list with its counts, as `designations` answers (Settings ▸
+    /// Project info, design 052 §9.4). Catches the use index up first.
+    pub fn designation_rows(&mut self) -> serde_json::Value {
+        self.designation_uses.catch_up(&self.ledger);
+        ecad_electrical::cmd::designation::rows(self.ledger.document(), &self.designation_uses, None)
+    }
+
     pub fn open_pages(&self) -> usize {
         self.pages.values().filter(|v| v.uid.is_some()).count()
     }

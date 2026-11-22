@@ -144,7 +144,6 @@ macro_rules! text_type {
             }
         }
 
-        #[cfg(feature = "schema")]
         impl<const N: usize> schemars::JsonSchema for $name<N> {
             fn inline_schema() -> bool {
                 true

@@ -15,7 +15,7 @@ pub mod review;
 pub mod title_blocks;
 pub mod view;
 
-use ecad_engine::symbol_cmds::Content;
+use ecad_electrical::cmd::symbol::Content;
 use ecad_engine::symbols;
 use ecad_model::{DefinitionId, Form, ItemKind, Subject};
 use serde_json::{Value, json};
@@ -194,7 +194,7 @@ impl App {
                         prims.push(pr.clone());
                     }
                 }
-                let o = ecad_engine::symbol_cmds::grid_origin(&prims);
+                let o = ecad_electrical::cmd::symbol::grid_origin(&prims);
                 let points: Vec<ecad_model::TerminalDef> = rep
                     .connection_points
                     .iter()
@@ -213,7 +213,7 @@ impl App {
                         })
                     })
                     .collect();
-                let graphics = prims.iter().map(|g| ecad_engine::symbol_cmds::shifted(g, o)).collect();
+                let graphics = prims.iter().map(|g| ecad_electrical::cmd::symbol::shifted(g, o)).collect();
                 let tag = ecad_engine::devices::tag_words(doc, c);
                 Some((graphics, points, tag, [o.x, o.y]))
             })?;
@@ -248,7 +248,7 @@ impl App {
                         }
                     }
                     // The same words as `makesymbol`'s refusal, naming the object (design 048 §9.5).
-                    Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_engine::symbol_cmds::not_plain(doc, i)),
+                    Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_electrical::cmd::symbol::not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }
@@ -396,7 +396,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (shown, _, _) = ecad_engine::symbol_cmds::update_available(doc, rep)?;
+            let (shown, _, _) = ecad_electrical::symbols::update_available(doc, rep)?;
             let lineage = symbols::Version::of(shown, doc.definitions.get(&shown)?)?.lineage;
             let newest = symbols::newest(doc, lineage)?;
             Some((shown, Content::of(newest.def), newest.def.name.clone()))

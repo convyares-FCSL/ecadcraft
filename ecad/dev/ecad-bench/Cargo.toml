@@ -11,6 +11,8 @@ publish = false
 workspace = true
 
 [dependencies]
+# The strips bench calls the terminal rules directly.
+ecad-electrical = { workspace = true }
 ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }
@@ -24,5 +26,3 @@ zstd = { workspace = true }
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
-# Design 064: each derived view checked against its old function on the recorded corpus.
-ecad-electrical = { workspace = true }

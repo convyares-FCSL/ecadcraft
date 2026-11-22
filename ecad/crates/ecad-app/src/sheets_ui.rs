@@ -432,7 +432,7 @@ impl ProjectProps {
                         TextEntry::new(v, &name).read_only(ro).width(FIELD_W).show(ui).on_hover_text("Any text; or pick one");
                         ui.add_enabled_ui(!ro, |ui| {
                             ui.menu_button("\u{25be}", |ui| {
-                                for s in ecad_engine::sheet_cmds::STATUS_SUGGESTIONS {
+                                for s in ecad_engine::cmd::sheet::STATUS_SUGGESTIONS {
                                     if ui.add(Button::new(s).kind(Kind::Quiet).small()).clicked() {
                                         *v = s.to_string();
                                         ui.close();

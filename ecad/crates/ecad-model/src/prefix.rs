@@ -141,7 +141,6 @@ impl<'de> Deserialize<'de> for PrefixOf {
     }
 }
 
-#[cfg(feature = "schema")]
 mod schema {
     use std::borrow::Cow;
 

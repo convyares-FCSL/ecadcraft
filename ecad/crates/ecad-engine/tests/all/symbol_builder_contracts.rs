@@ -195,8 +195,8 @@ fn row_5_impact_clashes_and_selected_updates() {
         assert_eq!(d.terminals_of(*c).count(), 1, "point 2 removed");
     }
     assert_eq!(d.terminals_of(copies[0].0).count(), 2, "the clashing copy is left");
-    assert!(ecad_engine::symbol_cmds::update_available(&d, copies[0].1).is_some(), "update available");
-    assert!(ecad_engine::symbol_cmds::update_available(&d, copies[1].1).is_none());
+    assert!(ecad_electrical::symbols::update_available(&d, copies[0].1).is_some(), "update available");
+    assert!(ecad_electrical::symbols::update_available(&d, copies[1].1).is_none());
     assert!(h.run("symbolupdate", json!({"copies": [copies[0].1.hex()]})).unwrap_err().contains("would clash"));
     h.check();
 }

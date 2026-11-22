@@ -5,13 +5,14 @@
 //! `symboledit` or `makesymbol` with [`Draft::params`].
 //!
 //! Pure data and rules: no egui, no project lock. The rules themselves are the commands'
-//! ([`symbol_cmds::problems`]), so the builder and the JSON form refuse in the same words.
+//! ([`symbol_rules::problems`]), so the builder and the JSON form refuse in the same words.
 
 use ecad_model::units::Degrees;
 use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
-use ecad_engine::symbol_cmds::{self, Content, POINT_GRID_MM};
+use ecad_electrical::cmd::symbol::{self as symbol_rules, Content};
+use ecad_electrical::symbols::POINT_GRID_MM;
 use ecad_model::{Document, PointKey, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -223,7 +224,7 @@ fn touches(g: &Primitive, p: Pt) -> bool {
 
 /// `g` moved by `d`.
 pub fn moved(g: &Primitive, d: Pt) -> Primitive {
-    symbol_cmds::shifted(g, Pt::new(-d.x, -d.y))
+    symbol_rules::shifted(g, Pt::new(-d.x, -d.y))
 }
 
 impl Draft {
@@ -253,8 +254,8 @@ impl Draft {
     /// A draft of page geometry `prims` (Make symbol, design 048 §4.1): moved so its bounding box's
     /// centre is on the nearest grid point at (0, 0), with the offers for it.
     pub fn of_geometry(prims: &[Primitive], page: String, page_number: String, handles: Vec<u64>) -> Self {
-        let o = symbol_cmds::grid_origin(prims);
-        let graphics: Vec<Primitive> = prims.iter().map(|g| symbol_cmds::shifted(g, o)).collect();
+        let o = symbol_rules::grid_origin(prims);
+        let graphics: Vec<Primitive> = prims.iter().map(|g| symbol_rules::shifted(g, o)).collect();
         let offers = offers_for(&graphics);
         let mut d = Draft {
             source: Source::Make { page, page_number, handles, at: [o.x, o.y], replace: true },
@@ -354,8 +355,8 @@ impl Draft {
         if let Some(r) = self.point_refusal(at, None) {
             return Err(r);
         }
-        if self.shape.points.len() >= symbol_cmds::MAX_POINTS {
-            return Err(format!("The symbol has too many connection points ({} at most).", symbol_cmds::MAX_POINTS));
+        if self.shape.points.len() >= symbol_rules::MAX_POINTS {
+            return Err(format!("The symbol has too many connection points ({} at most).", symbol_rules::MAX_POINTS));
         }
         let key = self.next_point_key();
         self.step();
@@ -396,8 +397,8 @@ impl Draft {
         if self.shape.slots.iter().any(|s| s.text == slot) {
             return Err(format!("The {} already has a slot.", slot_label(text)));
         }
-        if self.shape.slots.len() >= symbol_cmds::MAX_SLOTS {
-            return Err(format!("The symbol has too many text slots ({} at most).", symbol_cmds::MAX_SLOTS));
+        if self.shape.slots.len() >= symbol_rules::MAX_SLOTS {
+            return Err(format!("The symbol has too many text slots ({} at most).", symbol_rules::MAX_SLOTS));
         }
         self.step();
         self.shape.slots.push(TextSlot { text: slot, at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: Radians(0.0) });
@@ -624,7 +625,7 @@ impl Draft {
     /// is the lineage being saved (its own key may be kept).
     pub fn missing(&self, doc: &Document, lineage: Option<ecad_model::DefinitionId>) -> Vec<Missing> {
         let grid = !self.fixed_drawing();
-        symbol_cmds::problems(&self.content(), &symbol_cmds::Rules { doc, lineage, grid })
+        symbol_rules::problems(&self.content(), &symbol_rules::Rules { doc, lineage, grid })
             .into_iter()
             .map(|text| Missing { item: item_of(&text), text })
             .collect()

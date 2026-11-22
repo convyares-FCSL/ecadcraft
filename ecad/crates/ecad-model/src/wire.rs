@@ -269,7 +269,6 @@ impl<'de> Deserialize<'de> for WireSize {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for WireSize {
     fn inline_schema() -> bool {
         true
@@ -408,7 +407,6 @@ impl<'de> Deserialize<'de> for Colours {
     }
 }
 
-#[cfg(feature = "schema")]
 impl schemars::JsonSchema for Colours {
     fn inline_schema() -> bool {
         true
@@ -488,8 +486,7 @@ impl SupplySystem {
 
 /// A wire's bundling or a cable's grouping (design 057 §2.1): a factor, or a circuit count the
 /// rating table turns into one.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Bundling {
     Factor(f64),

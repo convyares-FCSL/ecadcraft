@@ -4,15 +4,18 @@
 //! [`crate::title_block`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
 //! text looks, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::sheet::{self, FRAME_CATALOGUE, FRAME_SHEET_FIELD, Margins, SheetSpec};
 use ecad_model::style::{StyleBody, StyleLayer, StyleRef, is_name};
 use ecad_model::title_block::TitleBlockLayout;
 use ecad_model::{Document, IdAllocator, Op, PageId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::style::{FieldInput, STANDARD_FIRST, STYLE_NEEDS_NAME, fields};
+use crate::cmd::run::{Access, Cx, Generic, Outcome};
+use crate::cmd::style::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
 use crate::error::CmdError;
 use crate::frames::FrameText;
 use crate::styles;
@@ -294,4 +297,142 @@ pub fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameT
     v["users"] = json!({"pages": pages_using(doc, id).len()});
     v["keys"] = json!(own_keys(&layout).into_iter().collect::<Vec<_>>());
     Ok(v)
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run; design 055 §9). `titleblockimport` reads a DXF with
+// CADCraft's reader and stays the engine's.
+
+/// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(extend("properties" = {}))]
+pub struct TitleblocksParams {}
+
+/// A new own frame (design 055 §4.6).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NewParams {
+    /// The frame it starts from (an id or a name), or "blank" (default "sheet").
+    #[serde(default)]
+    from: Option<String>,
+    /// The sheet it is drawn for (default the project's).
+    #[serde(default)]
+    sheet: Option<String>,
+    /// Its name (default from the sheet's size: "A3 title block").
+    #[serde(default)]
+    name: Option<String>,
+    /// project (the default) or standard.
+    #[serde(default)]
+    layer: Option<String>,
+}
+
+/// `titleblock {id | name, sheet?}` reads a frame; `{id | name, name? | rename?, fields?, body?}`
+/// writes one; `{new: {from, sheet, name?, layer?}}` makes a new own frame. One transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TitleblockParams {
+    /// The frame (an id or a name).
+    #[serde(default)]
+    id: Option<String>,
+    /// With `id`: the frame's new name; without: the frame (a name or an id).
+    #[serde(default)]
+    name: Option<String>,
+    /// Without `id`: the frame's new name.
+    #[serde(default)]
+    rename: Option<String>,
+    /// The sheet the block is shown for (default the project's).
+    #[serde(default)]
+    sheet: Option<String>,
+    /// The fields to set: {key: value | null} (null: back to the inherited value).
+    #[serde(default)]
+    fields: Option<BTreeMap<String, Option<FieldParam>>>,
+    /// The block's layout (as `titleblock {id}` gives it).
+    #[serde(default)]
+    #[schemars(with = "Option<serde_json::Map<String, Value>>")]
+    body: Option<Value>,
+    /// A new own frame.
+    #[serde(default)]
+    new: Option<NewParams>,
+}
+
+/// A title block's body as given (`body`), checked.
+///
+/// # Errors
+/// A body that does not read as a title block, or fails its check.
+pub fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
+    let l: TitleBlockLayout =
+        serde_json::from_value(v.clone()).map_err(|e| CmdError::input(format!("The body does not read as a title block: {e}.")))?;
+    check_body(l)
+}
+
+impl Generic for TitleblocksParams {
+    const ID: &'static str = "titleblocks";
+    const TITLE: &'static str = "Title Blocks";
+    const HELP: &'static str = "{} (read only): every frame with its sheet, items, users and keys";
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        Ok(Outcome::answer(titleblocks_json(cx.doc, &FrameText::with(cx.doc, cx.metrics))))
+    }
+}
+
+impl Generic for TitleblockParams {
+    const ID: &'static str = "titleblock";
+    const TITLE: &'static str = "Title Block";
+    const HELP: &'static str = "{id | name, sheet?} (read) | {id | name, name?: new name, fields?: {key: value|null}, body?: layout} (write) | \
+{new: {from: id|\"blank\", sheet, name?, layer?}} (a new own frame); one transaction";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        if let Some(new) = self.new {
+            return new_frame(cx, new);
+        }
+        // With `id`, `name` renames (design 055 §9); without, it names the frame.
+        let (frame_name, rename) = match &self.id {
+            Some(_) => (None, self.name),
+            None => (self.name, self.rename),
+        };
+        let body = self.body.filter(|b| !b.is_null());
+        let writes = body.is_some() || self.fields.is_some() || rename.is_some();
+        let doc = cx.doc;
+        let metrics = cx.metrics;
+        let id = frame(doc, self.id.as_deref(), frame_name.as_deref())?;
+        let sheet_text = self.sheet;
+        if !writes {
+            let spec = sheet(doc, sheet_text.as_deref())?;
+            return Ok(Outcome::answer(block_json(doc, &id, &spec, &FrameText::with(doc, metrics))?));
+        }
+        // The body is read when the frame is known to be an own one, as before.
+        let body = match body {
+            Some(b) if !id.is_builtin() && layer_of(doc, &id).is_some() => Some(body_param(&b)?),
+            _ => None,
+        };
+        let edit = FrameEdit { rename: rename.map(|n| n.trim().to_string()), fields: field_inputs(self.fields), body };
+        let plan = plan_edit(doc, &id, edit)?;
+        let changed = !plan.ops.is_empty();
+        Ok(Outcome::edit_then_try(plan.label, plan.ops, move |doc| {
+            let spec = sheet(doc, sheet_text.as_deref())?;
+            let mut v = block_json(doc, &id, &spec, &FrameText::with(doc, metrics))?;
+            v["changed"] = json!(changed);
+            Ok(v)
+        }))
+    }
+}
+
+/// `titleblock {new: …}`: a new own frame.
+fn new_frame(cx: &mut Cx<'_>, new: NewParams) -> Result<Outcome, CmdError> {
+    let doc = cx.doc;
+    let spec = sheet(doc, new.sheet.as_deref())?;
+    let layer = new_layer(doc, new.layer.as_deref())?;
+    let source = new_source(doc, new.from.as_deref())?;
+    // Own frames keep their block as made: items stay at their place from the bottom-right
+    // corner; built-ins are computed for the chosen sheet.
+    let layout = match &source {
+        Some(src) => layout_of(doc, src, &spec, &FrameText::with(doc, cx.metrics)),
+        None => TitleBlockLayout::blank(BLANK_SIZE.0, BLANK_SIZE.1),
+    };
+    let name = new_name(doc, new.name.as_deref(), &spec)?;
+    let frame = NewFrame { name: name.clone(), spec, layer, layout, source: source.as_ref() };
+    let (ops, id) = plan_new(doc, cx.ids, frame)?;
+    Ok(Outcome::edit(format!("New title block {name}"), ops, json!({"changed": true, "id": id.text(), "name": name})))
 }

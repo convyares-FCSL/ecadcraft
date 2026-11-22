@@ -23,7 +23,7 @@ test-ops = []
 test-support = []
 
 [dependencies]
-ecad-model = { workspace = true, features = ["schema"] }
+ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }
 ecad-inspect = { workspace = true }

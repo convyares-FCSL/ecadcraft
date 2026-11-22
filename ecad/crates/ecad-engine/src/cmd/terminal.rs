@@ -20,7 +20,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Point, Typed};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
 pub use crate::connectors::strip_terminal_at;
 pub use crate::connectors::{Land, plan_land};
@@ -28,6 +28,7 @@ use crate::strips::StripData;
 pub use crate::strips::terminal_words;
 use crate::terminal_types as tt;
 use crate::wires::{ON_WIRE, OnRoute};
+use ecad_electrical::cmd::input::Point;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[

@@ -8,7 +8,7 @@ use ecad_app::agent::banner as b;
 use ecad_app::agent::undo_session as us;
 use ecad_app::agent::{self, BannerAction, BannerState};
 use ecad_app::{App, developer};
-use ecad_engine::agent_access::{self, Mode, Preference};
+use ecad_engine::agent::access::{self, Mode, Preference};
 use ecad_engine::views::Settings;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -53,7 +53,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
     let port = h.state().agent.pref.port;
     assert_eq!(h.state().agent.status_text(), format!("● Listening on 127.0.0.1:{port}"));
     assert!(h.query_by_label(developer::AGENT_STATUS).is_some());
-    assert_eq!(agent_access::load(&Settings::at(&d)).preference, Preference { mode: Mode::Write, port });
+    assert_eq!(access::load(&Settings::at(&d)).preference, Preference { mode: Mode::Write, port });
     // A bad port keeps the old one and warns.
     h.state_mut().agent.port_text = "80".into();
     h.state_mut().agent_apply_port();
@@ -64,7 +64,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
     // Off again: saved; the banner and sessions end.
     h.state_mut().agent_set_mode(Mode::Off);
     h.run_steps(2);
-    assert_eq!(agent_access::load(&Settings::at(&d)).preference.mode, Mode::Off);
+    assert_eq!(access::load(&Settings::at(&d)).preference.mode, Mode::Off);
     assert_eq!(h.state().agent.status_text(), "Off");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -79,7 +79,7 @@ fn control_flag_shows_this_run_only_and_locks_the_mode() {
     assert_eq!(h.state().agent.status_text(), format!("● Listening on 127.0.0.1:{port} (this run only, --control)"));
     h.state_mut().agent_set_mode(Mode::Off);
     assert_eq!(h.state().agent.pref.mode, Mode::Write, "--control is not changed from the row");
-    assert!(!Settings::at(&d).dir().unwrap().join(agent_access::FILE_NAME).exists(), "--control writes nothing");
+    assert!(!Settings::at(&d).dir().unwrap().join(access::FILE_NAME).exists(), "--control writes nothing");
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -87,10 +87,10 @@ fn control_flag_shows_this_run_only_and_locks_the_mode() {
 fn a_port_in_use_says_so_and_an_unreadable_file_reads_as_off() {
     let d = dir("busy");
     std::fs::create_dir_all(&d).unwrap();
-    std::fs::write(d.join(agent_access::FILE_NAME), "{ not json").unwrap();
+    std::fs::write(d.join(access::FILE_NAME), "{ not json").unwrap();
     let mut h = app_with(&d);
     assert_eq!(h.state().agent.pref.mode, Mode::Off);
-    assert!(h.state().cad.session.log.iter().any(|l| l == agent_access::UNREADABLE), "said once in the history");
+    assert!(h.state().cad.session.log.iter().any(|l| l == access::UNREADABLE), "said once in the history");
     let taken = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = taken.local_addr().unwrap().port();
     h.state_mut().agent.control_flag(port);

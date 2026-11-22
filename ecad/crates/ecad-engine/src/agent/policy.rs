@@ -12,7 +12,8 @@
 
 use serde_json::Value;
 
-/// Commands that change nothing in the project or its files, allowed with writes off.
+/// Session commands that change nothing in the project or its files, allowed with writes off. A
+/// generic command says so in its declaration instead ([`is_read_command`]).
 pub const READ_COMMANDS: &[&str] = &[
     "ecadinspect",
     "entities",
@@ -25,9 +26,8 @@ pub const READ_COMMANDS: &[&str] = &[
     // Navigation between the project's pages: opens or shows a page, records nothing.
     "openpage",
     "document.switch",
-    // Cable references (brief 010): listing them reads the project; going to the other end opens
-    // or shows its page and selects it, and records nothing.
-    "cablerefs",
+    // Cable references (brief 010): going to the other end opens or shows its page and selects
+    // it, and records nothing.
     "cablegoto",
     // Devices and starter symbols (brief 018): finding and listing them, and one device's
     // properties, read the project only.
@@ -38,10 +38,8 @@ pub const READ_COMMANDS: &[&str] = &[
     "nets",
     "net",
     "checks",
-    // Cross-references (brief 025): listing references and a device's contacts reads the project;
-    // going to a reference opens or shows its page and records nothing.
-    "xrefs",
-    "contacts",
+    // Cross-references (brief 025): going to a reference opens or shows its page and records
+    // nothing.
     "refgoto",
     // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",
@@ -72,21 +70,13 @@ pub const READ_COMMANDS: &[&str] = &[
     "defaults",
     "pagetexts",
     "hiddentext",
-    // Brief 050a: the style catalogues' list reads the project.
-    "styles",
     // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
     "symbolimpact",
     // Brief 045: the racks with their slots, and the I/O list, read the project.
     "plcracks",
     "iolist",
-    // Brief 057: the rating results read the project.
-    "ratings",
-    // Brief 052: the project's list of functions and locations, with counts, reads the project.
-    "designations",
     // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
     "plcexport",
-    // Brief 055: the title blocks' list reads the project.
-    "titleblocks",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
@@ -105,10 +95,6 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     ("conflicts", &[]),
 ];
 
-/// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
-/// project file, which stays with the person who started the server).
-const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("standard", "from"), ("ratingtable", "import"), ("ratingtable", "export")];
-
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).
 const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
@@ -120,6 +106,17 @@ const READ_WITH_REV: &[&str] = &["release"];
 
 /// Commands whose form with `dry_run: true` only reads (brief 056: what an import would set).
 const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
+
+/// Whether command `id` only reads, whatever its parameters: a session command in
+/// [`READ_COMMANDS`], or a generic command that declares it.
+pub fn is_read_command(id: &str) -> bool {
+    READ_COMMANDS.contains(&id) || crate::cmd::declared_read(id)
+}
+
+/// Every command that only reads, whatever its parameters ([`is_read_command`]).
+pub fn read_commands() -> Vec<&'static str> {
+    READ_COMMANDS.iter().copied().chain(crate::cmd::declared_reads()).collect()
+}
 
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
 /// [`READ_WITH_REV`], [`READ_WITH_DRY_RUN`]).
@@ -287,7 +284,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     {
         return Err(file_key(id, k));
     }
-    if let Some((_, k)) = COMMAND_FILE_KEYS.iter().find(|(c, k)| *c == id && params.get(*k).is_some_and(|v| !v.is_null())) {
+    if let Some(k) = crate::cmd::declared_file_keys(id).find(|k| params.get(*k).is_some_and(|v| !v.is_null())) {
         return Err(file_key(id, k));
     }
     if NEVER_COMMANDS.contains(&id) {
@@ -296,7 +293,7 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     if sets_auditctl(id, params) {
         return Err(never("setvar auditctl"));
     }
-    if READ_COMMANDS.contains(&id) || reads_only(id, params) {
+    if is_read_command(id) || reads_only(id, params) {
         return Ok(());
     }
     if !writes {

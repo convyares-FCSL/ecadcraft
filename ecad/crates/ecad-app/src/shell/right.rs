@@ -49,7 +49,7 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_engine::default_cmds::{self, Target};
+use ecad_electrical::cmd::default::{self as default_cmds, Target};
 use ecad_engine::defaults::{self, Entry, Kind, Level, Scope, Source};
 use ecad_engine::project::Mapped;
 use ecad_engine::text_style::TextKind;
@@ -756,7 +756,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         _ => Vec::new(),
     };
     let update = match what {
-        What::Symbol(_, rep) => ecad_engine::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
+        What::Symbol(_, rep) => ecad_electrical::symbols::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
         _ => None,
     };
     // UI rev 3: the Device and Layout tabs' copy of one device.

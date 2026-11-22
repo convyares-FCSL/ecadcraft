@@ -1,7 +1,7 @@
 //! Brief 070, strict input (overseer, 2026-11-17): parameters that are not an object are refused
 //! by every typed command with one wording, and nothing is recorded. `null` reads as none.
 
-use ecad_engine::cmd::input::NOT_AN_OBJECT;
+use ecad_electrical::cmd::input::NOT_AN_OBJECT;
 use ecad_engine::cmd::typed_commands;
 use serde_json::json;
 

@@ -24,11 +24,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, TextOrNumber, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{MAX_HANDLES, on_any_page, on_project, plain_style};
 use crate::devices;
 use crate::project::{Mapped, Project};
 use crate::views;
+use ecad_electrical::cmd::input::{Bounded, Point, TextOrNumber, nullable};
 
 fn err(m: impl Into<String>) -> EngineError {
     EngineError::Other(m.into())

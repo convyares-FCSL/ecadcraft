@@ -7,9 +7,15 @@ use std::collections::BTreeSet;
 
 use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
 use ecad_model::tag;
-use ecad_model::{CableId, DeviceId, Document, FolderId, Noun, ObjectRef, PageId, TerminalId, WireId};
+use ecad_model::tag::PROVISIONAL_SETTING;
+use ecad_model::{CableId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, TerminalId, WireId};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::cmd::input::nullable;
+use crate::cmd::run::{Cx, Generic, Outcome, Pages};
+use crate::devices::{self, TagHigh};
 use crate::error::CmdError;
 
 /// The kinds `kind` names (absent: devices); `all` is devices, cables and wires.
@@ -461,5 +467,220 @@ pub fn way_before_issue(doc: &Document, way: Option<&str>) -> Result<Option<Opti
         }))),
         Some("finalise" | "finalize") => Ok(None),
         Some(other) => Err(CmdError::input(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}"))),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// The refusal of an Apply whose preview the project has moved past.
+pub const STALE: &str = "The project changed since the preview; check the new list and Apply again.";
+
+/// `scope` as an object: `{prefix}`, `{folder: id}` or `{pages: [id]}`.
+#[derive(Deserialize, JsonSchema)]
+pub struct ScopePick {
+    /// The tag prefix (`-K`) or the potential to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    prefix: Option<Option<String>>,
+    /// The folder whose pages to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    folder: Option<Option<FolderId>>,
+    /// The pages to renumber.
+    #[serde(default, deserialize_with = "nullable")]
+    pages: Option<Option<Vec<PageId>>>,
+}
+
+/// `scope`: a word or an object.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum ScopeParam {
+    /// "all", "selection" or "provisional".
+    Word(String),
+    /// {prefix}, {folder: id} or {pages: [id]}.
+    Pick(ScopePick),
+}
+
+/// `renumber {kind?, strips?, scope?, objects?, start?, digits?, digits_for_new?, preview?,
+/// based_on?}` (design §3, §13): drawing order; fixed tags kept; one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RenumberParams {
+    /// What to renumber: devices, cables, wires, terminals or all (default devices).
+    #[serde(default)]
+    kind: Option<String>,
+    /// Terminals with scope "selection": the strips (or terminals of them), as hex ids.
+    #[serde(default, deserialize_with = "nullable")]
+    strips: Option<Option<Vec<String>>>,
+    /// "all", "selection", "provisional", {prefix}, {folder: id} or {pages: [id]}.
+    #[serde(default)]
+    scope: Option<ScopeParam>,
+    /// With scope "selection": the devices, cables or wires, as hex ids.
+    #[serde(default, deserialize_with = "nullable")]
+    objects: Option<Option<Vec<String>>>,
+    /// The first number.
+    #[serde(default)]
+    start: Option<u64>,
+    /// Digits, 1 to 6.
+    #[serde(default)]
+    digits: Option<u64>,
+    /// New tags and wire numbers take `digits` too.
+    #[serde(default)]
+    digits_for_new: Option<bool>,
+    /// List the changes; write nothing.
+    #[serde(default)]
+    preview: Option<bool>,
+    /// The preview's change count: refused if the project changed since.
+    #[serde(default)]
+    based_on: Option<u64>,
+}
+
+/// `finalise {preview?, based_on?}` = `renumber {kind: "all", scope: "provisional"}` (design
+/// §5.3): numbers the provisional tags and unnumbered nets in drawing order; one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FinaliseParams {
+    /// List the changes; write nothing.
+    #[serde(default)]
+    preview: Option<bool>,
+    /// The preview's change count: refused if the project changed since.
+    #[serde(default)]
+    based_on: Option<u64>,
+}
+
+/// `numbering {provisional?}` (design §5.1, FP2): no parameters reads; `provisional` sets whether
+/// new tags are provisional (`-K?1`) until Finalise.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NumberingParams {
+    /// New tags are provisional until Finalise.
+    #[serde(default)]
+    provisional: Option<bool>,
+}
+
+/// The plan of `req` in drawing order (design 052 §4: a device is numbered at its head, else its
+/// first symbol), with the tag high-water mark caught up.
+///
+/// # Errors
+/// The plan's refusal.
+pub fn plan_for(ledger: &Ledger, tag_high: &mut TagHigh, req: &Request) -> Result<Plan, CmdError> {
+    tag_high.catch_up(ledger);
+    let doc = ledger.document();
+    numbering::plan_ranked(doc, req, tag_high.marks(), &|r| crate::reps::numbering_rank(doc, r)).map_err(CmdError::from)
+}
+
+/// What a numbering is asked to do besides planning.
+#[derive(Clone, Copy)]
+struct How {
+    preview: bool,
+    based_on: Option<u64>,
+    for_new: bool,
+}
+
+/// Renumber with `input` (`None`: finalise): the preview, or the edit and its words.
+fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Result<Outcome, CmdError> {
+    let finalise = input.is_none();
+    let req = match input {
+        None => finalise_request(),
+        Some(i) => request(cx.doc, i, crate::words::MAX_HANDLES)?,
+    };
+    let plan = plan_for(cx.ledger, cx.tag_high, &req)?;
+    let doc = cx.doc;
+    let count = cx.change_count;
+    // Brief 030 (FP4, FP7): accessories and links follow their relabelled terminals.
+    let (mut acc_ops, mut acc_lines) = crate::accessories::renumber_ops(doc, &plan.ops);
+    // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
+    let (for_ops, for_lines) = crate::bom::renumber_for_ops(doc, &plan.ops);
+    acc_ops.extend(for_ops);
+    acc_lines.extend(for_lines);
+    if how.preview {
+        let mut v = preview_json(doc, &plan, count);
+        v["accessories"] = json!(acc_lines);
+        return Ok(Outcome::answer(v));
+    }
+    if let Some(b) = how.based_on
+        && b != count
+    {
+        return Err(CmdError::refused(STALE));
+    }
+    let mut ops = plan.ops.clone();
+    ops.extend(acc_ops);
+    if how.for_new
+        && let Some(d) = req.digits
+    {
+        let before = doc.settings.clone();
+        let mut after = before.clone();
+        if req.kinds.contains(&Kind::Devices) || req.kinds.contains(&Kind::Cables) {
+            after.tag_padding = Some(d);
+        }
+        if req.kinds.contains(&Kind::Wires) {
+            after.wiring.digits = Some(d);
+        }
+        if after != before {
+            ops.push(Op::SetProjectSettings { before, after });
+        }
+    }
+    if ops.is_empty() {
+        return Ok(Outcome::answer(json!({"renumbered": 0, "fixed_kept": plan.fixed(), "message": "Nothing to change."})));
+    }
+    let label = if finalise { "Finalise numbering" } else { kind_label(&req.kinds) };
+    let line = applied_words(&plan, finalise);
+    let answer = json!({
+        "renumbered": plan.changes(),
+        "devices": plan.changes_of(Kind::Devices),
+        "cables": plan.changes_of(Kind::Cables),
+        "wires": plan.changes_of(Kind::Wires),
+        "terminals": plan.changes_of(Kind::Terminals),
+        "fixed_kept": plan.fixed(),
+        "message": line,
+    });
+    Ok(Outcome::edit(label, ops, answer).echo(Some(line)))
+}
+
+impl Generic for RenumberParams {
+    const ID: &'static str = "renumber";
+    const TITLE: &'static str = "Renumber";
+    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminals\"|\"all\", strips?: [id] (terminals, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let scope = self.scope.map(|sc| match sc {
+            ScopeParam::Word(w) => ScopeInput::Word(w),
+            ScopeParam::Pick(p) => ScopeInput::Pick { prefix: p.prefix, folder: p.folder, pages: p.pages },
+        });
+        let input = RenumberInput { kind: self.kind, scope, objects: self.objects, strips: self.strips, start: self.start, digits: self.digits };
+        let how = How { preview: self.preview.unwrap_or(false), based_on: self.based_on, for_new: self.digits_for_new.unwrap_or(false) };
+        renumber_with(cx, Some(&input), how)
+    }
+}
+
+impl Generic for FinaliseParams {
+    const ID: &'static str = "finalise";
+    const TITLE: &'static str = "Finalise Numbering";
+    const HELP: &'static str =
+        "{preview?: bool, based_on?: change count} (numbers the provisional tags and unnumbered nets in drawing order; one transaction)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let how = How { preview: self.preview.unwrap_or(false), based_on: self.based_on, for_new: false };
+        renumber_with(cx, None, how)
+    }
+}
+
+impl Generic for NumberingParams {
+    const ID: &'static str = "numbering";
+    const TITLE: &'static str = "Numbering Settings";
+    const HELP: &'static str = "{provisional?: bool} (no parameters reads; provisional: new tags are -K?1 until Finalise)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let read = |doc: &Document| json!({"provisional": numbering::provisional_on(doc), "padding": devices::padding(doc), "cable_prefix": format!("-{}", devices::cable_prefix(doc))});
+        let Some(on) = self.provisional else { return Ok(Outcome::answer(read(cx.doc))) };
+        let before = cx.doc.display.get(PROVISIONAL_SETTING).cloned();
+        let after = on.then(|| ecad_model::words::flag_word(true).to_string());
+        let ops = match before == after {
+            true => Vec::new(),
+            false => vec![Op::SetProperty { object: ObjectRef::Project, key: PROVISIONAL_SETTING.into(), before, after }],
+        };
+        Ok(Outcome::edit_then("Set numbering", ops, read))
     }
 }

@@ -504,7 +504,8 @@ Dependency rules from lane 061 (§6 there), one check each:
 - **`rayon` only where the work is.** It may appear only in model, file, electrical or cadcraft,
   as a plain dependency. It needs no wasm `cfg`, because there is no wasm build (061's
   "native only" rule and its sequential twin fall away).
-- **`schemars` only in Engine,** plus `ecad-model`'s optional `schema` feature.
+- **`schemars` is free:** type description like serde (no I/O, OS or UI); Core uses it for command
+  parameters' schemas (owner 2026-11-21).
 
 Lane 060 (R0 guards) owns the ratchets in `layers`. The split lane adds its rules after 060 has
 merged, so the two lanes never edit `layers` at the same time.

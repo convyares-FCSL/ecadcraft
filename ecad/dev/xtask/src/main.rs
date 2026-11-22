@@ -12,8 +12,7 @@
 //!   sources are ratcheted: their allowlisted counts only fall. Core crates other than
 //!   `ecad-store` reach no OS (file system, environment, processes, network, clock; design 065
 //!   §3.1). The crate rules of design 061 §6: `anyhow` only in Programs, xtask and ecad-bench,
-//!   `tokio` nowhere, `rayon` only where the work is, `schemars` only in the Engine and
-//!   ecad-model's `schema` feature. Every workspace member has a README in the shape of design
+//!   `tokio` nowhere, `rayon` only where the work is. Every workspace member has a README in the shape of design
 //!   065 §6 (ratcheted while lane 068 writes them).
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
@@ -726,8 +725,7 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// - `tokio` nowhere, dev-dependencies included (ECAD runs no async runtime: commands are
 ///   synchronous on the project's lock, and a second runtime beside CADCraft's event loop would
 ///   split where work happens);
-/// - `rayon` only in [`RAYON_OK`], as a plain dependency;
-/// - `schemars` only in the Engine, plus ecad-model's optional `schema` feature.
+/// - `rayon` only in [`RAYON_OK`], as a plain dependency.
 fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
@@ -745,23 +743,11 @@ fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
                 "rayon" if !(RAYON_OK.contains(&name) && plain) => out.push(format!(
                     "{name}: rayon only in {RAYON_OK:?}, as a plain dependency (normal, not optional, no target table: ECAD is desktop-only)"
                 )),
-                "schemars" if class != Some(Class::Engine) && !schema_feature_dependency(p, d) => out.push(format!(
-                    "{name} must not depend on schemars: only the Engine, and ecad-model through its optional `schema` feature"
-                )),
                 _ => {}
             }
         }
     }
     Ok(out)
-}
-
-/// Whether the dependency `d` of package `p` is ecad-model's `schemars`, optional and enabled by
-/// its `schema` feature alone (design 061 §6).
-fn schema_feature_dependency(p: &Value, d: &Value) -> bool {
-    p["name"].as_str() == Some("ecad-model")
-        && d["kind"].is_null()
-        && d["optional"].as_bool() == Some(true)
-        && enabling_features(p, "schemars") == ["schema"]
 }
 
 /// What is wrong with the README of crate `name` (in layer `class`), `text` being its content if
@@ -1837,15 +1823,12 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
     }
 
     /// Design 061 §6 (065 §4): `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere,
-    /// `rayon` only in model, file, electrical and cadcraft as a plain dependency, `schemars` only
-    /// in the Engine and ecad-model's optional `schema` feature.
+    /// `rayon` only in model, file, electrical and cadcraft as a plain dependency.
     #[test]
     fn the_dependency_rules_of_design_061() {
         let dep = |name: &str, kind: Value, target: Value| serde_json::json!({"name": name, "kind": kind, "target": target});
         let opt = |name: &str| serde_json::json!({"name": name, "kind": null, "target": null, "optional": true});
         let none = serde_json::json!({});
-        let schema = serde_json::json!({"schema": ["dep:schemars"]});
-        let both = serde_json::json!({"schema": ["dep:schemars"], "all": ["schemars"]});
         let wasm: Value = "cfg(not(target_arch = \"wasm32\"))".into();
         let rows: &[(&str, Value, &Value, usize, &str)] = &[
             ("ecad-model", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in a library"),
@@ -1867,12 +1850,6 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-file", opt("rayon"), &none, 1, "rayon optional"),
             ("ecad-app", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the app"),
             ("ecad-store", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the store"),
-            ("ecad-engine", dep("schemars", Value::Null, Value::Null), &none, 0, "schemars in the Engine"),
-            ("ecad-model", opt("schemars"), &schema, 0, "schemars behind the model's schema feature"),
-            ("ecad-model", dep("schemars", Value::Null, Value::Null), &none, 1, "schemars always on in the model"),
-            ("ecad-model", opt("schemars"), &both, 1, "schemars also enabled by another feature"),
-            ("ecad-file", opt("schemars"), &schema, 1, "schemars in another Core crate"),
-            ("ecad-mcp", dep("schemars", Value::Null, Value::Null), &none, 1, "schemars in a program"),
             ("ecad-model", dep("serde", Value::Null, Value::Null), &none, 0, "anything else"),
         ];
         for (pkg, d, features, n, what) in rows {

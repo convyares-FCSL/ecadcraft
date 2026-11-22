@@ -12,7 +12,12 @@ use ecad_model::{
     CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, RouteEnd,
     RouteId, Style, Subject, TerminalId, WireId,
 };
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
 
+use crate::cmd::input::Point;
+use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 use crate::references::{self, Plan};
 
@@ -185,4 +190,156 @@ pub fn other_end(doc: &Document, reference: RepresentationId) -> Result<OtherEnd
         there.locator()
     );
     Ok(OtherEnd { page: there.page, reference: other, item, at, message })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run). `cablegoto` opens a page, zooms and selects, and
+// stays the engine's.
+
+/// A reference's text, whether it is an orphan, and its partner, as `doc` shows them.
+fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool, Value) {
+    match references::all(doc).into_iter().find(|r| r.reference == reference) {
+        Some(r) => (Value::String(r.text.clone()), r.orphan, r.partner().map_or(Value::Null, |p| Value::String(p.hex()))),
+        None => (Value::String("/?".into()), true, Value::Null),
+    }
+}
+
+/// `cableref {cable, at}` (design 010 §2.1, §7.1): a reference end of `cable` on the active page,
+/// at `at`. One transaction: the Point item and its `reference` representation. Refused (R1 to
+/// R3) when the cable already has a reference here, already has two, or has no wire drawn here.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CablerefParams {
+    /// The cable.
+    cable: CableId,
+    /// Where the reference end goes.
+    at: Point,
+}
+
+/// `cablecontinue {cable, at, toward, members?}` (design 010 §2.2, §5, §7.2): the second drawing of
+/// `cable` on the active page. One transaction: a reference end at `at`; for each continued core
+/// (one on a loose line of the source page) a named point on each reference, the source line
+/// landed on the one there and a stub from the one here to a free end (design 072 §4.4, F4);
+/// then a slash across the stubs. Once a stub lands on a device point, one wire runs from device
+/// point to device point across the pages.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CablecontinueParams {
+    /// The cable.
+    cable: CableId,
+    /// Where the reference end goes.
+    at: Point,
+    /// The direction the stubs leave in.
+    toward: Point,
+    /// The cores that continue, in order, each by its wire or, with no wire yet, its line (default
+    /// every one that can).
+    #[serde(default)]
+    members: Option<Vec<WireId>>,
+}
+
+/// `cablerefs {cable?}` (design 010 §7.4): every cable reference (or `cable`'s), derived; read
+/// only.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CablerefsParams {
+    /// Only this cable's references.
+    #[serde(default)]
+    cable: Option<CableId>,
+}
+
+impl Generic for CablerefParams {
+    const ID: &'static str = "cableref";
+    const TITLE: &'static str = "Cable Reference";
+    const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        self.at.within(crate::words::MAX_COORD, "at").map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let at = self.at.within(crate::words::MAX_COORD, "at")?;
+        let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
+        let done = reference(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, at)?;
+        let (rep, item) = (done.rep, done.item);
+        Ok(Outcome::edit_then("Cable reference", done.ops, move |doc| {
+            let (text, orphan, partner) = reference_fields(doc, rep);
+            json!({
+                "reference": rep.hex(),
+                "item": item.hex(),
+                "page": page.hex(),
+                "text": text,
+                "orphan": orphan,
+                "partner": partner,
+            })
+        }))
+    }
+}
+
+impl Generic for CablecontinueParams {
+    const ID: &'static str = "cablecontinue";
+    const TITLE: &'static str = "Continue Cable";
+    const HELP: &'static str = "{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        self.at.within(crate::words::MAX_COORD, "at")?;
+        self.toward.within(crate::words::MAX_COORD, "toward").map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let at = self.at.within(crate::words::MAX_COORD, "at")?;
+        let toward = self.toward.within(crate::words::MAX_COORD, "toward")?;
+        let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
+        let done = continue_cable(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, self.members.as_deref(), at, toward, cx.tolerance)?;
+        let rep = done.reference.rep;
+        let item = done.reference.item;
+        let (slash, slash_item) = (done.slash_rep, done.slash_item);
+        let routes: Vec<Value> = done
+            .routes
+            .iter()
+            .map(|r| {
+                json!({
+                    "core": r.core + 1,
+                    "points": [r.points[0].hex(), r.points[1].hex()],
+                    "route": r.route.hex(),
+                    "item": r.item.hex(),
+                    "free_end": if r.free_end == End::A { "A" } else { "B" },
+                })
+            })
+            .collect();
+        let skipped: Vec<Value> = done.plan.skipped.iter().map(|(w, why)| json!({"conductor": w, "reason": why.reason()})).collect();
+        let plan = done.plan;
+        Ok(Outcome::edit_then("Continue cable", done.ops, move |doc| {
+            let (text, _, partner) = reference_fields(doc, rep);
+            json!({
+                "reference": rep.hex(),
+                "item": item.hex(),
+                "slash": slash.hex(),
+                "slash_item": slash_item.hex(),
+                "routes": routes,
+                "skipped": skipped,
+                "text": text,
+                "partner": partner,
+                "messages": references::continued_lines(doc, page, &plan, rep),
+            })
+        }))
+    }
+}
+
+impl Generic for CablerefsParams {
+    const ID: &'static str = "cablerefs";
+    const TITLE: &'static str = "List Cable References";
+    const HELP: &'static str = "{cable?: id} (read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doc = cx.doc;
+        if let Some(k) = self.cable
+            && !doc.cables.contains_key(&k)
+        {
+            return Err(CmdError::refused("no such cable"));
+        }
+        let refs: Vec<_> = references::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
+        Ok(Outcome::answer(json!({ "references": ecad_inspect::references_json(doc, &refs) })))
+    }
 }

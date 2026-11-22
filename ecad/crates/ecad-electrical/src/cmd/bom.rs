@@ -7,9 +7,13 @@ use std::collections::BTreeMap;
 
 use ecad_model::loose_part::{ItemUnit, LooseDescription, LoosePart, MAX_DESCRIPTION, Qty};
 use ecad_model::{DeviceId, Document, IdAllocator, LocationId, LoosePartId, ObjectRef, Op, TextField};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::bom::*;
+use crate::cmd::input::{Bounded, OrNull, TextOrNumber, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::designations::{Aspect, Pending};
 use crate::error::CmdError;
 use ecad_model::text::TextError;
@@ -387,4 +391,287 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
         None => format!("Cleared the article number of {n} part{} ({}).", if n == 1 { "" } else { "s" }, parts.join(", ")),
     };
     Ok(ArticlePlan { ops, parts: n, message })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// A field as typed: absent (unchanged), null (cleared) or a value.
+type FieldValue = Option<Option<TextOrNumber>>;
+
+/// The fields given, each with its value as text (`None`: cleared).
+fn given<K>(fields: impl IntoIterator<Item = (K, FieldValue)>) -> Vec<(K, Option<String>)> {
+    fields.into_iter().filter_map(|(k, v)| v.map(|v| (k, v.map(|t| t.text())))).collect()
+}
+
+/// An answer echoing its `message`.
+fn echoed(out: Outcome) -> Outcome {
+    out.echo_message()
+}
+
+/// The fields of one part line (null clears a field).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LineParams {
+    /// The part number.
+    #[serde(default, deserialize_with = "nullable")]
+    part_number: FieldValue,
+    /// The maker.
+    #[serde(default, deserialize_with = "nullable")]
+    maker: FieldValue,
+    /// What the part is.
+    #[serde(default, deserialize_with = "nullable")]
+    description: FieldValue,
+    /// The article number.
+    #[serde(default, deserialize_with = "nullable")]
+    article_number: FieldValue,
+    /// How many (pieces, or metres with unit m).
+    #[serde(default, deserialize_with = "nullable")]
+    qty: FieldValue,
+    /// pcs or m.
+    #[serde(default, deserialize_with = "nullable")]
+    unit: FieldValue,
+    /// With `set` only: the kit the line belongs to (an add names it with the call's `kit`).
+    #[serde(default, deserialize_with = "nullable")]
+    kit: FieldValue,
+    /// The sub-items the line is for ("1,2,4").
+    #[serde(default, deserialize_with = "nullable")]
+    r#for: FieldValue,
+    /// On a connector: the half the line belongs to (s or p).
+    #[serde(default, deserialize_with = "nullable")]
+    half: FieldValue,
+}
+
+/// Several lines to add, or one. (A list is tried first: a struct also reads from a list.)
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum AddParam {
+    /// Several lines (at most 20).
+    Many(Vec<LineParams>),
+    /// One line.
+    One(LineParams),
+}
+
+/// `partline {component | components, add, kit?}` adds part lines to each device;
+/// `{component, line, set}` sets a line's fields; `{component, line, remove: true}` removes it.
+/// One transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PartlineParams {
+    /// The device or strip.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Several devices or strips.
+    #[serde(default)]
+    devices: Option<Bounded<DeviceId, 0, MAX_COMPONENTS>>,
+    /// The line to add, or a list of lines (at most 20).
+    #[serde(default)]
+    add: Option<AddParam>,
+    /// With `add`: the kit the lines belong to.
+    #[serde(default)]
+    kit: Option<String>,
+    /// With `set` or `remove`: the line's number (1 to 99).
+    #[serde(default)]
+    line: Option<u64>,
+    /// The line's fields to set (null clears a field).
+    #[serde(default)]
+    set: Option<LineParams>,
+    /// True removes the line.
+    #[serde(default)]
+    remove: Option<bool>,
+}
+
+/// The fields of an item (null clears a field).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ItemParams {
+    /// What the item is.
+    #[serde(default, deserialize_with = "nullable")]
+    description: FieldValue,
+    /// pcs or m.
+    #[serde(default, deserialize_with = "nullable")]
+    unit: FieldValue,
+    /// How many (pieces, or metres with unit m).
+    #[serde(default, deserialize_with = "nullable")]
+    qty: FieldValue,
+    /// Where it goes: a location code such as +CP1.
+    #[serde(default, deserialize_with = "nullable")]
+    location: FieldValue,
+    /// The part number.
+    #[serde(default, deserialize_with = "nullable")]
+    part_number: FieldValue,
+    /// The maker.
+    #[serde(default, deserialize_with = "nullable")]
+    maker: FieldValue,
+    /// The article number.
+    #[serde(default, deserialize_with = "nullable")]
+    article_number: FieldValue,
+}
+
+/// `bomitem {description, qty?, unit?, location?, part_number?, maker?, article_number?}` adds an
+/// item; `{item, set}` edits one; `{item, delete: true}` deletes one. One transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BomitemParams {
+    /// The item (a loose part's id) to edit or delete.
+    #[serde(default)]
+    item: Option<LoosePartId>,
+    /// With `item`: the fields to set (null clears a field).
+    #[serde(default)]
+    set: Option<ItemParams>,
+    /// With `item`: true deletes it.
+    #[serde(default)]
+    delete: Option<bool>,
+    /// A new item: what it is.
+    #[serde(default, deserialize_with = "nullable")]
+    description: FieldValue,
+    /// A new item: pcs or m.
+    #[serde(default, deserialize_with = "nullable")]
+    unit: FieldValue,
+    /// A new item: how many (pieces, or metres with unit m).
+    #[serde(default, deserialize_with = "nullable")]
+    qty: FieldValue,
+    /// A new item: where it goes, a location code such as +CP1.
+    #[serde(default, deserialize_with = "nullable")]
+    location: FieldValue,
+    /// A new item: the part number.
+    #[serde(default, deserialize_with = "nullable")]
+    part_number: FieldValue,
+    /// A new item: the maker.
+    #[serde(default, deserialize_with = "nullable")]
+    maker: FieldValue,
+    /// A new item: the article number.
+    #[serde(default, deserialize_with = "nullable")]
+    article_number: FieldValue,
+}
+
+/// `article {part_number, maker?, article_number}`: sets the article number on every part with
+/// that part number (one transaction).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ArticleParams {
+    /// The part number.
+    part_number: String,
+    /// Only parts of this maker.
+    #[serde(default)]
+    maker: Option<String>,
+    /// The article number, or null to clear it.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required, with = "OrNull<TextOrNumber>")]
+    article_number: FieldValue,
+}
+
+impl LineParams {
+    fn fields(self) -> LineFields {
+        given([
+            (Field::PartNumber, self.part_number),
+            (Field::Maker, self.maker),
+            (Field::Description, self.description),
+            (Field::ArticleNumber, self.article_number),
+            (Field::Qty, self.qty),
+            (Field::Unit, self.unit),
+            (Field::Kit, self.kit),
+            (Field::For, self.r#for),
+            (Field::Half, self.half),
+        ])
+    }
+}
+
+impl ItemParams {
+    fn fields(self) -> ItemFields {
+        given([
+            ("description", self.description),
+            ("unit", self.unit),
+            ("qty", self.qty),
+            ("location", self.location),
+            ("part_number", self.part_number),
+            ("maker", self.maker),
+            ("article_number", self.article_number),
+        ])
+        .into_iter()
+        .collect()
+    }
+}
+
+impl Generic for PartlineParams {
+    const ID: &'static str = "partline";
+    const TITLE: &'static str = "Part Line";
+    const HELP: &'static str = "{component: id | devices: [id…], add: {part_number?, maker?, description?, article_number?, qty?, unit?: \"pcs\"|\"m\", for?: \"1,2,4\"} \
+| add: [{…}, …] (at most 20), kit?: name} | {component, line: n, set: {field: value|null}} | {component, line: n, remove: true} (one transaction)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let change = match self.add {
+            Some(add) => {
+                let lines = match add {
+                    AddParam::One(l) => vec![l.fields()],
+                    AddParam::Many(ls) => ls.into_iter().map(LineParams::fields).collect(),
+                };
+                PartlineChange::Add { lines, kit: self.kit }
+            }
+            None => PartlineChange::Edit { line: self.line, remove: self.remove == Some(true), set: self.set.map(LineParams::fields) },
+        };
+        let doc = cx.doc;
+        let cs = partline_targets(doc, self.component, self.devices.map(|c| c.0))?;
+        let plan = plan_partline(doc, &cs, change)?;
+        if plan.ops.is_empty() {
+            return Ok(echoed(Outcome::answer(partline_json(&plan.rows, None))));
+        }
+        let answer = partline_json(&plan.rows, Some(&plan.message));
+        Ok(echoed(Outcome::edit(plan.label, plan.ops, answer)))
+    }
+}
+
+impl Generic for BomitemParams {
+    const ID: &'static str = "bomitem";
+    const TITLE: &'static str = "BOM Item";
+    const HELP: &'static str = "{description, qty?, unit?: \"pcs\"|\"m\", location?: \"+CP1\", part_number?, maker?, article_number?} (adds an item) \
+| {item: id, set: {field: value|null}} | {item: id, delete: true} (one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        // An add takes item fields only.
+        match self.item {
+            Some(_) => Ok(()),
+            None => match [("delete", self.delete.is_some()), ("set", self.set.is_some())].into_iter().find(|k| k.1) {
+                Some(k) => Err(not_an_item_field(k.0)),
+                None => Ok(()),
+            },
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        self.check()?;
+        let change = match self.item {
+            Some(item) => ItemChange::Edit { item, delete: self.delete == Some(true), set: self.set.map(ItemParams::fields) },
+            None => {
+                let fields = ItemParams {
+                    description: self.description,
+                    unit: self.unit,
+                    qty: self.qty,
+                    location: self.location,
+                    part_number: self.part_number,
+                    maker: self.maker,
+                    article_number: self.article_number,
+                };
+                ItemChange::Add(fields.fields())
+            }
+        };
+        let plan = plan_bomitem(cx.doc, cx.ids, change)?;
+        let item = plan.item.hex();
+        let Some(message) = plan.message else { return Ok(Outcome::answer(json!({"changed": false, "item": item}))) };
+        Ok(echoed(Outcome::edit(plan.label, plan.ops, json!({"changed": true, "item": item, "message": message}))))
+    }
+}
+
+impl Generic for ArticleParams {
+    const ID: &'static str = "article";
+    const TITLE: &'static str = "Article Number";
+    const HELP: &'static str = "{part_number, maker?, article_number: text|null} (sets it on every part with that part number; one transaction)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let value = self.article_number.flatten().map(|t| t.text());
+        let plan = plan_article(cx.doc, &self.part_number, self.maker.as_deref(), value.as_deref())?;
+        let changed = !plan.ops.is_empty();
+        let answer = json!({"changed": changed, "parts": plan.parts, "message": plan.message});
+        Ok(echoed(Outcome::edit_if_any("Set article number", plan.ops, answer)))
+    }
 }

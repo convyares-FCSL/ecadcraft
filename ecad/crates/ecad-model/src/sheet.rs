@@ -717,13 +717,11 @@ mod tests {
 
 /// A column of a page's grid, numbered as the frame numbers it (1 is the first column counted from
 /// the grid's start corner, [`Grid::column_number`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct PageColumn(pub u32);
 
 /// A row of a page's grid, numbered as the frame numbers it ([`Grid::row_number`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct PageRow(pub u32);

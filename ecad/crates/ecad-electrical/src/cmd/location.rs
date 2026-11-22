@@ -8,10 +8,16 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{Aid, AidId, DeviceId, Document, IdAllocator, ObjectRef, Op};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
 
+use crate::cmd::input::{Bounded, OrNull, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome, Pages, Slot, State};
 use crate::designations::{self, Aspect};
 use crate::error::CmdError;
 use crate::proposals::{self, Conflict};
+use crate::words::MAX_HANDLES;
 
 /// Most components one `setlocation` names (tester 052: a list over it is refused before any
 /// work).
@@ -321,4 +327,212 @@ pub fn plan_move(doc: &Document, waiting: &[Conflict], pick: &Pick) -> MovePlan 
     let ops = proposals::move_ops(doc, &chosen);
     let label = if ops.is_empty() { String::new() } else { proposals::move_label(&chosen) };
     MovePlan { ops, label, still_valid: valid }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// A planned set of aspect `a` as the outcome: committed when it changes anything, with its
+/// proposals, the words for the entries added and the devices asked about, which wait as the
+/// conflicts (`count`: the word for the objects changed).
+pub fn set_outcome(doc: &Document, a: Aspect, plan: SetPlan, count: &str, state: &mut Slot<'_>) -> Outcome {
+    let planned = &plan.planned;
+    let mut v = json!({
+        "changed": planned.changed > 0,
+        count: planned.changed,
+        a.word(): planned.value.as_ref().map(|(_, c)| c.clone()),
+        format!("{}_key", a.word()): planned.value.as_ref().map(|(k, _)| k.clone()),
+    });
+    if planned.changed == 0 {
+        return Outcome::answer(v);
+    }
+    if let Some(proposed) = &plan.proposals {
+        v["proposals"] = proposals::json(doc, proposed);
+    }
+    let mut message: Vec<String> = planned.added.iter().cloned().collect();
+    message.extend(proposals::conflict_words(doc, &plan.conflicts));
+    let echo = (!message.is_empty()).then(|| message.join("\n"));
+    if let Some(m) = &echo {
+        v["message"] = json!(m);
+    }
+    if let Slot::Conflicts { set, .. } = state {
+        **set = Some(plan.conflicts);
+    }
+    Outcome::edit(plan.label, plan.ops, v).echo(echo)
+}
+
+/// The conflicts given to a command that declares [`State::Conflicts`]: those waiting, and the
+/// ones to wait after it.
+///
+/// # Errors
+/// A command that does not declare them.
+pub fn conflicts_slot<'s, 'a>(state: &'s mut Slot<'a>) -> Result<(&'a [Conflict], &'s mut Option<Vec<Conflict>>), CmdError> {
+    match state {
+        Slot::Conflicts { waiting, set } => Ok((*waiting, &mut **set)),
+        _ => Err(CmdError::refused("this command does not keep the location conflicts")),
+    }
+}
+
+/// The aspect, objects and property a `setlocation` sets.
+fn setlocation_target(p: &SetlocationParams) -> Result<(Aspect, Vec<DeviceId>, String), CmdError> {
+    let a = aspect(p.aspect.as_deref())?;
+    let objects = objects(p.component, p.devices.as_ref().map(|c| c.0.clone()))?;
+    let prop = property_for(a, p.r#type.as_deref())?;
+    Ok((a, objects, prop))
+}
+
+/// `setlocation {component | components, value, aspect?, type?}`: a device's location
+/// or function, as a code of the project's list (one transaction; null clears it).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetlocationParams {
+    /// One device.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Several (at most 10000; one named twice is set once).
+    #[serde(default)]
+    devices: Option<Bounded<DeviceId, 0, MAX_DEVICES>>,
+    /// The code, such as +CP1, or null to clear it.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required, with = "OrNull<String>")]
+    value: Option<Option<String>>,
+    /// location (the default) or function.
+    #[serde(default)]
+    aspect: Option<String>,
+    /// Location only: an override for one symbol type (socket, plug, terminal or another type).
+    #[serde(default)]
+    r#type: Option<String>,
+}
+
+/// `setfunction {component | components, value}`: as `setlocation` with aspect function.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetfunctionParams {
+    /// One device.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Several (at most 10000; one named twice is set once).
+    #[serde(default)]
+    devices: Option<Bounded<DeviceId, 0, MAX_DEVICES>>,
+    /// The code, such as =F1, or null to clear it.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required, with = "OrNull<String>")]
+    value: Option<Option<String>>,
+    /// Not taken: a function has no overrides (a device's parts share its function).
+    #[serde(default)]
+    r#type: Option<String>,
+}
+
+/// `conflicts {answer?, components?, aspect?}` (design 052 §5.5): the waiting conflicts; Move,
+/// Half or Leave. `devices` and `aspect` choose rows (Choose: one row is one device and one
+/// aspect). Move and Half act only on the rows that still hold (an undo may have taken them away).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConflictsParams {
+    /// move, half or leave; none lists the waiting conflicts.
+    #[serde(default)]
+    answer: Option<String>,
+    /// Choose: only these devices.
+    #[serde(default)]
+    devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
+    /// Choose: only this aspect, location or function.
+    #[serde(default)]
+    aspect: Option<String>,
+}
+
+impl Generic for SetlocationParams {
+    const ID: &'static str = "setlocation";
+    const TITLE: &'static str = "Set Location";
+    const HELP: &'static str = "{component: id | devices: [id], value: code | null, aspect?: \"location\" (default) | \"function\", type?: \"socket\" | \"plug\" | \"terminal\" | a symbol type (an override, location only)} \
+(one transaction; a code not in the project's list adds its entry; null clears it)";
+    const STATE: State = State::Conflicts;
+
+    fn check(&self) -> Result<(), CmdError> {
+        setlocation_target(self).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let (a, objects, prop) = setlocation_target(&self)?;
+        let plan = plan_set(cx.doc, cx.ids, &objects, &prop, self.value.flatten().as_deref())?;
+        Ok(set_outcome(cx.doc, a, plan, "devices", &mut cx.state))
+    }
+}
+
+impl Generic for SetfunctionParams {
+    const ID: &'static str = "setfunction";
+    const TITLE: &'static str = "Set Function";
+    const HELP: &'static str = "{component: id | devices: [id], value: code | null} (as setlocation with aspect \"function\")";
+    const STATE: State = State::Conflicts;
+
+    fn check(&self) -> Result<(), CmdError> {
+        if self.r#type.is_some() {
+            return Err(CmdError::refused(NO_FUNCTION_OVERRIDES));
+        }
+        objects(self.component, self.devices.as_ref().map(|c| c.0.clone())).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let objects = objects(self.component, self.devices.map(|c| c.0))?;
+        let plan = plan_set(cx.doc, cx.ids, &objects, Aspect::Function.property(), self.value.flatten().as_deref())?;
+        Ok(set_outcome(cx.doc, Aspect::Function, plan, "devices", &mut cx.state))
+    }
+}
+
+/// The answer and the rows a `conflicts` names.
+fn conflicts_pick(p: &ConflictsParams) -> Result<(Answer, Pick), CmdError> {
+    let answer = answer(p.answer.as_deref())?;
+    let aspect = match p.aspect.as_deref() {
+        None => None,
+        Some(w) => Some(Aspect::of_word(w).ok_or(CmdError::refused(ASPECT_WORDS))?),
+    };
+    Ok((answer, Pick { only: p.devices.as_ref().map(|c| c.0.clone()), aspect }))
+}
+
+/// A `conflicts` answer, echoing its message when it has one.
+fn said(v: Value) -> Outcome {
+    let echo = v.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).map(str::to_string);
+    Outcome::answer(v).echo(echo)
+}
+
+impl Generic for ConflictsParams {
+    const ID: &'static str = "conflicts";
+    const TITLE: &'static str = "Location Conflicts";
+    const HELP: &'static str = "{answer?: \"move\" | \"leave\", components?: [id] (Choose: only these)} (the devices the last placement, move or box left with another function or location; no answer lists them; `move` sets them in one transaction; `leave` writes nothing)";
+    const PAGES: Pages = Pages::ReadAnywhere;
+    const STATE: State = State::Conflicts;
+
+    fn check(&self) -> Result<(), CmdError> {
+        conflicts_pick(self).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let (answer, pick) = conflicts_pick(&self)?;
+        let doc = cx.doc;
+        let (waiting, set) = conflicts_slot(&mut cx.state)?;
+        Ok(match answer {
+            Answer::List => {
+                let listed = proposals::Planned { conflicts: waiting.to_vec(), ..Default::default() };
+                Outcome::answer(json!({"conflicts": proposals::json(doc, &listed)}))
+            }
+            Answer::Leave => {
+                let words = proposals::left_words(doc, waiting);
+                *set = Some(Vec::new());
+                said(json!({"changed": false, "message": words}))
+            }
+            Answer::Half => {
+                let (ops, label) = plan_half(doc, waiting, &pick)?;
+                let message = format!("{label}.");
+                Outcome::edit(label, ops, json!({"changed": true, "message": message})).echo(Some(message))
+            }
+            Answer::Move => {
+                let plan = plan_move(doc, waiting, &pick);
+                if plan.ops.is_empty() {
+                    *set = Some(plan.still_valid);
+                    return Ok(said(json!({"changed": false, "message": "Nothing to move: those devices no longer differ, or the entry is gone."})));
+                }
+                let message = format!("{}.", plan.label);
+                Outcome::edit(plan.label, plan.ops, json!({"changed": true, "message": message})).echo(Some(message))
+            }
+        })
+    }
 }

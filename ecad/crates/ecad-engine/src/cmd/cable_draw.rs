@@ -17,11 +17,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, OrNull, Point, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
 use crate::slash::MAX_CABLE_MEMBERS;
 use crate::views::{self, View};
 use ecad_electrical::cable_look::{FanEnd, MarkerEnd};
+use ecad_electrical::cmd::input::{Bounded, OrNull, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -31,19 +32,6 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<CablefanParams>("cablefan"),
     Typed::of::<CableviewParams>("cableview"),
 ];
-
-/// A point on the sheet: within ±[`crate::interact::MAX_COORD`].
-///
-/// # Errors
-/// A point farther out, naming parameter `name`.
-pub(crate) fn on_sheet(p: Point, name: &str) -> Result<Pt, CmdError> {
-    let q = p.0;
-    if q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD {
-        Ok(q)
-    } else {
-        Err(CmdError::input(format!("`{name}` is not a finite [x,y] point")))
-    }
-}
 
 /// `cableslash {from, to, tag?, cable?}` (brief 004, design 004 §2, §4, §6): the conductors the
 /// slash `from → to` crosses on the active page become one new cable, in crossing order, with the
@@ -68,13 +56,13 @@ pub(crate) struct CableslashParams {
 
 impl Command for CableslashParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let from = on_sheet(self.from, "from").map_err(|e| err(e.to_string()))?;
-        let to = on_sheet(self.to, "to").map_err(|e| err(e.to_string()))?;
+        let from = self.from.within(crate::interact::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
+        let to = self.to.within(crate::interact::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;
             match rules::slash_target(doc, self.cable, self.tag.as_deref())? {
-                SlashTarget::Assign(k) => crate::cmd::cable::run_slash_assign(p, pg, page, k, from, to, &found),
+                SlashTarget::Assign(k) => run_slash_assign(p, pg, page, k, from, to, &found),
                 SlashTarget::Continue(k) => {
                     Ok(crate::draw::references::run_slash_continue(p, pg, page, k, from, to, &found).map_err(CmdError::refused)?)
                 }
@@ -387,4 +375,32 @@ impl Command for CableviewParams {
             Ok(r)
         })
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The assign rule (design 059 §4.3, FD5)
+
+/// `cableslash` onto cable `k` that is not drawn (FD5): commits
+/// [`ecad_electrical::cmd::cable_draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
+///
+/// # Errors
+/// A wire already in a cable, more wires than free cores, too many members; nothing is written.
+pub(crate) fn run_slash_assign(
+    p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: ecad_model::PageId, k: CableId, from: ecad_model::Pt,
+    to: ecad_model::Pt, found: &crate::slash::Crossings,
+) -> Result<Value, CmdError> {
+    let style = crate::cmd::plain_style(p);
+    let plan = ecad_electrical::cmd::cable_draw::plan_slash_assign(p.ledger.document(), &mut p.ids, page, style, k, from, to, found)?;
+    p.apply_edit(pg, "cableslash", "Cable slash", plan.ops)?;
+    Ok(json!({
+        "cable": k.hex(),
+        "item": plan.item.hex(),
+        "representation": plan.rep.hex(),
+        "assigned": true,
+        "conductors": ecad_electrical::cmd::cable_draw::crossing_wires(&found.members),
+        "lines": ecad_electrical::cmd::cable_draw::crossing_lines(&found.members),
+        "cores": plan.cores,
+        "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
+        "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+    }))
 }

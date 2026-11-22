@@ -6,7 +6,7 @@
 //! Save/Cancel copy: a rename updates the drawing at once, and `u` undoes it.
 //!
 //! # Update map
-//! The card reads the list and its counts (`designation_cmds::rows`) when first shown, and again
+//! The card reads the list and its counts (`Project::designation_rows`) when first shown, and again
 //! only after a transaction that `ecad_electrical::cmd::designation::rows_changed_since` names: an op on the list,
 //! on a function or location value, or a component or page made or deleted. Every other commit
 //! leaves it as it is.
@@ -48,7 +48,7 @@ pub fn rows(t: &mut App, ctx: &egui::Context) -> Value {
             let n = p.ledger.log().len();
             match seen {
                 Some(s) if !ecad_electrical::cmd::designation::rows_changed_since(&p.ledger, s) => (n, None),
-                _ => (n, Some(ecad_engine::designation_cmds::rows(p, None))),
+                _ => (n, Some(p.designation_rows())),
             }
         })
         .ok();

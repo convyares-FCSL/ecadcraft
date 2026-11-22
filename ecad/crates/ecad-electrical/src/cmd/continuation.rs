@@ -1,14 +1,20 @@
 //! The rules of brief 049's command (design 049 §5.1): `contcaption` sets or removes the caption
 //! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`
 //! (design 072 §6.2): a continuation's `name` or `caption`, a location box's `function`,
-//! `location`, `panel_temperature` or `style`. The engine crate's shim reads the parameters, commits and
-//! answers in JSON.
+//! `location`, `panel_temperature` or `style`. `contcaption` is a generic command
+//! ([`crate::cmd::run`]); its interactive form (select arrows, type the caption) is the engine's.
 
 use std::collections::BTreeSet;
 
 use ecad_model::{Aid, AidId, Document, IdAllocator, LocationBox, Op};
 
 use crate::continuations::{self as k, CAPTION_KEY, NAME_KEY};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::input::{Bounded, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
@@ -152,4 +158,45 @@ pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key:
 /// The refusal of a key a continuation does not have.
 fn continuation_keys(key: &str) -> CmdError {
     CmdError::refused(format!("A continuation has a `{NAME_KEY}` and a `{CAPTION_KEY}`, not `{key}`."))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// `contcaption {continuations, caption}` (design 049 §5.1): sets (or with null removes) the
+/// arrows' caption, one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContcaptionParams {
+    /// The continuation arrows (1 to 2000).
+    continuations: Bounded<AidId, 0, MAX_ARROWS>,
+    /// The caption, or null to remove it.
+    #[serde(deserialize_with = "nullable")]
+    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
+    caption: Option<Option<String>>,
+}
+
+impl Generic for ContcaptionParams {
+    const ID: &'static str = "contcaption";
+    const TITLE: &'static str = "Caption Continuations";
+    const HELP: &'static str =
+        "{continuations: [id…] (1-2000), caption: \"TO CONTROL SUPPLY\" | null} (sets or removes the arrows' caption, one transaction)";
+    const STATE: State = State::LastCaption;
+
+    fn check(&self) -> Result<(), CmdError> {
+        match self.caption {
+            Some(_) => Ok(()),
+            None => Err(CmdError::input("`caption` (text, or null) is required")),
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let caption = self.caption.ok_or(CmdError::input("`caption` (text, or null) is required"))?;
+        let plan = plan_contcaption(cx.doc, &self.continuations.0, caption.as_deref())?;
+        let answer = json!({"changed": plan.changed, "unchanged": plan.unchanged, "caption": plan.caption, "message": plan.message});
+        if let (Some(t), Slot::LastCaption(last)) = (plan.caption, &mut cx.state) {
+            **last = Some(t);
+        }
+        Ok(Outcome::edit_if_any(plan.label, plan.ops, answer).echo(Some(plan.message)))
+    }
 }

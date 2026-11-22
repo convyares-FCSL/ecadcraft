@@ -7,7 +7,7 @@ use ecad_app::App;
 use ecad_app::lists::cable_editor::Ask;
 use ecad_app::shell::ListsView;
 use ecad_app::shell::state::Workspace;
-use ecad_engine::cable_cmds::CableField;
+use ecad_electrical::cables::CableField;
 use ecad_model::{CableId, Document};
 use eframe::egui::{self, Key, vec2};
 use egui_kittest::Harness;
@@ -89,7 +89,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     assert!(after.cables[&k].cores.is_empty(), "not drawn");
     one_exact(&mut h, "Edit cable", |h| h.state_mut().cable_ask(k, Ask::Edit(CableField::Length, json!({"length": 12}))));
     one_exact(&mut h, "Edit cable", |h| {
-        h.state_mut().cable_ask(k, Ask::Edit(CableField::Gland(ecad_engine::cable_cmds::Side::To), json!({"to": {"gland": "M20"}})))
+        h.state_mut().cable_ask(k, Ask::Edit(CableField::Gland(ecad_electrical::cables::Side::To), json!({"to": {"gland": "M20"}})))
     });
     // A bad value: nothing written, the words kept for the row.
     let n = head(&mut h);

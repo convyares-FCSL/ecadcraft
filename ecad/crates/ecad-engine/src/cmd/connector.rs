@@ -22,10 +22,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, Typed};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_project, plain_style};
 use crate::connectors::{self as cn, Names};
 use crate::symbols::Starter;
+use ecad_electrical::cmd::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];

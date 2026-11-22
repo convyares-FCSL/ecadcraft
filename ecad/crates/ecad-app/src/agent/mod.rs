@@ -1,7 +1,7 @@
 //! Live agent access to the app (brief 035, design §3–§8): an agent drives the running ECAD
 //! window over a loopback port while the person watches.
 //!
-//! - **Preference** ([`ecad_engine::agent_access`]): Off (default), Read only, Read and change,
+//! - **Preference** ([`ecad_engine::agent::access`]): Off (default), Read only, Read and change,
 //!   and a port; `--control PORT` turns it on (Read and change) for one run. When off, nothing
 //!   listens.
 //! - **Transport**: upstream CADCraft's own control server, included unchanged by path (bounded,
@@ -35,9 +35,9 @@ use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use cadcraft_ui_egui::{ControlRequest, PendingReply};
+use ecad_engine::agent::access::{self, Mode, Preference, Status};
 use ecad_engine::agent::gate::{self, Call, OwnedSteps};
 use ecad_engine::agent::{agent_name, bridge, policy, tools};
-use ecad_engine::agent_access::{self, Mode, Preference, Status};
 use ecad_engine::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
@@ -215,7 +215,7 @@ pub struct Agent {
 impl Agent {
     /// The preference read from the user's settings folder (Off when missing or unreadable).
     pub fn from_settings(settings: Settings) -> Self {
-        let loaded = agent_access::load(&settings);
+        let loaded = access::load(&settings);
         Agent {
             pref: loaded.preference,
             this_run: false,
@@ -246,7 +246,7 @@ impl Agent {
     /// Give `CadApp`'s channel's sender (the allowlisted reads go there).
     /// Read the preference from `settings` instead (tests keep their own folder).
     pub fn use_settings(&mut self, settings: Settings) {
-        let loaded = agent_access::load(&settings);
+        let loaded = access::load(&settings);
         self.settings = settings;
         if !self.this_run {
             self.pref = loaded.preference;
@@ -303,13 +303,13 @@ impl Agent {
         if mode == Mode::Off {
             self.end_all_sessions();
         }
-        agent_access::store(&self.settings, &self.pref)
+        access::store(&self.settings, &self.pref)
     }
 
     /// The person typed a port (applied on Enter or focus loss). Saved; used at the next start
     /// when the listener is already running on another port.
     pub fn set_port_text(&mut self) -> Result<(), String> {
-        let Some(port) = agent_access::parse_port(&self.port_text) else {
+        let Some(port) = access::parse_port(&self.port_text) else {
             self.port_warning = true;
             self.port_text = self.pref.port.to_string();
             return Ok(());
@@ -320,7 +320,7 @@ impl Agent {
         }
         self.pref.port = port;
         self.restart_note = self.listen_port.is_some_and(|p| p != port);
-        agent_access::store(&self.settings, &self.pref)
+        access::store(&self.settings, &self.pref)
     }
 
     /// Access turned off (or stopped): every bridge session ends, the writer is released and the

@@ -12,11 +12,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, Typed};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project};
 use crate::outputs::{self, Group, Table};
 use crate::printbook::{self, Options, Scope};
 use crate::project::Project;
+use ecad_electrical::cmd::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[

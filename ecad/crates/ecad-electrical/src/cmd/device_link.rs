@@ -11,13 +11,18 @@
 //! - `setprop {key: "user.<name>"}` on a device reads the value as the field's kind; an empty
 //!   value clears it.
 //!
-//! This module excludes the JSON shims (ecad-engine's `cmd::device_link`) and any check that
+//! The commands are generic ([`crate::cmd::run`]). This module excludes any check that
 //! reads a link (lane F's interlock checks).
 
 use ecad_model::id::{LinkId, UserFieldId};
-use ecad_model::user::{DeviceLink, FieldName, LinkKind, UserFieldDef, UserFieldKind, UserValue};
+use ecad_model::user::{Choice, DeviceLink, FieldName, FieldUnit, LinkKind, UserFieldDef, UserFieldKind, UserValue};
 use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op, Word};
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
 /// The key prefix of a user field's value in `setprop` (`user.Panel row`).
@@ -154,4 +159,138 @@ pub fn user_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) 
 pub fn shown_value(doc: &Document, d: DeviceId, name: &str) -> Option<String> {
     let field = field_named(doc, name)?;
     doc.devices.get(&d)?.user.get(&field.id).map(|v| v.show(&field.kind))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// What joins the two devices.
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum KindParam {
+    /// Two contactors that must not close together.
+    MechanicalInterlock,
+    /// An auxiliary contact block fitted to a device.
+    AuxiliaryBlock,
+}
+
+impl From<KindParam> for LinkKind {
+    fn from(k: KindParam) -> Self {
+        match k {
+            KindParam::MechanicalInterlock => LinkKind::MechanicalInterlock,
+            KindParam::AuxiliaryBlock => LinkKind::AuxiliaryBlock,
+        }
+    }
+}
+
+/// `linkdevices {kind, devices: [a, b]}`: link two devices.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LinkParams {
+    /// What joins them.
+    kind: KindParam,
+    /// The two devices.
+    devices: [DeviceId; 2],
+}
+
+impl Generic for LinkParams {
+    const ID: &'static str = "linkdevices";
+    const TITLE: &'static str = "Link Devices";
+    const HELP: &'static str = "{kind: \"mechanical_interlock\" | \"auxiliary_block\", devices: [id, id]} (link two devices; answers the link id)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let [a, b] = self.devices;
+        let (id, ops) = plan_link(cx.doc, cx.ids, self.kind.into(), a, b)?;
+        Ok(Outcome::edit("Link Devices", ops, json!({"link": id.hex()})))
+    }
+}
+
+/// `unlinkdevices {link}`: remove a device link.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UnlinkParams {
+    /// The link.
+    link: LinkId,
+}
+
+impl Generic for UnlinkParams {
+    const ID: &'static str = "unlinkdevices";
+    const TITLE: &'static str = "Unlink Devices";
+    const HELP: &'static str = "{link: id} (remove a device link)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let ops = plan_unlink(cx.doc, self.link)?;
+        Ok(Outcome::edit("Unlink Devices", ops, json!({"unlinked": true})))
+    }
+}
+
+/// A user field's kind.
+#[derive(Deserialize, Clone, Copy, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldKindParam {
+    /// Free text.
+    Text,
+    /// A number, with `unit` shown after it.
+    Number,
+    /// Yes or no.
+    Flag,
+    /// One of `options`.
+    Choice,
+}
+
+/// `userfield {name, kind, unit?, options?}` adds a project user field; `{name, remove: true}`
+/// removes it and clears its values.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UserFieldParams {
+    /// The field's name, unique in the project ignoring case.
+    name: String,
+    /// What it holds; required when adding.
+    #[serde(default)]
+    kind: Option<FieldKindParam>,
+    /// A number field's unit (`mm`).
+    #[serde(default)]
+    unit: Option<String>,
+    /// A choice field's choices, in order.
+    #[serde(default)]
+    options: Vec<String>,
+    /// Remove the field instead.
+    #[serde(default)]
+    remove: bool,
+}
+
+impl UserFieldParams {
+    fn kind(&self) -> Result<UserFieldKind, CmdError> {
+        let refused = |e: String| CmdError::Refused(e.into());
+        match self.kind {
+            None => Err(refused("Give the field's kind: text, number, flag or choice.".into())),
+            Some(FieldKindParam::Text) => Ok(UserFieldKind::Text),
+            Some(FieldKindParam::Flag) => Ok(UserFieldKind::Flag),
+            Some(FieldKindParam::Number) => {
+                let unit = self.unit.as_deref().map(str::trim).filter(|u| !u.is_empty());
+                let unit = unit.map(FieldUnit::new).transpose().map_err(|e| refused(format!("Unit: {e}")))?;
+                Ok(UserFieldKind::Number { unit })
+            }
+            Some(FieldKindParam::Choice) => {
+                let options = self.options.iter().map(|o| Choice::new(o.trim())).collect::<Result<Vec<_>, _>>();
+                Ok(UserFieldKind::Choice { options: options.map_err(|e| refused(format!("Choice: {e}")))? })
+            }
+        }
+    }
+}
+
+impl Generic for UserFieldParams {
+    const ID: &'static str = "userfield";
+    const TITLE: &'static str = "User Field";
+    const HELP: &'static str = "{name, kind?: \"text\" | \"number\" | \"flag\" | \"choice\", unit?, options?: [text], remove?: bool} (add a project user field, or remove one and clear its values; set a device's value with setprop key \"user.<name>\")";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        if self.remove {
+            let (ops, cleared) = plan_remove_field(cx.doc, &self.name)?;
+            return Ok(Outcome::edit("Remove User Field", ops, json!({"removed": self.name.trim(), "cleared": cleared})));
+        }
+        let kind = self.kind()?;
+        let (id, ops) = plan_add_field(cx.doc, cx.ids, &self.name, kind)?;
+        Ok(Outcome::edit("Add User Field", ops, json!({"field": id.hex(), "name": self.name.trim()})))
+    }
 }

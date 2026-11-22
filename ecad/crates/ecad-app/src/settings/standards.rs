@@ -13,7 +13,7 @@
 //! catalogue ([`crate::lists::style_catalogues`]) with the shared style detail on the right. A
 //! later catalogue (050b's wire categories) adds one line there.
 
-use ecad_engine::default_cmds::{self, Target};
+use ecad_electrical::cmd::default::{self as default_cmds, Target};
 use ecad_engine::defaults::{self, Entry, Level, Scope, Source};
 use ecad_ui::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
@@ -545,7 +545,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let read = t.project.clone().and_then(|p| {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (v, n) = ecad_engine::style_cmds::standard_counts(doc);
+            let (v, n) = ecad_electrical::cmd::style::standard_counts(doc);
             (doc.standard.as_ref().map(|s| s.header.name.to_string()), v, n)
         })
         .ok()
@@ -639,7 +639,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
                 line = Some(format!("standard {{\"from\":{}}}", serde_json::Value::String(path.trim().to_string())));
             } else if t.settings.standards.header != HeaderMode::Idle {
                 let fresh = if look {
-                    match ecad_engine::style_cmds::read_standard(path.trim()) {
+                    match ecad_engine::file::read_standard(path.trim()) {
                         Ok(s) => Some((s.header.name.to_string(), s.values.len(), s.styles.values().map(|m| m.len()).sum())),
                         Err(e) => {
                             t.settings.standards.header_error = Some(e.to_string());

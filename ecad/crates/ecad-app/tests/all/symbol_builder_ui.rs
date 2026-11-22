@@ -226,8 +226,8 @@ fn edit_symbol_reviews_every_copy_with_update_selected_when_one_clashes() {
     h.run_steps(4);
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert!(ecad_engine::symbol_cmds::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
-    assert!(ecad_engine::symbol_cmds::update_available(&d, reps[1]).is_none(), "updated");
+    assert!(ecad_electrical::symbols::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
+    assert!(ecad_electrical::symbols::update_available(&d, reps[1]).is_none(), "updated");
     assert!(h.state().library.builder.is_none());
 }
 
@@ -423,7 +423,7 @@ fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     assert!(h.query_by_label(review::HEADER).is_some(), "Compare in the drawer");
     h.get_by_label(review::UPDATE).click();
     h.run_steps(3);
-    assert!(ecad_engine::symbol_cmds::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
+    assert!(ecad_electrical::symbols::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
     assert!(h.state().library.compare.is_none());
 }
 

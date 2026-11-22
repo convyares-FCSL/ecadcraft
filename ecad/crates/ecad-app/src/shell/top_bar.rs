@@ -224,7 +224,7 @@ fn keycap(ui: &egui::Ui, search: Rect, text: &str) {
 /// The agent icon's colour while an agent is shown (its state's tone), its state in words (its
 /// accessible label: `Agent tester`, `Agent off`, `Agent ready`), and its hover text.
 fn agent_state(ui: &egui::Ui, t: &App) -> (Option<egui::Color32>, String, String) {
-    let off = t.agent.pref.mode == ecad_engine::agent_access::Mode::Off && !t.agent.this_run;
+    let off = t.agent.pref.mode == ecad_engine::agent::access::Mode::Off && !t.agent.this_run;
     if let Some(b) = &t.agent.banner {
         let state = b.shown_state(std::time::Instant::now());
         let hidden = crate::agent::banner::hidden(ui.ctx(), &b.session);

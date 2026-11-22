@@ -220,7 +220,7 @@ fn the_cable_and_page_commands_are_listed_with_their_parameter_docs() {
     let mut c = writer();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    let specs = ecad_engine::commands::specs();
+    let specs = ecad_engine::cmd::specs();
     for id in COMMANDS {
         let spec = specs.iter().find(|s| s.id == *id).unwrap_or_else(|| panic!("{id} is an ECAD command"));
         let info = catalog.iter().find(|i| i["id"] == *id).unwrap_or_else(|| panic!("{id} not listed"));

@@ -306,19 +306,19 @@ fn the_text_commands_refuse_input_uniformly() {
 #[test]
 fn the_text_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_engine::text_cmds::BAD_HEIGHT),
-        ("textstyle", json!({"height": 3}), ecad_engine::text_cmds::NEEDS_KIND),
-        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_engine::text_cmds::NEEDS_KIND),
-        ("textstyle", json!({"font": ""}), ecad_engine::text_cmds::BAD_FONT),
-        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_engine::text_cmds::BAD_SHOW),
+        ("textstyle", json!({"kind": "tag", "height": 11}), ecad_electrical::cmd::text::BAD_HEIGHT),
+        ("textstyle", json!({"height": 3}), ecad_electrical::cmd::text::NEEDS_KIND),
+        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_electrical::cmd::text::NEEDS_KIND),
+        ("textstyle", json!({"font": ""}), ecad_electrical::cmd::text::BAD_FONT),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::cmd::text::BAD_SHOW),
         (
             "showtext",
             json!({"kind": "tag", "show": "on", "page": "1", "component": "2"}),
             "Name at most one of representation, component, conductor and page.",
         ),
         ("showtext", json!({"kind": "tag", "show": "on", "page": "1"}), "No page 00000000000000000000000000000001."),
-        ("movetext", json!({"representation": "1"}), ecad_engine::text_cmds::BAD_POINT),
-        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_engine::text_cmds::BAD_JUSTIFY),
+        ("movetext", json!({"representation": "1"}), ecad_electrical::cmd::text::BAD_POINT),
+        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_electrical::cmd::text::BAD_JUSTIFY),
         ("movetext", json!({"representation": "1", "to": [1, 2]}), "No representation 00000000000000000000000000000001."),
         ("pagetexts", json!({"page": "1"}), "No page 00000000000000000000000000000001."),
         ("defaults", json!({"key": "no.such"}), "No default \"no.such\"."),
@@ -380,7 +380,7 @@ fn the_style_commands_refuse_input_uniformly() {
 /// Rule refusals of the style commands keep their words.
 #[test]
 fn the_style_commands_keep_their_rule_words() {
-    use ecad_engine::style_cmds::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
+    use ecad_electrical::cmd::style::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
     let rows: &[(&str, Value, &str)] = &[
         ("standard", json!({"name": "S"}), STANDARD_FIRST),
         ("standard", json!({"remove": true}), STANDARD_FIRST),
@@ -1517,11 +1517,11 @@ fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
     let rules: &[(Value, &str)] = &[
         (json!({"key": "text.nope", "value": 3}), "No default \"text.nope\"."),
         (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level \"sideways\". Levels: standard, project, page, object."),
-        (json!({"key": "text.run.gap"}), ecad_engine::default_cmds::NEEDS_VALUE),
+        (json!({"key": "text.run.gap"}), ecad_electrical::cmd::default::NEEDS_VALUE),
         (json!({"key": "text.run.gap", "value": 3, "reset": true}), "Give either `value` or `reset: true`, not both."),
         (json!({"key": "text.run.gap", "value": 101}), "`text.run.gap` is a length from 0 to 100 mm."),
-        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_engine::default_cmds::NEEDS_OBJECT),
-        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_engine::default_cmds::STANDARD_READ_ONLY),
+        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_electrical::cmd::default::NEEDS_OBJECT),
+        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_electrical::cmd::default::STANDARD_READ_ONLY),
         (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
     ];
     for (params, says) in rules {
@@ -1824,8 +1824,8 @@ fn setdefault_of_a_family_entry_keeps_its_rule_words() {
     let made = h.run("symbolnew", float_switch(json!({}))).unwrap_or(Value::Null);
     assert_eq!(made["key"], json!("float1"), "{made}");
     let rules: &[(Value, &str)] = &[
-        (json!({"key": "symbol.float1.prefix"}), ecad_engine::default_cmds::NEEDS_VALUE),
-        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_engine::default_cmds::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix"}), ecad_electrical::cmd::default::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_electrical::cmd::default::NEEDS_VALUE),
         (json!({"key": "symbol.float1.prefix", "value": "KA", "reset": true}), "Give either `value` or `reset: true`, not both."),
         (
             json!({"key": "symbol.float1.prefix", "value": "KA", "level": "page"}),

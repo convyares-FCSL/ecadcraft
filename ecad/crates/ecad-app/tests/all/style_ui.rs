@@ -113,10 +113,10 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     h.run_steps(3);
     assert!(h.query_by_label("ecad.inspector.style.text.tag.style").is_some());
     let large = style.styles.iter().find(|(_, n)| n == "Tag large").unwrap().0.clone();
-    let line = ecad_engine::default_cmds::line(
+    let line = ecad_electrical::cmd::default::line(
         "text.tag.style",
         ecad_engine::defaults::Level::Object,
-        ecad_engine::default_cmds::Target::Device(c),
+        ecad_electrical::cmd::default::Target::Device(c),
         Some(&large),
     );
     h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.style", line));

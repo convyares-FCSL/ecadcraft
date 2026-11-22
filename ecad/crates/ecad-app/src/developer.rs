@@ -13,7 +13,7 @@
 //! Everything here reads, except the command field, which runs commands through the ordinary
 //! command path. Excluded: a separate debugger panel or command window.
 
-use ecad_engine::agent_access::Mode;
+use ecad_engine::agent::access::Mode;
 use eframe::egui::{self, RichText};
 
 use crate::debugger::{self, Debugger};

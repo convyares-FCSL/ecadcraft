@@ -8,11 +8,12 @@ use ecad_model::units::{Degrees, Radians};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::{Command, Point, TextOrNumber, nullable};
+use crate::cmd::input::Command;
 use crate::cmd::{err, on_project, plain_style};
 use crate::plc::channels::*;
 use crate::plc::rack::channel_count;
 use crate::symbols::Starter;
+use ecad_electrical::cmd::input::{Point, TextOrNumber, nullable};
 use ecad_model::{Placement, Pt, TerminalId};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};

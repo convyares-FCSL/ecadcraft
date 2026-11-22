@@ -79,7 +79,7 @@ fn lnpe_fences_fill_positions_and_label_each_level() {
     assert_eq!((x_rows[0]["qty"].as_u64(), x_rows[0]["description"].as_str()), (Some(3), Some("L/N/PE terminal")));
     // Hover and words show the shown label.
     let t = terminals(&n)[1];
-    assert_eq!(h.p(|p| ecad_engine::terminal_cmds::terminal_words(p.ledger.document(), t)), "-X01:2.N");
+    assert_eq!(h.p(|p| ecad_electrical::strips::terminal_words(p.ledger.document(), t)), "-X01:2.N");
     same_as_built(&mut h);
     // `u` undoes the last fence only.
     h.run("undo", json!({})).unwrap();
