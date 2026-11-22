@@ -4,7 +4,7 @@
 //! the screenshots for the side-by-side with the boards.
 
 use crate::pages::project_panel::{doc, rev3_app as new_app};
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::RightTab;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;

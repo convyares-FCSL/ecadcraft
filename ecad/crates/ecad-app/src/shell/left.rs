@@ -9,8 +9,8 @@
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Color32, Rect, pos2, vec2};
 
-use crate::App;
 use crate::pages::project_panel::Tab;
+use crate::shell::app::App;
 use crate::shell::state::BookView;
 use crate::shell::{LeftTab, Slots};
 

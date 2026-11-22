@@ -37,7 +37,7 @@ use serde_json::{Value, json};
 
 pub use draft::{Draft, Drafts, State};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// Element names (design 055 §5).
 pub const LIST: &str = "library.tb.list";

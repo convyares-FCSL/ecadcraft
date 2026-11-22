@@ -20,8 +20,8 @@ use ecad_widgets::prim;
 use ecad_widgets::tokens::{Icon, line, radius, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::library::search::{Choice, Pick};
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Accessible labels.

@@ -193,7 +193,7 @@ pub struct HistoryPanel {
     step_txs: Vec<ecad_model::Transaction>,
     /// Session groups shown expanded, by their newest step.
     pub expanded: std::collections::BTreeSet<u64>,
-    /// The live agent session, kept from the banner ([`crate::App::history_agent_sync`]).
+    /// The live agent session, kept from the banner ([`crate::shell::app::App::history_agent_sync`]).
     pub live: Option<LiveSession>,
     /// Undo session was clicked on a group (run on the next frame).
     pub undo_session: bool,
@@ -340,7 +340,7 @@ impl HistoryPanel {
         }
         let limit = STEPS_PAGE * (self.steps_more + 1);
         let rows = history::steps(p, sel.branch, Some(sel.seq + 1), limit).unwrap_or_default();
-        let today = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
+        let today = Some((crate::shell::host::host().now_ms)());
         self.steps = rows
             .iter()
             .map(|t| StepRow {
@@ -1214,7 +1214,7 @@ fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bo
     (click.clicked() && !undo, undo)
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// History's side of the agent (brief 043), once per frame: run an Undo session clicked on a
     /// group (the banner's own plan and confirmation), and keep the live session for the groups
     /// (copied only when the banner's session, steps or last change moved).
@@ -1258,5 +1258,5 @@ fn chip(ui: &mut egui::Ui, text: &str, fill: Color32, ink: Color32) {
 
 /// Now, in milliseconds since 1970 (for the short times).
 fn now_ms() -> Option<u64> {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
+    Some((crate::shell::host::host().now_ms)())
 }

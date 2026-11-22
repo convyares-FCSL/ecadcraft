@@ -14,9 +14,9 @@
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::settings::sheets::{Out, Part, Popout};
 use crate::settings::{card, dashed_rect, later_row, row};
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.

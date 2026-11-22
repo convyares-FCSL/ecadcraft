@@ -18,7 +18,7 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::{Value, json};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The card (element name).
 pub const CARD: &str = "ecad.projectinfo.designations";

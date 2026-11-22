@@ -16,7 +16,7 @@ use ecad_model::{PageId, StyleRef};
 use ecad_widgets::tokens::{size, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Accessible names (design 054 §5.2).

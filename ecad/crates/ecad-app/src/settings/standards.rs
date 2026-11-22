@@ -18,9 +18,9 @@ use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_widgets::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
 
-use crate::App;
 use crate::settings::standards_list::{DefaultsSource, source_tone, source_word, value_text};
 use crate::settings::style_catalogues::{self as sc, CatalogueSource, DetailState};
+use crate::shell::app::App;
 use crate::shell::bar;
 use ecad_widgets::tokens::{space, ui_type};
 

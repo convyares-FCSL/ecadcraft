@@ -123,7 +123,7 @@ impl ReportsList {
 
 /// The Reports tab: the list, then the preview's line; the preview itself is the Reports window,
 /// hosted under it ([`crate::workspace::frame::reports_preview`]).
-pub fn show(t: &mut crate::App, ui: &mut egui::Ui) {
+pub fn show(t: &mut crate::shell::app::App, ui: &mut egui::Ui) {
     use ecad_widgets::tokens::{size, space, ui_type};
     let s = ecad_widgets::SHELL;
     let Some(r) = t.reports.as_mut() else { return };
@@ -185,6 +185,6 @@ pub fn show(t: &mut crate::App, ui: &mut egui::Ui) {
 }
 
 /// Whether the preview (the hosted Reports window) shows: a report with a Reports tab.
-pub(crate) fn preview_shown(t: &crate::App) -> bool {
+pub(crate) fn preview_shown(t: &crate::shell::app::App) -> bool {
     t.reports.as_ref().and_then(|r| r.list.selected()).is_some_and(|p| p.tab.is_some())
 }

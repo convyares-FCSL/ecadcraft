@@ -29,7 +29,7 @@ pub mod text_styles;
 use ecad_widgets::tokens::{Icon, space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.

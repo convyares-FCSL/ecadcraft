@@ -9,8 +9,8 @@
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::developer;
+use crate::shell::app::App;
 
 /// Accessible labels.
 pub const COMMANDS_TAB: &str = "Commands";

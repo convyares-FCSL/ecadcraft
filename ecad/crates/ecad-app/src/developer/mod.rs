@@ -188,7 +188,7 @@ pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
                 {
                     out.push(Action::Inspect);
                 }
-                if p.snapshots && ui.small_button(SNAPSHOT).on_hover_text(crate::SNAPSHOT_NOTE).clicked() {
+                if p.snapshots && ui.small_button(SNAPSHOT).on_hover_text(crate::shell::app::SNAPSHOT_NOTE).clicked() {
                     out.push(Action::Snapshot);
                 }
             }

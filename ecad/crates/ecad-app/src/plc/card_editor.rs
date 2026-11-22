@@ -26,8 +26,8 @@ use serde_json::json;
 
 use ecad_widgets::control::{Decor, Select, TextEntry, ValueBox, read_text};
 
-use crate::App;
 use crate::inspector::widgets as w;
+use crate::shell::app::App;
 
 /// Element names.
 pub const PANEL: &str = "ecad.plc.card.editor";

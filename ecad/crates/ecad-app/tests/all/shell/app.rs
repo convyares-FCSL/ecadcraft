@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use ecad_app::{Answer, App, DialogKind, SNAPSHOT_NOTE};
+use ecad_app::shell::app::{Answer, App, DialogKind, SNAPSHOT_NOTE};
 use serde_json::{Value, json};
 
 fn new_app(snapshots: Option<PathBuf>) -> App {
@@ -95,7 +95,7 @@ fn save_asks_for_a_file_name_once_then_saves_to_it() {
     let (kind, suggested, _) = t.dialog().unwrap();
     assert_eq!(kind, DialogKind::SaveAs);
     let sep = std::path::MAIN_SEPARATOR;
-    assert_eq!(suggested, format!("{}{sep}untitled.ecad", ecad_app::DEFAULT_FOLDER));
+    assert_eq!(suggested, format!("{}{sep}untitled.ecad", ecad_app::shell::host::Host::default().default_folder));
     t.cancel_dialog();
     assert!(t.status().unwrap().unsaved > 0, "cancel saves nothing");
     // Saved to a chosen file (the extension is added).
@@ -481,7 +481,7 @@ fn the_quick_start_runs_headless() {
     save_via_dialog(&mut t, "~/ecad-projects/demo");
     let path = home.0.join("ecad-projects").join("demo.ecad").display().to_string();
     assert_eq!(
-        ecad_app::status_line(&t.status().unwrap()),
+        ecad_app::shell::app::status_line(&t.status().unwrap()),
         format!("Project \"demo\": 2 pages, file {path}, no unsaved changes."),
         "the Project panel's status line the guide quotes"
     );

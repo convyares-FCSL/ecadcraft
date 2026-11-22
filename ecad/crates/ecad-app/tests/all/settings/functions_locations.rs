@@ -1,8 +1,8 @@
 //! Brief 052c (design 052 §9.4, §10.15): Settings ▸ Project info ▸ Functions and locations shows
 //! the project's list with the counts `designations` gives, and its edits are immediate commands.
 
-use ecad_app::App;
 use ecad_app::settings::Section;
+use ecad_app::shell::app::App;
 use ecad_electrical::locations::designations::{self, Aspect};
 use eframe::egui::vec2;
 use egui_kittest::Harness;

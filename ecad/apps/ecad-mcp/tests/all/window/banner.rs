@@ -4,16 +4,16 @@
 
 use std::time::{Duration, Instant};
 
-use ecad_app::App;
 use ecad_app::agent::banner as b;
 use ecad_app::agent::last_write;
 use ecad_app::agent::{AgentBanner, BannerState, LastChange};
 use ecad_app::history::panel as hp;
+use ecad_app::shell::app::App;
 use ecad_app::shell::{Workspace, top_bar};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
-use crate::agent::bridge::{H, conductors, live_app, person_wire, server, wire};
+use crate::window::bridge::{H, conductors, live_app, person_wire, server, wire};
 
 /// An app with no bridge, 1920 × 1080, its banner set by hand.
 fn plain() -> H {
@@ -217,17 +217,15 @@ fn the_last_write_is_outlined_on_the_page_and_costs_nothing_idle() {
 /// outlined, History's session group open, and the finished banner.
 #[test]
 fn screenshots_of_the_banner_history_and_outline() {
-    let Some(out) = crate::pages::project_panel::shots() else { return };
-    let deltas: crate::canvas::mouse_acceptance::Deltas = std::sync::Arc::default();
+    let Some(out) = crate::window::common::shots() else { return };
+    let deltas: crate::window::common::Deltas = std::sync::Arc::default();
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    let port = crate::agent::bridge::free_port();
+    let port = crate::window::bridge::free_port();
     t.agent.control_flag(port);
-    let mut h = Harness::builder()
-        .with_size(eframe::egui::vec2(1920.0, 1080.0))
-        .renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone()))
-        .build_ui_state(
+    let mut h =
+        Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).renderer(crate::window::common::Collect(deltas.clone())).build_ui_state(
             |ui, t: &mut App| {
                 t.logic(&ui.ctx().clone());
                 t.ui(ui);
@@ -242,7 +240,7 @@ fn screenshots_of_the_banner_history_and_outline() {
     }
     h.state_mut().zoom_to_drawing();
     h.run_steps(5);
-    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-banner.png"));
+    let _ = crate::window::common::shot(&h, &deltas, &out.join("043-banner.png"));
     let head = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
@@ -252,13 +250,13 @@ fn screenshots_of_the_banner_history_and_outline() {
     h.run_steps(4);
     h.get_by_label_contains(hp::SESSION_GROUP).click();
     h.run_steps(4);
-    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-history.png"));
+    let _ = crate::window::common::shot(&h, &deltas, &out.join("043-history.png"));
     h.get_by_label(b::PAUSE).click();
     h.run_steps(3);
-    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-paused.png"));
+    let _ = crate::window::common::shot(&h, &deltas, &out.join("043-paused.png"));
     a.bye(&mut h);
     h.run_steps(3);
-    let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("043-finished.png"));
+    let _ = crate::window::common::shot(&h, &deltas, &out.join("043-finished.png"));
 }
 
 /// Review of PR #77: two bridge sessions under one name, back to back, are two groups; Undo

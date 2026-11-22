@@ -3,8 +3,8 @@
 //! undrawn card, Description is edited in the table, and the strip follows its update map.
 //! Screenshot `051-lists-plc.png` when `ECAD_TESTER_SHOTS` names a folder.
 
-use ecad_app::App;
 use ecad_app::plc::list::{self, IoView};
+use ecad_app::shell::app::App;
 use ecad_app::shell::{ListsView, Workspace};
 use ecad_model::DeviceId;
 use ecad_widgets::table::TableSource;

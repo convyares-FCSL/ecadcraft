@@ -15,7 +15,7 @@ use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 use serde_json::json;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The list (element name).
 pub const LIST: &str = "ecad.prompt.location_conflicts";

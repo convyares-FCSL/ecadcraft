@@ -1,5 +1,5 @@
 //! The program's command line: [`parse_args`] and [`USAGE`] (code review finding 9: split out of
-//! the app's library). The default projects folder it names is ecad-app's [`ecad_app::DEFAULT_FOLDER`].
+//! the app's library). The default projects folder it names is [`crate::folder::DEFAULT_FOLDER`].
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ pub const USAGE: &str = concat!(
     "usage: ecad-desktop [--snapshots <dir>] [--control <port>] [--cad-ui] [<project.ecad>]\n\n\
 ECAD desktop program (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
 project. Save and Save As write .ecad project files; keep them in a local folder such as ",
-    ecad_app::default_folder!(),
+    crate::default_folder!(),
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
 --control <port>   agent access on for this run (Read and change, 127.0.0.1:<port>; not remembered)\n\
 --cad-ui           show CADCraft's own interface inside the main view (the developer switch)\n\

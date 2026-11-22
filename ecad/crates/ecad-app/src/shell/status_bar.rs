@@ -22,7 +22,7 @@ use ecad_model::{FolderId, PageId};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
@@ -672,9 +672,12 @@ impl App {
             Some(s) if s.file.path.is_none() => "Not saved yet".into(),
             Some(_) => "Saved".into(),
         };
-        // The time it became saved (this session; local time through chrono).
+        // The time it became saved (this session; local time from the host).
         if state == "Saved" && self.shell.saved_was.as_deref() != Some("Saved") {
-            self.shell.saved_at = Some(chrono::Local::now().format("%H:%M").to_string());
+            self.shell.saved_at = Some({
+                let h = crate::shell::host::host();
+                (h.local_time)((h.now_ms)(), false)
+            });
         }
         self.shell.saved_was = Some(state.clone());
         state

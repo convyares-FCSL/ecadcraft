@@ -13,8 +13,8 @@ use ecad_engine::cad::Handle;
 use ecad_engine::cad::Vec2;
 use eframe::egui::{self, Pos2, Rect, Stroke, pos2, vec2};
 
-use crate::App;
 use crate::canvas::PageData;
+use crate::shell::app::App;
 
 /// The error disc's and warning triangle's size on screen, px.
 pub const MARKER_PX: f32 = 12.0;

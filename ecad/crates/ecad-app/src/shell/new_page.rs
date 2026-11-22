@@ -17,7 +17,7 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Pos2, Rect, Sense, pos2, vec2};
 use serde_json::json;
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Accessible names (design 054 §4.1).

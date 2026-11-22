@@ -6,6 +6,7 @@
 // Lanes in flight add their modules in `lanes/`, not to the list below (see `lanes/mod.rs`).
 mod common;
 mod lanes;
+mod window;
 
 mod accessories_contracts;
 mod bom_contracts;

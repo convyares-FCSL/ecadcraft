@@ -9,7 +9,7 @@ use egui_kittest::kittest::Queryable;
 
 use crate::canvas::mouse_acceptance::{harness_with, ok};
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn counters(h: &H) -> (u64, u64) {
     let v = &h.state().settings.standards;

@@ -1,7 +1,7 @@
 //! The wheel in the window (brief 041 step 3): a right-click on the page while no tool runs
 //! classifies what is under the cursor (`ecad_engine::pointer::kind`) and opens that kind's
 //! wheel there; a right-click on a page row in the Pages tab opens the page row's wheel. Choosing
-//! a slot runs its action ([`crate::App::run_action`]), the same path the tool strip, the keys and
+//! a slot runs its action ([`crate::shell::app::App::run_action`]), the same path the tool strip, the keys and
 //! Ctrl+K use.
 //!
 //! While a tool runs, a right-click is Enter (it finishes the step, CADCraft's default) and opens
@@ -45,7 +45,7 @@ pub struct Refusal {
     pub refused: bool,
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// The project takes writes now (open, not read only, no revision shown).
     /// A drawing with no ECAD project is CADCraft's and always takes writes.
     pub fn writable(&mut self) -> bool {
@@ -185,7 +185,7 @@ impl crate::App {
         let Some(open) = self.shell.tools.wheel.as_mut() else { return };
         let ev = ecad_widgets::wheel::show(ctx, &mut open.widget, &open.target.name, &open.specs);
         let (slots, target, values) = (open.slots, open.target.clone(), open.values.clone());
-        let run = |t: &mut crate::App, a: Option<&'static Action>, choice: Option<Value>| {
+        let run = |t: &mut crate::shell::app::App, a: Option<&'static Action>, choice: Option<Value>| {
             t.shell.tools.wheel = None;
             if let Some(a) = a
                 && let Err(why) = t.run_action(a, Some(&target), choice)
@@ -314,7 +314,7 @@ impl crate::App {
     /// What the window does itself for an [`Params::App`] action.
     fn app_action(&mut self, a: &'static Action, app: App, target: Option<&Target>) -> Result<(), String> {
         let page = target.and_then(|t| t.page).or(self.panel.active);
-        let select = |t: &mut crate::App| {
+        let select = |t: &mut crate::shell::app::App| {
             if let Some(h) = target.map(|t| t.handles.clone()).filter(|h| !h.is_empty()) {
                 t.cad.session.set_selection(h);
             }

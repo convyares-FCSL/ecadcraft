@@ -6,8 +6,8 @@
 use ecad_widgets::tokens::space;
 use eframe::egui;
 
-use crate::App;
 use crate::settings::{card, later_box, row};
+use crate::shell::app::App;
 
 /// Accessible names.
 pub const REVISIONS: &str = "settings.versions.revisions";

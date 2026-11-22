@@ -4,8 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ecad_app::App;
-use ecad_desktop::parse_args;
+use ecad_app::shell::app::App;
 use ecad_engine::{HOME_UNKNOWN, normalize_with};
 use serde_json::json;
 
@@ -297,18 +296,6 @@ fn snapshots_with_a_tilde_never_make_a_tilde_folder() {
     assert!(!cwd.0.join("~").exists(), "a folder literally named `~` was made: {text}");
 }
 
-/// The command line never panics on odd arguments.
-#[test]
-fn odd_arguments_never_panic() {
-    use std::ffi::OsString;
-    for args in [vec!["-"], vec!["--"], vec!["--snapshots", "--help"], vec!["--snapshots="], vec![""], vec!["", ""]] {
-        let _ = parse_args(args.into_iter().map(OsString::from).collect::<Vec<_>>());
-    }
-    // An empty project name opens nothing rather than an empty path.
-    let r = parse_args(vec![OsString::from("")]);
-    let _ = r;
-}
-
 /// The error for `~` without a home folder names the problem and suggests the full path.
 #[test]
 fn tilde_without_a_home_says_what_to_do() {
@@ -378,7 +365,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     // the file is already written, so Discard closes without writing again.
     if t.pending_close().is_some() {
         println!("UNC close asked: {:?}", t.pending_close());
-        t.answer(ecad_app::Answer::Discard);
+        t.answer(ecad_app::shell::app::Answer::Discard);
         t.after_logic();
     }
     t.open_project(&saved_as).unwrap();
@@ -499,15 +486,13 @@ fn legitimate_paths_are_still_accepted() {
     }
 }
 
-/// A `~` snapshots folder lands in the home folder (fix for F1), through the real argument path.
+/// A `~` snapshots folder lands in the home folder (fix for F1); ecad-desktop's tests check the argument.
 #[test]
 fn snapshots_argument_with_a_tilde_goes_to_the_home_folder() {
     use std::ffi::OsString;
     let home = TempDir::new("f1-home");
     for typed in ["~/snaps", r"~\snaps2"] {
-        let Ok(ecad_desktop::Invocation::Run { snapshots, .. }) = parse_args(vec![OsString::from("--snapshots"), OsString::from(typed)]) else {
-            panic!("{typed}")
-        };
+        let snapshots = Some(PathBuf::from(OsString::from(typed)));
         let mut t = new_app(Some(&home.0), snapshots);
         let written = t.export_snapshot("r2").unwrap();
         assert!(written.starts_with(&home.0), "{typed} -> {}", written.display());
@@ -557,7 +542,7 @@ fn the_banner_shows_the_expanded_path_with_one_separator() {
         let s = t.status().unwrap();
         assert_eq!(s.file.path.as_deref(), Some(want.as_str()), "{typed}");
         assert!(!want.contains(foreign), "{want}");
-        assert!(ecad_app::status_line(&s).contains(&format!("file {want},")), "{typed}");
+        assert!(ecad_app::shell::app::status_line(&s).contains(&format!("file {want},")), "{typed}");
         assert!(Path::new(&want).is_file());
     }
 }

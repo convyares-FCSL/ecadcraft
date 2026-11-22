@@ -25,7 +25,7 @@ use ecad_model::{ObjectRef, PageId, TxId};
 use ecad_widgets::tokens::{Color, line, space, ui_type};
 use eframe::egui;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The outline's width on the sheet, mm (spec §4).
 pub const OUTLINE_MM: f32 = 0.6;
@@ -86,7 +86,7 @@ pub fn outlines(ctx: &egui::Context) -> Vec<Outline> {
 
 /// The wall clock, ms since the epoch, of `at`.
 pub fn wall_ms(at: Instant) -> u64 {
-    let now = u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or(0);
+    let now = (crate::shell::host::host().now_ms)();
     now.saturating_sub(u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
 }
 

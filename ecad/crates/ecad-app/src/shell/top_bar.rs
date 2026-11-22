@@ -13,8 +13,8 @@
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::pages::project_panel::Action;
+use crate::shell::app::App;
 use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
@@ -242,10 +242,10 @@ fn agent_state(ui: &egui::Ui, t: &App) -> (Option<egui::Color32>, String, String
 }
 
 /// The account avatar's letters: there are no accounts yet, so two letters of the person's login
-/// name (read from the environment, shown only on this screen): its capitals when it has two
+/// name (the host's, shown only on this screen): its capitals when it has two
 /// (`JaneDoe` → `JD`), else its first two letters, else a neutral mark.
 fn initials() -> String {
-    let name = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let name = crate::shell::host::host().user.clone();
     let caps: String = name.chars().filter(|c| c.is_uppercase()).take(2).collect();
     let letters =
         if caps.chars().count() == 2 { caps } else { name.chars().filter(|c| c.is_alphabetic()).take(2).collect::<String>().to_uppercase() };

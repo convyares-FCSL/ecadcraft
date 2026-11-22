@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 pub use selection::{Related, related};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The `ui.sheet` command (Text panel ▸ Commands): `ui.sheet paper|follow|dark`, or alone to
 /// switch between paper and dark.

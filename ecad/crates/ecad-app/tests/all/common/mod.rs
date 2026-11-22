@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_engine::cables::views::Settings;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;

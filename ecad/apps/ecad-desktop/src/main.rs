@@ -1,5 +1,5 @@
 //! `ecad-desktop`: the ECAD desktop program, still an experiment. It runs
-//! ecad-app's [`ecad_app::App`] in an eframe window.
+//! ecad-app's [`ecad_app::shell::app::App`] in an eframe window.
 //!
 //! Usage: `ecad-desktop [--snapshots <dir>] [<project.ecad>]`
 //!
@@ -17,7 +17,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use cadcraft_ui_egui::switch::Switch;
-use ecad_app::{App, TITLE};
+use ecad_app::shell::app::{App, TITLE};
 use ecad_desktop::startup::{Adapter, StartupTiming, Step, preferred_folder};
 use ecad_desktop::window::{self, STENCIL_BITS};
 use ecad_desktop::{Invocation, USAGE, parse_args};
@@ -123,6 +123,7 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         }
     };
+    ecad_app::shell::host::install(ecad_desktop::host::host());
     // Before the engine's command list is first built.
     ecad_engine::install();
     // Brief 040: the sheet font for the page (US3), before any text is drawn.
@@ -170,6 +171,7 @@ fn main() -> eframe::Result {
                 }
             }
             let mut app = App::start(snapshots, project.as_deref(), timing.as_mut())?;
+            app.cad.services = ecad_desktop::host::services(app.save_as_flag());
             // Brief 038: the shell's remembered state and page views; `--cad-ui` turns the
             // developer switch on.
             app.shell.state.cad_chrome = cad_ui;

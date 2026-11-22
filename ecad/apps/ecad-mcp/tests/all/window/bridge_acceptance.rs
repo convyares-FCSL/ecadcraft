@@ -23,9 +23,19 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 
-use crate::canvas::mouse_acceptance::harness_with;
+use crate::window::common::{self, Opts};
+
+fn harness_with(deltas: Option<crate::window::common::Deltas>) -> Harness<'static, App> {
+    common::harness(Opts::new().panels().deltas(deltas))
+}
+
+fn document(h: &mut Harness<'static, App>) -> ecad_model::Document {
+    let t = h.state_mut();
+    let p = t.project().unwrap().clone();
+    p.read(&mut t.cad.session, |p, _| p.ledger.document().clone()).unwrap()
+}
 
 type H = Harness<'static, App>;
 
@@ -128,7 +138,7 @@ impl Live {
 
     /// The lines drawn (the tests' lines end free: routes that carry no wire, design 072).
     fn wires(&mut self) -> usize {
-        crate::canvas::mouse_acceptance::doc(&mut self.h).routes.len()
+        document(&mut self.h).routes.len()
     }
 
     /// The project's author and transaction budget now (the frame invariant, §5.2).
@@ -1405,14 +1415,4 @@ fn the_ecad_dev_row_shows_mode_port_and_status() {
     drop(held);
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&dir2);
-}
-
-#[test]
-fn control_flag_parses_and_writes_nothing() {
-    let ok = ecad_desktop::parse_args(["--control", "47823"].map(std::ffi::OsString::from)).unwrap();
-    assert_eq!(ok, ecad_desktop::Invocation::Run { snapshots: None, project: None, control: Some(47823), cad_ui: false });
-    for bad in [&["--control"][..], &["--control", "x"][..], &["--control", "70000"][..], &["--control", "80"][..]] {
-        assert!(ecad_desktop::parse_args(bad.iter().map(std::ffi::OsString::from)).is_err(), "{bad:?}");
-    }
-    assert!(ecad_desktop::USAGE.contains("--control"));
 }

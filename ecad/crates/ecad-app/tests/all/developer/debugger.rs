@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use cadcraft_engine::Session;
-use ecad_app::App;
 use ecad_app::developer::debugger::{Action, CheckKind, View, saved_summary};
+use ecad_app::shell::app::App;
 use ecad_engine::BUSY;
 use ecad_engine::dev::debug::{ObjectId, RecordState};
 use serde_json::Value;

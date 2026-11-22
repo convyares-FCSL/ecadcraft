@@ -26,7 +26,7 @@ use ecad_widgets::tokens::ui_type::TypeStyle;
 use ecad_widgets::tokens::{Icon, line, size, space};
 use eframe::egui::{self, Key, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{LeftTab, bar};
 
 /// A tool group as the strip shows it.

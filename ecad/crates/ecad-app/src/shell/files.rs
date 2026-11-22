@@ -1,7 +1,26 @@
 //! The app's project files: new, open, save, save as, the file dialog's state, conversion of old
 //! files, snapshots, and closing (the held close, quitting).
 
-use crate::*;
+use crate::developer::debugger::Debugger;
+use crate::pages::preview::Preview;
+use crate::pages::project_panel::{Header, ProjectPanel};
+use crate::shell::app::*;
+use crate::{
+    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
+    terminal_strips, title_blocks, wires, workspace,
+};
+use cadcraft_ui_egui::closing::{Choice, Closing};
+use cadcraft_ui_egui::{CadApp, Services};
+use ecad_engine::cad::Handle;
+use ecad_engine::cad::Session;
+use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use ecad_model::PageId;
+use eframe::egui::{self, RichText};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 impl App {
     /// Create a new, unsaved project (only when none is open).
@@ -84,7 +103,7 @@ impl App {
         self.focus_project()?;
         let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
         if let Some(dir) = Path::new(&target).parent()
-            && let Ok(default) = ecad_engine::expand_home(DEFAULT_FOLDER, self.home.as_deref())
+            && let Ok(default) = ecad_engine::expand_home(&crate::shell::host::host().default_folder, self.home.as_deref())
             && ecad_engine::same_path(dir, &default)
             && !dir.exists()
         {
@@ -139,8 +158,8 @@ impl App {
 
     fn open_dialog(&mut self, kind: DialogKind, then_close: Option<Closing>) {
         let suggested = match (kind, self.status()) {
-            (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
-            _ => in_default_folder(""),
+            (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| self.in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
+            _ => self.in_default_folder(""),
         };
         self.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
     }
@@ -385,19 +404,18 @@ impl App {
         .unwrap_or_else(|_| "project".into())
     }
 
+    /// `name` in the default folder, as typed (with the platform's separator; a trailing one when `name` is empty).
+    pub(crate) fn in_default_folder(&self, name: &str) -> String {
+        format!("{}{}{name}", crate::shell::host::host().default_folder, std::path::MAIN_SEPARATOR)
+    }
+
     /// A typed output path with `~` expanded.
     pub(crate) fn report_path(&self, path: &str) -> Result<String, String> {
         ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
 }
 
-/// `name` in [`DEFAULT_FOLDER`], as typed (with the platform's separator; a trailing one when
-/// `name` is empty).
-pub(crate) fn in_default_folder(name: &str) -> String {
-    format!("{DEFAULT_FOLDER}{}{name}", std::path::MAIN_SEPARATOR)
-}
-
 /// Seconds since the epoch, for unique snapshot file names.
 fn ecad_stamp() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+    (crate::shell::host::host().now_ms)() / 1000
 }

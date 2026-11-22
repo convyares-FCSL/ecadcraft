@@ -14,8 +14,8 @@ use ecad_widgets::prim::{self, Tone};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, vec2};
 
-use crate::App;
 use crate::shell::ListsView;
+use crate::shell::app::App;
 
 /// The selected row of the tab shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

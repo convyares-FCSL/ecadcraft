@@ -4,8 +4,8 @@
 //! editor in the right panel, and the footer's overview page. Screenshots `056-*.png` when
 //! `ECAD_TESTER_SHOTS` names a folder.
 
-use ecad_app::App;
 use ecad_app::plc::list::{self, IoView};
+use ecad_app::shell::app::App;
 use ecad_app::shell::{ListsView, Workspace};
 use ecad_app::workspace::ListAction;
 use ecad_model::DeviceId;

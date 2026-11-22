@@ -17,7 +17,7 @@ use ecad_widgets::prim;
 use ecad_widgets::tokens::{line, radius, space, ui_type};
 use eframe::egui::{self, Rect, Role, Sense, Stroke, StrokeKind, WidgetInfo, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{ListsView, in_rect};
 
 /// The head's height (the tab strip and the actions), px.

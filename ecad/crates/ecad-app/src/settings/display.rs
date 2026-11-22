@@ -6,8 +6,8 @@
 use ecad_widgets::tokens::space;
 use eframe::egui;
 
-use crate::App;
 use crate::settings::{card, row};
+use crate::shell::app::App;
 
 /// Where the two are changed.
 pub const WHERE: &str = "The theme is switched in the top bar; the sheet colour in the bottom bar's sheet colour menu (it changes the screen only: PDFs and prints use paper colours).";

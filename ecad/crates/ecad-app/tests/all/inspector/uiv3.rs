@@ -5,8 +5,8 @@
 //! folder and a wgpu adapter exists).
 
 use crate::pages::project_panel::{doc, rev3_app as new_app};
-use ecad_app::App;
 use ecad_app::inspector;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::RightTab;
 use ecad_model::{RepresentationId, Subject};
 use eframe::egui::{self, vec2};

@@ -2,10 +2,28 @@
 //! merge, and the symbol search window.
 
 use crate::commands::run::with_param;
-use crate::shell::files::in_default_folder;
-use crate::*;
+use crate::developer::debugger::Debugger;
+use crate::pages::preview::Preview;
+use crate::pages::project_panel::{Header, ProjectPanel};
+use crate::shell::app::*;
+use crate::{
+    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
+    terminal_strips, title_blocks, wires, workspace,
+};
+use cadcraft_ui_egui::closing::{Choice, Closing};
+use cadcraft_ui_egui::{CadApp, Services};
+use ecad_engine::cad::Handle;
+use ecad_engine::cad::Session;
+use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use ecad_model::PageId;
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Kind, Tone};
+use eframe::egui::{self, RichText};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 impl App {
     /// The symbol search window (brief 018): its rows and second step are read from the project
@@ -259,6 +277,7 @@ impl App {
     }
 
     fn file_dialog(&mut self, ctx: &egui::Context) {
+        let example = self.in_default_folder("demo.ecad");
         let Some(d) = &mut self.dialog else { return };
         let (heading, verb) = match d.kind {
             DialogKind::Open => ("Open project", "Open"),
@@ -268,7 +287,7 @@ impl App {
         let hint = format!(
             "A .ecad project file (the extension is added if missing). Keep projects in a local folder, for example {}; other \
              locations are unverified.",
-            in_default_folder("demo.ecad")
+            example
         );
         let shown = Dialog::new(egui::Id::unique("ecad_app_file"), heading, "ecad.file").medium().show(
             ctx,

@@ -6,13 +6,13 @@ use ecad_electrical::symbols;
 use ecad_model::DefinitionId;
 use eframe::egui::{self, Rect};
 
-use crate::App;
 use crate::library::browser::{self, Listing, Tile};
 use crate::library::builder::{self, Act as BuilderAct};
 use crate::library::details::{self, Info};
 use crate::library::draft::Source;
 use crate::library::review;
 use crate::shell::Workspace;
+use crate::shell::app::App;
 
 impl App {
     /// The Library's main view this frame.

@@ -56,8 +56,8 @@ use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
 
-use crate::App;
 use crate::shell::Slots;
+use crate::shell::app::App;
 use crate::shell::state::RightTab;
 
 /// Accessible labels.

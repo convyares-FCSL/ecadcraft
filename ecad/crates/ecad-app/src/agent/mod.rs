@@ -42,7 +42,7 @@ use ecad_engine::cables::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
 
-use crate::App;
+use crate::shell::app::App;
 pub use banner::{AgentBanner, BannerAction, BannerState, LastChange};
 
 /// How long a call that may change the project waits while the person is busy (design §6.2).
@@ -717,8 +717,8 @@ impl App {
     fn open_dialog_title(&self) -> Option<&'static str> {
         if let Some(d) = &self.dialog {
             return Some(match d.kind {
-                crate::DialogKind::Open => "Open",
-                crate::DialogKind::SaveAs => "Save As",
+                crate::shell::app::DialogKind::Open => "Open",
+                crate::shell::app::DialogKind::SaveAs => "Save As",
             });
         }
         if self.held.is_some() || self.cad.closing.is_some() || self.cad.save_loss.is_some() {
@@ -1023,7 +1023,7 @@ impl App {
                 b.last_change = Some(LastChange {
                     seq: t.get("seq").and_then(Value::as_u64).unwrap_or(0),
                     label: t.get("label").and_then(Value::as_str).unwrap_or("").to_string(),
-                    time_ms: u64::try_from(chrono::Utc::now().timestamp_millis()).unwrap_or(0),
+                    time_ms: (crate::shell::host::host().now_ms)(),
                     branch,
                 });
                 b.flash_until = Some(Instant::now() + WRITE_FLASH);

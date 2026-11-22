@@ -601,7 +601,7 @@ impl CablesView {
 
 /// The Cables tab (board 2.06): the cable table, the selected cable's line and its drawing, then
 /// its cores. Returns where to go.
-pub(crate) fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
+pub(crate) fn show_tab(t: &mut crate::shell::app::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_model::PageId, ecad_model::Pt)> {
     use ecad_widgets::tokens::{size, space, ui_type};
     use eframe::egui::{self, vec2};
     let s = ecad_widgets::SHELL;

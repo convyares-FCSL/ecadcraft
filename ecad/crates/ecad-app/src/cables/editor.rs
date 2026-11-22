@@ -367,7 +367,7 @@ pub fn show(
     out
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// Run what the cable editor asked for, on cable `k`.
     pub fn cable_ask(&mut self, k: CableId, a: Ask) {
         match a {

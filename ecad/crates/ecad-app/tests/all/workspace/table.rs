@@ -7,7 +7,7 @@ use ecad_widgets::table::{Align, Changed, TableSource};
 use eframe::egui::{Event, Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use {ecad_app::App, ecad_app::reports::panel};
+use {ecad_app::reports::panel, ecad_app::shell::app::App};
 
 use crate::pages::project_panel::{Deltas, active, build, click, devices_fixture, doc, head, key, new_app, ok, take};
 

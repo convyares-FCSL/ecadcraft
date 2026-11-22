@@ -4,8 +4,8 @@
 //! while the page is hidden, and the first-open zoom.
 
 use cadcraft_engine::doc::Handle;
-use ecad_app::App;
 use ecad_app::canvas::{self, Sheet};
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::{ShellState, Workspace};
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use eframe::egui::vec2;

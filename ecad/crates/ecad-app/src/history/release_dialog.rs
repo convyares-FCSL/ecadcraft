@@ -319,19 +319,12 @@ impl ReleaseDialog {
 /// The height of the check's rows.
 const ROWS_HEIGHT: f32 = size::DIALOG_S - size::ROW_GROUP * 2.0;
 
-/// Open `folder` in the system's file manager (a separate process; nothing waits for it).
+/// Open `folder` in the system's file manager (the host's).
 ///
 /// # Errors
 /// The file manager could not be started.
 pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
-    let program = if cfg!(target_os = "windows") {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program).arg(folder).spawn().map(|_| ()).map_err(|e| format!("Could not open {}: {e}", folder.display()))
+    (crate::shell::host::host().open_folder)(folder)
 }
 
 /// The folders of issued rows, resolved against the project, and whether each exists.

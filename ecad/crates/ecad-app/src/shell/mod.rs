@@ -28,6 +28,7 @@
 //! action table (U4b), the canvas look (U4a), the inspector and Standards (U4c), the restyled
 //! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
+pub mod app;
 pub mod bar;
 pub mod compare;
 pub mod conflicts;
@@ -36,6 +37,7 @@ pub(crate) mod dialogs;
 pub mod drawer;
 pub(crate) mod files;
 pub mod glyphs;
+pub mod host;
 pub(crate) mod hover;
 pub mod intent;
 pub mod keys;
@@ -59,7 +61,7 @@ use cadcraft_ui_egui::Embedding;
 use ecad_model::PageId;
 use eframe::egui::{self, Rect};
 
-use crate::App;
+use crate::shell::app::App;
 pub use layout::{Slots, layout};
 pub use state::{LeftTab, RightTab, ShellState, Views, Workspace};
 

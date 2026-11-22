@@ -15,7 +15,7 @@ use ecad_widgets::prim;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// Accessible label of the maker.
 pub const MAKER: &str = "Connector maker";

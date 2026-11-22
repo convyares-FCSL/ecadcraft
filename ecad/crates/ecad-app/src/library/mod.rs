@@ -24,7 +24,7 @@ pub use builder::{Builder, Tool};
 pub use draft::{Draft, Drafts, Source};
 pub use review::Review;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The Library workspace's state.
 #[derive(Debug, Default)]

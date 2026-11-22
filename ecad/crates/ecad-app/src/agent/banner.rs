@@ -3,9 +3,9 @@
 //! ([`show_line`]).
 //!
 //! # Semantics
-//! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::App::agent_banner`]);
+//! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::shell::app::App::agent_banner`]);
 //!   the shell places it in its 32 px banner slot (spec §2) and styles it ([`show`]), keeping these
-//!   fields, the controls ([`BannerAction`], through [`crate::App::agent_action`]) and the
+//!   fields, the controls ([`BannerAction`], through [`crate::shell::app::App::agent_action`]) and the
 //!   element names ([`ELEMENT`] and the `agent.banner.*` names).
 //! - **Update map** (design §7.5): the banner changes only on `ecad.hello`, an accepted or refused
 //!   agent call, the write flash running out, hold start and end, Pause/Resume, Disconnect,
@@ -191,8 +191,7 @@ fn held_what(said: &str) -> String {
 
 /// `HH:MM:SS` local time of `ms` since the epoch.
 fn clock(ms: u64) -> String {
-    use chrono::{Local, TimeZone};
-    i64::try_from(ms).ok().and_then(|ms| Local.timestamp_millis_opt(ms).single()).map_or_else(String::new, |t| t.format("%H:%M:%S").to_string())
+    (crate::shell::host::host().local_time)(ms, true)
 }
 
 fn named(r: &egui::Response, role: egui::Role, name: &str) {

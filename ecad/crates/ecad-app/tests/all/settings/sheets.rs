@@ -14,7 +14,7 @@ use ecad_model::{FolderId, Op};
 use eframe::egui::{self, Key};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use {ecad_app::App, ecad_app::settings::sheets};
+use {ecad_app::settings::sheets, ecad_app::shell::app::App};
 
 fn enter(h: &mut Harness<'static, App>) {
     h.key_press(Key::Enter);

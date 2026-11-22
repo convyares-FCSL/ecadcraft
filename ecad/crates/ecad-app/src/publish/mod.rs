@@ -23,8 +23,8 @@ use ecad_model::{FolderId, PageId};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, pos2, vec2};
 
-use crate::App;
 use crate::reports::panel::ScopeKind;
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Element names.

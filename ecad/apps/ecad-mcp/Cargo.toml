@@ -23,3 +23,13 @@ ecad-file = { workspace = true }
 ecad-electrical = { workspace = true }
 # The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }
+# The bridge tests run the MCP server against the real window (#53: they lived in ecad-app's tests).
+ecad-widgets = { path = "../../crates/ecad-widgets" }
+ecad-app = { path = "../../crates/ecad-app" }
+ecad-store = { workspace = true }
+egui_kittest = "=0.37.0"
+eframe = { version = "0.37", default-features = false, features = ["wgpu"] }
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+egui = { version = "0.37", default-features = false }
+# The bridge tests make an ECAD command panic (fault injection) and build cable ends with `apply_ops`.
+ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }

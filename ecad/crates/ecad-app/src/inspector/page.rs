@@ -19,8 +19,8 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::json;
 
-use crate::App;
 use crate::inspector::widgets;
+use crate::shell::app::App;
 
 /// Accessible names (design 054 §8).
 pub const NOTES: &str = "ecad.page.notes";
