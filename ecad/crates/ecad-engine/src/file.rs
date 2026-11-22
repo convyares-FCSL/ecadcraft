@@ -41,27 +41,45 @@ pub fn normalize_resolved(path: &std::path::Path) -> Result<String, PathError> {
     normalize_with(text, None)
 }
 
-/// What a Save As target is, before the save asks to replace anything.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SaveTarget {
-    /// Nothing is there yet.
-    Free,
-    /// The project's own file.
-    Own,
-    /// Another file that exists: saving replaces it.
-    Exists,
+/// Why a Save As was not made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaveAsRefused {
+    /// Another file is already there; ask again with `replace` to overwrite it.
+    Exists(std::path::PathBuf),
 }
 
-/// What `target` is for a project bound to `own` (the app asks the engine; it never reads the disk itself).
-#[must_use]
-pub fn save_target(target: &std::path::Path, own: Option<&std::path::Path>) -> SaveTarget {
-    if own.is_some_and(|o| same_path(target, o)) {
-        SaveTarget::Own
-    } else if target.exists() {
-        SaveTarget::Exists
-    } else {
-        SaveTarget::Free
+/// Why [`save_project_as`] did not save.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SaveAsError {
+    /// Refused before anything was written.
+    Refused(SaveAsRefused),
+    /// `saveas` itself failed, in words.
+    Failed(String),
+}
+
+impl std::fmt::Display for SaveAsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SaveAsError::Refused(SaveAsRefused::Exists(p)) => write!(f, "{} already exists", p.display()),
+            SaveAsError::Failed(m) => f.write_str(m),
+        }
     }
+}
+
+/// Save the open project as `target` (a resolved `.ecad` path): refused with
+/// [`SaveAsRefused::Exists`] when another file is there and `replace` is not set, else `saveas`.
+/// The project's own file (`own`) is always saved over. The check and the save are one call.
+///
+/// # Errors
+/// [`SaveAsError::Refused`] before anything is written, or [`SaveAsError::Failed`] when `saveas` fails.
+pub fn save_project_as(
+    session: &mut cadcraft_engine::Session, target: &std::path::Path, own: Option<&std::path::Path>, replace: bool,
+) -> Result<serde_json::Value, SaveAsError> {
+    let is_own = own.is_some_and(|o| same_path(target, o));
+    if !replace && !is_own && target.exists() {
+        return Err(SaveAsError::Refused(SaveAsRefused::Exists(target.to_path_buf())));
+    }
+    session.execute("saveas", &serde_json::json!({ "path": target.to_string_lossy() })).map_err(|e| SaveAsError::Failed(e.to_string()))
 }
 
 /// Make the default projects folder when `target`'s folder is it and it does not exist yet; no other folder

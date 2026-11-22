@@ -86,15 +86,36 @@ impl App {
     /// # Errors
     /// No project is open, the path is refused, or the save failed (also shown in a dialog).
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
-        self.focus_project()?;
-        let target = self.resolve_ecad(path).map_err(|e| e.to_string())?;
+        self.save_as_checked(path, true).map_err(|e| e.to_string())
+    }
+
+    /// [`App::save_as`] that refuses to replace another file unless `replace` is set, in the
+    /// same call as the save.
+    ///
+    /// # Errors
+    /// As [`App::save_as`]; [`ecad_engine::file::SaveAsRefused::Exists`] when another file is there.
+    pub(crate) fn save_as_checked(&mut self, path: &str, replace: bool) -> Result<(), ecad_engine::file::SaveAsError> {
+        use ecad_engine::file::SaveAsError;
+        self.focus_project().map_err(SaveAsError::Failed)?;
+        let target = self.resolve_ecad(path).map_err(|e| SaveAsError::Failed(e.to_string()))?;
         // Without a known home the default folder cannot be made; the save goes on and reports what it finds.
         if let Ok(default) = self.resolve(&crate::shell::host::host().default_folder) {
-            ecad_engine::ensure_default_folder(std::path::Path::new(&target), &default).map_err(|e| format!("{target}: {e}"))?;
+            ecad_engine::ensure_default_folder(std::path::Path::new(&target), &default).map_err(|e| SaveAsError::Failed(format!("{target}: {e}")))?;
         }
-        let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
+        let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
+        let r = ecad_engine::save_project_as(&mut self.cad.session, std::path::Path::new(&target), own.as_deref(), replace);
+        match &r {
+            Ok(v) => {
+                if let Some(m) = v.get("message").and_then(serde_json::Value::as_str) {
+                    for l in m.lines() {
+                        self.cad.session.echo(l.to_string());
+                    }
+                }
+            }
+            Err(e) => self.cad.session.echo(e.to_string()),
+        }
         self.after_logic();
-        r
+        r.map(|_| ())
     }
 
     /// Make a page of the project the active document (Save and Save As act on it).
@@ -172,17 +193,13 @@ impl App {
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
             DialogKind::SaveAs => {
-                let target = self.resolve_ecad(&path).map(PathBuf::from);
-                let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
-                match target {
-                    Ok(t)
-                        if ecad_engine::save_target(&t, own.as_deref()) == ecad_engine::SaveTarget::Exists
-                            && d.confirmed_replace.as_deref() != Some(&path) =>
-                    {
+                let replace = d.confirmed_replace.as_deref() == Some(&path);
+                match self.save_as_checked(&path, replace) {
+                    Err(ecad_engine::file::SaveAsError::Refused(ecad_engine::file::SaveAsRefused::Exists(t))) => {
                         d.confirmed_replace = Some(path.clone());
                         Err(format!("{} already exists. Press Save again to replace it.", t.display()))
                     }
-                    _ => self.save_as(&path),
+                    other => other.map_err(|e| e.to_string()),
                 }
             }
         };
