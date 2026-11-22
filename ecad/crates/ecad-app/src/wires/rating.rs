@@ -131,7 +131,7 @@ fn rows(r: &Rating) -> Vec<Row> {
             }
         }
         Basis::Manual => {
-            let mut x = row("Carries", r.iz.map(|x| dataset::amps_text(x)).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
+            let mut x = row("Carries", r.iz.map(dataset::amps_text).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
             x.edit = Some("manual");
             v.push(x);
         }

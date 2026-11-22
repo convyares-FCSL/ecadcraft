@@ -56,7 +56,12 @@ pub fn offers_for(graphics: &[Primitive]) -> Vec<Offer> {
     }
     if let Some((i, at, value)) = graphics.iter().enumerate().find_map(|(i, g)| match g {
         Primitive::Text { at, value, .. } if looks_like_tag(value) => Some((i, *at, value.clone())),
-        _ => None,
+        Primitive::Line { .. }
+        | Primitive::Polyline { .. }
+        | Primitive::Arc { .. }
+        | Primitive::Circle { .. }
+        | Primitive::Text { .. }
+        | Primitive::Point { .. } => None,
     }) {
         out.push(Offer::Slot { text: value, at, graphic: i });
     }

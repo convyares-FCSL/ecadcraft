@@ -200,6 +200,20 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
     }))
 }
 
+/// Write `snap` as `ecad-desktop-<stamp>-<count>-seq<head>-<why>.json` in `dir`, making the folder: the
+/// snapshot writer (the app only says where, why and when). Returns the file written.
+///
+/// # Errors
+/// The folder or file could not be written.
+pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count: u32, stamp: u64) -> std::io::Result<std::path::PathBuf> {
+    let head = snap.get("seq").and_then(Value::as_u64).unwrap_or(0);
+    let path = dir.join(format!("ecad-desktop-{stamp}-{count:02}-seq{head:03}-{why}.json"));
+    std::fs::create_dir_all(dir)?;
+    let bytes = serde_json::to_vec_pretty(snap).map_err(std::io::Error::other)?;
+    std::fs::write(&path, bytes)?;
+    Ok(path)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -233,18 +247,4 @@ mod tests {
         assert_eq!(label("conductor", format!("{:032x}", c1.0)), Some("conductor of wire 102".into()));
         assert_eq!(label("conductor", format!("{:032x}", c2.0)), Some("conductor of wire 101".into()));
     }
-}
-
-/// Write `snap` as `ecad-desktop-<stamp>-<count>-seq<head>-<why>.json` in `dir`, making the folder: the
-/// snapshot writer (the app only says where, why and when). Returns the file written.
-///
-/// # Errors
-/// The folder or file could not be written.
-pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count: u32, stamp: u64) -> std::io::Result<std::path::PathBuf> {
-    let head = snap.get("seq").and_then(Value::as_u64).unwrap_or(0);
-    let path = dir.join(format!("ecad-desktop-{stamp}-{count:02}-seq{head:03}-{why}.json"));
-    std::fs::create_dir_all(dir)?;
-    let bytes = serde_json::to_vec_pretty(snap).map_err(std::io::Error::other)?;
-    std::fs::write(&path, bytes)?;
-    Ok(path)
 }

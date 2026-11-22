@@ -16,7 +16,7 @@ pub fn host() -> Host {
         default_folder: crate::folder::DEFAULT_FOLDER.to_string(),
         user: std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default(),
         open_folder,
-        now_ms: now_ms,
+        now_ms,
         local_time,
     }
 }
