@@ -20,7 +20,7 @@ use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 use eframe::egui::{self, RichText};
 
-use crate::settings::standards_list::{number_text, source_tone, source_word};
+use crate::settings::standards_list::{source_tone, source_word};
 
 /// Accessible names (design 050 §9).
 pub const DETAIL: &str = "ecad.standards.style";
@@ -40,8 +40,8 @@ const FIRST_FIELD: u16 = 2;
 /// A field's value as a table shows it: a length with its unit.
 pub fn value_words(r: &defaults::Resolved<'_>) -> String {
     match r.value {
-        defaults::Value::Length(x) => number_text(x, "mm"),
-        defaults::Value::Number(x) => number_text(x, ""),
+        defaults::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
+        defaults::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
         _ => r.text(),
     }
 }

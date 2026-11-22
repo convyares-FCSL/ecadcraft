@@ -220,7 +220,7 @@ impl App {
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
             let content = Content { graphics, points, ..Content::default() };
             let mut draft = Draft::of_content(&content, Source::Promote { component: c.hex(), tag: tag.clone(), at });
-            draft.shape.offers = draft::offers_for(&draft.shape.graphics).into_iter().filter(|o| matches!(o, draft::Offer::Slot { .. })).collect();
+            draft.shape.offers = ecad_electrical::symbols::offers::offers_for(&draft.shape.graphics).into_iter().filter(|o| matches!(o, ecad_electrical::symbols::offers::Offer::Slot { .. })).collect();
             draft.mark_start();
             self.library.back_to_page = true;
             self.open_builder(draft);

@@ -217,3 +217,11 @@ impl fmt::Display for RatedVoltage {
         write!(f, "{} {}", self.volts, self.current.label())
     }
 }
+
+/// `12.5 mm`, `3`: a number with no trailing zeros (three decimals at most), then its unit when it has one.
+#[must_use]
+pub fn number_text(v: f64, unit: &str) -> String {
+    let s = format!("{v:.3}");
+    let n = s.trim_end_matches('0').trim_end_matches('.');
+    if unit.is_empty() { n.to_string() } else { format!("{n} {unit}") }
+}

@@ -46,18 +46,11 @@ pub fn source_tone(s: Source) -> Tone {
 /// A value as shown: a length with its unit.
 pub fn value_text(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     match r.value {
-        defaults::Value::Length(x) => number_text(x, "mm"),
-        defaults::Value::Number(x) => number_text(x, ""),
+        defaults::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
+        defaults::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
         _ if e.key.ends_with(".prefix") => format!("-{}", r.text().trim_start_matches('-')),
         _ => r.text(),
     }
-}
-
-/// `12.5 mm`, `3`: a number with no trailing zeros, and its unit.
-pub fn number_text(v: f64, unit: &str) -> String {
-    let s = format!("{v:.3}");
-    let n = s.trim_end_matches('0').trim_end_matches('.');
-    if unit.is_empty() { n.to_string() } else { format!("{n} {unit}") }
 }
 
 /// One row: the entry and what the project resolves it to.

@@ -108,7 +108,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     match r.basis {
         Basis::Datasheet => {
             if let Some((a, at)) = r.rated {
-                v.push(row("Rated", format!("{} A", dataset::fmt_num(a)), format!("at {} \u{b0}C", dataset::fmt_num(at))));
+                v.push(row("Rated", dataset::amps_text(a), format!("at {}", dataset::celsius_text(at))));
                 temp_row(&mut v, if cable { "ambient" } else { "panel" }, if cable { "Ambient" } else { "Panel" });
                 group_row(&mut v);
             }
@@ -117,7 +117,7 @@ fn rows(r: &Rating) -> Vec<Row> {
             if let Some((a, size, method)) = r.table_value {
                 let name = r.table.as_ref().map(|(n, _)| n.clone()).unwrap_or_default();
                 let mut x =
-                    row("Table", format!("{} A", dataset::fmt_num(a)), format!("{} mm\u{b2} \u{b7} {method} \u{b7} {name}", dataset::fmt_num(size)));
+                    row("Table", dataset::amps_text(a), format!("{} \u{b7} {method} \u{b7} {name}", dataset::area_text(size)));
                 x.tip = r
                     .table
                     .as_ref()
@@ -132,7 +132,7 @@ fn rows(r: &Rating) -> Vec<Row> {
             }
         }
         Basis::Manual => {
-            let mut x = row("Carries", r.iz.map(|x| format!("{} A", dataset::fmt_num(x))).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
+            let mut x = row("Carries", r.iz.map(|x| dataset::amps_text(x)).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
             x.edit = Some("manual");
             v.push(x);
         }
@@ -181,7 +181,7 @@ fn after(r: &Rating) -> Vec<Row> {
     let cable = matches!(r.subject, RatedSubject::Cable(_));
     if let Some(l) = r.load {
         let mut x =
-            row("Load", format!("{} A", dataset::fmt_num(l.amps)), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
+            row("Load", dataset::amps_text(l.amps), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
         x.edit = Some("load");
         v.push(x);
     } else if cable {

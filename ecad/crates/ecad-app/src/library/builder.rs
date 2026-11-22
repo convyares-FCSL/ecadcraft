@@ -12,7 +12,8 @@ use ecad_model::{Primitive, Pt, TextHAlign, TextVAlign};
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Align2, Color32, Key, Pos2, Rect, Shape, Stroke, pos2, vec2};
 
-use crate::library::draft::{self, Draft, GRID_MM, Offer, Picked, TEXT_MM};
+use crate::library::draft::{self, Draft, GRID_MM, Picked, TEXT_MM};
+use ecad_electrical::symbols::offers::{Offer, on_point_grid};
 use crate::library::review::Review;
 
 /// Element names (design 048 §3.1).
@@ -767,7 +768,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         for i in i0..=i1 {
             for j in j0..=j1 {
                 let q = Pt::new(i as f64 * step, j as f64 * step);
-                let major = draft::on_point_grid(q);
+                let major = on_point_grid(q);
                 let at = b.to_screen(rect, q);
                 if paper.contains(at) {
                     p.circle_filled(at, if major { 1.25 } else { 0.6 }, grid);

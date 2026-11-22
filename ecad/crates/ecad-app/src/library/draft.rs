@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 
 use ecad_electrical::symbols::commands::{self as symbol_rules, Content};
 use ecad_electrical::symbols::graphics::POINT_GRID_MM;
+use ecad_electrical::symbols::offers::{Offer, offers_for, on_point_grid, same};
 use ecad_model::{ConnectionPointDef, Document, PointKey, Primitive, Pt, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -63,15 +64,6 @@ pub enum Source {
         #[serde(default)]
         at: [f64; 2],
     },
-}
-
-/// What the builder offers and does not apply until accepted (design 048 §4.1 step 3).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Offer {
-    /// A free line end on the point grid: a connection point there.
-    Point { at: Pt },
-    /// A text that reads like a tag: a Tag slot in its place (the text then goes).
-    Slot { text: String, at: Pt, graphic: usize },
 }
 
 /// The part of a draft its undo steps over.
@@ -145,81 +137,6 @@ pub fn slot_sample(text: &str, prefix: &str) -> String {
         return format!("-{p}01");
     }
     SLOT_TEXTS.iter().find(|(t, _, _)| *t == text).map_or_else(|| text.to_string(), |(_, _, s)| s.to_string())
-}
-
-/// Whether `p` is on the point grid.
-pub fn on_point_grid(p: Pt) -> bool {
-    let on = |x: f64| ((x / POINT_GRID_MM).round() * POINT_GRID_MM - x).abs() < 1e-6;
-    on(p.x) && on(p.y)
-}
-
-fn same(a: Pt, b: Pt) -> bool {
-    (a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
-}
-
-/// Whether `text` reads like a tag (`-` then letters then digits), so it is offered as the Tag slot.
-pub fn looks_like_tag(text: &str) -> bool {
-    let Some(rest) = text.trim().strip_prefix('-') else { return false };
-    let letters = rest.chars().take_while(char::is_ascii_alphabetic).count();
-    let digits = rest.chars().skip(letters).take_while(char::is_ascii_digit).count();
-    letters > 0 && digits > 0 && letters + digits == rest.chars().count()
-}
-
-/// The offers for geometry `graphics` (design 048 §4.1 step 3): a connection point at every free
-/// line end on the point grid that no other shape touches, and a Tag slot for the first text that
-/// reads like a tag.
-pub fn offers_for(graphics: &[Primitive]) -> Vec<Offer> {
-    let mut out = Vec::new();
-    let mut ends: Vec<(usize, Pt)> = Vec::new();
-    for (i, g) in graphics.iter().enumerate() {
-        if let Some((a, b)) = g.path_ends()
-            && !matches!(g, Primitive::Polyline { closed: true, .. })
-        {
-            ends.extend([(i, a), (i, b)]);
-        }
-    }
-    for (i, at) in &ends {
-        let touched = graphics.iter().enumerate().any(|(j, g)| j != *i && touches(g, *at));
-        if on_point_grid(*at) && !touched && !out.iter().any(|o| matches!(o, Offer::Point { at: x } if same(*x, *at))) {
-            out.push(Offer::Point { at: *at });
-        }
-    }
-    if let Some((i, at, value)) = graphics.iter().enumerate().find_map(|(i, g)| match g {
-        Primitive::Text { at, value, .. } if looks_like_tag(value) => Some((i, *at, value.clone())),
-        _ => None,
-    }) {
-        out.push(Offer::Slot { text: value, at, graphic: i });
-    }
-    out
-}
-
-/// Whether shape `g` passes through `p`.
-fn touches(g: &Primitive, p: Pt) -> bool {
-    let on_seg = |a: Pt, b: Pt| {
-        let (dx, dy) = (b.x - a.x, b.y - a.y);
-        let len2 = dx * dx + dy * dy;
-        if len2 < 1e-12 {
-            return same(a, p);
-        }
-        let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0);
-        let (qx, qy) = (a.x + t * dx, a.y + t * dy);
-        ((qx - p.x).powi(2) + (qy - p.y).powi(2)).sqrt() < 1e-6
-    };
-    match g {
-        Primitive::Line { a, b } => on_seg(*a, *b),
-        Primitive::Polyline { vertices, closed } => {
-            let n = vertices.len();
-            let segs = if *closed { n } else { n.saturating_sub(1) };
-            (0..segs).any(|k| match (vertices.get(k), vertices.get((k + 1) % n.max(1))) {
-                (Some(a), Some(b)) => on_seg(*a, *b),
-                _ => false,
-            })
-        }
-        Primitive::Circle { center, radius } | Primitive::Arc { center, radius, .. } => {
-            (((p.x - center.x).powi(2) + (p.y - center.y).powi(2)).sqrt() - radius).abs() < 1e-6
-        }
-        Primitive::Text { .. } | Primitive::Point { .. } => false,
-    }
 }
 
 /// `g` moved by `d`.
@@ -767,6 +684,21 @@ mod tests {
         assert_eq!(at, [100.0, 100.0]);
     }
 
+
+    #[test]
+    fn drafts_keep_at_most_eight_per_project() {
+        let mut s = Drafts::default();
+        for id in 1..=10 {
+            let d = Draft { id, ..Draft::new() };
+            s.keep("p", &d);
+        }
+        assert_eq!(s.of("p").len(), MAX_DRAFTS);
+        assert_eq!(s.of("p").first().map(|d| d.id), Some(3));
+        let back = Drafts::from_stored(Some(&s.to_stored()));
+        assert_eq!(back.of("p").len(), MAX_DRAFTS);
+    }
+
+
     #[test]
     fn free_ends_on_the_grid_and_a_tag_like_text_are_offered() {
         let text = Primitive::Text {
@@ -791,24 +723,5 @@ mod tests {
         assert!(d.shape.offers.is_empty());
         assert!(d.shape.slots.iter().any(|s| s.text == ecad_model::SlotText::Tag));
         assert!(!d.shape.graphics.iter().any(|g| matches!(g, Primitive::Text { .. })), "the tag text became the slot");
-    }
-
-    #[test]
-    fn drafts_keep_at_most_eight_per_project() {
-        let mut s = Drafts::default();
-        for id in 1..=10 {
-            let d = Draft { id, ..Draft::new() };
-            s.keep("p", &d);
-        }
-        assert_eq!(s.of("p").len(), MAX_DRAFTS);
-        assert_eq!(s.of("p").first().map(|d| d.id), Some(3));
-        let back = Drafts::from_stored(Some(&s.to_stored()));
-        assert_eq!(back.of("p").len(), MAX_DRAFTS);
-    }
-
-    #[test]
-    fn looks_like_a_tag() {
-        assert!(looks_like_tag("-B03") && looks_like_tag("-LS1"));
-        assert!(!looks_like_tag("Level high") && !looks_like_tag("-B") && !looks_like_tag("B03"));
     }
 }

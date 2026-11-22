@@ -233,10 +233,10 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         let next = b.draft.next_point_key();
         for (i, o) in b.draft.shape.offers.iter().enumerate() {
             let (what, line) = match o {
-                draft::Offer::Point { at } => {
+                ecad_electrical::symbols::offers::Offer::Point { at } => {
                     ("Line end".to_string(), format!("Offered as connection point {next} at {}, {}", draft::fmt_mm(at.x), draft::fmt_mm(at.y)))
                 }
-                draft::Offer::Slot { text, .. } => (format!("The text \"{text}\""), "Offered as the tag slot; else kept as lettering".to_string()),
+                ecad_electrical::symbols::offers::Offer::Slot { text, .. } => (format!("The text \"{text}\""), "Offered as the tag slot; else kept as lettering".to_string()),
             };
             let r = ui.horizontal(|ui| {
                 ui.vertical(|ui| {
