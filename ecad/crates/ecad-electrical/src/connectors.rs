@@ -1199,9 +1199,8 @@ pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
 
 /// The connector index (design 044 §11.1): which connectors have a symbol on each page, and which
 /// read each naming key (separator, side names) from the project or the built-in. Built on open,
-/// reload and branch switch ([`Index::build`]); kept per commit, undo, redo and merge from the
-/// ops (its update map is the view's, `crate::derived::ConnectorsView`; [`Index::update`]): only
-/// the connectors an op names are recomputed.
+/// reload and branch switch, and again after every commit ([`Index::build`]; 0.4 ms on the large
+/// project, so no update map: design 064 bar of ~5 ms, overseer 2026-11-21).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Index {
     /// Page → the connectors with a symbol there.
@@ -1218,16 +1217,6 @@ fn naming_keys() -> [&'static str; 3] {
     [dc::SEPARATOR.key, dc::SIDE_SOCKET.key, dc::SIDE_PLUG.key]
 }
 
-/// How many connectors the last [`Index::update`] on this thread recomputed (tests and bench:
-/// never the whole project on an ordinary edit).
-pub fn index_work() -> usize {
-    INDEX_WORK.with(std::cell::Cell::get)
-}
-
-thread_local! {
-    static INDEX_WORK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
 impl Index {
     /// The whole index of `doc`: O(components).
     pub fn build(doc: &Document) -> Index {
@@ -1238,15 +1227,7 @@ impl Index {
         idx
     }
 
-    /// Recompute `touched`'s entries from `doc`.
-    pub fn update(&mut self, doc: &Document, touched: &BTreeSet<DeviceId>) {
-        INDEX_WORK.with(|w| w.set(touched.len()));
-        for c in touched {
-            self.set(doc, *c);
-        }
-    }
-
-    /// Take connector `c` out, then put it back as `doc` has it.
+    /// Put connector `c` in as `doc` has it.
     fn set(&mut self, doc: &Document, c: DeviceId) {
         for p in self.pages_of.remove(&c).unwrap_or_default() {
             if let Some(set) = self.by_page.get_mut(&p) {
