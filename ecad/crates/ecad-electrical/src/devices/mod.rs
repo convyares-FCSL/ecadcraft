@@ -59,7 +59,7 @@ pub fn description_of(name: &str) -> Option<ecad_model::objects::devices::Descri
 
 /// Device `id` as the planned `ops` (not committed) leave it on `doc`: created, modified or
 /// deleted there, or its properties set; `None` when it does not exist.
-pub fn planned_device(doc: &Document, ops: &[Op], id: DeviceId) -> Option<Device> {
+pub(crate) fn planned_device(doc: &Document, ops: &[Op], id: DeviceId) -> Option<Device> {
     planned_device_on(doc, &[], ops, id)
 }
 
@@ -88,13 +88,13 @@ fn planned_device_on(doc: &Document, base: &[Op], ops: &[Op], id: DeviceId) -> O
 /// `ModifyDevice` records the whole device): folded into the `CreateDevice` or `ModifyDevice` of
 /// it already in `ops` when no property op on it follows that one, else a new `ModifyDevice`.
 /// Returns whether anything changed (`false` also when the device does not exist).
-pub fn edit_planned(doc: &Document, ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+pub(crate) fn edit_planned(doc: &Document, ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
     edit_planned_on(doc, &[], ops, id, f)
 }
 
 /// [`edit_planned`] for ops that will follow `base` (planned by the caller, such as the ops
 /// creating the device): the device is read after `base`, and only `ops` are changed.
-pub fn edit_planned_on(doc: &Document, base: &[Op], ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+pub(crate) fn edit_planned_on(doc: &Document, base: &[Op], ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
     let Some(before) = planned_device_on(doc, base, ops, id) else { return false };
     let mut after = before.clone();
     f(&mut after);
@@ -130,7 +130,6 @@ pub fn retype(c: DeviceId, device: &Device, definition: DefinitionId, declared: 
 use serde_json::{Value, json};
 
 use crate::styles::text_style::fonts::TextMetrics;
-use crate::symbols::catalogue::STARTERS;
 use crate::symbols::{self, Kind, Starter, StarterKey as K};
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
@@ -164,13 +163,13 @@ pub fn padding(doc: &Document) -> u8 {
 
 /// A prefix as a project may set it: 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, with or without a
 /// leading `-`; stored in upper case without the `-`.
-pub fn valid_prefix(text: &str) -> Option<String> {
+pub(crate) fn valid_prefix(text: &str) -> Option<String> {
     ecad_model::naming::prefix::TagPrefix::typed(text).map(|p| p.to_string())
 }
 
 /// Set (with `None` remove) the project's prefix of symbol `of` in `s` (design 072 F5): a
 /// starter's own built-in prefix, or text that is not a prefix, is stored as none.
-pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::naming::prefix::PrefixOf, prefix: Option<&str>) {
+pub(crate) fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::naming::prefix::PrefixOf, prefix: Option<&str>) {
     let builtin = match &of {
         ecad_model::naming::prefix::PrefixOf::Starter(w) => crate::symbols::catalogue::by_key(w).map(|x| x.prefix()),
         ecad_model::naming::prefix::PrefixOf::Project(_) => None,

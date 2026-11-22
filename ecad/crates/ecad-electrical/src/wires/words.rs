@@ -3,7 +3,7 @@
 use super::*;
 
 /// Most connection points a net line names before `+n`.
-pub const MAX_POINTS_SHOWN: usize = 6;
+pub(crate) const MAX_POINTS_SHOWN: usize = 6;
 
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
@@ -32,7 +32,7 @@ pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
 }
 
 /// `a, b, c +n` of at most `max` words.
-pub fn first_words(words: &[String], max: usize) -> String {
+pub(crate) fn first_words(words: &[String], max: usize) -> String {
     let mut s = words.iter().take(max).cloned().collect::<Vec<_>>().join(", ");
     if words.len() > max {
         s.push_str(&format!(" +{}", words.len() - max));
@@ -41,7 +41,7 @@ pub fn first_words(words: &[String], max: usize) -> String {
 }
 
 /// The net line of a wire's hover lens (design 022 §7): `Net 24V-04 · 3 wires · -S02:14, …`.
-pub fn net_line(doc: &Document, net: &ecad_model::NetData) -> String {
+pub(crate) fn net_line(doc: &Document, net: &ecad_model::NetData) -> String {
     let number = ecad_model::connectivity::wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
     let n = net.wires.len();
     let wires = if n == 1 { "1 wire".to_string() } else { format!("{n} wires") };

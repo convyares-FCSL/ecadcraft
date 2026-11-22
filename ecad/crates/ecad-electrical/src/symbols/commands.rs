@@ -104,7 +104,7 @@ impl Content {
 
 /// A connection point as given: its key, label and position.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct PointInput {
+pub(crate) struct PointInput {
     pub key: Option<String>,
     pub label: Option<String>,
     pub at: Option<Pt>,
@@ -112,7 +112,7 @@ pub struct PointInput {
 
 /// A text slot as given.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct SlotInput {
+pub(crate) struct SlotInput {
     pub text: Option<String>,
     pub at: Option<Pt>,
     pub h: TextHAlign,
@@ -122,7 +122,7 @@ pub struct SlotInput {
 
 /// The content fields of a call, as given (lists already bounded by the reader).
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct ContentInput {
+pub(crate) struct ContentInput {
     pub name: Option<String>,
     pub key: Option<String>,
     pub graphics: Vec<Primitive>,
@@ -138,7 +138,7 @@ pub struct ContentInput {
 /// # Errors
 /// A name or polyline over its limit, a point without a key or position, a slot without a text
 /// or position, or too many defaults, in words.
-pub fn content(input: ContentInput) -> Result<Content, CmdError> {
+pub(crate) fn content(input: ContentInput) -> Result<Content, CmdError> {
     let name = input.name.unwrap_or_default().trim().to_string();
     if name.len() > MAX_NAME * 4 {
         return Err(CmdError::refused(format!("The name is too long ({MAX_NAME} characters at most).")));
@@ -338,7 +338,7 @@ fn refuse_problems(c: &Content, rules: &Rules<'_>) -> Result<(), CmdError> {
 ///
 /// # Errors
 /// Its content hash could not be computed (not for checked content).
-pub fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, derived_from: Option<Origin>) -> Result<Definition, CmdError> {
+pub(crate) fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, derived_from: Option<Origin>) -> Result<Definition, CmdError> {
     let mut d = c.definition();
     d.derived_from = derived_from;
     d.part_role = crate::symbols::project::project_part_role(&d);
@@ -658,7 +658,7 @@ pub struct SymbolPlan {
 ///
 /// # Errors
 /// The first rule the content breaks, or a `from` that names no definition.
-pub fn plan_new(doc: &Document, ids: &mut IdAllocator, content: &Content, from: Option<DefinitionId>) -> Result<SymbolPlan, CmdError> {
+pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, content: &Content, from: Option<DefinitionId>) -> Result<SymbolPlan, CmdError> {
     refuse_problems(content, &Rules { doc, lineage: None, grid: true })?;
     let derived_from = match from {
         None => None,
@@ -704,7 +704,7 @@ fn edit_of(doc: &Document, ids: &mut IdAllocator, edited: DefinitionId, new_line
 
 /// What `symbolimpact` reports.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Impact {
+pub(crate) struct Impact {
     /// The version the save would make.
     pub version: u64,
     /// The edited symbol is a built-in.
@@ -721,7 +721,7 @@ pub struct Impact {
 ///
 /// # Errors
 /// `edited` names no symbol.
-pub fn plan_impact(doc: &Document, ids: &IdAllocator, edited: DefinitionId, content: &Content, builtins: bool) -> Result<Impact, CmdError> {
+pub(crate) fn plan_impact(doc: &Document, ids: &IdAllocator, edited: DefinitionId, content: &Content, builtins: bool) -> Result<Impact, CmdError> {
     let mut ids = ids.clone();
     let e = edit_of(doc, &mut ids, edited, false)?;
     let new = version_definition(content, e.lineage, e.seq, e.derived_from.clone())?;
@@ -765,7 +765,7 @@ impl Update {
 /// # Errors
 /// No such symbol, a rule the content breaks, nothing changed, a copy that would clash, or a
 /// named copy that is not of this symbol.
-pub fn plan_edit(
+pub(crate) fn plan_edit(
     doc: &Document, ids: &mut IdAllocator, edited: DefinitionId, content: &Content, update: Update, copies: Option<Vec<RepresentationId>>,
     builtins: bool,
 ) -> Result<SymbolPlan, CmdError> {
@@ -826,7 +826,7 @@ pub fn plan_edit(
 /// # Errors
 /// Neither copies nor a lineage named, a copy that is not of a project symbol, a `to` that is not
 /// a version of it, nothing to update, or a copy that would clash.
-pub fn plan_update(
+pub(crate) fn plan_update(
     doc: &Document, ids: &mut IdAllocator, copies: Option<Vec<RepresentationId>>, lineage: Option<DefinitionId>, to: Option<DefinitionId>,
 ) -> Result<SymbolPlan, CmdError> {
     // The lineage: given, or the first named copy's.

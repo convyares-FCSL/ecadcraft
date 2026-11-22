@@ -4,7 +4,7 @@ use super::*;
 
 /// Whether device tag `t` matches a search `query` (design 018 §5.1): `-k` and `k1` find `-K01`,
 /// `-K10`…
-pub fn tag_matches(t: &str, query: &str) -> bool {
+pub(crate) fn tag_matches(t: &str, query: &str) -> bool {
     let q = query.trim().trim_start_matches('-').to_uppercase();
     if q.is_empty() {
         return true;
@@ -43,7 +43,7 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
 }
 
 /// `symbols {query?}`'s result (design 018 §8).
-pub fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
+pub(crate) fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
     let q = query.unwrap_or("");
     let symbols: Vec<Value> = symbols::project::search(q)
         .into_iter()
@@ -76,7 +76,7 @@ pub fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
 }
 
 /// `devices {tag?}`'s result (design 018 §8).
-pub fn devices_json(doc: &Document, query: Option<&str>) -> Value {
+pub(crate) fn devices_json(doc: &Document, query: Option<&str>) -> Value {
     let found = devices(doc, query);
     let more = found.len().saturating_sub(MAX_LISTED);
     let list: Vec<Value> = found.into_iter().take(MAX_LISTED).map(|c| device_json(doc, c)).collect();
@@ -88,7 +88,7 @@ pub fn devices_json(doc: &Document, query: Option<&str>) -> Value {
 }
 
 /// One device in JSON.
-pub fn device_json(doc: &Document, c: DeviceId) -> Value {
+pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
     let comp = doc.devices.get(&c).cloned().unwrap_or_default();
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut reps: Vec<(usize, RepresentationId, Value)> = doc
@@ -149,7 +149,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, CmdError> {
 ///
 /// # Errors
 /// T6: too long or a control character.
-pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else { return Ok(None) };
     if key == TAG_KEY {
         return tag::normalise(v, crate::defaults::print::tag_style(doc)).map(Some).map_err(CmdError::from);
@@ -162,9 +162,4 @@ pub fn property_value(doc: &Document, key: &str, value: Option<&str>) -> Result<
         "function" if !v.starts_with('=') => format!("={v}"),
         _ => v.to_string(),
     }))
-}
-
-/// Every starter symbol's key, for "List".
-pub fn symbol_keys() -> Vec<&'static str> {
-    STARTERS.iter().map(|s| s.key.word()).collect()
 }

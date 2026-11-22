@@ -25,7 +25,7 @@ use crate::error::CmdError;
 /// Tag settings to write: the padding, and per starter symbol key the prefix (`None`: back to the
 /// built-in one).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TagSettings {
+pub(crate) struct TagSettings {
     pub padding: Option<u8>,
     pub prefixes: Vec<(String, Option<String>)>,
 }
@@ -36,7 +36,7 @@ pub struct TagSettings {
 /// # Errors
 /// A padding out of range, an unknown symbol, a prefix that is not 1 to
 /// [`devices::MAX_PREFIX_LETTERS`] letters.
-pub fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (String, Option<String>)>) -> Result<TagSettings, CmdError> {
+pub(crate) fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (String, Option<String>)>) -> Result<TagSettings, CmdError> {
     let max = ecad_model::naming::tag::MAX_PADDING;
     let padding = match padding {
         None => None,
@@ -64,7 +64,7 @@ pub fn tag_settings(padding: Option<u64>, prefixes: impl IntoIterator<Item = (St
 
 /// Apply tag settings read by [`tag_settings`] to `after`: a prefix equal to the built-in one is
 /// stored as none.
-pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
+pub(crate) fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
     if let Some(n) = settings.padding {
         after.tag_padding = Some(n);
     }
@@ -146,7 +146,7 @@ fn remove_routes(doc: &Document, routes: &[RouteId]) -> Vec<Op> {
 /// # Errors
 /// No such conductor, route, component or cable; a wire with no route drawn straight between its
 /// points.
-pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> {
+pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> {
     let mut ops = Vec::new();
     match doomed {
         Doomed::Wire(c) => {
@@ -239,7 +239,7 @@ pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> 
 }
 
 /// The refusal of an item that belongs to no component.
-pub const NOT_A_COMPONENTS_ITEM: &str = "that item is not part of a component";
+pub(crate) const NOT_A_COMPONENTS_ITEM: &str = "that item is not part of a component";
 
 /// `addconnectionpoint` (experiment 008): a connection point labelled `label` at `at` on the drawn
 /// component that `item` is part of.
@@ -265,7 +265,7 @@ pub fn plan_addconnectionpoint(
 }
 
 /// Every starter symbol's prefix as this project uses it (`-K`).
-pub fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
+pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
     crate::symbols::catalogue::STARTERS
         .iter()
         // Junctions and continuations have no tag (brief 022).

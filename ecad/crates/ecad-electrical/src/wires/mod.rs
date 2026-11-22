@@ -59,7 +59,7 @@ pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";
 /// ([`gap`]).
 pub const LABEL_GAP: f64 = 0.8;
 /// The least space kept between two labels, and between a label and another wire, millimetres.
-pub const LABEL_CLEARANCE: f64 = 0.6;
+pub(crate) const LABEL_CLEARANCE: f64 = 0.6;
 
 /// Brief 040: the layer of a two-colour wire's dashes (derived, plotted only in colour).
 pub const DASH_LAYER: &str = "ECAD-WIRE-COLOUR";
@@ -86,7 +86,7 @@ pub const TEE_DERIVED: &str = "A T's dot is drawn from its lines; move or erase 
 pub const TEE_DOT_RADII: [f64; 3] = [0.5, 0.33, 0.17];
 
 /// The continuation name rule, in words (design 022 §3.2).
-pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
+pub(crate) const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
 /// The starter of a continuation.
 pub fn continuation_starter() -> &'static Starter {

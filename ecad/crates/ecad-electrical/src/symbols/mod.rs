@@ -130,9 +130,9 @@ impl Side {
 }
 
 /// The terminal key of a socket pin (design 044 FP1).
-pub const SOCKET_KEY: PointKey = PointKey::Side(ecad_model::Side::Socket);
+pub(crate) const SOCKET_KEY: PointKey = PointKey::Side(ecad_model::Side::Socket);
 /// The terminal key of a plug pin (design 044 FP1).
-pub const PLUG_KEY: PointKey = PointKey::Side(ecad_model::Side::Plug);
+pub(crate) const PLUG_KEY: PointKey = PointKey::Side(ecad_model::Side::Plug);
 
 ecad_model::word_enum! {
     /// The key of a starter symbol (design 072 §9.1): one value per row of [`STARTERS`], in table

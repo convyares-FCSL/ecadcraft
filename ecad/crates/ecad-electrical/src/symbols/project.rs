@@ -7,7 +7,7 @@ use super::*;
 pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000_0000_0001);
 
 /// Most characters of a project symbol's key (design 048 §2.4).
-pub const MAX_KEY: usize = 16;
+pub(crate) const MAX_KEY: usize = 16;
 
 /// How a project symbol joins a device (design 048 §5.2).
 pub use ecad_model::Join;
@@ -33,7 +33,7 @@ pub(super) fn part_of_kind(k: Kind) -> PartRole {
 /// A project symbol's part in its device (design 072 §4.4, F3′), declared when the symbol is
 /// made: its derived starter's kind, else a head unless its defaults join it as a part (design 048
 /// §5.2). A project symbol carries no poles of its own.
-pub fn project_part_role(d: &Definition) -> PartRole {
+pub(crate) fn project_part_role(d: &Definition) -> PartRole {
     let kind = match d.derived_from.as_ref().and_then(starter_of_origin) {
         Some(s) => s.kind,
         None => Kind::Fixed { exclusive: join_of(d) != Join::Part },
@@ -53,7 +53,7 @@ pub fn starter_of_origin(o: &Origin) -> Option<&'static Starter> {
 
 /// Whether `key` is a valid symbol key (design 048 §2.4): 1 to [`MAX_KEY`] letters, digits, `-`
 /// and `_`, starting with a letter or digit.
-pub fn valid_key(key: &str) -> bool {
+pub(crate) fn valid_key(key: &str) -> bool {
     (1..=MAX_KEY).contains(&key.len())
         && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         && key.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
@@ -85,7 +85,7 @@ impl<'a> Version<'a> {
 
 /// Every embedded project-symbol version (a pass over the project's definitions, which are few: the
 /// symbols it uses, not its objects).
-pub fn project_versions(doc: &Document) -> impl Iterator<Item = Version<'_>> {
+pub(crate) fn project_versions(doc: &Document) -> impl Iterator<Item = Version<'_>> {
     doc.definitions.iter().filter_map(|(id, d)| Version::of(*id, d))
 }
 
@@ -124,7 +124,7 @@ pub fn project_by_key<'a>(doc: &'a Document, key: &str) -> Option<Version<'a>> {
 }
 
 /// Whether some version of a project symbol has key `key` (case-insensitive).
-pub fn has_project_key(doc: &Document, key: &str) -> bool {
+pub(crate) fn has_project_key(doc: &Document, key: &str) -> bool {
     let k = key.trim();
     project_versions(doc).any(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
 }
@@ -136,7 +136,7 @@ pub fn has_project_key(doc: &Document, key: &str) -> bool {
 /// # Semantics
 /// Reads only the project's symbol versions and `ops`' `EmbedDefinition`/`RemoveDefinition`, so
 /// it goes last in the plan. A rename onto a key that already has a prefix keeps that one.
-pub fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
+pub(crate) fn prefix_follow(doc: &Document, ops: &[Op]) -> Option<Op> {
     use ecad_model::naming::prefix::PrefixOf;
     let removed: BTreeSet<DefinitionId> = ops.iter().filter_map(|o| if let Op::RemoveDefinition { id, .. } = o { Some(*id) } else { None }).collect();
     let embedded: Vec<Version<'_>> =
@@ -193,9 +193,6 @@ pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
         None => false,
     }
 }
-
-/// Most symbols one search lists.
-pub const MAX_SEARCH: usize = 500;
 
 /// Most characters of a search query that are used.
 pub const MAX_QUERY: usize = 60;

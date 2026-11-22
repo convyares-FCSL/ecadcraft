@@ -3,7 +3,7 @@
 use super::*;
 
 /// The way out every join refusal names (design 032 §2.2).
-pub const JOIN_WAY_OUT: &str = "Draw it with join off (join: false), or end it on a connection point.";
+pub(crate) const JOIN_WAY_OUT: &str = "Draw it with join off (join: false), or end it on a connection point.";
 
 /// What one end of a new route meets (design 032 §2.1, design 072 §4.3).
 #[derive(Debug, Clone, PartialEq)]
@@ -105,7 +105,7 @@ fn is_quiet(quiet: &[Pt], at: Pt) -> bool {
 }
 
 /// The route on `page` whose interior (not an end) passes within [`ON_WIRE`] of `at`, the nearest.
-pub fn interior_route_at(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
+pub(crate) fn interior_route_at(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
     route_at(doc, page, at, ON_WIRE, None)
         .filter(|on| doc.routes.get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)))
 }
@@ -134,7 +134,7 @@ fn merge_potential(doc: &Document, r: RouteId, potential: Option<&str>) -> Resul
 
 /// Refuse joining routes `a` and `b` into one (design 032 §2.2): their nets carry different
 /// potentials, or both have fixed numbers that differ.
-pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError> {
+pub(crate) fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError> {
     let (Some(ka), Some(kb)) = (route_net_key(doc, a), route_net_key(doc, b)) else { return Ok(()) };
     let conn = doc.connectivity();
     let (Some(x), Some(y)) = (conn.net(ka), conn.net(kb)) else { return Ok(()) };
@@ -159,14 +159,8 @@ pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError
     Ok(())
 }
 
-/// Whether a wire's net has a fixed number.
-pub fn has_fixed_number(doc: &Document, c: WireId) -> bool {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c).and_then(|n| conn.net(n)).is_some_and(ecad_model::connectivity::wiring::net_fixed)
-}
-
 /// The point at end `e` of route `r`.
-pub fn end_point(doc: &Document, r: RouteId, e: End) -> Option<Pt> {
+pub(crate) fn end_point(doc: &Document, r: RouteId, e: End) -> Option<Pt> {
     let v = &doc.routes.get(&r)?.points;
     match e {
         End::A => v.first().copied(),
@@ -175,7 +169,7 @@ pub fn end_point(doc: &Document, r: RouteId, e: End) -> Option<Pt> {
 }
 
 /// The index of end `e` in a route's `ends`.
-pub fn end_index(e: End) -> usize {
+pub(crate) fn end_index(e: End) -> usize {
     match e {
         End::A => 0,
         End::B => 1,
@@ -183,7 +177,7 @@ pub fn end_index(e: End) -> usize {
 }
 
 /// The free route ends at `at` on `page` that a new line may join (not quiet ones).
-pub fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> Vec<(RouteId, End)> {
+pub(crate) fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> Vec<(RouteId, End)> {
     loose_ends_at(doc, page, at, ON_WIRE).into_iter().filter(|(r, e)| end_point(doc, *r, *e).is_some_and(|p| !is_quiet(quiet, p))).collect()
 }
 

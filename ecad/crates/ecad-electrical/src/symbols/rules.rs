@@ -60,7 +60,7 @@ pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixe
 
 /// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
 /// when its head is not a fuse bank.
-pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String> {
+pub(crate) fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String> {
     bank_labels(doc, c).into_iter().collect()
 }
 
@@ -69,7 +69,7 @@ pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String>
 ///
 /// Gap (#27): how many ways a bank has is not stored on [`ecad_model::objects::devices::FuseBank`]
 /// (only the rated outputs are), so the head symbol is still read for its labels.
-pub fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
+pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     use ecad_model::objects::devices::{DeviceType, Protection};
     if !doc.devices.get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::Protection(Protection::FuseBank(_)))) {
         return Vec::new();
@@ -88,15 +88,15 @@ pub use ecad_model::objects::devices::{RATING_KEY, RATING_OF_PREFIX};
 
 /// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
 /// (a hostile key cannot make a lookup or a message long).
-pub const MAX_FUSE_LABEL: usize = 12;
+pub(crate) const MAX_FUSE_LABEL: usize = 12;
 
 /// Whether `key` is `rating` or `rating.<n>`.
-pub fn is_rating_key(key: &str) -> bool {
+pub(crate) fn is_rating_key(key: &str) -> bool {
     key == RATING_KEY || key.starts_with(RATING_OF_PREFIX)
 }
 
 /// Whether `s` is a fuse bank (its fuses take `rating.<n>`).
-pub fn is_fuse_bank(s: &Starter) -> bool {
+pub(crate) fn is_fuse_bank(s: &Starter) -> bool {
     s.key.fuse_bank_ways().is_some()
 }
 
@@ -110,7 +110,7 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
 ///
 /// # Errors
 /// `rating.<n>` set on a device that is not a fuse bank or a strip.
-pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));

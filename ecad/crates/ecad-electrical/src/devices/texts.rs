@@ -169,7 +169,7 @@ pub fn text_passes(page: PageId) -> u64 {
 }
 
 /// The run rule of a symbol (design 031 §5.3), from its starter kind.
-pub fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style::RunRule {
+pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style::RunRule {
     use crate::styles::text_style::RunRule;
     // Brief 044 (design 044 §5.2): a connector's pins show their half's tag once per run.
     if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Pin {
@@ -460,7 +460,7 @@ fn slot_texts(
 /// The key a connection point label's stored place is kept under (design 031 §6.4):
 /// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
 /// label.
-pub fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
+pub(crate) fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
     let term = doc.connection_points.get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::styles::text_style::symbol_prefix(rep))

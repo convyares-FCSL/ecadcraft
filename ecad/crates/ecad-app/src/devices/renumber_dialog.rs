@@ -216,7 +216,12 @@ impl RenumberDialog {
             prim::property_row(ui, "What", |ui| {
                 const WHAT: [What; 5] = [What::Devices, What::Cables, What::Wires, What::TerminalBlocks, What::All];
                 let mut k = WHAT.iter().position(|w| *w == self.what).unwrap_or(0);
-                if Segmented::new(&mut k, &["Devices", "Cables", "Wires", "Terminals", "All"]).name("ecad.renumber.kind").show(ui).clicked.is_some() {
+                if Segmented::new(&mut k, &["Devices", "Cables", "Wires", "Terminal blocks", "All"])
+                    .name("ecad.renumber.kind")
+                    .show(ui)
+                    .clicked
+                    .is_some()
+                {
                     let w = WHAT.get(k).copied().unwrap_or(What::Devices);
                     self.what = w;
                     if w == What::Wires && self.which == Which::Prefix {

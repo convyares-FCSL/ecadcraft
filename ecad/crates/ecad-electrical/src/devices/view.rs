@@ -36,7 +36,7 @@ use crate::views::Inputs;
 
 /// The Devices feed.
 #[derive(Debug, Default)]
-pub struct DevicesFeed {
+pub(crate) struct DevicesFeed {
     touch: DeviceTouch,
 }
 
@@ -49,7 +49,7 @@ impl DevicesFeed {
 
 /// What the Devices list must read again.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct DevicesScope {
+pub(crate) struct DevicesScope {
     pub touch: DeviceTouch,
     /// The book positions before the ops, kept when an effect may move pages.
     pub book_before: Option<BTreeMap<PageId, usize>>,

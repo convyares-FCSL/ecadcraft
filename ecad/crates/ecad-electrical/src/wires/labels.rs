@@ -37,7 +37,7 @@ pub fn path_vertices(p: &Primitive) -> Option<Vec<Pt>> {
 }
 
 /// The longest segment of a path (the first when equal), as its two ends.
-pub fn longest_segment(v: &[Pt]) -> Option<(Pt, Pt)> {
+pub(crate) fn longest_segment(v: &[Pt]) -> Option<(Pt, Pt)> {
     let mut best: Option<(Pt, Pt, f64)> = None;
     for w in v.windows(2) {
         let (a, b) = (*w.first()?, *w.get(1)?);
@@ -63,17 +63,6 @@ fn reading_angle(a: Pt, b: Pt) -> f64 {
         theta += std::f64::consts::PI;
     }
     theta
-}
-
-/// Where a label of segment `a`-`b` goes first (design 022 §7): its baseline centre and rotation,
-/// above the line in the text's own frame (left of a vertical line), at the clearance [`gap`] of
-/// a label of height `h`.
-pub fn label_place(a: Pt, b: Pt, h: f64) -> (Pt, f64) {
-    let theta = reading_angle(a, b);
-    let mid = Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
-    let n = Pt::new(-theta.sin(), theta.cos());
-    let g = gap(h);
-    (Pt::new(mid.x + n.x * g, mid.y + n.y * g), theta)
 }
 
 /// An axis-aligned box `(lo, hi)`.
@@ -277,7 +266,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
 /// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `a` is not a
 /// continuation. Its other ends' places are reference parts since brief 049
 /// ([`crate::continuations`]).
-pub fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
+pub(crate) fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
     let (name, _) = crate::continuations::continuation(doc, a)?;
     let name = name.unwrap_or_default().to_string();
     let mut out = Vec::new();

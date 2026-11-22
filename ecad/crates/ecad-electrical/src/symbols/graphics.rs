@@ -894,3 +894,34 @@ pub fn side_word(side: Side) -> &'static str {
         Side::Both => "Both",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Overseer ruling 4: `dashed` draws what it drew before brief 034, and `dashed_v` is the same
+    /// pattern along y.
+    #[test]
+    fn dashed_links_are_unchanged_and_the_vertical_one_matches() {
+        let ends = |g: &[Primitive]| {
+            g.iter()
+                .map(|x| match x {
+                    Primitive::Line { a, b } => (a.x, a.y, b.x, b.y),
+                    Primitive::Polyline { .. }
+                    | Primitive::Arc { .. }
+                    | Primitive::Circle { .. }
+                    | Primitive::Text { .. }
+                    | Primitive::Point { .. } => {
+                        panic!("a dash is a line")
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ends(&dashed(-2.0, 8.0, 0.5)), [(-2.0, 0.5, -0.5, 0.5), (0.5, 0.5, 2.0, 0.5), (3.0, 0.5, 4.5, 0.5), (5.5, 0.5, 7.0, 0.5)]);
+        assert_eq!(ends(&dashed(-6.0, 1.9, 0.5)).last(), Some(&(1.5, 0.5, 1.9, 0.5)));
+        for (a, b, at) in [(-5.5, 0.5, 17.5), (-6.0, 1.9, 0.0), (0.0, 10.0, 3.0)] {
+            let h: Vec<_> = ends(&dashed(a, b, at)).into_iter().map(|(x0, _, x1, _)| (at, x0, at, x1)).collect();
+            assert_eq!(ends(&dashed_v(at, a, b)), h);
+        }
+    }
+}

@@ -21,12 +21,12 @@ pub const DEFAULT_LIMIT: usize = 200;
 /// …and at most this many per call.
 pub const MAX_LIMIT: usize = 2000;
 /// Most rows in the potentials table.
-pub const MAX_POTENTIALS: usize = 200;
+pub(crate) const MAX_POTENTIALS: usize = 200;
 
 /// Which net a command means: by one of its wires, one of its connection points, or its number
 /// (the first such net, in listing order). The first given wins, in that order.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct NetChoice {
+pub(crate) struct NetChoice {
     pub conductor: Option<WireId>,
     pub connection_point: Option<ConnectionPointId>,
     pub number: Option<String>,
@@ -41,14 +41,14 @@ impl NetChoice {
 
 /// A wire category as a net shows it.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CategoryName {
+pub(crate) struct CategoryName {
     pub id: String,
     pub name: String,
 }
 
 /// A net as `nets` and `net` show it (design 022 §10, design 050 §5.6).
 #[derive(Debug, Clone, PartialEq)]
-pub struct NetView {
+pub(crate) struct NetView {
     pub number: Option<String>,
     pub fixed: bool,
     pub potential: Option<String>,
@@ -67,7 +67,7 @@ pub struct NetView {
 }
 
 /// The net `net` as shown.
-pub fn net_view(doc: &Document, net: &NetData) -> NetView {
+pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
     let pot = wiring::net_potential(doc, net);
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
@@ -128,7 +128,7 @@ fn sort_key(net: &NetData) -> (u8, u128) {
 ///
 /// # Errors
 /// No such wire or connection point, no net with that number, or nothing given.
-pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError> {
+pub(crate) fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError> {
     let conn = doc.connectivity();
     if let Some(c) = choice.conductor {
         return conn.net_of_conductor(c).ok_or(CmdError::NotFound(Noun::Wire));
@@ -149,7 +149,7 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError
 ///
 /// # Errors
 /// As [`chosen_net`].
-pub fn net(doc: &Document, choice: &NetChoice) -> Result<NetView, CmdError> {
+pub(crate) fn net(doc: &Document, choice: &NetChoice) -> Result<NetView, CmdError> {
     let id = chosen_net(doc, choice)?;
     let net = doc.connectivity().net(id).ok_or(CmdError::NotFound(Noun::Net))?;
     Ok(net_view(doc, net))
@@ -157,7 +157,7 @@ pub fn net(doc: &Document, choice: &NetChoice) -> Result<NetView, CmdError> {
 
 /// What `nets` lists.
 #[derive(Debug, Clone, Default)]
-pub struct NetsQuery {
+pub(crate) struct NetsQuery {
     /// Only nets drawn on this page.
     pub page: Option<PageId>,
     /// One net (or, by number, every net with that number).
@@ -172,7 +172,7 @@ pub struct NetsQuery {
 
 /// One page of `nets`.
 #[derive(Debug, Clone)]
-pub struct NetsPage {
+pub(crate) struct NetsPage {
     pub nets: Vec<NetView>,
     /// The cursor for the next page, when there is more.
     pub next: Option<String>,
@@ -182,7 +182,7 @@ pub struct NetsPage {
 ///
 /// # Errors
 /// As [`chosen_net`]; a page that does not exist; an unreadable cursor.
-pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
+pub(crate) fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
     let conn = doc.connectivity();
     let mut ids: Vec<NetKey> = if q.choice.is_given() {
         if let Some(n) = &q.choice.number { conn.nets_numbered(n.trim()).map(|(id, _)| id).collect() } else { vec![chosen_net(doc, &q.choice)?] }
@@ -308,7 +308,7 @@ fn arrow_rotation(d: Pt) -> Radians {
 ///
 /// # Errors
 /// As [`chosen_net`]; a net with no number yet.
-pub fn current_number(doc: &Document, choice: &NetChoice) -> Result<String, CmdError> {
+pub(crate) fn current_number(doc: &Document, choice: &NetChoice) -> Result<String, CmdError> {
     let id = chosen_net(doc, choice)?;
     doc.connectivity().net(id).and_then(|n| wiring::net_number(doc, n)).ok_or(CmdError::refused(msg::NO_NUMBER_TO_FIX))
 }
@@ -356,7 +356,7 @@ impl Numbered {
 ///
 /// # Errors
 /// As [`chosen_net`]; a net with no wire; a taken number without `conflict`; a merge that is not sensible or has nowhere to continue from.
-pub fn wirenumber(
+pub(crate) fn wirenumber(
     doc: &Document, ids: &mut IdAllocator, style: Style, choice: &NetChoice, value: Option<&str>, conflict: Option<Conflict>,
 ) -> Result<Numbered, CmdError> {
     let id = chosen_net(doc, choice)?;
@@ -464,7 +464,7 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 ///
 /// # Errors
 /// No such wire.
-pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
+pub(crate) fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let pot = value
         .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
         .and_then(|r| crate::styles::wire::filled(&r));
@@ -503,7 +503,7 @@ pub enum Wires {
 
 /// What `category` did.
 #[derive(Debug, Clone)]
-pub struct Categorised {
+pub(crate) struct Categorised {
     pub ops: Vec<Op>,
     /// The history label.
     pub label: String,
@@ -519,7 +519,7 @@ pub struct Categorised {
 ///
 /// # Errors
 /// No such wire; no such category.
-pub fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Categorised, CmdError> {
+pub(crate) fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Categorised, CmdError> {
     let conductors: Vec<WireId> = match wires {
         Wires::One(c) => vec![c],
         Wires::Net(c) => {
@@ -542,7 +542,7 @@ pub fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Cat
 
 /// One row of the potentials table as given: words not given are empty.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct PotentialRow {
+pub(crate) struct PotentialRow {
     pub name: String,
     pub prefix: String,
     /// `None`: numbered.
@@ -553,7 +553,7 @@ pub struct PotentialRow {
 
 /// A change to the wiring settings: what is `None` stays.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct WireSettingsChange {
+pub(crate) struct WireSettingsChange {
     pub scheme: Option<String>,
     pub digits: Option<u64>,
     pub colour_style: Option<String>,
@@ -571,7 +571,7 @@ pub struct WireSettingsChange {
 ///
 /// # Errors
 /// The first value out of range or unknown, in words.
-pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> Result<ProjectSettings, CmdError> {
+pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> Result<ProjectSettings, CmdError> {
     let mut after = before.clone();
     let w = &mut after.wiring;
     if let Some(sc) = &change.scheme {
@@ -731,7 +731,7 @@ pub fn wire(
 /// # Errors
 /// A wire number or potential (they belong to the whole net), a tool-made device's kind, or a
 /// caption on a device (a continuation's is `setprop {aids}`, design 072 §6.2).
-pub fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+pub(crate) fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
         // Brief 049 (design 049 §3.1): a caption only on a continuation (`setprop {aid}`).
         ObjectRef::Device(_) if key == crate::continuations::CAPTION_KEY => {
@@ -741,7 +741,7 @@ pub fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value: Optio
     }
 }
 
-pub fn net_json(n: &NetView) -> Value {
+pub(crate) fn net_json(n: &NetView) -> Value {
     let cat = |c: &CategoryName| json!({"id": c.id, "name": c.name});
     let mut out = json!({
         "number": n.number,
@@ -760,7 +760,7 @@ pub fn net_json(n: &NetView) -> Value {
 }
 
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
-pub fn settings_json(doc: &Document) -> Value {
+pub(crate) fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),

@@ -18,7 +18,7 @@ fn rep_words(doc: &Document, c: DeviceId, r: &Representation) -> String {
 }
 
 /// Most other symbols the lens's `Also` line lists before `+N more`.
-pub const MAX_ALSO: usize = 4;
+pub(crate) const MAX_ALSO: usize = 4;
 
 /// The lens of device `c` hovered through its representation `here` (design 018 §6.4).
 ///

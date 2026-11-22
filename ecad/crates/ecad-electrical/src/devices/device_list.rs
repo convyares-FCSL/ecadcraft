@@ -90,7 +90,7 @@ pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
 }
 
 /// The order of the list: tagged devices by prefix, number, tag; then those without a tag.
-pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, DeviceId) {
+pub(crate) fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, DeviceId) {
     match e.tag.as_deref() {
         Some(t) => {
             let (p, n) = group_and_number(t);
@@ -186,7 +186,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
 
 /// A tag's group (its prefix, or the whole tag when it has none) and its place in the group: its
 /// number; a provisional tag after every numbered one of its prefix (brief 026, design §9).
-pub fn group_and_number(t: &str) -> (String, u64) {
+pub(crate) fn group_and_number(t: &str) -> (String, u64) {
     match (ecad_model::naming::tag::parse(t), ecad_model::naming::tag::provisional(t)) {
         (Some((p, n)), _) => (p, n),
         (None, Some((p, n))) => (p, ecad_model::naming::tag::MAX_TAG_NUMBER.saturating_add(n)),

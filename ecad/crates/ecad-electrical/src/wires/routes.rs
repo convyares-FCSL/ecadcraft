@@ -86,7 +86,7 @@ pub fn remove_route_ops(doc: &Document, r: RouteId) -> Vec<Op> {
 /// Changes to existing routes gathered while planning, so that a route changed more than once is
 /// one `ModifyRoute`, with one `ModifyItem` when its points move (its drawing follows it).
 #[derive(Debug, Clone)]
-pub struct RouteEdits<'a> {
+pub(crate) struct RouteEdits<'a> {
     doc: &'a Document,
     after: BTreeMap<RouteId, Route>,
 }
@@ -181,7 +181,7 @@ impl<'a> RouteEdits<'a> {
 
 /// The ops that let go of connection points `points` (being removed or replaced): every route
 /// end on one of them ends free where it is, so the commit's rewrite takes their wires away.
-pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = ConnectionPointId>) -> Vec<Op> {
+pub(crate) fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = ConnectionPointId>) -> Vec<Op> {
     let mut edits = RouteEdits::new(doc);
     for t in points {
         edits.repoint(t, RouteEnd::Free);
@@ -191,7 +191,7 @@ pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = Connecti
 
 /// The ops moving every route end from one connection point to another (`map`: from → to), in
 /// one `ModifyRoute` per route.
-pub fn repoint_ops(doc: &Document, map: &BTreeMap<ConnectionPointId, ConnectionPointId>) -> Vec<Op> {
+pub(crate) fn repoint_ops(doc: &Document, map: &BTreeMap<ConnectionPointId, ConnectionPointId>) -> Vec<Op> {
     let mut edits = RouteEdits::new(doc);
     for (from, to) in map {
         edits.repoint(*from, RouteEnd::Point(*to));
@@ -200,7 +200,7 @@ pub fn repoint_ops(doc: &Document, map: &BTreeMap<ConnectionPointId, ConnectionP
 }
 
 /// The free route ends on `page` drawn within `tol` of `at`.
-pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(RouteId, End)> {
+pub(crate) fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(RouteId, End)> {
     let mut out = Vec::new();
     for r in doc.routes_on(page) {
         let Some(route) = doc.routes.get(&r) else { continue };
@@ -293,7 +293,7 @@ pub fn route_of_wire_on(doc: &Document, w: WireId, page: PageId) -> Option<Route
 
 /// Where connection point `t` is drawn as a route end: (page, point) of every route end landing
 /// on it, in route ID order (through the index).
-pub fn drawn_ends_at(doc: &Document, t: ConnectionPointId) -> Vec<(PageId, Pt)> {
+pub(crate) fn drawn_ends_at(doc: &Document, t: ConnectionPointId) -> Vec<(PageId, Pt)> {
     let mut out = Vec::new();
     for r in doc.routes_at(t) {
         let Some(route) = doc.routes.get(&r) else { continue };

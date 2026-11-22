@@ -29,7 +29,7 @@ pub type Slots = Bounded<SlotParam, 0, MAX_SLOTS>;
 /// The bridges of a symbol: lists of point keys.
 pub type Bridges = Bounded<Bounded<String, 0, MAX_POINTS>, 0, MAX_POINTS>;
 /// Representation IDs of placed copies.
-pub type Copies = Bounded<RepresentationId, 0, MAX_COPIES>;
+pub(crate) type Copies = Bounded<RepresentationId, 0, MAX_COPIES>;
 
 /// A point's key: text, or a number read as its text.
 #[derive(Deserialize, JsonSchema)]
@@ -56,7 +56,7 @@ pub struct PointParam {
 /// A slot's horizontal alignment.
 #[derive(Deserialize, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
-pub enum HParam {
+pub(crate) enum HParam {
     Left,
     Center,
     Right,
@@ -65,7 +65,7 @@ pub enum HParam {
 /// A slot's vertical alignment.
 #[derive(Deserialize, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
-pub enum VParam {
+pub(crate) enum VParam {
     Baseline,
     Bottom,
     Middle,

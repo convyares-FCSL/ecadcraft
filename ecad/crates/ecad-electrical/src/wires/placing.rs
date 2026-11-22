@@ -139,7 +139,9 @@ pub struct Split {
 ///
 /// # Errors
 /// No such route, or the point at one of its ends.
-pub fn plan_split(doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt)) -> Result<Split, CmdError> {
+pub(crate) fn plan_split(
+    doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt),
+) -> Result<Split, CmdError> {
     let r = on.route;
     let route = doc.routes.get(&r).ok_or(CmdError::NotFound(Noun::Wire))?;
     let v = &route.points;

@@ -11,7 +11,7 @@ pub(super) const fn cell(key: StarterKey, name: &'static str, aliases: &'static 
 
 /// A cell's width and its points (role, x) (design 045 §4.1; brief 051, design 051 §2.2: the
 /// pack's pitch, 20 mm per single-point channel).
-pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)])> {
+pub(crate) fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)])> {
     Some(match key {
         K::Chdi => (20.0, &[("in", 0.0)]),
         K::Chdq => (20.0, &[("out", 0.0)]),
@@ -128,17 +128,17 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
 }
 
 /// The line of a cell's points: its top edge (design 051 §2.2), local y.
-pub const CELL_TOP: f64 = 5.0;
+pub(crate) const CELL_TOP: f64 = 5.0;
 /// The header band under the top edge (the dividers), mm.
-pub const HEADER_BAND: f64 = 10.0;
+pub(crate) const HEADER_BAND: f64 = 10.0;
 /// The mark band under the header, mm; a cell's mark sits at its centre.
-pub const MARK_BAND: f64 = 15.0;
+pub(crate) const MARK_BAND: f64 = 15.0;
 /// The name band at the built-in text styles, mm (design 051 §2.5: at least 12.5).
-pub const NAME_BAND: f64 = 12.5;
+pub(crate) const NAME_BAND: f64 = 12.5;
 /// A channel text's end under the frame's bottom edge, mm.
-pub const OUTSIDE_GAP: f64 = 2.0;
+pub(crate) const OUTSIDE_GAP: f64 = 2.0;
 /// The frame's depth under the top edge at the built-in text styles: header, mark and name bands.
-pub const FRAME_DEPTH: f64 = HEADER_BAND + MARK_BAND + NAME_BAND;
+pub(crate) const FRAME_DEPTH: f64 = HEADER_BAND + MARK_BAND + NAME_BAND;
 /// The height of a role name drawn under its pin, mm (`point_label`'s built-in).
 const ROLE_H: f64 = 1.5;
 

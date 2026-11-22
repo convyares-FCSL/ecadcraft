@@ -382,7 +382,7 @@ pub struct TablePlan {
 ///
 /// # Errors
 /// A bad row (the whole import is refused), a name or source that does not read.
-pub fn check_table(w: &TableWrite) -> Result<crate::devices::ratings::dataset::Dataset, CmdError> {
+pub(crate) fn check_table(w: &TableWrite) -> Result<crate::devices::ratings::dataset::Dataset, CmdError> {
     let data = crate::devices::ratings::dataset::parse_strict(&w.csv)?;
     if !is_name(&w.name) {
         return Err(CmdError::refused("A rating table needs a name (1 to 64 characters, no control characters)."));

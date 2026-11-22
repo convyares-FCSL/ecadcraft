@@ -76,16 +76,9 @@ pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
 
 // ---------------------------------------------------------------- order
 
-/// `reps` in drawing order ([`ecad_model::naming::numbering::Order`]: book position, zone column, zone
-/// row, then top-left; no anchor last), then ID: the same order numbering uses (design 052 §3.4).
-/// The book is built only when they lie on more than one page.
-pub fn in_book_order(doc: &Document, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
-    in_book_order_in(&mut Places::new(doc), reps)
-}
-
 /// As [`in_book_order`], reading the book and grids through `places`, shared across a pass (a
 /// Checks build) so the book is built at most once.
-pub fn in_book_order_in(places: &mut Places<'_>, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
+pub(crate) fn in_book_order_in(places: &mut Places<'_>, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
     if reps.len() < 2 {
         return reps.into_iter().map(|(id, _)| id).collect();
     }
@@ -232,7 +225,7 @@ pub fn goto_place(doc: &Document, c: DeviceId) -> Option<(ecad_model::PageId, Op
 }
 
 /// As [`goto_place`], reading the book and grids through `places`, shared across a Checks build.
-pub fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
+pub(crate) fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     let doc = places.doc();
     let r = doc.representations.get(&goto_in(places, c, None)?)?;
     Some((r.page, crate::references::devices::anchor(doc, r)))

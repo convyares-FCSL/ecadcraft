@@ -218,7 +218,7 @@ impl Holder {
 }
 
 /// The device or cable other than `except` holding `t`, devices first.
-pub fn tag_holder(doc: &Document, t: &str, except: Option<ecad_model::ObjectRef>) -> Option<Holder> {
+pub(crate) fn tag_holder(doc: &Document, t: &str, except: Option<ecad_model::ObjectRef>) -> Option<Holder> {
     doc.components_tagged(t)
         .into_iter()
         .map(Holder::Device)
@@ -232,7 +232,7 @@ pub fn cable_tag_of(doc: &Document, k: ecad_model::CableId) -> Option<&str> {
 }
 
 /// `-K03 (Contactor / relay coil, 101-C-1)` or `-W01 (cable, 3 wires)`.
-pub fn holder_words_of(doc: &Document, h: Holder) -> String {
+pub(crate) fn holder_words_of(doc: &Document, h: Holder) -> String {
     match h {
         Holder::Device(c) => holder_words(doc, c),
         Holder::Cable(k) => {
@@ -273,7 +273,7 @@ pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -
 }
 
 /// The refusal of a duplicate, with the ways forward.
-pub fn duplicate_words(doc: &Document, t: &str, holder: DeviceId, way: &str) -> String {
+pub(crate) fn duplicate_words(doc: &Document, t: &str, holder: DeviceId, way: &str) -> String {
     format!("Tag {t} is already used by {}. {way}", holder_words(doc, holder))
 }
 
