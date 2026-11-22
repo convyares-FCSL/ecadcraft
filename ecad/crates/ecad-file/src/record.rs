@@ -12,8 +12,8 @@ use crate::canonical::MAX_SAFE_INTEGER;
 use crate::chain::{self, Hash};
 use crate::records;
 
-/// Meaning of record contents this build reads and writes. 2: typed tag and place states (0.2.3 S6 #3) and typed revisions (S4).
-pub const SCHEMA_VERSION: u64 = 2;
+/// Meaning of record contents this build reads and writes.
+pub const SCHEMA_VERSION: u64 = 1;
 
 /// Longest string in a record (1 MiB).
 pub const MAX_STRING: usize = 1 << 20;
