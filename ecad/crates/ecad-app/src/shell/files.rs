@@ -1,26 +1,12 @@
 //! The app's project files: new, open, save, save as, the file dialog's state, conversion of old
 //! files, snapshots, and closing (the held close, quitting).
 
-use crate::developer::debugger::Debugger;
-use crate::pages::preview::Preview;
-use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::shell::app::*;
-use crate::{
-    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
-    terminal_strips, title_blocks, wires, workspace,
-};
 use cadcraft_ui_egui::closing::{Choice, Closing};
-use cadcraft_ui_egui::{CadApp, Services};
-use ecad_engine::cad::Handle;
-use ecad_engine::cad::Session;
 use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_model::PageId;
-use eframe::egui::{self, RichText};
+use ecad_engine::{Persistence, Project, ProjectHandle, session_seed};
 use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::PathBuf;
 
 impl App {
     /// Create a new, unsaved project (only when none is open).
@@ -102,13 +88,7 @@ impl App {
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
         self.focus_project()?;
         let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
-        if let Some(dir) = Path::new(&target).parent()
-            && let Ok(default) = ecad_engine::expand_home(&crate::shell::host::host().default_folder, self.home.as_deref())
-            && ecad_engine::same_path(dir, &default)
-            && !dir.exists()
-        {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        }
+        ecad_engine::ensure_default_folder(&target, &crate::shell::host::host().default_folder, self.home.as_deref())?;
         let r = self.cad.run("saveas", json!({ "path": target })).map(|_| ());
         self.after_logic();
         r
@@ -193,7 +173,7 @@ impl App {
                 let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
                 match target {
                     Ok(t)
-                        if t.exists()
+                        if ecad_engine::path_exists(&t)
                             && !own.as_deref().is_some_and(|o| ecad_engine::same_path(&t, o))
                             && d.confirmed_replace.as_deref() != Some(&path) =>
                     {
@@ -320,13 +300,8 @@ impl App {
         };
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
-        let head = snap.get("seq").and_then(serde_json::Value::as_u64).unwrap_or(0);
         self.snapshot_count += 1;
-        let stamp = ecad_stamp();
-        let path = dir.join(format!("ecad-desktop-{stamp}-{:02}-seq{head:03}-{why}.json", self.snapshot_count));
-        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        let bytes = serde_json::to_vec_pretty(&snap).map_err(|e| e.to_string())?;
-        std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let path = ecad_engine::dev::snapshot::write_snapshot_file(&snap, &dir, why, self.snapshot_count, (crate::shell::host::host().now_ms)() / 1000)?;
         self.cad.session.echo(format!("Snapshot written: {} ({SNAPSHOT_NOTE})", path.display()));
         Ok(path)
     }
@@ -398,7 +373,7 @@ impl App {
     pub(crate) fn report_stem(&mut self) -> String {
         let Some(p) = self.project.clone() else { return "project".into() };
         p.read(&mut self.cad.session, |p, _| match &p.path {
-            Some(path) => std::path::Path::new(path).with_extension("").to_string_lossy().into_owned(),
+            Some(path) => ecad_engine::without_extension(path),
             None => p.name.clone(),
         })
         .unwrap_or_else(|_| "project".into())
@@ -413,9 +388,4 @@ impl App {
     pub(crate) fn report_path(&self, path: &str) -> Result<String, String> {
         ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
-}
-
-/// Seconds since the epoch, for unique snapshot file names.
-fn ecad_stamp() -> u64 {
-    (crate::shell::host::host().now_ms)() / 1000
 }

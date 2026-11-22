@@ -385,7 +385,7 @@ impl Agent {
                 None => i += 1,
                 Some(v) => {
                     let f = self.forwarded.swap_remove(i);
-                    let v = if f.method == "ui.screenshot" { inline_screenshot(v) } else { v };
+                    let v = if f.method == "ui.screenshot" { ecad_engine::agent::inline_screenshot(v) } else { v };
                     let _ = f.req.reply.send(v);
                 }
             }
@@ -473,38 +473,6 @@ fn ok(v: Value) -> Value {
 
 fn failed(e: &str) -> Value {
     json!({"ok": false, "error": e})
-}
-
-/// A pathless screenshot's reply (a private file upstream) turned into the PNG inline, as
-/// `ui.render` replies; the file is removed.
-fn inline_screenshot(v: Value) -> Value {
-    let Some(path) = v.pointer("/result/path").and_then(Value::as_str).map(str::to_string) else { return v };
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(e) => return failed(&format!("the screenshot could not be read back: {e}")),
-    };
-    let _ = std::fs::remove_file(&path);
-    let w = v.pointer("/result/width").cloned().unwrap_or(Value::Null);
-    let h = v.pointer("/result/height").cloned().unwrap_or(Value::Null);
-    ok(json!({"pngBase64": base64(&bytes), "width": w, "height": h, "bytes": bytes.len()}))
-}
-
-/// Standard base64 with padding.
-pub fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3).saturating_mul(4));
-    for c in data.chunks(3) {
-        let b = [c.first().copied().unwrap_or(0), c.get(1).copied().unwrap_or(0), c.get(2).copied().unwrap_or(0)];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for (i, shift) in [18u32, 12, 6, 0].into_iter().enumerate() {
-            if i <= c.len() {
-                out.push(char::from(T.get(((n >> shift) & 63) as usize).copied().unwrap_or(b'A')));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
 }
 
 /// What `control.methods` answers over ECAD's port (design §4.2, §4.3).
@@ -1154,15 +1122,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn base64_matches_the_standard_alphabet() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
-    }
 
     #[test]
     fn requests_that_may_change_the_project_are_held() {

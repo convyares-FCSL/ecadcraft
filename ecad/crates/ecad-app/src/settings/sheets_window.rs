@@ -1,25 +1,11 @@
 //! Project Properties, Revisions and the ECAD section of the Properties palette (brief 019).
 
-use crate::developer::debugger::Debugger;
-use crate::pages::preview::Preview;
-use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::shell::app::*;
 use crate::{
-    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
-    terminal_strips, title_blocks, wires, workspace,
+    settings, shell,
 };
-use cadcraft_ui_egui::closing::{Choice, Closing};
-use cadcraft_ui_egui::{CadApp, Services};
-use ecad_engine::cad::Handle;
-use ecad_engine::cad::Session;
-use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_model::PageId;
-use eframe::egui::{self, RichText};
+use eframe::egui::{self};
 use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 impl App {
     /// Open the Project info or Project settings popout: since brief 042, Settings ▸ Project at

@@ -128,6 +128,16 @@ fn walk(d: &Drawing, ents: &[&Entity], m: Mat3, depth: usize, out: &mut Read) {
     }
 }
 
+/// Read the DXF file at `path` as a logo, with the file's name (design 055 §6; the app never reads disk).
+///
+/// # Errors
+/// The file cannot be read, or as [`logo`].
+pub fn logo_from_file(path: &str) -> Result<(String, Vec<Primitive>), String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}."))?;
+    let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    logo(&bytes).map(|prims| (name, prims))
+}
+
 /// Read `bytes` as a logo (design 055 §6).
 ///
 /// # Errors

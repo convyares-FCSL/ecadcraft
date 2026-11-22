@@ -395,7 +395,7 @@ pub(crate) fn catalogue_ui(
         egui::RichText::new(format!(
             "{} row{} \u{b7} source: {}",
             table.data.rows.len(),
-            if table.data.rows.len() == 1 { "" } else { "s" },
+            ecad_widgets::plural(table.data.rows.len()),
             if table.source.is_empty() { "not given" } else { table.source.as_str() }
         ))
         .size(ui_type::SMALL.size)

@@ -92,7 +92,7 @@ pub const INDENT: f32 = 12.0;
 
 /// The accessible label of a folder row: `Folder Schematic layouts: 3 pages`.
 pub fn folder_label(name: &str, pages: usize) -> String {
-    format!("Folder {name}: {pages} page{}", if pages == 1 { "" } else { "s" })
+    format!("Folder {name}: {pages} page{}", ecad_widgets::plural(pages))
 }
 
 /// The accessible label of row `number` with `title`: `Page 2: Field`.
@@ -1214,7 +1214,7 @@ impl ProjectPanel {
             }
             let n = self.picked.len();
             ui.horizontal(|ui| {
-                let words = format!("{n} page{} selected", if n == 1 { "" } else { "s" });
+                let words = format!("{n} page{} selected", ecad_widgets::plural(n));
                 ui.label(RichText::new(words).color(t.text));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add(ecad_widgets::prim::Button::new(CLEAR_PICKED).kind(ecad_widgets::prim::Kind::Quiet).small()).clicked() {

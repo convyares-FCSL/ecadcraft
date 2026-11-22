@@ -331,7 +331,7 @@ pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
 pub fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engine::Project) {
     for r in rows {
         r.folder = r.released.as_deref().and_then(|v| ecad_engine::releases::release::from_recorded(p, v));
-        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_engine::releases::release::MANIFEST).exists());
+        r.folder_exists = r.folder.as_deref().is_some_and(ecad_engine::releases::release::has_manifest);
     }
 }
 

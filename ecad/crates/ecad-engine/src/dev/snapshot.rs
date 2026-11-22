@@ -234,3 +234,17 @@ mod tests {
         assert_eq!(label("conductor", format!("{:032x}", c2.0)), Some("conductor of wire 101".into()));
     }
 }
+
+/// Write `snap` as `ecad-desktop-<stamp>-<count>-seq<head>-<why>.json` in `dir`, making the folder: the
+/// snapshot writer (the app only says where, why and when). Returns the file written.
+///
+/// # Errors
+/// The folder or file could not be written, in words.
+pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count: u32, stamp: u64) -> Result<std::path::PathBuf, String> {
+    let head = snap.get("seq").and_then(Value::as_u64).unwrap_or(0);
+    let path = dir.join(format!("ecad-desktop-{stamp}-{count:02}-seq{head:03}-{why}.json"));
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let bytes = serde_json::to_vec_pretty(snap).map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(path)
+}

@@ -596,7 +596,7 @@ fn block_panel(
             }
         }
     });
-    grey(ui, &format!("Used by {pages} page{}", if pages == 1 { "" } else { "s" }));
+    grey(ui, &format!("Used by {pages} page{}", ecad_widgets::plural(pages)));
     ui.add_space(space::M);
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Duplicate for").small());

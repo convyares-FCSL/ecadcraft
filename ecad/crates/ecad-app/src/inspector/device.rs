@@ -271,7 +271,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
 /// (a device with only a main part has a part), else `none yet`.
 pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str>) -> String {
     if lines > 0 {
-        return format!("{lines} line{} \u{b7} qty", if lines == 1 { "" } else { "s" });
+        return format!("{lines} line{} \u{b7} qty", ecad_widgets::plural(lines));
     }
     let main: Vec<&str> = [maker, part_number].into_iter().flatten().map(str::trim).filter(|v| !v.is_empty() && *v != "*varies*").collect();
     if main.is_empty() { "none yet".to_string() } else { main.join(" \u{b7} ") }

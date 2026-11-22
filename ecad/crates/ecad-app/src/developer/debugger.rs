@@ -852,7 +852,7 @@ impl Debugger {
         });
         let running = self.jobs.running();
         if running > 0 {
-            prim::note(ui, &format!("Running {running} check{}…", if running == 1 { "" } else { "s" }), Tone::Neutral);
+            prim::note(ui, &format!("Running {running} check{}…", ecad_widgets::plural(running)), Tone::Neutral);
             // The result arrives on the background pool's channel: look again shortly.
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
         }
@@ -860,7 +860,7 @@ impl Debugger {
         if dropped > 0 {
             prim::body(
                 ui,
-                &format!("{dropped} result{} dropped: the project changed while the check ran.", if dropped == 1 { "" } else { "s" }),
+                &format!("{dropped} result{} dropped: the project changed while the check ran.", ecad_widgets::plural(dropped)),
                 true,
             );
         }

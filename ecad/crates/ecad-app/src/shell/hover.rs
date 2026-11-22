@@ -1,25 +1,8 @@
 //! The hover tooltip naming the ECAD object under the pointer (design 008 §4.3).
 
-use crate::developer::debugger::Debugger;
-use crate::pages::preview::Preview;
-use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::shell::app::*;
-use crate::{
-    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
-    terminal_strips, title_blocks, wires, workspace,
-};
-use cadcraft_ui_egui::closing::{Choice, Closing};
-use cadcraft_ui_egui::{CadApp, Services};
-use ecad_engine::cad::Handle;
-use ecad_engine::cad::Session;
-use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_model::PageId;
+use crate::shell;
 use eframe::egui::{self, RichText};
-use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 impl App {
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the

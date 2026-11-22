@@ -215,6 +215,12 @@ pub fn recorded(p: &Project, folder: &Path) -> String {
     folder.to_string_lossy().into_owned()
 }
 
+/// Whether `folder` still holds the manifest a release wrote (the Revisions list's "open folder" is offered only then).
+#[must_use]
+pub fn has_manifest(folder: &Path) -> bool {
+    folder.join(MANIFEST).exists()
+}
+
 /// FP1's value read back as a folder, only when it is safe to write there again (review of
 /// PR #54, 1): a relative value must name a folder inside `<project folder>/release/`; an
 /// absolute one must hold a `release.json` (a folder a release wrote). Anything else (`""`, `"."`,

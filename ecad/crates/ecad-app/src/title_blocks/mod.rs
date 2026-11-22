@@ -503,8 +503,10 @@ impl App {
     /// The Logo tool (design 055 §4.5, §6): a DXF into the selected logo, or a new logo at `at`;
     /// the draft only (Save writes it).
     fn tb_logo(&mut self, at: Option<ecad_model::objects::title_block::Rect>, path: &str) {
-        let r = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}.")).and_then(|b| ecad_engine::title_blocks::dxf::logo(&b));
-        let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let (name, r) = match ecad_engine::title_blocks::dxf::logo_from_file(path) {
+            Ok((name, p)) => (name, Ok(p)),
+            Err(e) => (String::new(), Err(e)),
+        };
         let ed = &mut self.library.tb;
         let prims = match r {
             Ok(p) => p,

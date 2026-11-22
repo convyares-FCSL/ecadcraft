@@ -1,7 +1,7 @@
 //! The `App` struct: the harness state around CADCraft's [`CadApp`], its start-up, per-frame logic and window
 //! title, with the small types that belong to it (status, branch info, name box, file dialog, held close).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -9,14 +9,13 @@ use crate::developer::debugger::Debugger;
 use crate::pages::preview::Preview;
 use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::{agent, developer, library, publish, settings, shell};
-use cadcraft_ui_egui::closing::{Choice, Closing};
+use cadcraft_ui_egui::closing::Closing;
 use cadcraft_ui_egui::{CadApp, Services};
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Session;
-use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use ecad_engine::{FileStatus, ProjectHandle};
 use ecad_model::PageId;
-use eframe::egui::{self, RichText};
+use eframe::egui::{self};
 use serde_json::json;
 
 /// The start-up marks [`App::start`] sets as it goes; ecad-desktop's start-up timing implements
@@ -42,7 +41,7 @@ pub const PROJECT_NAME: &str = "Untitled";
 /// The project's status line at the top of the Project panel, for example
 /// `Project "demo": 2 pages, file C:\dev\ecad-projects\demo.ecad, no unsaved changes.`
 pub fn status_line(s: &Status) -> String {
-    let plural = |n: u64, w: &str| format!("{n} {w}{}", if n == 1 { "" } else { "s" });
+    let plural = |n: u64, w: &str| format!("{n} {w}{}", ecad_widgets::plural(n));
     let file = s.file.path.as_deref().map_or("not saved to a file yet".to_string(), |p| format!("file {p}"));
     let changes = if s.unsaved == 0 { "no unsaved changes".to_string() } else { format!("{} not saved", plural(s.unsaved, "change")) };
     format!("Project \"{}\": {}, {file}, {changes}.", s.name, plural(s.pages as u64, "page"))

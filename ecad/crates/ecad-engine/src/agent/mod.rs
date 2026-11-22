@@ -56,3 +56,22 @@ pub fn agent_name(given: &str) -> String {
 
 /// Said when the project cannot be read to check a call; the call is refused (fail closed).
 pub const UNREADABLE: &str = "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
+
+/// A pathless screenshot's reply (a private file upstream) turned into the PNG inline, as `ui.render`
+/// replies: reads the file back and removes it, so the app never touches the disk.
+///
+/// # Errors
+/// An unreadable file gives `{"ok": false, "error": …}`.
+#[must_use]
+pub fn inline_screenshot(v: serde_json::Value) -> serde_json::Value {
+    use serde_json::{Value, json};
+    let Some(path) = v.pointer("/result/path").and_then(Value::as_str).map(str::to_string) else { return v };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => return json!({"ok": false, "error": format!("the screenshot could not be read back: {e}")}),
+    };
+    let _ = std::fs::remove_file(&path);
+    let w = v.pointer("/result/width").cloned().unwrap_or(Value::Null);
+    let h = v.pointer("/result/height").cloned().unwrap_or(Value::Null);
+    json!({"ok": true, "result": {"pngBase64": crate::export::printbook::base64(&bytes), "width": w, "height": h, "bytes": bytes.len()}})
+}

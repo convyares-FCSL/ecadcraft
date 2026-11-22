@@ -2,28 +2,13 @@
 //! merge, and the symbol search window.
 
 use crate::commands::run::with_param;
-use crate::developer::debugger::Debugger;
-use crate::pages::preview::Preview;
-use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::shell::app::*;
-use crate::{
-    agent, cables, canvas, checks, commands, developer, devices, history, inspector, library, pages, plc, publish, reports, settings, shell,
-    terminal_strips, title_blocks, wires, workspace,
-};
-use cadcraft_ui_egui::closing::{Choice, Closing};
-use cadcraft_ui_egui::{CadApp, Services};
-use ecad_engine::cad::Handle;
-use ecad_engine::cad::Session;
-use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use crate::shell;
 use ecad_model::PageId;
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Kind, Tone};
-use eframe::egui::{self, RichText};
+use eframe::egui::{self};
 use serde_json::json;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 impl App {
     /// The symbol search window (brief 018): its rows and second step are read from the project
@@ -244,7 +229,7 @@ impl App {
         let shown = Dialog::new(egui::Id::unique("ecad_app_close"), &heading, "ecad.close").small().show(
             ctx,
             |ui| {
-                prim::body(ui, &format!("Closing the project. It has {changes} unsaved change{}.", if changes == 1 { "" } else { "s" }), false);
+                prim::body(ui, &format!("Closing the project. It has {changes} unsaved change{}.", ecad_widgets::plural(changes)), false);
                 prim::body(
                     ui,
                     &match (&file.path, &file.read_only) {

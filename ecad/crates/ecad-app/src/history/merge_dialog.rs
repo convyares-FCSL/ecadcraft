@@ -102,7 +102,7 @@ impl MergeDialog {
         } else if unanswered > 0 {
             Some(format!(
                 "Choose for {unanswered} conflict{} first, or use Keep {main_word} for all / Keep {branch_word} for all.",
-                if unanswered == 1 { "" } else { "s" }
+                ecad_widgets::plural(unanswered)
             ))
         } else {
             None

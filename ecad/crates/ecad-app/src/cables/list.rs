@@ -143,7 +143,7 @@ impl ReportColumns for CablesSource {
                 let spare = r.text(k, "Spare");
                 // Brief 057 (owner rule): open cores are errors, first.
                 if let Some(n) = self.open.get(k).map(Vec::len).filter(|n| *n > 0) {
-                    return Cell::Badge(format!("{n} error{}", if n == 1 { "" } else { "s" }), Tone::Error);
+                    return Cell::Badge(format!("{n} error{}", ecad_widgets::plural(n)), Tone::Error);
                 }
                 // Brief 057 (design 057 §2.2): a rating row comes first.
                 if let Some(rt) = self.rating(k)

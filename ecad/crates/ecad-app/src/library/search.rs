@@ -88,7 +88,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
                 text: format!(
                     "{tag:<6} {:<26} {n} symbol{}, {pages}  (device)",
                     clip(&ecad_electrical::devices::tags::description(doc, c), 26),
-                    if n == 1 { "" } else { "s" }
+                    ecad_widgets::plural(n)
                 ),
                 pick: Pick::Device(tag),
             });

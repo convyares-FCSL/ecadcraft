@@ -436,7 +436,7 @@ impl HistoryPanel {
             let verdict = match checks {
                 None => "Checks run at release".to_string(),
                 Some((0, 0)) => "No problems: ready to release".to_string(),
-                Some((0, w)) => format!("{w} warning{} to look at", if *w == 1 { "" } else { "s" }),
+                Some((0, w)) => format!("{w} warning{} to look at", ecad_widgets::plural(*w)),
                 Some((e, _)) => format!("{e} error{} a full release", if *e == 1 { " stops" } else { "s stop" }),
             };
             ui.label(RichText::new(verdict).small().color(c(s.text_2)));
@@ -473,7 +473,7 @@ impl HistoryPanel {
                         ui.label(RichText::new("on branch ").small().color(c(s.text_2)));
                         ui.label(RichText::new(cur_name).small().color(lime));
                         let n = a.steps;
-                        ui.label(RichText::new(format!(" \u{b7} {n} change{}", if n == 1 { "" } else { "s" })).small().color(c(s.text_2)));
+                        ui.label(RichText::new(format!(" \u{b7} {n} change{}", ecad_widgets::plural(n))).small().color(c(s.text_2)));
                     });
                 });
             });
@@ -720,7 +720,7 @@ impl HistoryPanel {
         // Show the rows already read first; past them, read the next page.
         let more_to_read = self.steps.len() as u64 >= STEPS_PAGE * (self.steps_more + 1);
         if hidden > 0 || more_to_read {
-            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
+            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", ecad_widgets::plural(hidden)) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
                 let b =
@@ -1030,7 +1030,7 @@ impl HistoryPanel {
             Dialog::Switch { .. } => ("Switch branch", "ecad.switchbranch", "Save and switch"),
             Dialog::SwitchReadOnly => ("Switch branch", "ecad.switchbranch", "Save As\u{2026}"),
         };
-        let changes = |n: u64| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" });
+        let changes = |n: u64| format!("{n} unsaved change{}", ecad_widgets::plural(n));
         let archive_shown = match &d {
             Dialog::Archive { branch, .. } => self.graph.branches.iter().any(|b| b.current && b.id.hex() == *branch),
             _ => false,

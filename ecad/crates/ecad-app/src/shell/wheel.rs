@@ -371,7 +371,7 @@ impl crate::shell::app::App {
                     self.cad.session.set_selection(handles);
                 }
                 let number = v.get("number").and_then(Value::as_str).unwrap_or("unnumbered");
-                self.shell.tools.intent.note = Some(format!("Net {number}: {} wire{}", wires.len(), if wires.len() == 1 { "" } else { "s" }));
+                self.shell.tools.intent.note = Some(format!("Net {number}: {} wire{}", wires.len(), ecad_widgets::plural(wires.len())));
             }
             App::CableReference => {
                 let t = target.ok_or("no cable")?;

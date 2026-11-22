@@ -31,3 +31,31 @@ pub fn read_standard(path: &str) -> Result<ecad_model::Standard, ecad_electrical
     let doc = opened.ledger.document();
     doc.standard.clone().ok_or(ecad_electrical::CmdError::refused(ecad_electrical::styles::commands::styles::NOTHING_TO_COPY))
 }
+
+/// Whether a file or folder exists at `path` (the app asks the engine; it never reads the disk itself).
+#[must_use]
+pub fn path_exists(path: &std::path::Path) -> bool {
+    path.exists()
+}
+
+/// Make the default projects folder when `target`'s folder is it and it does not exist yet; no other folder
+/// is made. `default` and `target` are typed paths (`~` is `home`).
+///
+/// # Errors
+/// The folder could not be made, in words.
+pub fn ensure_default_folder(target: &str, default: &str, home: Option<&std::path::Path>) -> Result<(), String> {
+    if let Some(dir) = std::path::Path::new(target).parent()
+        && let Ok(default) = expand_home(default, home)
+        && same_path(dir, &default)
+        && !dir.exists()
+    {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    Ok(())
+}
+
+/// `path` without its extension, as text (a default name for output files).
+#[must_use]
+pub fn without_extension(path: &str) -> String {
+    std::path::Path::new(path).with_extension("").to_string_lossy().into_owned()
+}

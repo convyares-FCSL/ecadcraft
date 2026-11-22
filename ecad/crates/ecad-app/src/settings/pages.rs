@@ -582,7 +582,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
     ui.add_space(space::S);
     ui.label(egui::RichText::new(&row.name).strong().size(ui_type::OBJECT.size).color(ecad_widgets::color(s.text)));
     let n = row.pages;
-    ui.label(egui::RichText::new(format!("Page type · {n} page{}", if n == 1 { "" } else { "s" })).small().color(ecad_widgets::color(s.text_2)));
+    ui.label(egui::RichText::new(format!("Page type · {n} page{}", ecad_widgets::plural(n))).small().color(ecad_widgets::color(s.text_2)));
     ui.add_space(space::L);
     // The sheet's preview: the frame, the title block in place, zones when on.
     let w = ui.available_width();

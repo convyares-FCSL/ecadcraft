@@ -231,7 +231,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
             },
             Section {
                 title: "Parts",
-                hint: format!("{} line{}", r.parts, if r.parts == 1 { "" } else { "s" }),
+                hint: format!("{} line{}", r.parts, ecad_widgets::plural(r.parts)),
                 lines,
                 later: vec![("+ Accessory", CATALOGUE_COMES), ("From catalogue", CATALOGUE_COMES), ("Save as a kit", CATALOGUE_COMES)],
                 note: Some("The main part is first and gives the device its ratings. A line with no order code raises a check."),
@@ -507,7 +507,7 @@ fn report(t: &App, k: usize) -> Option<Detail> {
     // Counted when the copy is taken, not each frame.
     let flagged = if rep.tab == Some(r.tab) { r.flagged } else { 0 };
     let checks =
-        if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", if flagged == 1 { "" } else { "s" }), Tone::Warning)] } else { Vec::new() };
+        if flagged > 0 { vec![(format!("{flagged} cell{} marked ?", ecad_widgets::plural(flagged)), Tone::Warning)] } else { Vec::new() };
     Some(Detail {
         title: rep.name.to_string(),
         provisional: false,
