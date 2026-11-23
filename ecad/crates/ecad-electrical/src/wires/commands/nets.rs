@@ -18,8 +18,7 @@ use crate::commands::input::{Bounded, nullable};
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 
-/// `nets {page?, number?, conductor?, connection_point?, all?, limit?, after?}` (read only): the
-/// project's nets, a page at a time.
+/// The project's nets, a page at a time. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NetsParams {
@@ -46,7 +45,7 @@ pub struct NetsParams {
     after: Option<String>,
 }
 
-/// `net {conductor | connection_point | number}` (read only): one net.
+/// One net, by a wire, a connection point or a wire number. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NetParams {
@@ -73,8 +72,8 @@ enum ConflictParam {
     Merge,
 }
 
-/// `wirenumber {conductor | connection_point | number, value: string | null, conflict?}` or
-/// `{conductor, fixed: bool}`: fix the net's number (null, or fixed false, releases it).
+/// Fixes a net's number (`value`; null releases it), or fixes or releases its current one (`{conductor, fixed}`).
+/// The net is named by a wire, a connection point or its number. A number another net uses needs `conflict`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WirenumberParams {
@@ -98,7 +97,7 @@ pub struct WirenumberParams {
     conflict: Option<ConflictParam>,
 }
 
-/// `potential {conductor, value: string | null}`: the potential of the whole net.
+/// Sets the potential of a wire's whole net, or clears it with null.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PotentialParams {
@@ -110,8 +109,8 @@ pub struct PotentialParams {
     value: Option<Option<String>>,
 }
 
-/// `category {conductor | net | conductors, value: string | null}`:
-/// a wire's own category (`net`: a wire whose whole net takes it).
+/// Sets the wire category of one wire, of a wire's whole net (`net`) or of several wires, or clears the wires'
+/// own with null. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CategoryParams {
@@ -151,8 +150,8 @@ struct PotentialRowParam {
     cross_section: Option<Value>,
 }
 
-/// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?, colour_style?,
-/// label_height?, label_rule?, label_min_length?, number_by?}`: no parameters reads.
+/// The project's wire numbering and label settings. No parameters reads them. Colours are IEC 60757 codes by
+/// default; free text is allowed.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WiresettingsParams {
@@ -196,7 +195,7 @@ enum Scope {
     All,
 }
 
-/// `renumberwires {scope?: "unnumbered" | "all"}` (fixed numbers never change).
+/// Numbers the wires; fixed numbers never change.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberwiresParams {
@@ -205,7 +204,7 @@ pub struct RenumberwiresParams {
     scope: Option<Scope>,
 }
 
-/// `checks {kinds?, limit?, after?}` (read only).
+/// The Checks rows, a page at a time. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ChecksParams {
@@ -225,8 +224,6 @@ pub struct ChecksParams {
 impl Generic for NetsParams {
     const ID: &'static str = "nets";
     const TITLE: &'static str = "List Nets";
-    const HELP: &'static str =
-        "{page?: id, number?, conductor?: id, connection_point?: id, all?: bool, limit?: n (200, max 2000), after?: cursor} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -250,7 +247,6 @@ impl Generic for NetsParams {
 impl Generic for NetParams {
     const ID: &'static str = "net";
     const TITLE: &'static str = "Show Net";
-    const HELP: &'static str = "{conductor: id} | {connection_point: id} | {number} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -263,7 +259,6 @@ impl Generic for NetParams {
 impl Generic for WirenumberParams {
     const ID: &'static str = "wirenumber";
     const TITLE: &'static str = "Fix Wire Number";
-    const HELP: &'static str = "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         if self.value.is_none() && self.fixed.is_none() {
@@ -325,7 +320,6 @@ impl Generic for WirenumberParams {
 impl Generic for PotentialParams {
     const ID: &'static str = "potential";
     const TITLE: &'static str = "Set Potential";
-    const HELP: &'static str = "{conductor: id, value: string|null} (the potential of the whole net)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let value = match self.value.flatten() {
@@ -342,8 +336,6 @@ impl Generic for PotentialParams {
 impl Generic for CategoryParams {
     const ID: &'static str = "category";
     const TITLE: &'static str = "Wire Category";
-    const HELP: &'static str =
-        "{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let value = self.value.flatten();
@@ -363,7 +355,6 @@ impl Generic for CategoryParams {
 impl Generic for WiresettingsParams {
     const ID: &'static str = "wiresettings";
     const TITLE: &'static str = "Wire Settings";
-    const HELP: &'static str = "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let rows = self.potentials.map(|rows| {
@@ -401,7 +392,6 @@ impl Generic for WiresettingsParams {
 impl Generic for RenumberwiresParams {
     const ID: &'static str = "renumberwires";
     const TITLE: &'static str = "Renumber Wires";
-    const HELP: &'static str = "{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let (ops, nets) = rules::renumber(cx.doc, self.scope == Some(Scope::All));
@@ -415,7 +405,6 @@ impl Generic for RenumberwiresParams {
 impl Generic for ChecksParams {
     const ID: &'static str = "checks";
     const TITLE: &'static str = "Checks";
-    const HELP: &'static str = "{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

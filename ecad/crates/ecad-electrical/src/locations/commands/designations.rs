@@ -315,7 +315,7 @@ pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
     Value::Object(out)
 }
 
-/// `designations {aspect?}` (read only): each entry's key, code, description and counts.
+/// Each function or location entry's key, code, description and counts. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DesignationsParams {
@@ -327,7 +327,6 @@ pub struct DesignationsParams {
 impl Generic for DesignationsParams {
     const ID: &'static str = "designations";
     const TITLE: &'static str = "Functions and Locations";
-    const HELP: &'static str = "{aspect?: \"function\" | \"location\"} (read only: each entry's key, code, description and counts)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -342,7 +341,7 @@ impl Generic for DesignationsParams {
     }
 }
 
-/// `designationadd {aspect, code, description?}`: a new entry of the list.
+/// Adds an entry to the project's function or location list. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddParams {
@@ -358,7 +357,6 @@ pub struct AddParams {
 impl Generic for AddParams {
     const ID: &'static str = "designationadd";
     const TITLE: &'static str = "Add Function or Location";
-    const HELP: &'static str = "{aspect: \"function\" | \"location\", code, description?} (one transaction)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
@@ -371,8 +369,9 @@ impl Generic for AddParams {
     }
 }
 
-/// `designationedit {aspect, key | code, code?, to?, description?}`: an entry renamed (everything
-/// storing its key shows the new code) or described.
+/// Renames or describes an entry: `{aspect, key, code?, description?}` (`code` is the new code), or `{aspect,
+/// code, to, description?}` (`code` names the entry, `to` is the new code). Everything that stores the key shows
+/// the new code. One transaction; a code another entry has is refused: merge instead.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditParams {
@@ -398,7 +397,6 @@ pub struct EditParams {
 impl Generic for EditParams {
     const ID: &'static str = "designationedit";
     const TITLE: &'static str = "Rename Function or Location";
-    const HELP: &'static str = "{aspect, key, code?: the new code (a rename), description?: text | null} | {aspect, code: the entry, to: the new code, description?} (one transaction; a code another entry has is refused: merge instead)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
@@ -415,8 +413,7 @@ impl Generic for EditParams {
     }
 }
 
-/// `designationmerge {aspect, from, into}`: every user of `from` takes `into`; `from` is
-/// removed.
+/// Every user of `from` takes `into`, and `from` is removed. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MergeParams {
@@ -431,7 +428,6 @@ pub struct MergeParams {
 impl Generic for MergeParams {
     const ID: &'static str = "designationmerge";
     const TITLE: &'static str = "Merge Functions or Locations";
-    const HELP: &'static str = "{aspect, from: key | code, into: key | code} (every user of `from` takes `into`; `from` is removed; one transaction)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
@@ -445,8 +441,8 @@ impl Generic for MergeParams {
     }
 }
 
-/// `designationremove {aspect, key | code}`, or `{aspect?, unused: true}`: every entry nothing
-/// uses, in one transaction (**Remove unused**).
+/// Removes an entry nothing uses (`{aspect, key | code}`), or every entry nothing uses (`{aspect?, unused:
+/// true}`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveParams {
@@ -467,8 +463,6 @@ pub struct RemoveParams {
 impl Generic for RemoveParams {
     const ID: &'static str = "designationremove";
     const TITLE: &'static str = "Remove Function or Location";
-    const HELP: &'static str =
-        "{aspect, key | code} (only an entry nothing uses) | {aspect?, unused: true} (every entry nothing uses) (one transaction)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match self.unused == Some(true) {

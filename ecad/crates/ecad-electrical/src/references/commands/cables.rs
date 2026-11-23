@@ -206,9 +206,8 @@ fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool
     }
 }
 
-/// `cablereference {cable, at}`: a reference end of `cable` on the active page,
-/// at `at`. One transaction: the Point item and its `reference` representation. Refused (R1 to
-/// R3) when the cable already has a reference here, already has two, or has no wire drawn here.
+/// A reference end of the cable on the active page, at `at`, in one transaction. Refused when the cable already
+/// has a reference here, already has two, or has no wire drawn here.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CableReferenceParams {
@@ -218,12 +217,10 @@ pub struct CableReferenceParams {
     at: Point,
 }
 
-/// `cablecontinue {cable, at, toward, members?}`: the second drawing of
-/// `cable` on the active page. One transaction: a reference end at `at`; for each continued core
-/// (one on a loose line of the source page) a named point on each reference, the source line
-/// landed on the one there and a stub from the one here to a free end;
-/// then a slash across the stubs. Once a stub lands on a device point, one wire runs from device
-/// point to device point across the pages.
+/// The cable's second drawing, on the active page, in one transaction: a reference end at `at`; for each
+/// continued core a named point on each reference, the source line landed on the one there and a stub from the
+/// one here to a free end; then a slash across the stubs. Once a stub lands on a device point, one wire runs from
+/// device point to device point across the pages.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CablecontinueParams {
@@ -239,8 +236,7 @@ pub struct CablecontinueParams {
     members: Option<Vec<WireId>>,
 }
 
-/// `cablereferences {cable?}`: every cable reference (or `cable`'s), derived; read
-/// only.
+/// Every cable reference, or one cable's. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CablereferencesParams {
@@ -252,7 +248,6 @@ pub struct CablereferencesParams {
 impl Generic for CableReferenceParams {
     const ID: &'static str = "cablereference";
     const TITLE: &'static str = "Cable Reference";
-    const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.at.within(crate::commands::input::MAX_COORD, "at").map(|_| ())
@@ -280,7 +275,6 @@ impl Generic for CableReferenceParams {
 impl Generic for CablecontinueParams {
     const ID: &'static str = "cablecontinue";
     const TITLE: &'static str = "Continue Cable";
-    const HELP: &'static str = "{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.at.within(crate::commands::input::MAX_COORD, "at")?;
@@ -330,7 +324,6 @@ impl Generic for CablecontinueParams {
 impl Generic for CablereferencesParams {
     const ID: &'static str = "cablereferences";
     const TITLE: &'static str = "List Cable References";
-    const HELP: &'static str = "{cable?: id} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

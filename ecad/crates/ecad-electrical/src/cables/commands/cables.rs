@@ -574,9 +574,8 @@ pub(crate) struct EndParams {
     gland: Option<Option<TextOrNumber>>,
 }
 
-/// `cablenew {tag?, cable_type?, type?, cores?, length?, shield?, maker?, part_number?,
-/// description?, from?, to?}`: a cable not drawn yet, the next free -W unless `tag`; one
-/// transaction. The same fields are `cableedit`'s `set`, where null clears one.
+/// A cable not drawn yet, tagged with the next free -W unless `tag` is given. One transaction. The same fields
+/// are `cableedit`'s `set`, where null clears one.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CablenewParams {
@@ -615,8 +614,8 @@ pub struct CablenewParams {
     to: Option<EndParams>,
 }
 
-/// `cableedit {cable, set}`: change a cable's fields in one transaction (null clears a field;
-/// reducing cores below those in use is refused).
+/// Changes a cable's fields in one transaction; null clears a field. Reducing the cores below those in use is
+/// refused.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CableeditParams {
@@ -626,8 +625,7 @@ pub struct CableeditParams {
     set: CablenewParams,
 }
 
-/// `cableremove {cable}`: delete a cable that is not drawn; a drawn cable is refused with the
-/// pages it is drawn on.
+/// Deletes a cable that is not drawn. A drawn cable is refused with the pages it is drawn on.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CableremoveParams {
@@ -666,8 +664,6 @@ impl From<CablenewParams> for CableInput {
 impl Generic for CablenewParams {
     const ID: &'static str = "cablenew";
     const TITLE: &'static str = "New Cable";
-    const HELP: &'static str = "{tag?, cable_type?: id or name, type?, cores?, length?: m, shield?: \"none\"|\"overall\"|\"pairs\"|\"overall+pairs\", maker?, \
-part_number?, description?, from?: {location?, function?, gland?}, to?: {…}} (a cable not drawn yet, the next free -W unless `tag`; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let fields = CableInput::from(self);
@@ -684,8 +680,6 @@ part_number?, description?, from?: {location?, function?, gland?}, to?: {…}} (
 impl Generic for CableeditParams {
     const ID: &'static str = "cableedit";
     const TITLE: &'static str = "Edit Cable";
-    const HELP: &'static str = "{cable: id or tag, set: {tag?, cable_type?, type?, cores?, length?, shield?, maker?, part_number?, description?, \
-from?: {location?, function?, gland?}, to?: {…}}} (null clears a field; one transaction; reducing cores below those in use is refused)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let set = CableInput::from(self.set);
@@ -703,7 +697,6 @@ from?: {location?, function?, gland?}, to?: {…}}} (null clears a field; one tr
 impl Generic for CableremoveParams {
     const ID: &'static str = "cableremove";
     const TITLE: &'static str = "Remove Cable";
-    const HELP: &'static str = "{cable: id or tag} (deletes a cable that is not drawn; a drawn cable is refused with the pages it is drawn on)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;

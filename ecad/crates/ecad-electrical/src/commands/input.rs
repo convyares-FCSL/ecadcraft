@@ -163,6 +163,116 @@ pub fn schema<P: JsonSchema>() -> Value {
     serde_json::to_value(schemars::schema_for!(P)).unwrap_or(Value::Null)
 }
 
+/// A command's parameters in one line, read from the JSON Schema of its params struct: the fields
+/// (required ones first; `?` marks an optional one) with their kinds and the words of a closed set,
+/// then the struct's description (the summary and its notes), then each field's description.
+///
+/// For example: ``{cable: hex id, view?: "traditional"|"fan"} How a cable is drawn. `cable`: The cable.``
+pub fn help(schema: &Value) -> String {
+    let props = schema["properties"].as_object();
+    let required: Vec<&str> = schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let mut names: Vec<&str> = required.iter().copied().filter(|n| props.is_some_and(|p| p.contains_key(*n))).collect();
+    names.extend(props.into_iter().flatten().map(|(k, _)| k.as_str()).filter(|k| !required.contains(k)));
+    let fields: Vec<String> = names
+        .iter()
+        .map(|n| {
+            let field = &schema["properties"][*n];
+            match required.contains(n) {
+                true if describe(schema, resolve(schema, field)).1 => format!("{n}: {} | null", shape(schema, field, true)),
+                true => format!("{n}: {}", shape(schema, field, true)),
+                false => format!("{n}?: {}", shape(schema, field, true)),
+            }
+        })
+        .collect();
+    let mut out = format!("{{{}}}", fields.join(", "));
+    if let Some(d) = schema["description"].as_str().map(flat).filter(|d| !d.is_empty()) {
+        out.push(' ');
+        out.push_str(&d);
+    }
+    for n in &names {
+        if let Some(d) = schema["properties"][*n]["description"].as_str().map(flat).filter(|d| !d.is_empty()) {
+            out.push_str(&format!(" `{n}`: {d}"));
+        }
+    }
+    out
+}
+
+/// Sub-schema `s` in the words of [`help`]: a closed set's words, an object's fields (one level
+/// down, when `open`) or a map's values, a list of what it holds, or the kind's noun, with its
+/// bounds.
+fn shape(root: &Value, s: &Value, open: bool) -> String {
+    let s = resolve(root, s);
+    let words = |alts: &[Value]| -> Option<String> {
+        let w: Option<Vec<String>> = alts.iter().filter(|a| !a.is_null()).map(|a| a.get("const").map(Value::to_string)).collect();
+        w.filter(|w| !w.is_empty()).map(|w| w.join("|"))
+    };
+    if let Some(e) = s["enum"].as_array().and_then(|e| words(&e.iter().map(|w| serde_json::json!({"const": w})).collect::<Vec<_>>())) {
+        return e;
+    }
+    for key in ["anyOf", "oneOf"] {
+        if let Some(alts) = s[key].as_array() {
+            let alts: Vec<Value> = alts.iter().map(|a| resolve(root, a).clone()).filter(|a| a["type"] != "null").collect();
+            if let Some(w) = words(&alts) {
+                return w;
+            }
+            let mut kinds: Vec<String> = Vec::new();
+            for a in &alts {
+                let k = shape(root, a, open);
+                if !kinds.contains(&k) {
+                    kinds.push(k);
+                }
+            }
+            return kinds.join(" | ");
+        }
+    }
+    let types: Vec<&str> = match &s["type"] {
+        Value::String(t) => vec![t.as_str()],
+        Value::Array(a) => a.iter().filter_map(Value::as_str).filter(|t| *t != "null").collect(),
+        _ => Vec::new(),
+    };
+    if s.get("format").is_none() && types == ["object"] {
+        if let Some(p) = s["properties"].as_object().filter(|_| open) {
+            let req: Vec<&str> = s["required"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            let f: Vec<String> = p.keys().map(|k| format!("{k}{}", if req.contains(&k.as_str()) { "" } else { "?" })).collect();
+            return format!("{{{}}}", f.join(", "));
+        }
+        if s["additionalProperties"].is_object() {
+            return format!("{{key: {}}}", shape(root, &s["additionalProperties"], false));
+        }
+    }
+    if s.get("format").is_none() && types == ["array"] {
+        let item = shape(root, &s["items"], open);
+        // A noun is said in the plural; words, objects and alternatives as they are.
+        let item = match item.strip_suffix(" [x, y]") {
+            Some(noun) if !noun.contains(['{', '|', '"', '(']) => format!("{noun}s [x, y]"),
+            _ if !item.contains(['{', '|', '"', '(', '[']) && !item.contains(" or ") => format!("{item}s"),
+            _ => item,
+        };
+        let (lo, hi) = (s["minItems"].as_u64().unwrap_or(0), s["maxItems"].as_u64());
+        return match hi {
+            Some(hi) if hi == lo => format!("list of {hi} {item}"),
+            Some(hi) if lo == 0 => format!("list of {item} (at most {hi})"),
+            Some(hi) => format!("list of {item} ({lo}\u{2013}{hi})"),
+            None if lo > 0 => format!("list of {item} (at least {lo})"),
+            None => format!("list of {item}"),
+        };
+    }
+    let noun = describe(root, s).0.0;
+    // An unsigned whole number's minimum 0 says nothing.
+    let lo = s["minimum"].as_f64().filter(|lo| *lo != 0.0 || types != ["integer"]);
+    match (types.as_slice(), lo, s["maximum"].as_f64()) {
+        (["integer"] | ["number"], Some(a), Some(b)) => format!("{noun} {a}\u{2013}{b}"),
+        (["integer"] | ["number"], Some(a), None) => format!("{noun} \u{2265} {a}"),
+        (["integer"] | ["number"], None, Some(b)) => format!("{noun} \u{2264} {b}"),
+        _ => noun,
+    }
+}
+
+/// `doc` on one line: runs of white space as one space, rustdoc links as plain code.
+fn flat(doc: &str) -> String {
+    doc.split_whitespace().collect::<Vec<_>>().join(" ").replace("[`", "`").replace("`]", "`")
+}
+
 /// `[x, y]` as a finite point.
 pub fn point(v: &Value) -> Option<Pt> {
     let a = v.as_array()?;

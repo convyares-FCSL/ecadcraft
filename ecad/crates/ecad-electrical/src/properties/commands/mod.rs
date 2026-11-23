@@ -670,10 +670,10 @@ pub fn object_json(o: ObjectRef) -> Value {
 // ---------------------------------------------------------------------------------------------
 // The command (generic: crate::commands::run)
 
-/// `setprop {component|conductor|cable, key, value, conflict?, merge?}` or `{components, key,
-/// value}`: a property of one object, or of several devices in one transaction (not `tag`). A
-/// device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device
-/// or cable holds needs `conflict`. The `tag` value is typed text (fixed; `-K?` provisional) or `{"state": "automatic"|"fixed"|"provisional", "tag": "-K1"}`; null clears it.
+/// Sets a property of one object (`component`, `conductor` or `cable`), or of several devices or drawing aids in
+/// one transaction (not `tag`). A device's or cable's tag: typed text fixes it, -K? is the next provisional, and
+/// a tag another device or cable holds needs `conflict`; `tag` also takes {"state":
+/// "automatic"|"fixed"|"provisional", "tag": "-K1"}. Null clears the property.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetpropParams {
@@ -739,7 +739,6 @@ impl SetpropParams {
 impl Generic for SetpropParams {
     const ID: &'static str = "setprop";
     const TITLE: &'static str = "Set Property";
-    const HELP: &'static str = "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; `tag` also takes {\"state\": \"automatic\"|\"fixed\"|\"provisional\", \"tag\": \"-K1\"}; null clears it)";
     const STATE: State = State::Conflicts;
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {

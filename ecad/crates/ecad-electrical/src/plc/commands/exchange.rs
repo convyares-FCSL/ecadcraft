@@ -67,8 +67,8 @@ enum WhatParam {
     Descriptions,
 }
 
-/// `plcimport {path | text, name?, format?, dry_run?, what?: both|tags|descriptions}`: fill the
-/// channels' tags and descriptions from an I/O list, one way, in one transaction.
+/// Sets the tags and descriptions of the channels at the addresses of an I/O list (`path`, or `text`), one way,
+/// in one transaction. `dry_run` writes nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcimportParams {
@@ -95,7 +95,6 @@ pub struct PlcimportParams {
 impl Generic for PlcimportParams {
     const ID: &'static str = "plcimport";
     const TITLE: &'static str = "Import an I/O List";
-    const HELP: &'static str = "{path: file | text: the I/O list, name?: its file name (with text, at most 255 characters), format?: csv, dry_run?: bool, what?: both|tags|descriptions} (sets the tags and descriptions of the channels at the list's addresses, one way, in one transaction; dry_run writes nothing)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const IO: Io = Io { reads: &[("path", FileRead::Bytes(tagtable::MAX_BYTES))], writes: &[] };
 
@@ -138,8 +137,8 @@ impl Generic for PlcimportParams {
     }
 }
 
-/// `plcexport {format?, rack?, path?}`: the tag table of a rack (or every rack);
-/// writes the file, or returns `{text, rows, left_out}` without `path`. Changes no project data.
+/// The tag table of a rack, or of every rack: written to `path`, or without it answered as {text, rows,
+/// left_out}. Changes nothing in the project.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcexportParams {
@@ -157,8 +156,6 @@ pub struct PlcexportParams {
 impl Generic for PlcexportParams {
     const ID: &'static str = "plcexport";
     const TITLE: &'static str = "Export PLC Tags";
-    const HELP: &'static str =
-        "{format?: csv, rack?: id or tag (absent: every rack), path?: file} (without path: {text, rows, left_out}; changes nothing)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
     const IO: Io = Io { reads: &[], writes: &["path"] };

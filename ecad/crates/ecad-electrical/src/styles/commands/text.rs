@@ -245,8 +245,7 @@ pub(crate) fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
 /// Most rows `pagetexts` returns.
 pub(crate) const MAX_TEXT_ROWS: usize = 5_000;
 
-/// `pagetexts {page?}` (named so because `texts` is CADCraft's): every derived
-/// text on a page, hidden ones too.
+/// Every derived text on a page, hidden ones too. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PagetextsParams {
@@ -258,7 +257,6 @@ pub struct PagetextsParams {
 impl Generic for PagetextsParams {
     const ID: &'static str = "pagetexts";
     const TITLE: &'static str = "Page Texts";
-    const HELP: &'static str = "{page?: id} (every derived text on the page, hidden ones too; read only)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const ACCESS: Access = Access::Reads;
 
@@ -319,9 +317,8 @@ pub(crate) fn pagetexts_json(doc: &Document, page: PageId, look: &dyn Look) -> V
     v
 }
 
-/// `movetext {representation, kind?, connection_point?, to, justify?}` or `{…, reset: true}`:
-/// a symbol's tag or connection point label moved to a page point, or back to its
-/// computed place.
+/// Moves a symbol's tag or connection point label to a page point (`to`, stored in the symbol's frame), or with
+/// `reset: true` back to its computed place.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MovetextParams {
@@ -347,8 +344,6 @@ pub struct MovetextParams {
 impl Generic for MovetextParams {
     const ID: &'static str = "movetext";
     const TITLE: &'static str = "Move Text";
-    const HELP: &'static str = "{representation: id, kind?: \"tag\"|\"point_label\", connection_point?: id, to: [x,y], justify?: \"RT\"…} or {representation, kind?, connection_point?, reset: true} \
-(to is a page point; stored in the symbol's frame)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let rep = self.representation;

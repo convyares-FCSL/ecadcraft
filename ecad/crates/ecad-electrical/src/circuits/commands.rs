@@ -539,9 +539,9 @@ pub(crate) struct RatingItemParams {
     cable_type: KeyValue,
 }
 
-/// `rating {wire | cable | many, …}` sets a subject's rating properties in one transaction (null
-/// clears a key, an absent key is untouched); `{location, temperature}` sets a location's panel
-/// temperature on its location boxes.
+/// Sets the rating properties of a panel wire (`wire`), a cable (`cable`) or several (`many`) in one transaction:
+/// null clears a key, an absent key is untouched. Or `{location, temperature}` sets a location's panel
+/// temperature on its location boxes (null clears it).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RatingParams {
@@ -598,9 +598,8 @@ pub struct RatingParams {
     temperature: KeyValue,
 }
 
-/// `ratingtable {name, source?, csv, layer?}` creates or replaces a rating table (one
-/// `SetStyle`); `{import: path, name?, source?}` reads a CSV file, `{export: path, name?}` writes
-/// one.
+/// Creates or replaces a rating table from CSV text (`{name, source?, csv, layer?}`, one transaction), reads one
+/// from a CSV file (`{import, name?, source?}`), or writes one to a CSV file (`{export, name?}`).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RatingtableParams {
@@ -625,7 +624,7 @@ pub struct RatingtableParams {
     export: Option<String>,
 }
 
-/// `ratings {wire? | cable?, from?}` (read only): the results the panel shows, a page at a time.
+/// The rating results the panel shows, a page at a time. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RatingsParams {
@@ -686,10 +685,6 @@ impl RatingParams {
 impl Generic for RatingParams {
     const ID: &'static str = "rating";
     const TITLE: &'static str = "Rating";
-    const HELP: &'static str = "{wire: conductor id or wire number | cable: tag or id | many: [{wire|cable, …}], basis?: \"datasheet\"|\"table\"|\"manual\", \
-manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01:3\", method?, ambient?, grouped?, voltage?, system?: \
-\"ac1\"|\"ac3\"|\"dc\", vd_limit?, cable_type?: id or name} | {location: \"+CAB1\", temperature: °C | null} (a location's panel \
-temperature, on its location boxes; null clears; one transaction)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match &self.location {
@@ -739,7 +734,6 @@ impl RatingtableParams {
 impl Generic for RatingtableParams {
     const ID: &'static str = "ratingtable";
     const TITLE: &'static str = "Rating Table";
-    const HELP: &'static str = "{name, source?, csv, layer?: \"project\"|\"standard\"} (creates or replaces; one transaction) | {import: path, name?, source?} | {export: path, name?}";
     const PAGES: Pages = Pages::ReadAnywhere;
     const IO: Io = Io { reads: &[("import", Read::Bytes(crate::devices::ratings::dataset::MAX_BYTES))], writes: &["export"] };
 
@@ -792,7 +786,6 @@ impl Generic for RatingtableParams {
 impl Generic for RatingsParams {
     const ID: &'static str = "ratings";
     const TITLE: &'static str = "Ratings";
-    const HELP: &'static str = "{wire?: id or number, cable?: tag or id, from?: n} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

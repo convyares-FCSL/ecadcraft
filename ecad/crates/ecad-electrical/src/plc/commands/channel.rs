@@ -13,10 +13,8 @@ use crate::commands::input::{TextOrNumber, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
-/// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, connection_point?}`:
-/// one channel's data in one transaction. `move_to` (a Checks fix) gives the
-/// points of one drawn copy of the channel (`connection_point`, or the last-drawn copy) the channel
-/// numbered `move_to`.
+/// Sets one PLC channel's data in one transaction. `move_to` gives the points of one drawn copy of the channel
+/// (`connection_point`, or the last-drawn copy) the channel with that number.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcchannelParams {
@@ -54,7 +52,6 @@ pub struct PlcchannelParams {
 impl Generic for PlcchannelParams {
     const ID: &'static str = "plcchannel";
     const TITLE: &'static str = "Channel";
-    const HELP: &'static str = "{card: id or tag, channel: number as shown, text?: description (null clears), address?: typed address (null clears), pins?: {role: pin}, move_to?: channel number (with connection_point?: id; a drawn copy takes that channel)}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let number = |t: Option<TextOrNumber>| t.map(|t| channel_number(&t.text())).transpose();

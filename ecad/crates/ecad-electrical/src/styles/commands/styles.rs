@@ -759,8 +759,8 @@ pub(crate) fn value_json(r: &ecad_model::registry::Resolved<'_>) -> Value {
 // ---------------------------------------------------------------------------------------------
 // The commands (generic: crate::commands::run)
 
-/// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
-/// catalogues this build does not know are listed apart (a newer file opens in an older build).
+/// Every style, catalogue by catalogue; records of catalogues this build does not know are listed apart. Read
+/// only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StylesParams {
@@ -772,8 +772,9 @@ pub struct StylesParams {
     users: Option<bool>,
 }
 
-/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}`: no
-/// field reads the standard; the first given of `new`, `name`, `from` and `remove` is done.
+/// The project's standard. No fields reads it; otherwise the first given of these is done, in one transaction:
+/// `new` makes one, `name` renames it, `from` copies the standard of a .ecad file, `remove` goes back to IEC
+/// (`replace_with` moves the users of standard-only styles).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StandardParams {
@@ -795,8 +796,7 @@ pub struct StandardParams {
     replace_with: Option<BTreeMap<String, String>>,
 }
 
-/// `setstyle {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}`: a
-/// new style, or a style's fields and name, as one transaction.
+/// A new style (`new: true`), or a style's fields and name, by `id` or `name`. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetstyleParams {
@@ -825,8 +825,7 @@ pub struct SetstyleParams {
     layer: Option<String>,
 }
 
-/// `deletestyle {catalogue, id|name, replace_with?}`: an own style deleted; its
-/// users move to `replace_with`.
+/// Deletes an own style, by `id` or `name`; its users move to `replace_with`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeletestyleParams {
@@ -843,8 +842,8 @@ pub struct DeletestyleParams {
     replace_with: Option<String>,
 }
 
-/// `promote {catalogue, id|name}` or `promote {key}`: a project-only style, or
-/// the project's own value of a default, moves to the standard.
+/// Moves a project-only style (`{catalogue, id | name}`), or the project's own value of a default (`{key}`), to
+/// the standard.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PromoteParams {
@@ -883,7 +882,6 @@ pub fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec
 impl Generic for StylesParams {
     const ID: &'static str = "styles";
     const TITLE: &'static str = "Styles";
-    const HELP: &'static str = "{catalogue?, users?: bool} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -908,8 +906,6 @@ impl Generic for StylesParams {
 impl Generic for StandardParams {
     const ID: &'static str = "standard";
     const TITLE: &'static str = "Standard";
-    const HELP: &'static str = "{} (read) | {new: name} | {name: name} (rename) | {from: path to a .ecad} (copy its standard) | \
-{remove: true, replace_with?: {catalogue: style}} (back to IEC); one transaction";
     const PAGES: Pages = Pages::ReadAnywhere;
     const IO: Io = Io { reads: &[("from", Read::Standard)], writes: &[] };
 
@@ -943,8 +939,6 @@ impl Generic for StandardParams {
 impl Generic for SetstyleParams {
     const ID: &'static str = "setstyle";
     const TITLE: &'static str = "Set Style";
-    const HELP: &'static str = "{catalogue, id? | name?, new?: true, copy_of?: style, rename?: name, fields?: {key: value|null}, \
-layer?: \"project\"|\"standard\"} (one transaction)";
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
         catalogue(registry, &self.catalogue).map(|_| ())
@@ -982,7 +976,6 @@ layer?: \"project\"|\"standard\"} (one transaction)";
 impl Generic for DeletestyleParams {
     const ID: &'static str = "deletestyle";
     const TITLE: &'static str = "Delete Style";
-    const HELP: &'static str = "{catalogue, id | name, replace_with?: style} (own styles only; its users move to replace_with)";
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
         catalogue(registry, &self.catalogue).map(|_| ())
@@ -1002,7 +995,6 @@ impl Generic for DeletestyleParams {
 impl Generic for PromoteParams {
     const ID: &'static str = "promote";
     const TITLE: &'static str = "Promote to Standard";
-    const HELP: &'static str = "{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)";
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
         match self.key.as_deref().map(str::trim) {

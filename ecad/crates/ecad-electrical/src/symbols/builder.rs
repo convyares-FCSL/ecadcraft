@@ -152,8 +152,7 @@ impl ContentFields {
     }
 }
 
-/// `symbolnew {name, key, graphics, points, slots?, defaults?, bridges?, from?}`:
-/// version 1 of a project symbol.
+/// Embeds version 1 of a project symbol. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewParams {
@@ -183,8 +182,8 @@ pub struct NewParams {
     from: Option<DefinitionId>,
 }
 
-/// `symbolimpact {definition, …content as symbolnew…, builtins?}` (read only):
-/// every placed copy with what an update changes there and whether it clashes.
+/// What an edit of a symbol (the content as `symbolnew` takes it) would do: every placed copy with what an update
+/// changes there and whether it clashes. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImpactParams {
@@ -216,8 +215,8 @@ pub struct ImpactParams {
     builtins: Option<bool>,
 }
 
-/// `symboledit {definition, …content as symbolnew…, update, copies?, builtins?}`:
-/// a new version, and the chosen placed copies updated, in one transaction.
+/// A new version of a symbol (the content as `symbolnew` takes it), and the chosen placed copies updated, in one
+/// transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditParams {
@@ -255,8 +254,8 @@ pub struct EditParams {
     builtins: Option<bool>,
 }
 
-/// `symbolupdate {copies | lineage, to?}`: placed copies moved to a version of their symbol
-/// (default: the newest); refused when a copy would clash.
+/// Moves placed copies (`copies`, or every copy of a `lineage`) to a version of their symbol. Refused when a copy
+/// would clash.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateParams {
@@ -274,10 +273,6 @@ pub struct UpdateParams {
 impl Generic for NewParams {
     const ID: &'static str = "symbolnew";
     const TITLE: &'static str = "New Symbol";
-    const HELP: &'static str = "{name, key, graphics: [{kind: line|polyline|arc|circle|text|point, …} as in the file record], points: [{key, label?, at: [x,y]}], \
-slots?: [{text: tag|description|rating|rating.<label>|part_number|maker|article_number|function|location, at: [x,y], h?: left|center|right, \
-v?: baseline|bottom|middle|top, rotation?: degrees}], defaults?: {prefix, description?, rating?, join?: device|part, aliases?, family?}, \
-bridges?: [[key…]], from?: definition id} (design 048 §9.1: embeds version 1 of a project symbol; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let fields = ContentFields {
@@ -299,8 +294,6 @@ bridges?: [[key…]], from?: definition id} (design 048 §9.1: embeds version 1 
 impl Generic for ImpactParams {
     const ID: &'static str = "symbolimpact";
     const TITLE: &'static str = "Symbol Impact";
-    const HELP: &'static str = "{definition: id, …content as symbolnew…, builtins?: bool} (read only: every placed copy with what an update changes there and \
-whether it clashes, design 048 §6.2)";
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
@@ -333,8 +326,6 @@ whether it clashes, design 048 §6.2)";
 impl Generic for EditParams {
     const ID: &'static str = "symboledit";
     const TITLE: &'static str = "Edit Symbol";
-    const HELP: &'static str = "{definition: id of the version edited, …content as symbolnew…, update: all|selected|none|new, copies?: [representation id], \
-builtins?: bool} (design 048 §9.2: a new version, and the chosen placed copies updated, in one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let fields = ContentFields {
@@ -364,8 +355,6 @@ builtins?: bool} (design 048 §9.2: a new version, and the chosen placed copies 
 impl Generic for UpdateParams {
     const ID: &'static str = "symbolupdate";
     const TITLE: &'static str = "Update Symbol";
-    const HELP: &'static str =
-        "{copies: [representation id] | lineage: id, to?: definition id (default: the newest)} (refused when a copy would clash)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let copies = self.copies.map(|c| c.0);

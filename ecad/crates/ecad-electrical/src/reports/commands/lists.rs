@@ -189,8 +189,8 @@ enum Lines {
     Nested,
 }
 
-/// `bom {group?, columns?, lines?, path?, excel_safe?, limit?, after?}` (read only): the bill of
-/// materials, a page at a time, or written to a CSV file.
+/// The bill of materials, a page at a time, or written to a CSV file. `columns` and `lines` override the
+/// project's report settings for this call only. Changes nothing in the project.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BomParams {
@@ -220,8 +220,6 @@ pub struct BomParams {
 impl Generic for BomParams {
     const ID: &'static str = "bom";
     const TITLE: &'static str = "Bill of Materials";
-    const HELP: &'static str = "{group?: \"location\"|\"part\", columns?: [\"article\"], lines?: \"flat\"|\"nested\", path?: csv file, excel_safe?: bool (true), \
-limit?: n (500, max 5000), after?: n} (columns and lines override the project's report settings for this call; nothing written)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
     const IO: Io = CSV;
@@ -242,7 +240,7 @@ limit?: n (500, max 5000), after?: n} (columns and lines override the project's 
     }
 }
 
-/// `wirelist {path?, excel_safe?, limit?, after?}` (read only): the wire report.
+/// The wire report, a page at a time, or written to a CSV file. Changes nothing in the project.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WirelistParams {
@@ -263,7 +261,6 @@ pub struct WirelistParams {
 impl Generic for WirelistParams {
     const ID: &'static str = "wirelist";
     const TITLE: &'static str = "Wire Report";
-    const HELP: &'static str = "{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n}";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
     const IO: Io = CSV;
@@ -276,8 +273,7 @@ impl Generic for WirelistParams {
     }
 }
 
-/// `cablelist {path?, excel_safe?, limit?, after?, include_not_drawn?}` (read only): the cable
-/// report.
+/// The cable report, a page at a time, or written to a CSV file. Changes nothing in the project.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CablelistParams {
@@ -301,8 +297,6 @@ pub struct CablelistParams {
 impl Generic for CablelistParams {
     const ID: &'static str = "cablelist";
     const TITLE: &'static str = "Cable Report";
-    const HELP: &'static str =
-        "{path?: csv file, excel_safe?: bool (true), limit?: n (500, max 5000), after?: n, include_not_drawn?: bool (true; brief 059)}";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
     const IO: Io = CSV;

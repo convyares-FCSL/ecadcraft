@@ -12,8 +12,8 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::plc::address::*;
 
-/// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`.
-/// One transaction.
+/// A PLC rack's addressing (`{rack, style?, input_start?, output_start?, fix?, clear?}`) or one card's (`{card,
+/// start?, size?}`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcaddressParams {
@@ -49,7 +49,6 @@ pub struct PlcaddressParams {
 impl Generic for PlcaddressParams {
     const ID: &'static str = "plcaddress";
     const TITLE: &'static str = "PLC Addresses";
-    const HELP: &'static str = "{rack: id or tag, style?: byte.bit|iec|percent|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let text = |v: Option<Option<TextOrNumber>>| v.map(|v| v.map(|t| t.text()));

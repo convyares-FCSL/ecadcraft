@@ -145,7 +145,8 @@ pub(crate) fn box_json(doc: &Document, plan: &BoxPlan) -> Value {
 // ---------------------------------------------------------------------------------------------
 // The commands
 
-/// The outline and the proposal of `locationbox`.
+/// A location box: an outline carrying a location (and a function, when given). Give exactly one of `corners`,
+/// `points` and `item`. It proposes its values for the devices inside. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LocationboxParams {
@@ -174,7 +175,6 @@ pub struct LocationboxParams {
 impl Generic for LocationboxParams {
     const ID: &'static str = "locationbox";
     const TITLE: &'static str = "Location Box";
-    const HELP: &'static str = "{location: \"+CP1\", function?: \"=F1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id (a closed polyline), page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (exactly one of corners, points, item; default the active page; brief 052: it proposes its values for the devices inside)";
     const STATE: State = State::Conflicts;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
@@ -183,7 +183,8 @@ impl Generic for LocationboxParams {
     }
 }
 
-/// `functionbox {function, location?, corners | points | item, page?, proposal?}`: a box carrying a function (and a location, when given), drawn dash-dot.
+/// A function box: an outline carrying a function (and a location, when given), drawn dash-dot. Give exactly one
+/// of `corners`, `points` and `item`. It proposes its values for the devices inside. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionboxParams {
@@ -212,7 +213,6 @@ pub struct FunctionboxParams {
 impl Generic for FunctionboxParams {
     const ID: &'static str = "functionbox";
     const TITLE: &'static str = "Function Box";
-    const HELP: &'static str = "{function: \"=F1\", location?: \"+CP1\", corners?: [[x,y],[x,y]] | points?: [[x,y], …] | item?: id, page?: id, proposal?: \"propose\" | \"move\" | \"keep\"} (brief 052: drawn dash-dot; it proposes its values for the devices inside)";
     const STATE: State = State::Conflicts;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {

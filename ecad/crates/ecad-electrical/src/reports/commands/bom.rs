@@ -452,9 +452,8 @@ pub(crate) enum AddParam {
     One(LineParams),
 }
 
-/// `partline {component | components, add, kit?}` adds part lines to each device;
-/// `{component, line, set}` sets a line's fields; `{component, line, remove: true}` removes it.
-/// One transaction.
+/// Adds part lines to each device (`{component | devices, add, kit?}`, at most 20 lines), sets a line's fields
+/// (`{component, line, set}`), or removes a line (`{component, line, remove: true}`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PartlineParams {
@@ -508,8 +507,8 @@ pub(crate) struct ItemParams {
     article_number: FieldValue,
 }
 
-/// `bomitem {description, qty?, unit?, location?, part_number?, maker?, article_number?}` adds an
-/// item; `{item, set}` edits one; `{item, delete: true}` deletes one. One transaction.
+/// Adds a loose bill-of-materials item (`{description, qty?, unit?, location?, part_number?, maker?,
+/// article_number?}`), edits one (`{item, set}`), or deletes one (`{item, delete: true}`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BomitemParams {
@@ -545,8 +544,7 @@ pub struct BomitemParams {
     article_number: FieldValue,
 }
 
-/// `article {part_number, maker?, article_number}`: sets the article number on every part with
-/// that part number (one transaction).
+/// Sets the article number on every part with this part number. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArticleParams {
@@ -596,8 +594,6 @@ impl ItemParams {
 impl Generic for PartlineParams {
     const ID: &'static str = "partline";
     const TITLE: &'static str = "Part Line";
-    const HELP: &'static str = "{component: id | devices: [id…], add: {part_number?, maker?, description?, article_number?, qty?, unit?: \"pcs\"|\"m\", for?: \"1,2,4\"} \
-| add: [{…}, …] (at most 20), kit?: name} | {component, line: n, set: {field: value|null}} | {component, line: n, remove: true} (one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let change = match self.add {
@@ -624,8 +620,6 @@ impl Generic for PartlineParams {
 impl Generic for BomitemParams {
     const ID: &'static str = "bomitem";
     const TITLE: &'static str = "BOM Item";
-    const HELP: &'static str = "{description, qty?, unit?: \"pcs\"|\"m\", location?: \"+CP1\", part_number?, maker?, article_number?} (adds an item) \
-| {item: id, set: {field: value|null}} | {item: id, delete: true} (one transaction)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         // An add takes item fields only.
@@ -665,7 +659,6 @@ impl Generic for BomitemParams {
 impl Generic for ArticleParams {
     const ID: &'static str = "article";
     const TITLE: &'static str = "Article Number";
-    const HELP: &'static str = "{part_number, maker?, article_number: text|null} (sets it on every part with that part number; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let value = self.article_number.flatten().map(|t| t.text());

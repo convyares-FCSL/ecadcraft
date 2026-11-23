@@ -48,8 +48,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     Before it, at the end of each major phase (e.g. before v0.2 goes to `main`), the overseer
     opens one **phase-end tidy-up** PR into `dev`: finished briefs' files in `docs/quick-start/`
     are folded into the guide or deleted (with the owner) and the index in `docs/quick-start.md`
-    is brought up to date; the `LANES` registrations in `ecad-engine/src/commands/mod.rs` move
-    into `commands::specs`; lanes' `ecad.*` token sections move from their design specs into
+    is brought up to date; lanes' `ecad.*` token sections move from their design specs into
     `docs/design/tokens.md`. Behaviour stays the same.
   - Never merge your own PR: green CI is not approval.
   - **Per-lane files (owner, 2026-11-13).** Lanes (briefs built at the same time on their feature
@@ -60,16 +59,18 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
       updated only at the tidy-up; a change to a general section there (setup, running) is fine.
     - **Tests:** tests live in `tests/all/<feature>/` of each crate they test (the feature
       folder of the code they cover), one module per file. Still one test executable per crate.
-    - **Commands:** a new module of commands registers in the `LANES` const in
-      `ecad-engine/src/commands/mod.rs`, one line `("<NNN>", crate::<module>::specs),`, not in
-      `commands::specs`. Its `mod` line in `lib.rs` stays where rustfmt sorts it.
+    - **Commands:** a generic command is one `Entry` line in the `GENERIC` list of
+      `ecad-engine/src/commands/mod.rs`; a module of session commands adds its `specs` to
+      `commands::specs` and its `TYPED` to `typed_commands`. Its `mod` line in `lib.rs` stays where
+      rustfmt sorts it. A command's parameters text (`help`, MCP's `list_commands`) is made from its
+      params struct (`commands::help_of`): the struct's doc comment is the summary and its notes
+      (alternative forms, units, refusals), each field's doc comment that field's help, and a closed
+      set of words is an enum, so its words are listed. Never write the text by hand.
     - **Tokens:** new `ecad.*` canvas tokens go in a section of the lane's design spec
       (`docs/design/<NNN>.md`), not at the end of `docs/design/tokens.md`. The checked shell
       tables at the top of `tokens.md` (and their constants) are still edited in place: the
       doc-sync test reads that file.
-    - After a merge that touches `LANES`, run `cargo fmt`; `lanes_are_in_brief_order`
-      (ecad-engine's unit tests) says if two registrations need swapping. Merge `dev` into the
-      feature branch locally.
+    - Merge `dev` into the feature branch locally.
 - **Checks are scoped to the change (owner decisions, 2026-11-02 and 2026-11-08).** This is Rust:
   what builds and passes clippy mostly works, so time goes on targeted tests, not repeated full runs.
   - **Worker (owner, 2026-11-12).** Before each commit: `cargo fmt --all -- --check` and the

@@ -276,7 +276,7 @@ pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<Strin
 
 // ---------------------------------------------------------------- the commands (generic)
 
-/// `symbols {query?}`: the starter symbols and devices matching `query`; read only.
+/// The starter symbols and devices matching `query`. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SymbolsParams {
@@ -288,7 +288,6 @@ pub struct SymbolsParams {
 impl Generic for SymbolsParams {
     const ID: &'static str = "symbols";
     const TITLE: &'static str = "Find Symbol";
-    const HELP: &'static str = "{query?} (starter symbols and devices matching it; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -297,7 +296,7 @@ impl Generic for SymbolsParams {
     }
 }
 
-/// `devices {tag?}`: the devices whose tag starts with `tag`; read only.
+/// The devices whose tag starts with `tag`. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DevicesParams {
@@ -309,7 +308,6 @@ pub struct DevicesParams {
 impl Generic for DevicesParams {
     const ID: &'static str = "devices";
     const TITLE: &'static str = "List Devices";
-    const HELP: &'static str = "{tag?} (devices whose tag starts with it; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -318,8 +316,7 @@ impl Generic for DevicesParams {
     }
 }
 
-/// `deviceprops {component}`: the device's properties (read only); its interactive form changes
-/// them.
+/// A device's properties. Read only; the interactive form changes them.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DevicepropsParams {
@@ -330,7 +327,6 @@ pub struct DevicepropsParams {
 impl Generic for DevicepropsParams {
     const ID: &'static str = "deviceprops";
     const TITLE: &'static str = "Device Properties";
-    const HELP: &'static str = "{component: id} (a device's properties; read only; interactive: change them)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -342,8 +338,8 @@ impl Generic for DevicepropsParams {
     }
 }
 
-/// `ecaddelete {conductor} | {component} | {cable}`: the object with its drawings, in one
-/// transaction (a cable's wires stay).
+/// Deletes one wire, device or cable with its drawings, in one transaction; give exactly one of `conductor`,
+/// `component` and `cable`. A cable's wires stay.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EcaddeleteParams {
@@ -373,7 +369,6 @@ fn delete(doc: &Document, doomed: Doomed, answer: impl FnOnce(Value) -> Value) -
 impl Generic for EcaddeleteParams {
     const ID: &'static str = "ecaddelete";
     const TITLE: &'static str = "Delete Electrical Object";
-    const HELP: &'static str = "{conductor: id} | {component: id} | {cable: id}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doomed = match (self.conductor, self.component, self.cable) {
@@ -386,7 +381,7 @@ impl Generic for EcaddeleteParams {
     }
 }
 
-/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete`
+/// Deletes a device with every symbol of it, as `ecaddelete` does.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DevicedeleteParams {
@@ -397,7 +392,6 @@ pub struct DevicedeleteParams {
 impl Generic for DevicedeleteParams {
     const ID: &'static str = "devicedelete";
     const TITLE: &'static str = "Delete Device";
-    const HELP: &'static str = "{component: id} (deletes the device with every symbol, as `ecaddelete`)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let tag = devices::tags::tag_words(cx.doc, self.component);
@@ -409,10 +403,9 @@ impl Generic for DevicedeleteParams {
     }
 }
 
-/// `tagsettings {padding?, prefixes?}`: how many digits
-/// automatic tag numbers have, and the project's own prefix per starter symbol (`{"coil": "KA"}`;
-/// `null` goes back to the built-in one). One `SetProjectSettings` transaction; with nothing to
-/// change, or no parameters, it records nothing and reports the settings.
+/// How many digits automatic tag numbers have, and the project's own prefix per starter symbol ({"coil": "KA"};
+/// null goes back to the built-in one). One transaction; with nothing to change, or no parameters, it records
+/// nothing and lists the settings.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TagsettingsParams {
@@ -427,7 +420,6 @@ pub struct TagsettingsParams {
 impl Generic for TagsettingsParams {
     const ID: &'static str = "tagsettings";
     const TITLE: &'static str = "Tag Settings";
-    const HELP: &'static str = "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let settings = tag_settings(self.padding, self.prefixes.unwrap_or_default())?;

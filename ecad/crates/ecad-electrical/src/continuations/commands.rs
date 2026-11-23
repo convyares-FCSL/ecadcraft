@@ -172,8 +172,7 @@ fn continuation_keys(key: &str) -> CmdError {
 // ---------------------------------------------------------------------------------------------
 // The commands (generic: crate::commands::run)
 
-/// `contcaption {continuations, caption}`: sets (or with null removes) the
-/// arrows' caption, one transaction.
+/// Sets the continuation arrows' caption ("TO CONTROL SUPPLY"), or removes it with null. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContcaptionParams {
@@ -188,8 +187,6 @@ pub struct ContcaptionParams {
 impl Generic for ContcaptionParams {
     const ID: &'static str = "contcaption";
     const TITLE: &'static str = "Caption Continuations";
-    const HELP: &'static str =
-        "{continuations: [id…] (1-2000), caption: \"TO CONTROL SUPPLY\" | null} (sets or removes the arrows' caption, one transaction)";
     const STATE: State = State::LastCaption;
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {

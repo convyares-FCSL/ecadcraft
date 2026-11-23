@@ -170,8 +170,7 @@ pub const DEFAULT_LIMIT: usize = 200;
 /// Most rows one `references` answers.
 pub const MAX_LIMIT: usize = 2000;
 
-/// `references {component?, cable?, page?, limit?, after?}` (read only): cable and device references,
-/// a page at a time.
+/// Cable, device and continuation references, a page at a time. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceReferencesParams {
@@ -195,7 +194,7 @@ pub struct DeviceReferencesParams {
     after: Option<u64>,
 }
 
-/// `contacts {component}` (read only): the device's contact table: offer, head, placement, rows.
+/// A device's contact table: its offer, head, placement and rows. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContactsParams {
@@ -203,7 +202,7 @@ pub struct ContactsParams {
     component: DeviceId,
 }
 
-/// `mirrormove {component, at? | placement?}`: where the device's contact table goes.
+/// Where a device's contact table goes: a page point (`at`) or a placement.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MirrormoveParams {
@@ -220,7 +219,6 @@ pub struct MirrormoveParams {
 impl Generic for DeviceReferencesParams {
     const ID: &'static str = "references";
     const TITLE: &'static str = "List References";
-    const HELP: &'static str = "{component?: id, aid?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable, device and continuation references; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -240,7 +238,6 @@ impl Generic for DeviceReferencesParams {
 impl Generic for ContactsParams {
     const ID: &'static str = "contacts";
     const TITLE: &'static str = "Device Contacts";
-    const HELP: &'static str = "{component: id} (the device's contact table: offer, head, placement, rows; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -252,8 +249,6 @@ impl Generic for ContactsParams {
 impl Generic for MirrormoveParams {
     const ID: &'static str = "mirrormove";
     const TITLE: &'static str = "Move Mirror Table";
-    const HELP: &'static str =
-        "{component: id, at?: [x,y], placement?: \"auto\"|\"below\"|\"right\"|\"off\"} (where the device's contact table goes)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let at = self.at.map(|a| a.0);

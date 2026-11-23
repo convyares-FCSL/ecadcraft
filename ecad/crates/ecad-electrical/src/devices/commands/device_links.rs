@@ -183,7 +183,7 @@ impl From<KindParam> for LinkKind {
     }
 }
 
-/// `linkdevices {kind, devices: [a, b]}`: link two devices.
+/// Links two devices and answers with the link's id.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LinkParams {
@@ -196,7 +196,6 @@ pub struct LinkParams {
 impl Generic for LinkParams {
     const ID: &'static str = "linkdevices";
     const TITLE: &'static str = "Link Devices";
-    const HELP: &'static str = "{kind: \"mechanical_interlock\" | \"auxiliary_block\", devices: [id, id]} (link two devices; answers the link id)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let [a, b] = self.devices;
@@ -205,7 +204,7 @@ impl Generic for LinkParams {
     }
 }
 
-/// `unlinkdevices {link}`: remove a device link.
+/// Removes a device link.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UnlinkParams {
@@ -216,7 +215,6 @@ pub struct UnlinkParams {
 impl Generic for UnlinkParams {
     const ID: &'static str = "unlinkdevices";
     const TITLE: &'static str = "Unlink Devices";
-    const HELP: &'static str = "{link: id} (remove a device link)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let ops = plan_unlink(cx.doc, self.link)?;
@@ -238,8 +236,8 @@ pub(crate) enum FieldKindParam {
     Choice,
 }
 
-/// `userfield {name, kind, unit?, options?}` adds a project user field; `{name, remove: true}`
-/// removes it and clears its values.
+/// Adds a project user field, or with `remove: true` removes one and clears its values. A device's value is set
+/// with `setprop` key "user.<name>".
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UserFieldParams {
@@ -282,7 +280,6 @@ impl UserFieldParams {
 impl Generic for UserFieldParams {
     const ID: &'static str = "userfield";
     const TITLE: &'static str = "User Field";
-    const HELP: &'static str = "{name, kind?: \"text\" | \"number\" | \"flag\" | \"choice\", unit?, options?: [text], remove?: bool} (add a project user field, or remove one and clear its values; set a device's value with setprop key \"user.<name>\")";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         if self.remove {

@@ -21,7 +21,6 @@ fn every_command_is_typed_with_a_schema_or_still_listed() {
         let schema = schema_of(t.id).unwrap_or(Value::Null);
         assert_eq!(schema["type"], json!("object"), "{}: {schema}", t.id);
         assert!(schema["properties"].is_object(), "{}: {schema}", t.id);
-        assert!(!spec.params.is_empty(), "{} keeps its params text", t.id);
         assert!(!UNTYPED.contains(&t.id), "{} is typed now: remove it from UNTYPED", t.id);
     }
     let untyped: Vec<&str> = all.iter().map(|s| s.id).filter(|id| !typed.iter().any(|t| t.id == *id)).collect();
@@ -29,6 +28,41 @@ fn every_command_is_typed_with_a_schema_or_still_listed() {
     assert!(unlisted.is_empty(), "registered without a typed input and not in UNTYPED: {unlisted:?}");
     let stale: Vec<&&str> = UNTYPED.iter().filter(|id| !untyped.contains(id)).collect();
     assert!(stale.is_empty(), "in UNTYPED but not an untyped registered command: {stale:?}");
+}
+
+/// A generic command's parameters text is made from its params struct's docs, so the struct and
+/// every field carry a description.
+#[test]
+fn every_generic_command_and_field_is_described() {
+    let mut missing = Vec::new();
+    for t in typed_commands().iter().filter(|t| t.access.is_some()) {
+        let schema = (t.schema)();
+        if schema["description"].as_str().is_none_or(|d| d.trim().is_empty()) {
+            missing.push(t.id.to_string());
+        }
+        for (name, field) in schema["properties"].as_object().into_iter().flatten() {
+            if field["description"].as_str().is_none_or(|d| d.trim().is_empty()) {
+                missing.push(format!("{}.{name}", t.id));
+            }
+        }
+    }
+    assert!(missing.is_empty(), "no description: {missing:?}");
+}
+
+/// The parameters text is made from the schema: fields (required first, as declared; `?` when optional), a closed
+/// set's words, then the summary and each field's help.
+#[test]
+fn the_parameters_text_is_made_from_the_schema() {
+    let spec = specs().into_iter().find(|s| s.id == "connect").unwrap_or_else(|| panic!("connect is registered"));
+    assert_eq!(spec.params, ecad_engine::commands::help_of("connect"));
+    assert!(
+        spec.params.starts_with(r#"{route: hex id, end: "A"|"B", connection_point: hex id} Lands a route's end on a connection point"#),
+        "{}",
+        spec.params
+    );
+    assert!(spec.params.contains("`end`: Which end of it."), "{}", spec.params);
+    let disconnect = ecad_engine::commands::help_of("disconnect");
+    assert!(disconnect.starts_with(r#"{route: hex id, end: "A"|"B"}"#), "{disconnect}");
 }
 
 #[test]

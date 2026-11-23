@@ -11,8 +11,8 @@ use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 use crate::plc::rack::*;
 
-/// `plcslot {card, rack?, slot?, swap?}`: put a card in a slot, move it, swap it
-/// with the card there (`swap: true`), or take it out (`rack: null`). One transaction.
+/// Puts a PLC card in a slot or moves it, swaps it with the card there (`swap: true`), or takes it out of its
+/// rack (`rack: null`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcslotParams {
@@ -33,7 +33,6 @@ pub struct PlcslotParams {
 impl Generic for PlcslotParams {
     const ID: &'static str = "plcslot";
     const TITLE: &'static str = "Card Slot";
-    const HELP: &'static str = "{card: id or tag, rack?: id or tag (null: take the card out of its rack; absent: its own rack, else the only one), slot?: number (absent: the next free slot), swap?: bool (swap with the card in that slot)}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let swap = self.swap.unwrap_or(false);
@@ -68,8 +67,7 @@ impl Generic for PlcslotParams {
     }
 }
 
-/// `plcracks {rack?}`: each rack with its slots in order, and the cards in no
-/// rack; read only, from the kept model.
+/// Each PLC rack with its slots in order, and the cards in no rack. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcracksParams {
@@ -81,7 +79,6 @@ pub struct PlcracksParams {
 impl Generic for PlcracksParams {
     const ID: &'static str = "plcracks";
     const TITLE: &'static str = "PLC Racks";
-    const HELP: &'static str = "{rack?: id or tag} (each rack with its slots in order, and the cards in no rack; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -105,9 +102,8 @@ impl Generic for PlcracksParams {
     }
 }
 
-/// `plccardtype {card, type}`: change what an I/O card is, in one transaction
-/// ([`plan_card_type`]). Refused, in words, when a signal (a channel in use, named or drawn) sits at
-/// or past the new type's channel count.
+/// Changes what an I/O card is (and so its body symbol), in one transaction. Refused when a signal (a channel in
+/// use, named or drawn) sits at or past the new type's channel count.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlccardtypeParams {
@@ -121,7 +117,6 @@ pub struct PlccardtypeParams {
 impl Generic for PlccardtypeParams {
     const ID: &'static str = "plccardtype";
     const TITLE: &'static str = "Card Type";
-    const HELP: &'static str = "{card: id or tag, type: DI|DQ|AI|AO|RTD|IOL} (changes what an I/O card is: its body symbol, one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let to = io_type(&self.ty)?;

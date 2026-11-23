@@ -84,8 +84,7 @@ impl From<EndParam> for End {
     }
 }
 
-/// `connect {route, end, terminal}`: land the route's end on the connection point, moving it
-/// onto the point.
+/// Lands a route's end on a connection point, moving the end onto it.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectParams {
@@ -100,7 +99,6 @@ pub struct ConnectParams {
 impl Generic for ConnectParams {
     const ID: &'static str = "connect";
     const TITLE: &'static str = "Connect";
-    const HELP: &'static str = "{route: id, end: \"A\"|\"B\", connection_point: id}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let ops = connect(cx.doc, self.route, self.end.into(), self.connection_point)?;
@@ -108,7 +106,7 @@ impl Generic for ConnectParams {
     }
 }
 
-/// `disconnect {route, end}`: let the route's end go; it ends free where it is.
+/// Lets a route's end go; it ends free where it is.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DisconnectParams {
@@ -121,7 +119,6 @@ pub struct DisconnectParams {
 impl Generic for DisconnectParams {
     const ID: &'static str = "disconnect";
     const TITLE: &'static str = "Disconnect";
-    const HELP: &'static str = "{route: id, end: \"A\"|\"B\"}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let ops = disconnect(cx.doc, self.route, self.end.into())?;

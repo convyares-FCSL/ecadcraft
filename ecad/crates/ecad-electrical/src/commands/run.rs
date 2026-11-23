@@ -5,7 +5,10 @@
 //! implements [`Generic`], with what it touches as data: its pages, its access, its files, its own
 //! state. The engine's one runner reads the parameters ([`crate::commands::input`]),
 //! takes the project, gives the command a [`Cx`], commits its [`Edit`] as one transaction under its
-//! id, echoes its message and answers with its JSON. Its MCP schema is the params struct's.
+//! id, echoes its message and answers with its JSON. Its MCP schema is the params struct's, and so
+//! is its parameters text ([`crate::commands::input::help`]): the struct's doc comment is the
+//! command's summary and notes (its alternative forms, units, refusals), each field's doc comment
+//! that field's help, and a closed set of words is an enum, so its words are listed.
 //!
 //! Excludes: the session (drawing, cursor, selection, CADCraft entities), locking and committing,
 //! which are the engine's. A command that needs the session is not generic.
@@ -282,8 +285,6 @@ pub trait Generic: DeserializeOwned + schemars::JsonSchema {
     const ID: &'static str;
     /// Its title in menus and the history.
     const TITLE: &'static str;
-    /// Its parameters in words (`help`, the command list).
-    const HELP: &'static str;
     /// The pages it runs on.
     const PAGES: Pages = Pages::Available;
     /// Whether it changes the project.

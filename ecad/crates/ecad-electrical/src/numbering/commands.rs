@@ -595,8 +595,8 @@ pub enum ScopeParam {
     Pick(ScopePick),
 }
 
-/// `renumber {kind?, strips?, scope?, objects?, start?, digits?, digits_for_new?, preview?,
-/// based_on?}`: drawing order; fixed tags kept; one transaction.
+/// Renumbers tags in drawing order; fixed tags are kept. One transaction, or with `preview` only the list of
+/// changes.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberParams {
@@ -629,8 +629,8 @@ pub struct RenumberParams {
     based_on: Option<u64>,
 }
 
-/// `finalise {preview?, based_on?}` = `renumber {kind: "all", scope: "provisional"}` (design
-/// numbers the provisional tags and unnumbered nets in drawing order; one transaction.
+/// Numbers the provisional tags and the unnumbered nets in drawing order, as `renumber {kind: "all", scope:
+/// "provisional"}`. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FinaliseParams {
@@ -642,8 +642,8 @@ pub struct FinaliseParams {
     based_on: Option<u64>,
 }
 
-/// `numbering {provisional?}`: no parameters reads; `provisional` sets whether
-/// new tags are provisional (`-K?1`) until Finalise.
+/// No parameters reads the numbering setting; `provisional` sets whether new tags are provisional (-K?1) until
+/// Finalise.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NumberingParams {
@@ -734,7 +734,6 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
 impl Generic for RenumberParams {
     const ID: &'static str = "renumber";
     const TITLE: &'static str = "Renumber";
-    const HELP: &'static str = "{kind?: \"devices\"|\"cables\"|\"wires\"|\"terminal_blocks\"|\"all\", strips?: [id] (terminal blocks, with scope \"selection\"), scope?: \"all\"|\"selection\"|\"provisional\"|{prefix}|{folder: id}|{pages: [id]}, objects?: [id] (selection), start?: n, digits?: 1..6, digits_for_new?: bool, preview?: bool, based_on?: change count} (drawing order; fixed tags kept; one transaction)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
@@ -751,8 +750,6 @@ impl Generic for RenumberParams {
 impl Generic for FinaliseParams {
     const ID: &'static str = "finalise";
     const TITLE: &'static str = "Finalise Numbering";
-    const HELP: &'static str =
-        "{preview?: bool, based_on?: change count} (numbers the provisional tags and unnumbered nets in drawing order; one transaction)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
@@ -764,7 +761,6 @@ impl Generic for FinaliseParams {
 impl Generic for NumberingParams {
     const ID: &'static str = "numbering";
     const TITLE: &'static str = "Numbering Settings";
-    const HELP: &'static str = "{provisional?: bool} (no parameters reads; provisional: new tags are -K?1 until Finalise)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {

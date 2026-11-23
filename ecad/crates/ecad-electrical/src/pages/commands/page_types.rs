@@ -182,8 +182,8 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
 // The commands (generic: crate::commands::run). `deletepage` closes the page's view and stays the
 // engine's.
 
-/// `folderprops {folder, start?}`: a folder's start number (1 to 6 digits, leading zeros set the
-/// width); null or blank clears it; no `start` reads it.
+/// A folder's start number: 1 to 6 digits ("100"), leading zeros set the width; null or blank clears it. Without
+/// `start` it reads it.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FolderpropsParams {
@@ -194,8 +194,8 @@ pub struct FolderpropsParams {
     start: Option<Option<String>>,
 }
 
-/// `renumberpages {folder?}`: renumbers each folder from its start number, the rest from 1; with
-/// `folder`, that folder and its sub-folders only (one transaction).
+/// Renumbers each folder's pages from its start number, the rest from 1; with `folder`, only that folder and its
+/// sub-folders. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberpagesParams {
@@ -207,8 +207,6 @@ pub struct RenumberpagesParams {
 impl Generic for FolderpropsParams {
     const ID: &'static str = "folderprops";
     const TITLE: &'static str = "Folder Properties";
-    const HELP: &'static str =
-        "{folder: id, start?: \"100\"|null} (a folder's start number: 1 to 6 digits, leading zeros set the width; null clears; no start: read only)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match &self.start {
@@ -241,7 +239,6 @@ impl Generic for FolderpropsParams {
 impl Generic for RenumberpagesParams {
     const ID: &'static str = "renumberpages";
     const TITLE: &'static str = "Renumber Pages";
-    const HELP: &'static str = "{folder?: id} (renumbers each folder from its start number, the rest from 1; with folder, that folder and its sub-folders only; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;

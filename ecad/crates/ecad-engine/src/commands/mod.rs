@@ -304,6 +304,15 @@ pub fn schema_of(id: &str) -> Option<Value> {
     typed_commands().into_iter().find(|t| t.id == id).map(|t| (t.schema)())
 }
 
+/// The parameters text of typed command `id` (`help`, the command lists of MCP and the agent), made from
+/// its schema by [`ecad_electrical::commands::input::help`]: its params struct's docs are the one source.
+/// Empty for a command whose input is not typed.
+pub fn help_of(id: &str) -> &'static str {
+    static HELP: std::sync::OnceLock<std::collections::BTreeMap<&'static str, String>> = std::sync::OnceLock::new();
+    let all = HELP.get_or_init(|| typed_commands().into_iter().map(|t| (t.id, ecad_electrical::commands::input::help(&(t.schema)()))).collect());
+    all.get(id).map_or("", String::as_str)
+}
+
 /// Refusal for edits on a page whose drawing could not be rebuilt; the page takes edits again once it is closed
 /// and reopened.
 pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";

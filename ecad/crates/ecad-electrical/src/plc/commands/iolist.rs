@@ -32,8 +32,7 @@ impl StateParam {
     }
 }
 
-/// `iolist {rack?, card?, state?, limit?, after?}`: the cards and their rows;
-/// read only.
+/// One row per channel of every PLC card, drawn or not. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct IolistParams {
@@ -57,7 +56,6 @@ pub struct IolistParams {
 impl Generic for IolistParams {
     const ID: &'static str = "iolist";
     const TITLE: &'static str = "I/O List";
-    const HELP: &'static str = "{rack?: id or tag, card?: id or tag, state?: used|reserved|spare, limit?: rows (200, max 2000), after?: row index} (one row per channel of every card, drawn or not; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

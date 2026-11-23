@@ -417,8 +417,8 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
 // ---------------------------------------------------------------------------------------------
 // The commands (generic: crate::commands::run)
 
-/// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`:
-/// writes a default at that level (page: the page shown if not given); one transaction.
+/// Writes a default at a level, or with `reset: true` removes that level's value. The page level is the page
+/// shown unless `page` is given. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetdefaultParams {
@@ -450,7 +450,6 @@ pub struct SetdefaultParams {
 impl Generic for SetdefaultParams {
     const ID: &'static str = "setdefault";
     const TITLE: &'static str = "Set Default";
-    const HELP: &'static str = "{key, level: \"standard\"|\"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, value: string|number | reset: true} (writes a default at that level; page: the page shown if not given; one transaction)";
 
     fn check(&self, registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         // A registry entry's level and value are refused before the project is taken (as before).
@@ -516,8 +515,7 @@ impl SetdefaultParams {
     }
 }
 
-/// `defaults {group?, key?, page?, component?, representation?}` (read only):
-/// the defaults registry, resolved at a symbol, a device and a page, or the project.
+/// The defaults registry, resolved at a symbol, a device or a page, or for the project. Read only.
 #[derive(serde::Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DefaultsParams {
@@ -541,7 +539,6 @@ pub struct DefaultsParams {
 impl Generic for DefaultsParams {
     const ID: &'static str = "defaults";
     const TITLE: &'static str = "Defaults";
-    const HELP: &'static str = "{group?: string, key?: string, page?: id, component?: id, representation?: id} (read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

@@ -15,7 +15,8 @@ use crate::commands::input::{MAX_COORD, OUT_OF_RANGE};
 use crate::commands::run::{Cx, Generic, LastPlaced, Outcome, Slot, State};
 use crate::error::CmdError;
 
-/// `terminalblocks {strip?, pe?, type?, level?, position?, from, to}`.
+/// One terminal block, or one level, on each wire the line from `from` to `to` crosses (at most 200). A level
+/// fills the next position of its type that lacks it. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalBlocksParams {
@@ -43,7 +44,6 @@ pub struct TerminalBlocksParams {
 impl Generic for TerminalBlocksParams {
     const ID: &'static str = "terminalblocks";
     const TITLE: &'static str = "Place Terminals";
-    const HELP: &'static str = "{strip?: id (null or absent: a new strip), pe?: bool, type?: Feedthrough|PE|x2|x2B|x3|LNPE|SEN|DIS|FUSE, level?: name, number or All, position?: label, from: [x,y], to: [x,y]} (one terminal block, or one level, on each wire the line crosses; a level fills the next position of its type that lacks it; at most 200)";
     const STATE: State = State::LastPlaced;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {

@@ -233,6 +233,10 @@ fn a_client_lists_the_ecad_commands_with_their_docs_and_the_ecad_tools() {
         assert_eq!(info["params"].as_str(), Some(spec.params), "{}", spec.id);
         assert!(info["params"].as_str().is_some_and(|p| !p.is_empty()), "{} has no parameter docs", spec.id);
     }
+    // A generic command's docs are made from its schema.
+    let connect = catalog.iter().find(|i| i["id"] == "connect").unwrap();
+    assert_eq!(connect["params"].as_str(), Some(ecad_engine::commands::help_of("connect")));
+    assert!(connect["params"].as_str().unwrap().starts_with(r#"{route: hex id, end: "A"|"B", connection_point: hex id} "#), "{connect}");
     let filtered = c.ok("list_commands", json!({"filter": "cable"}));
     let ids: Vec<&str> = filtered.as_array().unwrap().iter().filter_map(|i| i["id"].as_str()).collect();
     assert!(ids.contains(&"cableslash") && ids.contains(&"cableview") && ids.contains(&"cableadd"), "{ids:?}");

@@ -384,8 +384,8 @@ fn setlocation_target(p: &SetlocationParams) -> Result<(Aspect, Vec<DeviceId>, S
     Ok((a, objects, prop))
 }
 
-/// `setlocation {component | components, value, aspect?, type?}`: a device's location
-/// or function, as a code of the project's list (one transaction; null clears it).
+/// Sets a device's location or function (`component`, or several `devices`) to a code of the project's list; null
+/// clears it. A code not in the list adds its entry. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetlocationParams {
@@ -407,7 +407,7 @@ pub struct SetlocationParams {
     r#type: Option<String>,
 }
 
-/// `setfunction {component | components, value}`: as `setlocation` with aspect function.
+/// As `setlocation` with aspect "function".
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetfunctionParams {
@@ -426,9 +426,9 @@ pub struct SetfunctionParams {
     r#type: Option<String>,
 }
 
-/// `conflicts {answer?, components?, aspect?}`: the waiting conflicts; Move,
-/// Half or Leave. `devices` and `aspect` choose rows (Choose: one row is one device and one
-/// aspect). Move and Half act only on the rows that still hold (an undo may have taken them away).
+/// The devices the last placement, move or box left with another function or location. No answer lists them;
+/// "move" sets them in one transaction; "leave" writes nothing. `devices` and `aspect` choose rows; Move and Half
+/// act only on the rows that still hold (an undo may have taken them away).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConflictsParams {
@@ -446,8 +446,6 @@ pub struct ConflictsParams {
 impl Generic for SetlocationParams {
     const ID: &'static str = "setlocation";
     const TITLE: &'static str = "Set Location";
-    const HELP: &'static str = "{component: id | devices: [id], value: code | null, aspect?: \"location\" (default) | \"function\", type?: \"socket\" | \"plug\" | \"terminal\" | a symbol type (an override, location only)} \
-(one transaction; a code not in the project's list adds its entry; null clears it)";
     const STATE: State = State::Conflicts;
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
@@ -464,7 +462,6 @@ impl Generic for SetlocationParams {
 impl Generic for SetfunctionParams {
     const ID: &'static str = "setfunction";
     const TITLE: &'static str = "Set Function";
-    const HELP: &'static str = "{component: id | devices: [id], value: code | null} (as setlocation with aspect \"function\")";
     const STATE: State = State::Conflicts;
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
@@ -500,7 +497,6 @@ fn said(v: Value) -> Outcome {
 impl Generic for ConflictsParams {
     const ID: &'static str = "conflicts";
     const TITLE: &'static str = "Location Conflicts";
-    const HELP: &'static str = "{answer?: \"move\" | \"leave\", components?: [id] (Choose: only these)} (the devices the last placement, move or box left with another function or location; no answer lists them; `move` sets them in one transaction; `leave` writes nothing)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const STATE: State = State::Conflicts;
 

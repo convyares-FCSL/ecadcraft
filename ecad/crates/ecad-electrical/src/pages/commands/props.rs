@@ -23,8 +23,8 @@ use crate::releases::revisions;
 use crate::symbols::proposals;
 use crate::views::Views;
 
-/// `pageprops {page?, number?, title?, function?, location?, sheet?, proposal?}`: a page's
-/// properties (each null clears; no fields: the current values, read only).
+/// A page's properties: each given field is set (null clears it) in one transaction; no fields reads the current
+/// values.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PagepropsParams {
@@ -72,11 +72,7 @@ pub(crate) enum ReferenceStyleParam {
     Column,
 }
 
-/// `projectprops {title?, drawing_number?, customer?, status?, function?, location?, sheet?,
-/// page_number_step?, reference_style?, contact_mirror?, tag_padding?, tag_prefixes?,
-/// colour_style?, label_height?, tag_dash?, tag_case?, revision_columns?, revision_pending?,
-/// provisional?, props?, proposal?}`: the project's properties and settings, in one transaction
-/// (no fields: everything, read only).
+/// The project's properties and settings: each given field is set in one transaction; no fields reads everything.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectpropsParams {
@@ -203,8 +199,7 @@ impl RevSchemeParam {
     }
 }
 
-/// `revision {rev?, date?, description?, drawn?, checked?, approved?, fields?, n?}`: the pending
-/// revision's fields, custom fields by name; an issued row is refused.
+/// Sets the pending revision's fields, and its custom fields by name. An issued row is refused.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RevisionParams {
@@ -281,8 +276,6 @@ fn props_outcome(
 impl Generic for PagepropsParams {
     const ID: &'static str = "pageprops";
     const TITLE: &'static str = "Page Properties";
-    const HELP: &'static str = "{page?: id (default: the active page), number?, title?, function?, location?, sheet?} (each null \
-clears; no fields: the current values, read only)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const STATE: State = State::Conflicts;
 
@@ -337,11 +330,6 @@ clears; no fields: the current values, read only)";
 impl Generic for ProjectpropsParams {
     const ID: &'static str = "projectprops";
     const TITLE: &'static str = "Project Properties";
-    const HELP: &'static str = "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
-page_number_step?: n, reference_style?: \"page-zone\"|\"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
-tag_prefixes?: {symbol: prefix|null}, colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm, \
-tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date, ecr:ECR@20, description\"|null, \
-revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const STATE: State = State::Conflicts;
 
@@ -402,8 +390,6 @@ revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one t
 impl Generic for RevisionParams {
     const ID: &'static str = "revision";
     const TITLE: &'static str = "Revision";
-    const HELP: &'static str = "{rev?, date?, description?, drawn?, checked?, approved?, fields?: {field: text|null}, n?} (the pending revision's \
-fields, custom fields by name; an issued row is refused)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let f = self.fields();

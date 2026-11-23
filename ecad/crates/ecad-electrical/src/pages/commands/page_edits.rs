@@ -12,8 +12,7 @@ use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
-/// `renamepage {page, title}`: one transaction, `RemovePage` + `AddPage`
-/// with the same ID at the same position. The same title changes nothing.
+/// Renames a page in one transaction; the same title changes nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenamepageParams {
@@ -23,9 +22,8 @@ pub struct RenamepageParams {
     title: String,
 }
 
-/// `movepage {page, index}` (1 = first, `RemovePage` at the old position +
-/// `AddPage` at the new) or `{page, folder, index?}` (into a folder, null the top
-/// level, 1 = first of its pages, default last). The same position changes nothing.
+/// Moves a page to a position (`{page, index}`, 1 = first), or into a folder (`{page, folder, index?}`: null is
+/// the top level, 1 = first of its pages, default last). The same position changes nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MovepageParams {
@@ -42,7 +40,6 @@ pub struct MovepageParams {
 impl Generic for RenamepageParams {
     const ID: &'static str = "renamepage";
     const TITLE: &'static str = "Rename Page";
-    const HELP: &'static str = "{page: id, title}";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         page_title(&self.title).map(|_| ())
@@ -60,7 +57,6 @@ impl Generic for RenamepageParams {
 impl Generic for MovepageParams {
     const ID: &'static str = "movepage";
     const TITLE: &'static str = "Move Page";
-    const HELP: &'static str = "{page: id, index: n} (1 = first) | {page: id, folder: id|null, index?: n} (into a folder, 1 = first of its pages)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let (page, index) = (self.page, self.index);

@@ -52,7 +52,7 @@ Still to move: the generic halves of device, page, sheet, symbol, terminal, text
 ```rust
 // ecad-electrical::cmd::run (Core: no engine, no session, no disk)
 pub trait Generic: DeserializeOwned + JsonSchema {
-    const ID: &'static str; const TITLE: &'static str; const HELP: &'static str;
+    const ID: &'static str; const TITLE: &'static str;
     const PAGES: Pages = Pages::Available;       // Any (also an unavailable page), or ReadAnywhere
                                                  // (reads anywhere, an edit only on an available page)
     const ACCESS: Access = Access::Edits;        // or Reads: the agent gate lets it run with writes off
@@ -73,7 +73,9 @@ pub enum Answer { Now(Value), Committed(Box<dyn FnOnce(&Document, &mut Views) ->
 
 - **Params:** the command's `#[derive(Deserialize, JsonSchema)]` struct lives next to its rules
   in ecad-electrical (schemars is a plain Core dependency, owner 2026-11-21). Reading and refusal
-  wording are `cmd::input`.
+  wording are `cmd::input`. The command's parameters text is made from the same schema
+  (`input::help`, owner 2026-11-23): the struct's doc comment is the summary and notes, each
+  field's doc comment its help, and closed word sets are enums; there is no hand-written help.
 - **Cx holds only shared state** (fonts, plain style, tolerance, change count, tag marks,
   designation uses, derived views). State a few commands keep beyond the document is declared
   (`STATE`) and handed over as a `Slot`; it is kept only when the edit is committed. `Conflicts`

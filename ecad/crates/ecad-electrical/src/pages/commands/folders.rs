@@ -11,7 +11,7 @@ use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
-/// `newfolder {name, parent?}`: a folder, last among its siblings.
+/// A new folder, last among its siblings.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewfolderParams {
@@ -22,7 +22,7 @@ pub struct NewfolderParams {
     parent: Option<FolderId>,
 }
 
-/// `renamefolder {folder, name}`: the same name changes nothing.
+/// Renames a folder; the same name changes nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenamefolderParams {
@@ -32,7 +32,7 @@ pub struct RenamefolderParams {
     name: String,
 }
 
-/// `movefolder {folder, parent, index?}`: into another folder or the top level.
+/// Moves a folder into another folder or to the top level.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MovefolderParams {
@@ -47,7 +47,7 @@ pub struct MovefolderParams {
     index: Option<usize>,
 }
 
-/// `deletefolder {folder}`: its pages and sub-folders move to its parent.
+/// Deletes a folder; its pages and sub-folders move to its parent.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeletefolderParams {
@@ -58,7 +58,6 @@ pub struct DeletefolderParams {
 impl Generic for NewfolderParams {
     const ID: &'static str = "newfolder";
     const TITLE: &'static str = "New Folder";
-    const HELP: &'static str = "{name, parent?: id|null}";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         folder_name(&self.name).map(|_| ())
@@ -74,7 +73,6 @@ impl Generic for NewfolderParams {
 impl Generic for RenamefolderParams {
     const ID: &'static str = "renamefolder";
     const TITLE: &'static str = "Rename Folder";
-    const HELP: &'static str = "{folder: id, name}";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         folder_name(&self.name).map(|_| ())
@@ -93,7 +91,6 @@ impl Generic for RenamefolderParams {
 impl Generic for MovefolderParams {
     const ID: &'static str = "movefolder";
     const TITLE: &'static str = "Move Folder";
-    const HELP: &'static str = "{folder: id, parent: id|null, index?: n} (1 = first among its new siblings; default last)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let (folder, parent, index) = (self.folder, self.parent.flatten(), self.index);
@@ -106,7 +103,6 @@ impl Generic for MovefolderParams {
 impl Generic for DeletefolderParams {
     const ID: &'static str = "deletefolder";
     const TITLE: &'static str = "Delete Folder";
-    const HELP: &'static str = "{folder: id} (its pages and sub-folders move to its parent)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let folder = self.folder;

@@ -64,9 +64,9 @@ impl Entry {
     }
 }
 
-/// The registration of generic command `P`.
+/// The registration of generic command `P`; its parameters text is made from its schema.
 fn spec<P: Generic>() -> CommandSpec {
-    CommandSpec::new(P::ID, P::TITLE, run::<P>).params(P::HELP).noundo()
+    CommandSpec::new(P::ID, P::TITLE, run::<P>).params(crate::commands::help_of(P::ID)).noundo()
 }
 
 /// What each read parameter of `P` that `params` gives read.
@@ -218,7 +218,6 @@ mod tests {
     impl Generic for EditAndWrite {
         const ID: &'static str = "editandwrite";
         const TITLE: &'static str = "Edit and write";
-        const HELP: &'static str = "{path}";
         const PAGES: Runs = Runs::Any;
         const IO: Io = Io { reads: &[], writes: &["path"] };
 

@@ -413,8 +413,8 @@ enum MoveToParam {
     New,
 }
 
-/// `terminalblocklabel {terminal | strip + at, level?, position?, text?, move_to?}`:
-/// relabel a position, set or clear one level's own label, or move a level to another position.
+/// Relabels a terminal block position, sets or clears one level's own label, or moves a level to another
+/// position. The position is a terminal (`connection_point`), or `strip` with `at`. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalblocklabelParams {
@@ -444,7 +444,6 @@ pub struct TerminalblocklabelParams {
 impl Generic for TerminalblocklabelParams {
     const ID: &'static str = "terminalblocklabel";
     const TITLE: &'static str = "Terminal Block Label";
-    const HELP: &'static str = "{connection_point?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let input = TerminalblocklabelInput {
@@ -470,8 +469,7 @@ impl Generic for TerminalblocklabelParams {
 
 // ---------------------------------------------------------------- toposition
 
-/// `toposition {device, strip?, position?}`: the fuse terminal device becomes a
-/// fuse position of the strip, wires and rating kept; one transaction.
+/// A fuse terminal device becomes a fuse position of a strip, its wires and rating kept. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TopositionParams {
@@ -488,7 +486,6 @@ pub struct TopositionParams {
 impl Generic for TopositionParams {
     const ID: &'static str = "toposition";
     const TITLE: &'static str = "Make Strip Position";
-    const HELP: &'static str = "{device: id (a fuse terminal device), strip?: id (default: the nearest strip on its page), position?: label} (the device becomes a fuse position of the strip, wires and rating kept; one transaction)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let plan = plan_toposition(cx.doc, cx.ids, self.device, self.strip, self.position.as_deref())?;

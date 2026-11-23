@@ -610,8 +610,8 @@ pub(crate) enum WordsParam {
     Text(String),
 }
 
-/// `accessory {strip | terminal, at, on?, items? | add? | remove?, clear?}`:
-/// one `SetProperty` per place, all in one transaction.
+/// Puts accessories on a strip's places (`strip` or a terminal, and `at`): replaces them (`items`), adds or
+/// removes some, or empties placement keys (`clear`). All in one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AccessoryParams {
@@ -654,8 +654,9 @@ pub(crate) struct JumperBarParam {
     n: Option<u64>,
 }
 
-/// `jumper`: make a jumper bar (`{strip | terminals, positions?, skip?}`), or edit one
-/// (`{jumper_bar: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
+/// Makes a jumper bar (`{strip | connection_points, positions?, skip?}`: ranges between consecutive picks unless
+/// `skip`), or edits one (`{jumper_bar, add?, remove?, positions?, split_at?, drop_missing?, delete?}`). One
+/// transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JumperParams {
@@ -703,8 +704,6 @@ impl WordsParam {
 impl Generic for AccessoryParams {
     const ID: &'static str = "accessory";
     const TITLE: &'static str = "Strip Accessory";
-    const HELP: &'static str = "{strip?: id, connection_point?: id, at: \"start\"|\"end\"|\"all\"|label|[label…] (at most 999), on?: bool (markers on positions), \
-items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [acc.… key]} items: end_stop, end_plate, partition, strip_label; on: marker";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let words = |w: Option<Option<WordsParam>>| w.map(|w| w.map(WordsParam::words));
@@ -730,8 +729,6 @@ items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [
 impl Generic for JumperParams {
     const ID: &'static str = "jumper";
     const TITLE: &'static str = "Jumper";
-    const HELP: &'static str = "make: {strip?: id, connection_points?: [id…], positions?: \"1-4, 7\", skip?: bool} (ranges between consecutive picks unless skip); \
-edit: {jumper_bar: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, split_at?: label, drop_missing?: true, delete?: true}";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let text = |w: Option<WordsParam>| w.map(|w| w.words().text());

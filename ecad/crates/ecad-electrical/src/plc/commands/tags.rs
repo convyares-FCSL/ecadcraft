@@ -10,8 +10,8 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::plc::signals::make_tags_ops;
 
-/// `plcmaketags {card | rack}`: fill the empty tags of a card's (or a rack's
-/// cards') used and reserved channels from their descriptions, in one transaction.
+/// Fills the empty tags of a card's (or a rack's cards') used and reserved channels from their descriptions, in
+/// one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcmaketagsParams {
@@ -26,7 +26,6 @@ pub struct PlcmaketagsParams {
 impl Generic for PlcmaketagsParams {
     const ID: &'static str = "plcmaketags";
     const TITLE: &'static str = "Make PLC Tags";
-    const HELP: &'static str = "{card: id or tag} or {rack: id or tag} (fill the empty tags of used and reserved channels from their descriptions)";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;

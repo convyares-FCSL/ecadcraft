@@ -11,9 +11,9 @@ use crate::error::CmdError;
 use crate::terminal_strips::commands::terminal_strips as rules;
 use crate::terminal_strips::strip_model::StripData;
 
-/// `stripplan {strip?, limit?, after?, accessories?}` (read only): the strips in tag order (or
-/// one), paged by rows: `after` rows are skipped and at most `limit` returned, a strip split across
-/// pages carrying `first_row`; `total` counts the rows, `next` is the next `after`.
+/// Every strip's terminal blocks, drawn and spare, in tag order, paged by rows: `after` rows are skipped and at
+/// most `limit` returned; a strip split across pages carries `first_row`, `total` counts the rows and `next` is
+/// the next `after`. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StripplanParams {
@@ -34,7 +34,6 @@ pub struct StripplanParams {
 impl Generic for StripplanParams {
     const ID: &'static str = "stripplan";
     const TITLE: &'static str = "Terminal Plan";
-    const HELP: &'static str = "{strip?: id, limit?: rows (500, max 5000), after?: row index, accessories?: bool (true: gap rows, markers and jumper bars)} (every strip's terminal blocks, drawn and spare; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
@@ -62,7 +61,7 @@ impl Generic for StripplanParams {
     }
 }
 
-/// `cablecores {cable}` (read only): the cable's offered cores, used, spare and over.
+/// A cable's offered cores: used, spare and over. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CablecoresParams {
@@ -73,7 +72,6 @@ pub struct CablecoresParams {
 impl Generic for CablecoresParams {
     const ID: &'static str = "cablecores";
     const TITLE: &'static str = "Cable Cores";
-    const HELP: &'static str = "{cable: id} (the cable's offered cores, used, spare and over; read only)";
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 

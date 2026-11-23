@@ -305,7 +305,7 @@ pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: 
 // The commands (generic: ecad_electrical::commands::run). `titleblockimport` reads a DXF with
 // CADCraft's reader and stays the engine's.
 
-/// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.
+/// Every frame with its sheet, items, users and keys. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]
@@ -329,8 +329,8 @@ pub struct NewParams {
     layer: Option<String>,
 }
 
-/// `titleblock {id | name, sheet?}` reads a frame; `{id | name, name? | rename?, fields?, body?}`
-/// writes one; `{new: {from, sheet, name?, layer?}}` makes a new own frame. One transaction.
+/// Reads a frame (`{id | name, sheet?}`), writes one (`{id | name, name? | rename?, fields?, body?}`), or makes a
+/// new own frame (`{new: {from, sheet, name?, layer?}}`). A write is one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TitleblockParams {
@@ -371,7 +371,6 @@ pub(crate) fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
 impl Generic for TitleblocksParams {
     const ID: &'static str = "titleblocks";
     const TITLE: &'static str = "Title Blocks";
-    const HELP: &'static str = "{} (read only): every frame with its sheet, items, users and keys";
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
@@ -382,8 +381,6 @@ impl Generic for TitleblocksParams {
 impl Generic for TitleblockParams {
     const ID: &'static str = "titleblock";
     const TITLE: &'static str = "Title Block";
-    const HELP: &'static str = "{id | name, sheet?} (read) | {id | name, name?: new name, fields?: {key: value|null}, body?: layout} (write) | \
-{new: {from: id|\"blank\", sheet, name?, layer?}} (a new own frame); one transaction";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         if let Some(new) = self.new {

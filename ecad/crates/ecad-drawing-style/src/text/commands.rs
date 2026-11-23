@@ -439,9 +439,9 @@ impl From<KindRowParams> for KindRow {
     }
 }
 
-/// `textstyle {font?, kind?, height?, weight?, show?, kinds?: [{kind, height?, weight?, show?}]}`
-/// (`kinds` lets the Text section write several kinds as one transaction). No
-/// field reads the table.
+/// Reads or sets the project's text styles: the font, and per kind of text its height, weight and whether it
+/// shows. No fields reads the table; all given fields are one transaction; null goes back to the default. `kinds`
+/// sets several kinds at once.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TextstyleParams {
@@ -468,8 +468,6 @@ pub struct TextstyleParams {
 impl Generic for TextstyleParams {
     const ID: &'static str = "textstyle";
     const TITLE: &'static str = "Text Styles";
-    const HELP: &'static str = "{font?: string|null, kind?: word, height?: number|null (cap height, mm, 0.5-10), weight?: \"regular\"|\"bold\"|null, \
-show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields are one transaction; null: back to the default)";
     const PAGES: Pages = Pages::ReadAnywhere;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
