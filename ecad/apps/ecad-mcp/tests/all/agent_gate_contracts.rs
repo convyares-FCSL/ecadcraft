@@ -1,12 +1,10 @@
-//! Independent acceptance tests of ECAD over MCP, apart from `mcp_contracts.rs`.
-//! They drive `ecad-mcp` only through JSON-RPC lines, in-process or over the built
-//! binary's real stdin and stdout, and look at the project's ledger from outside.
-//!
-//! Criteria: 2 (the transaction cap must leave the project as it was), 3 (every catalogued command
-//! refused with writes off, notifications included), 4 (raw CADCraft edits on an ECAD page give the
-//! same result as the JSON form), 5 (saving and reopening in a folder with spaces and non-ASCII
-//! characters, the file untouched with writes off), 6 (hostile lines), 7 (the binary on this
-//! platform: Windows paths with spaces, CRLF, hostile lines, clean exit).
+//! The agent gate over MCP, seen from outside: the tests drive `ecad-mcp` only through JSON-RPC
+//! lines, in-process or over the built binary's real stdin and stdout, and read the project's
+//! ledger. A call taken back by the transaction cap leaves the project as it was; with writes off
+//! every catalogued command but the read ones is refused, notifications included; raw CADCraft
+//! edits on an ECAD page give the same result as the JSON form; a project saved and reopened in a
+//! folder with spaces and non-ASCII letters shows the agent, and its file is untouched with writes
+//! off; hostile lines are refused; the binary handles Windows paths, CRLF and a clean exit.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;

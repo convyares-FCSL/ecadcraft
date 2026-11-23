@@ -1,10 +1,10 @@
 //! Acceptance of ECAD over MCP, headless. Every test drives the server through JSON-RPC
 //! lines (the stdio framing), in-process; `stdio_*` spawns the built binary.
 //!
-//! Criteria: 1 tools and commands listed; 2 the documented examples give the JSON forms'
-//! transactions with an agent author, and `u` undoes each in one step; 3 writes off refuse every
-//! write; 4 raw CADCraft commands cannot get round ECAD's refusals; 5 save only with `--write`;
-//! 6 hostile input; 7 the binary over real stdio (run by CI on Linux and Windows).
+//! They cover: the tools and commands listed; the documented examples give the JSON forms'
+//! transactions with an agent author, and `u` undoes each in one step; writes off refuse every
+//! write; raw CADCraft commands cannot get round ECAD's refusals; save only with `--write`;
+//! hostile input; the binary over real stdio (run by CI on Linux and Windows).
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;

@@ -236,7 +236,7 @@ fn hostile_plc_params_are_refused_and_record_nothing() {
 /// preview's changes and its conflict name the racks by tag, never by hex ID; the merge records
 /// `plc.rack` as an ID and the card ends in the chosen rack.
 #[test]
-fn fp1_merge_preview_names_racks_by_tag() {
+fn merge_preview_names_racks_by_tag() {
     let dir = TempDir::new("t045 merge");
     let path = dir.file("merge plc.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());

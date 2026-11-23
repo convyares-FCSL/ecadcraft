@@ -51,7 +51,7 @@ fn wire(c: &mut Client, y: f64) {
 }
 
 #[test]
-fn ac9_the_pending_marker_follows_the_undo_stack() {
+fn the_pending_marker_follows_the_undo_stack() {
     let mut c = writer(WRITER_SEED);
     wire(&mut c, 100.0);
     assert_eq!(rev(&mut c), "-", "no issued revision: no marker");
@@ -116,7 +116,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
 }
 
 #[test]
-fn ac10_revision_columns_and_custom_fields() {
+fn revision_columns_and_custom_fields() {
     let mut c = writer(WRITER_SEED);
     wire(&mut c, 100.0);
     c.exec("projectprops", json!({"revision_columns": "rev, date, ecr:ECR, description, drawn"}));
@@ -182,7 +182,7 @@ fn tags(c: &mut Client) -> Vec<String> {
 }
 
 #[test]
-fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
+fn the_tag_style_rewrites_in_one_undoable_step() {
     let mut c = writer(WRITER_SEED);
     for x in [40, 80, 120] {
         c.exec("place", json!({"symbol": "coil", "at": [x, 150]}));
@@ -218,7 +218,7 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
 }
 
 #[test]
-fn ac12_renumber_keeps_typed_letters() {
+fn renumber_keeps_typed_letters() {
     let mut c = writer(WRITER_SEED);
     c.exec("projectprops", json!({"tag_case": "typed"}));
     let a = c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
@@ -237,7 +237,7 @@ fn ac12_renumber_keeps_typed_letters() {
 }
 
 #[test]
-fn with_writes_off_the_q7_writes_are_refused() {
+fn with_writes_off_the_revision_writes_are_refused() {
     let mut c = reader();
     let before = c.log();
     for (cmd, params) in [
@@ -257,7 +257,7 @@ fn with_writes_off_the_q7_writes_are_refused() {
 }
 
 #[test]
-fn ac9_the_pending_marker_survives_save_and_reopen() {
+fn the_pending_marker_survives_save_and_reopen() {
     let dir = crate::mcp_contracts::TempDir::new("pending");
     let path = dir.file("pending.ecad");
     {

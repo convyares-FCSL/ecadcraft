@@ -425,7 +425,7 @@ fn agent_author() -> Author {
 // ============================================================================================
 
 #[test]
-fn ac1_with_no_preference_nothing_listens() {
+fn with_no_preference_nothing_listens() {
     lock();
     let dir = settings_dir("ac1");
     let default_before = listening(ecad_engine::agent::access::DEFAULT_PORT);
@@ -442,7 +442,7 @@ fn ac1_with_no_preference_nothing_listens() {
 }
 
 #[test]
-fn ac1_access_is_off_by_default_and_the_reply_says_so() {
+fn access_is_off_by_default_and_the_reply_says_so() {
     lock();
     let dir = settings_dir("ac1b");
     let mut h = app_in(&dir);
@@ -455,7 +455,7 @@ fn ac1_access_is_off_by_default_and_the_reply_says_so() {
 }
 
 #[test]
-fn ac13_a_request_without_the_token_is_refused() {
+fn a_request_without_the_token_is_refused() {
     lock();
     let mut live = Live::new("write");
     let before = live.log();
@@ -479,7 +479,7 @@ fn ac13_a_request_without_the_token_is_refused() {
 // ============================================================================================
 
 #[test]
-fn ac2_three_wires_by_the_agent_appear_with_the_banner() {
+fn three_wires_by_the_agent_appear_with_the_banner() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -530,7 +530,7 @@ fn ac2_three_wires_by_the_agent_appear_with_the_banner() {
 }
 
 #[test]
-fn ac2_bridged_replies_and_refusals_match_headless_byte_for_byte() {
+fn bridged_replies_and_refusals_match_headless_byte_for_byte() {
     lock();
     // The 011 refusal table and an engine failure: the same words over the bridge and headless.
     let calls: Vec<(&str, Value)> = vec![
@@ -572,7 +572,7 @@ fn ac2_bridged_replies_and_refusals_match_headless_byte_for_byte() {
 // ============================================================================================
 
 #[test]
-fn ac3_a_person_between_two_agent_calls_is_the_user() {
+fn a_person_between_two_agent_calls_is_the_user() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -594,7 +594,7 @@ fn ac3_a_person_between_two_agent_calls_is_the_user() {
 }
 
 #[test]
-fn ac3_refused_failed_and_panicking_agent_calls_leave_the_person_as_author() {
+fn refused_failed_and_panicking_agent_calls_leave_the_person_as_author() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -640,7 +640,7 @@ fn ac3_refused_failed_and_panicking_agent_calls_leave_the_person_as_author() {
 // ============================================================================================
 
 #[test]
-fn ac4_a_batch_is_one_call_and_records_at_most_one() {
+fn a_batch_is_one_call_and_records_at_most_one() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -676,7 +676,7 @@ fn ac4_a_batch_is_one_call_and_records_at_most_one() {
 }
 
 #[test]
-fn ac4_a_burst_is_answered_at_most_eight_per_frame() {
+fn a_burst_is_answered_at_most_eight_per_frame() {
     lock();
     let mut live = Live::new("write");
     let p = live.port;
@@ -713,7 +713,7 @@ fn ac4_a_burst_is_answered_at_most_eight_per_frame() {
 // ============================================================================================
 
 #[test]
-fn ac5_an_agent_write_waits_five_seconds_then_is_refused_while_the_person_draws_a_wire() {
+fn an_agent_write_waits_five_seconds_then_is_refused_while_the_person_draws_a_wire() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -767,7 +767,7 @@ fn ac5_an_agent_write_waits_five_seconds_then_is_refused_while_the_person_draws_
 }
 
 #[test]
-fn ac5_held_over_the_wire_carries_not_run() {
+fn held_over_the_wire_carries_not_run() {
     lock();
     let mut live = Live::new("write");
     let p = live.port;
@@ -790,7 +790,7 @@ fn ac5_held_over_the_wire_carries_not_run() {
 // ============================================================================================
 
 #[test]
-fn ac6_raw_methods_are_refused_and_change_nothing() {
+fn raw_methods_are_refused_and_change_nothing() {
     lock();
     let mut live = Live::new("write");
     let p = live.port;
@@ -853,7 +853,7 @@ fn ac6_raw_methods_are_refused_and_change_nothing() {
 // ============================================================================================
 
 #[test]
-fn ac7_read_only_preference_refuses_every_change_and_save() {
+fn read_only_preference_refuses_every_change_and_save() {
     lock();
     let mut live = Live::new("read");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -883,7 +883,7 @@ fn ac7_read_only_preference_refuses_every_change_and_save() {
 }
 
 #[test]
-fn ac7_a_server_without_write_is_refused_with_011s_words() {
+fn a_server_without_write_is_refused_in_the_gates_words() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, false);
@@ -898,7 +898,7 @@ fn ac7_a_server_without_write_is_refused_with_011s_words() {
 }
 
 #[test]
-fn ac7_turning_access_off_refuses_and_ends_the_session() {
+fn turning_access_off_refuses_and_ends_the_session() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -923,7 +923,7 @@ fn ac7_turning_access_off_refuses_and_ends_the_session() {
 // ============================================================================================
 
 #[test]
-fn ac8_an_agent_undoes_only_its_own_steps() {
+fn an_agent_undoes_only_its_own_steps() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -960,7 +960,7 @@ fn ac8_an_agent_undoes_only_its_own_steps() {
 // ============================================================================================
 
 #[test]
-fn ac9_undo_session_takes_back_the_agents_steps_as_the_person() {
+fn undo_session_takes_back_the_agents_steps_as_the_person() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -987,7 +987,7 @@ fn ac9_undo_session_takes_back_the_agents_steps_as_the_person() {
 }
 
 #[test]
-fn ac9_undo_session_asks_first_when_the_persons_steps_are_on_top() {
+fn undo_session_asks_first_when_the_persons_steps_are_on_top() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -1032,7 +1032,7 @@ fn ac9_undo_session_asks_first_when_the_persons_steps_are_on_top() {
 // ============================================================================================
 
 #[test]
-fn ac10_pause_refuses_writes_until_resumed() {
+fn pause_refuses_writes_until_resumed() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
@@ -1098,7 +1098,7 @@ fn one_writer_at_a_time_the_second_reads_until_the_first_says_bye() {
 // ============================================================================================
 
 #[test]
-fn ac11_headless_until_the_window_answers_then_bridged() {
+fn headless_until_the_window_answers_then_bridged() {
     lock();
     let port = free_port();
     let mut a = Agent::start_at(port, AGENT, true, None);
@@ -1115,7 +1115,7 @@ fn ac11_headless_until_the_window_answers_then_bridged() {
 }
 
 #[test]
-fn ac11_after_a_headless_change_the_server_stays_headless() {
+fn after_a_headless_change_the_server_stays_headless() {
     lock();
     let port = free_port();
     let mut a = Agent::start_at(port, AGENT, true, None);

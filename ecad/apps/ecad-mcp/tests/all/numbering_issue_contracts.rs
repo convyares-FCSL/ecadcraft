@@ -123,7 +123,7 @@ fn an_edit_after_issue_finalise_in_one_line_is_refused() {
 
 /// `issuerevision` with `provisional: "finalise"` records Finalise and the issue as one
 /// transaction by the agent, also through an alias of the command (`release` does the same, see
-/// `tester_027_mcp`).
+/// `release_finalise_contracts`).
 #[test]
 fn issuerevision_and_release_with_finalise_each_record_one_transaction() {
     // An alias of the command is resolved to its id before the check.

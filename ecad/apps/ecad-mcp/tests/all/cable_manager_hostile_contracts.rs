@@ -32,7 +32,7 @@ fn unbounded(m: &str, what: &str) -> Option<String> {
 }
 
 #[test]
-fn t1_hostile_and_oversized_parameters_are_refused_in_bounded_words_recording_nothing() {
+fn hostile_and_oversized_parameters_are_refused_in_bounded_words_recording_nothing() {
     let dir = TempDir::new("tester059a");
     let (mut c, _) = writer(&dir, "Hostile 059.ecad");
     for x in [0, 10] {
@@ -87,7 +87,7 @@ fn t1_hostile_and_oversized_parameters_are_refused_in_bounded_words_recording_no
 }
 
 #[test]
-fn t2_a_request_over_the_size_limit_is_refused_before_it_reaches_the_command() {
+fn a_request_over_the_size_limit_is_refused_before_it_reaches_the_command() {
     let dir = TempDir::new("tester059b");
     let (mut c, _) = writer(&dir, "Big 059.ecad");
     let n = c.log().len();
@@ -102,7 +102,7 @@ fn t2_a_request_over_the_size_limit_is_refused_before_it_reaches_the_command() {
 }
 
 #[test]
-fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
+fn cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     let dir = TempDir::new("tester059c");
     let (mut c, path) = writer(&dir, "Round 059.ecad");
     for x in [0, 10, 20] {
@@ -150,7 +150,7 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
 /// 059 full over MCP: + Cable, edits (glands from the type, overridden per end) and Remove are each
 /// one agent transaction, undone and redone exactly; a drawn cable's Remove writes nothing.
 #[test]
-fn t4_cable_manager_actions_are_one_transaction_each_with_exact_undo_and_redo() {
+fn cable_manager_actions_are_one_transaction_each_with_exact_undo_and_redo() {
     let dir = TempDir::new("tester059d");
     let (mut c, _) = writer(&dir, "Actions 059.ecad");
     for x in [0, 10] {

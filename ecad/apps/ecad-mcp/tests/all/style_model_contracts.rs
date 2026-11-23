@@ -82,7 +82,7 @@ fn merge_preview(c: &mut Client, from: &str) -> Value {
 
 /// §6.8: every 050a writing command, by the agent, one transaction, one undo; then writes off.
 #[test]
-fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
+fn style_model_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t050 Hausstandard mit Leerzeichen \u{e4}");
     let other = dir.file("Panel Std (other).ecad");
     {
@@ -175,7 +175,7 @@ fn a10_style_model_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// The new commands are listed with parameter docs.
 #[test]
-fn a10_the_new_commands_are_listed() {
+fn the_new_commands_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().cloned().unwrap_or_default();
@@ -208,7 +208,7 @@ fn verify(path: &str) {
 /// §3.5, FP3 ruling: the same style record changed differently on both branches is one conflict,
 /// worded with the style's name, whose every choice merges; the result survives save and reopen.
 #[test]
-fn fp3_the_same_style_on_both_branches_is_one_conflict_named_by_the_style() {
+fn the_same_style_on_both_branches_is_one_conflict_named_by_the_style() {
     let dir = TempDir::new("t050-merge-same");
     let path = dir.file("same.ecad");
     let mut c = create(&path);
@@ -250,7 +250,7 @@ fn fp3_the_same_style_on_both_branches_is_one_conflict_named_by_the_style() {
 /// with no conflict; the same standard value changed differently is one conflict (values merge
 /// per key, like project properties).
 #[test]
-fn fp3_different_styles_values_and_edits_merge_cleanly() {
+fn different_styles_values_and_edits_merge_cleanly() {
     let dir = TempDir::new("t050-merge-clean");
     let (mut c, path) = branched(&dir, "clean.ecad");
     c.exec("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}}));
@@ -286,7 +286,7 @@ fn fp3_different_styles_values_and_edits_merge_cleanly() {
 /// §3.5: the standard header is one unit: renamed differently on both branches, one conflict;
 /// a standard made on a branch arrives whole.
 #[test]
-fn fp3_the_standard_header_is_one_unit() {
+fn the_standard_header_is_one_unit() {
     let dir = TempDir::new("t050-merge-header");
     let (mut c, _) = branched(&dir, "header.ecad");
     c.exec("standard", json!({"name": "Branch name"}));
@@ -315,7 +315,7 @@ fn fp3_the_standard_header_is_one_unit() {
 /// AC 5 (050b), §6.8: `category` and `wire {category}` by the agent, one transaction each, one
 /// undo; refused with writes off.
 #[test]
-fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
+fn category_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t050b Kategorien \u{e4}");
     let path = dir.file("Leitungen (B).ecad");
     let (w, before) = {
@@ -375,7 +375,7 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
 /// differently on both branches is one conflict named by the category; a conductor's category on
 /// one branch and the category's colour on the other merge cleanly.
 #[test]
-fn b18_category_merges() {
+fn category_merges() {
     let dir = TempDir::new("t050b-merge");
     let path = dir.file("cat.ecad");
     let mut c = create(&path);

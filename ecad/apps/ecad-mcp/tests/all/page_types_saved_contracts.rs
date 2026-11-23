@@ -55,7 +55,7 @@ fn reads(c: &mut Client) -> Value {
 
 /// AC16: every writing form by the agent, one transaction, one undo; then writes off.
 #[test]
-fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
+fn page_type_writes_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t054 Seitentypen mit Leerzeichen \u{e4}");
     let path = dir.file("Projekt 054 (A).ecad");
     let (before, page, folder, cover) = {
@@ -146,7 +146,7 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
 
 /// The new commands are listed with parameter docs; `newpage` documents `type` and `after`.
 #[test]
-fn ac16_the_new_commands_are_listed() {
+fn the_new_commands_are_listed() {
     let mut c = crate::mcp_contracts::reader();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().cloned().unwrap_or_default();
@@ -162,7 +162,7 @@ fn ac16_the_new_commands_are_listed() {
 /// AC16 (054b): the cover's block toggle `setdefault front.cover.notes` at project level by the
 /// agent, one transaction, one undo; refused with writes off.
 #[test]
-fn ac16_the_cover_toggle_by_the_agent_then_refused_with_writes_off() {
+fn the_cover_toggle_by_the_agent_then_refused_with_writes_off() {
     let dir = TempDir::new("t054b Deckblatt \u{e4}");
     let path = dir.file("Projekt 054 (B).ecad");
     {

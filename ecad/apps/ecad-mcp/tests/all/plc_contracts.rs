@@ -28,7 +28,7 @@ fn refused_with_writes_off(command: &str, params: Value) {
 }
 
 #[test]
-fn a7_rack_and_slot_writes_by_the_agent_and_refused_with_writes_off() {
+fn rack_and_slot_writes_by_the_agent_and_refused_with_writes_off() {
     let mut c = writer(4571);
     let cpu = by_agent(&mut c, "place", json!({"symbol": "plccpu", "at": [50, 200]}));
     let v = by_agent(&mut c, "place", json!({"symbol": "plcdi", "at": [100, 200], "rack": "-A01", "slot": 3}));
@@ -50,7 +50,7 @@ fn a7_rack_and_slot_writes_by_the_agent_and_refused_with_writes_off() {
 }
 
 #[test]
-fn a7_reads_work_with_writes_off() {
+fn reads_work_with_writes_off() {
     let mut r = crate::mcp_contracts::reader();
     let log = r.log();
     let v = r.exec("plcracks", json!({}));
@@ -63,7 +63,7 @@ fn a7_reads_work_with_writes_off() {
 }
 
 #[test]
-fn b7_channel_and_address_writes_by_the_agent_and_refused_with_writes_off() {
+fn channel_and_address_writes_by_the_agent_and_refused_with_writes_off() {
     let mut c = writer(4572);
     by_agent(&mut c, "place", json!({"symbol": "plccpu", "at": [50, 300]}));
     let card = by_agent(&mut c, "place", json!({"symbol": "plcdi", "at": [100, 300]}));
