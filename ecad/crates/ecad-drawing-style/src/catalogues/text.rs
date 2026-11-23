@@ -12,7 +12,7 @@ use ecad_model::geometry::units::Mm;
 use ecad_model::objects::styles::text::{Font, StyleColour, TextStyle};
 use ecad_model::{Document, StyleRef, Word};
 
-use crate::CmdError;
+use ecad_electrical::CmdError;
 use ecad_model::registry::data::Slot;
 use ecad_model::registry::styles::{Builtin, Catalogue, Field};
 use ecad_model::registry::{Kind, Value};
@@ -39,7 +39,7 @@ static FIELDS: [Field; 4] = [
     Field {
         key: "colour",
         label: "Colour",
-        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        kind: Kind::Parsed { max_chars: 16, parse: crate::catalogues::is_colour },
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
@@ -178,7 +178,7 @@ pub fn set(t: &mut TextStyle, key: &str, value: Option<&str>) -> Result<(), CmdE
 fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
     match b {
         ecad_model::objects::styles::StyleBody::Text(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
-        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+        other => Err(ecad_electrical::styles::wrong_body(other, CATALOGUE.one)),
     }
 }
 
@@ -199,7 +199,7 @@ fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) 
 /// A text style a location style labels with reaches every box; otherwise the boxes whose own
 /// style labels with it.
 fn reach(doc: &Document, _: &ecad_model::Op, id: &StyleRef) -> ecad_model::registry::styles::Reach {
-    use crate::styles::location;
+    use crate::catalogues::location;
     if location::labels_with(doc, id) {
         return ecad_model::registry::styles::Reach::Every;
     }

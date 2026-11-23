@@ -388,12 +388,13 @@ impl Generic for WiresettingsParams {
             potentials: rows,
         };
         if change == WireSettingsChange::default() {
-            return Ok(Outcome::answer(rules::settings_json(cx.doc)));
+            return Ok(Outcome::answer(rules::settings_json(cx.doc, cx.registry)));
         }
         let before = cx.doc.settings().clone();
         let after = rules::wire_settings(&before, &change)?;
         let ops = if after != before { vec![Op::SetProjectSettings { before, after }] } else { Vec::new() };
-        Ok(Outcome::edit_then("Wire settings", ops, rules::settings_json))
+        let registry = cx.registry;
+        Ok(Outcome::edit_then("Wire settings", ops, move |doc| rules::settings_json(doc, registry)))
     }
 }
 

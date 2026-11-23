@@ -130,7 +130,7 @@ pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handl
             rotation: l.rotation,
             width_factor: 1.0,
             oblique: 0.0,
-            style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
+            style: ecad_drawing_style::text::PLACEHOLDER_STYLE.into(),
             halign: HAlign::Center,
             valign: VAlign::Bottom,
         }),

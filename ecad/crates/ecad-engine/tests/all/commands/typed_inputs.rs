@@ -311,10 +311,10 @@ fn the_text_commands_refuse_input_uniformly() {
 fn the_text_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("textstyle", json!({"kind": "tag", "height": 11}), ecad_electrical::styles::commands::text::BAD_HEIGHT),
-        ("textstyle", json!({"height": 3}), ecad_electrical::styles::commands::text::NEEDS_KIND),
-        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_electrical::styles::commands::text::NEEDS_KIND),
-        ("textstyle", json!({"font": ""}), ecad_electrical::styles::commands::text::BAD_FONT),
-        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::styles::commands::text::BAD_SHOW),
+        ("textstyle", json!({"height": 3}), ecad_drawing_style::text::commands::NEEDS_KIND),
+        ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_drawing_style::text::commands::NEEDS_KIND),
+        ("textstyle", json!({"font": ""}), ecad_drawing_style::text::commands::BAD_FONT),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_drawing_style::text::commands::BAD_SHOW),
         (
             "showtext",
             json!({"kind": "tag", "show": "on", "page": "00000000000000000000000000000001", "component": "00000000000000000000000000000002"}),

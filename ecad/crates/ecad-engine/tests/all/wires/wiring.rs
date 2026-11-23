@@ -548,7 +548,7 @@ fn labels_are_small_and_never_touch() {
     let doc = h.doc();
     let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 10);
-    let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    let builtin = ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT.builtin();
     assert!(labels.iter().all(|l| ecad_model::registry::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {

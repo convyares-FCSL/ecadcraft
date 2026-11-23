@@ -392,7 +392,7 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
         assert_eq!(k["default"], json!(true), "{kind}: {k}");
     }
     // FP6 made it 1.6; brief 066 moved it to data and made it 2.5.
-    let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
+    let builtin = ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT.builtin();
     assert_eq!(builtin, ecad_model::registry::Value::Length(2.5), "066: wire label built-in 2.5");
     let s = serde_json::to_value(h.doc().settings()).unwrap();
     assert!(s.pointer("/wiring/label_height").is_none(), "a new project chooses no height (066, F2): {s}");

@@ -23,10 +23,10 @@
 //! - [`references`]: device and cable references.
 //! - [`releases`]: revisions, issue, release and the pre-release check.
 //! - [`reports`]: the report models: BOM, wire report and cable report.
-//! - [`styles`]: style catalogues and text styles.
+//! - [`styles`]: the wire, page, cable and rating table catalogues, and what spans every catalogue.
 //! - [`symbols`]: the starter symbols, the symbol builder and symbol offers.
 //! - [`terminal_strips`]: terminal strips, terminal blocks, jumper bars, accessories and cable cores.
-//! - [`title_blocks`]: title blocks: frame parts, field values, the house block and DXF import.
+//! - [`title_blocks`]: what a title block's fields show, what an op changes of the frames, and the checks.
 //! - [`views`]: the one update pipeline for every derived view.
 //! - [`wires`]: wires on the page: conductor labels, routes, joins and continuation texts.
 //!

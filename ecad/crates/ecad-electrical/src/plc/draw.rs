@@ -198,13 +198,10 @@ fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
 }
 
 /// The card's words for its name block, top to bottom, with their text kinds.
-fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
+fn name_block(doc: &Document, c: DeviceId, look: &dyn Look) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
-    let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
-    if <ecad_model::look::Shown as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
-        .unwrap_or_default()
-        != ecad_model::look::Shown::Off
-    {
+    let at = ecad_model::look::TextTarget { component: Some(c), ..ecad_model::look::TextTarget::default() };
+    if look.shown(doc, at, TextKind::Tag) != ecad_model::look::Shown::Off {
         out.push((crate::devices::tags::tag_words(doc, c), TextKind::Tag));
     }
     if let Some((caption, true)) = crate::plc::caption(doc, c) {
@@ -255,7 +252,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn Look, out: &mut Vec<Part>) {
     let has_body = doc
         .representations_of(Subject::Device(c))
         .any(|(_, r)| crate::devices::tags::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
-    let lines = name_block(doc, c);
+    let lines = name_block(doc, c, m);
     let ttext = type_text(doc, c);
     let band = name_band(doc, &lines, m);
     let depth = HEADER_BAND + MARK_BAND + band;
@@ -398,7 +395,7 @@ pub fn runs_of_card(doc: &Document, c: DeviceId, page: PageId) -> Vec<Run> {
 
 /// The frame's rectangle of `run` (x from, x to, y low, y high), at the project's text styles.
 fn frame_rect(doc: &Document, run: &Run, m: &dyn Look) -> (f64, f64, f64, f64) {
-    let depth = HEADER_BAND + MARK_BAND + name_band(doc, &name_block(doc, run.card), m);
+    let depth = HEADER_BAND + MARK_BAND + name_band(doc, &name_block(doc, run.card, m), m);
     let bottom = run.top + run.dir * depth;
     (run.left, run.right, run.top.min(bottom), run.top.max(bottom))
 }

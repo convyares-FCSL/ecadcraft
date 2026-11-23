@@ -142,7 +142,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
             })
             .collect();
         let frames =
-            ecad_model::registry::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
+            ecad_model::registry::styles::rows(doc, &ecad_drawing_style::catalogues::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
         Snapshot { head: p.ledger.head(), rows, project_sheet, frames }
     })
     .ok()

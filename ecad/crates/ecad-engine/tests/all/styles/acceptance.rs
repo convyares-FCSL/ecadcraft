@@ -309,7 +309,7 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
         assert_eq!(field_text(r, "font"), "project", "{word}");
         let kind = TextKind::ALL.into_iter().find(|k| k.word() == word).unwrap();
         // 031's drift test: the shared contract's signature, unchanged.
-        let st: ecad_model::look::TextStyle = ecad_electrical::styles::text_style::text_style(&d, kind);
+        let st: ecad_model::look::TextStyle = ecad_drawing_style::text::text_style(&d, kind);
         assert!(near(st.height, height), "{word}: text_style height {}", st.height);
         assert_eq!(st.weight == ecad_model::objects::styles::text::Weight::Bold, weight == "bold", "{word}: text_style weight");
     }
@@ -494,7 +494,7 @@ fn res_field_and_choice_resolution_order() {
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()));
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (3.0, "project".into()));
-    assert!(near(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
+    assert!(near(ecad_drawing_style::text::text_style(&h.doc(), TextKind::Tag).height, 3.0));
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
     assert_eq!((tag_h(&mut h), tag_from(&mut h)), (4.0, "standard".into()), "clearing the project field falls to the standard");
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": null}})).unwrap();
@@ -512,7 +512,7 @@ fn res_field_and_choice_resolution_order() {
     let small =
         own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
     let at = |c: DeviceId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
-    let height = |h: &mut H, c: DeviceId| ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
+    let height = |h: &mut H, c: DeviceId| ecad_drawing_style::text::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
     let e = ecad_drawing_style::REGISTRY.find("text.tag.style").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "standard", "value": big})).unwrap();
     assert_eq!((height(&mut h, k1), ecad_model::registry::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
@@ -570,7 +570,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         find_obj_mut(&mut tx, "body").expect("a record with a body").insert("body".into(), json!({"text": {k: v}}));
         let ops = decoded_ops(&tx);
         inject(&mut h, ops.clone());
-        let st = ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag);
+        let st = ecad_drawing_style::text::text_style(&h.doc(), TextKind::Tag);
         assert!(near(st.height, 2.5) && st.weight == ecad_model::objects::styles::text::Weight::Bold, "{k}={v:?}: the built-in tag style");
         let _ = styles(&mut h, "text");
         inject(&mut h, ops.iter().rev().map(Op::inverse).collect());
@@ -599,7 +599,7 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
         ],
     );
     let at = Scope { page: Some(page), component: Some(k), ..Scope::project() };
-    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at).height, 2.5), "drawn as tag");
+    assert!(near(ecad_drawing_style::text::text_style_at(&h.doc(), TextKind::Tag, at).height, 2.5), "drawn as tag");
     let t = tag(&mut h, k);
     assert!(!texts_on(&mut h, page, &t).is_empty(), "the tag still draws");
     let rows = checks_of(&mut h, "style-unknown");
@@ -621,7 +621,7 @@ fn a03_tag_colour_and_height_in_one_transaction() {
     let before = h.doc();
     let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD", "height": 3}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "one record write");
-    assert!(near(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).height, 3.0));
+    assert!(near(ecad_drawing_style::text::text_style(&h.doc(), TextKind::Tag).height, 3.0));
     let red = code_colour("RD");
     let shown = texts_on(&mut h, page, &t);
     assert!(!shown.is_empty() && shown.iter().all(|e| e.common.color == red), "the tag is red on screen");
@@ -709,8 +709,8 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
         tx.ops
     );
     let at = |c| Scope { page: Some(page), component: Some(c), ..Scope::project() };
-    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(k1)).height, 5.0), "K1's tag is large");
-    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(k2)).height, 2.5), "K2's is not");
+    assert!(near(ecad_drawing_style::text::text_style_at(&h.doc(), TextKind::Tag, at(k1)).height, 5.0), "K1's tag is large");
+    assert!(near(ecad_drawing_style::text::text_style_at(&h.doc(), TextKind::Tag, at(k2)).height, 2.5), "K2's is not");
     let (t1, t2) = (tag(&mut h, k1), tag(&mut h, k2));
     let hgt =
         |h: &mut H, t: &str| texts_on(h, page, t).first().map(|e| if let EntityKind::Text(x) = &e.kind { x.height } else { 0.0 }).unwrap_or(0.0);
@@ -733,7 +733,7 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     assert!(names.contains(&"SetStyle") && names.contains(&"SetProperty"), "{names:?}");
     let d = h.doc();
     assert_eq!(d.devices()[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
-    assert!(near(ecad_electrical::styles::text_style::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
+    assert!(near(ecad_drawing_style::text::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
     assert!(styles(&mut h, "text").iter().all(|r| s(&r["id"]) != large));
     undo(&mut h);
     assert!(h.doc() == before, "one undo restores the style and K1's choice");
@@ -783,12 +783,7 @@ fn a05_promote_a_style_and_a_value() {
     assert!(near(field_num(&r, "height"), 5.0) && field(&r, "height").1 == "standard");
     let page = h.first_page();
     assert!(near(
-        ecad_electrical::styles::text_style::text_style_at(
-            &h.doc(),
-            TextKind::Tag,
-            Scope { page: Some(page), component: Some(k), ..Scope::project() }
-        )
-        .height,
+        ecad_drawing_style::text::text_style_at(&h.doc(), TextKind::Tag, Scope { page: Some(page), component: Some(k), ..Scope::project() }).height,
         5.0
     ));
     // A built-in or a standard style cannot be promoted.

@@ -60,7 +60,6 @@ pub static LAYOUT: &[(&str, Kind)] = &[
     ("front.cover.customer", Kind::Number { min: 0.05, max: 1.0 }),
 ];
 
-/// The electrical rules' data set: [`FILES`] for the entries of [`LISTS`], the wire label height
-/// (the project field of the `wire_label` text style, not listed in the registry), the style
-/// catalogues and [`LAYOUT`].
-pub static DATA: DataSet = DataSet::new(FILES, LISTS, &[&text::WIRE_LABEL_HEIGHT], crate::styles::CATALOGUES, LAYOUT, "pages.toml", "styles.toml");
+/// The electrical rules' data set: [`FILES`] for the entries of [`LISTS`], the style catalogues
+/// and [`LAYOUT`].
+pub static DATA: DataSet = DataSet::new(FILES, LISTS, &[], crate::styles::CATALOGUES, LAYOUT, "pages.toml", "styles.toml");

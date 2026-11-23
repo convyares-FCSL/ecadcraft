@@ -10,7 +10,7 @@ use ecad_model::objects::styles::LocationStyle;
 use ecad_model::objects::styles::text::StyleColour;
 use ecad_model::{AidId, Document, StyleRef, Word};
 
-use crate::CmdError;
+use ecad_electrical::CmdError;
 use ecad_model::registry::data::Slot;
 use ecad_model::registry::styles::{Builtin, Catalogue, Field};
 use ecad_model::registry::{Kind, Scope, Value};
@@ -30,21 +30,21 @@ static FIELDS: [Field; 5] = [
     Field {
         key: "line_colour",
         label: "Line colour",
-        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        kind: Kind::Parsed { max_chars: 16, parse: crate::catalogues::is_colour },
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
     Field {
         key: "label_style",
         label: "Label style",
-        kind: Kind::Style(&crate::styles::text::CATALOGUE),
+        kind: Kind::Style(&crate::catalogues::text::CATALOGUE),
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
     Field {
         key: "fill",
         label: "Fill (reserved)",
-        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        kind: Kind::Parsed { max_chars: 16, parse: crate::catalogues::is_colour },
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
@@ -78,7 +78,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 fn body<'a>(doc: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
     match b {
         ecad_model::objects::styles::StyleBody::Location(l) => {
-            get(l, key).filter(|v| v.style().is_none_or(|id| ecad_model::registry::styles::exists(doc, &crate::styles::text::CATALOGUE, &id)))
+            get(l, key).filter(|v| v.style().is_none_or(|id| ecad_model::registry::styles::exists(doc, &crate::catalogues::text::CATALOGUE, &id)))
         }
         _ => None,
     }
@@ -102,7 +102,7 @@ pub fn linetype(word: &str) -> &'static str {
     match word {
         "continuous" => "CONTINUOUS",
         "dashdot" => "DASHDOT",
-        _ => crate::locations::LINETYPE,
+        _ => ecad_electrical::locations::LINETYPE,
     }
 }
 
@@ -120,14 +120,14 @@ pub(crate) fn box_style(doc: &Document, a: AidId) -> StyleRef {
 
 /// Box `a`'s own location style, when it names one that exists (a dangling one falls through).
 pub(crate) fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
-    crate::locations::box_values(doc, a)
+    ecad_electrical::locations::box_values(doc, a)
         .and_then(|b| b.style.as_ref())
-        .filter(|s| ecad_model::registry::styles::exists(doc, &crate::styles::location::CATALOGUE, s))
+        .filter(|s| ecad_model::registry::styles::exists(doc, &crate::catalogues::location::CATALOGUE, s))
 }
 
 /// The look of location style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::location::CATALOGUE, id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::catalogues::location::CATALOGUE, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;
@@ -185,7 +185,7 @@ pub fn set(l: &mut LocationStyle, key: &str, value: Option<&str>) -> Result<(), 
 fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
     match b {
         ecad_model::objects::styles::StyleBody::Location(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
-        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+        other => Err(ecad_electrical::styles::wrong_body(other, CATALOGUE.one)),
     }
 }
 
@@ -200,7 +200,7 @@ fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) 
 /// The pages of the boxes drawn in style `id` of their own.
 fn reach(doc: &Document, _: &ecad_model::Op, id: &StyleRef) -> ecad_model::registry::styles::Reach {
     let mut out = std::collections::BTreeSet::new();
-    for a in crate::styles::box_users(doc, ecad_model::StyleCatalogue::Location, id) {
+    for a in ecad_electrical::styles::box_users(doc, ecad_model::StyleCatalogue::Location, id) {
         out.extend(doc.representations_of(ecad_model::Subject::Aid(a)).map(|(_, r)| r.page));
     }
     ecad_model::registry::styles::Reach::Also(out)

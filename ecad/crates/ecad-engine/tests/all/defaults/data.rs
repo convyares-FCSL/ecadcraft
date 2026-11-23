@@ -3,33 +3,35 @@
 
 use ecad_electrical::defaults::data::{self, DATA};
 use ecad_electrical::defaults::{self};
-use ecad_electrical::styles;
 use ecad_model::registry::data::DefaultsError;
 use ecad_model::registry::data::{Loaded, MAX_LISTED, load_in};
 use ecad_model::registry::{Kind, Value};
 
+/// `text` loaded as one of the look's files (its keys are the look's: font, Shown, wire label height).
 fn load<'i>(name: &str, text: &'i str) -> Loaded<'i> {
-    load_in(&DATA, name, text)
+    load_in(&ecad_drawing_style::defaults::data::DATA, name, text)
 }
 
 /// The built-in files load with no problem: every entry and style field has a value, every key
 /// is known, every value is valid for its kind.
 #[test]
 fn the_built_in_data_is_complete_and_valid() {
-    assert_eq!(DATA.problems(), &[] as &[DefaultsError]);
-    for (name, text) in data::FILES {
-        assert_eq!(load(name, text).problems(), &[] as &[DefaultsError], "{name}");
-    }
-    for e in DATA.valued() {
-        let v = e.builtin();
-        assert!(e.accepts(&v), "{}: built-in {v:?} is not a valid {:?}", e.key, e.kind);
+    for set in ecad_drawing_style::REGISTRY.sets() {
+        assert_eq!(set.problems(), &[] as &[DefaultsError], "{set:?}");
+        for (name, text) in set.files {
+            assert_eq!(load_in(set, name, text).problems(), &[] as &[DefaultsError], "{name}");
+        }
+        for e in set.valued() {
+            let v = e.builtin();
+            assert!(e.accepts(&v), "{}: built-in {v:?} is not a valid {:?}", e.key, e.kind);
+        }
     }
 }
 
 /// Every style field's built-in and every built-in style's value is valid for its field.
 #[test]
 fn every_built_in_style_value_is_valid_for_its_field() {
-    for c in styles::CATALOGUES {
+    for c in ecad_drawing_style::REGISTRY.catalogues() {
         for f in c.fields {
             let v = f.builtin();
             assert!(matches!(v, Value::Text("")) || ecad_model::registry::accepts(f.kind, &v), "{}.{}: {v:?}", c.catalogue, f.key);
@@ -48,7 +50,7 @@ fn every_built_in_style_value_is_valid_for_its_field() {
 fn the_data_holds_the_values_the_code_held() {
     use defaults::{connectors, plc, strip_pages, symbols, text, wires};
     let cases: &[(&ecad_model::registry::Entry, Value<'static>)] = &[
-        (&text::FONT, Value::Text(text::SHEET_FONT)),
+        (&ecad_drawing_style::defaults::text::FONT, Value::Text(ecad_drawing_style::defaults::text::SHEET_FONT)),
         (&text::TAG_GAP, Value::Number(0.6)),
         (&text::RUN_GAP, Value::Length(15.0)),
         (&wires::WIRING_LABEL_RULE, Value::Choice("net")),
@@ -61,12 +63,12 @@ fn the_data_holds_the_values_the_code_held() {
     for (e, v) in cases {
         assert_eq!(e.builtin(), *v, "{}", e.key);
     }
-    let text = &styles::text::CATALOGUE;
+    let text = &ecad_drawing_style::catalogues::text::CATALOGUE;
     let tag = text.builtins.iter().find(|b| b.id == "tag").map(|b| (b.value("height"), b.value("weight")));
     assert_eq!(tag, Some((Some(Value::Length(2.5)), Some(Value::Choice("bold")))));
     // The wire label style's height is the entry, one value in one place.
     let wl = text.builtins.iter().find(|b| b.id == "wire_label").and_then(|b| b.value("height"));
-    assert_eq!(wl, Some(text::WIRE_LABEL_HEIGHT.builtin()));
+    assert_eq!(wl, Some(ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT.builtin()));
     let height = text.field("height").map(|f| f.builtin());
     assert_eq!(height, Some(Value::Length(2.5)));
 }
@@ -99,9 +101,9 @@ fn which(e: &DefaultsError) -> Want {
 /// so resolution falls through to the layer below.
 #[test]
 fn hostile_files_are_refused_with_their_error() {
-    let height = &defaults::text::WIRE_LABEL_HEIGHT;
-    let show = &defaults::text::TAG_SHOW;
-    let font = &defaults::text::FONT;
+    let height = &ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT;
+    let show = &ecad_drawing_style::defaults::text::TAG_SHOW;
+    let font = &ecad_drawing_style::defaults::text::FONT;
     let mut junk: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8).collect();
     junk.retain(|b| *b != 0);
     let junk = String::from_utf8_lossy(&junk).into_owned();
@@ -151,7 +153,7 @@ fn unknown_keys_are_listed_then_counted() {
         _ => None,
     });
     assert_eq!(more, Some(10_000 - MAX_LISTED));
-    assert_eq!(loaded.value(&defaults::text::TAG_SHOW), Some(Value::Choice("no")));
+    assert_eq!(loaded.value(&ecad_drawing_style::defaults::text::TAG_SHOW), Some(Value::Choice("no")));
 }
 
 /// A syntax error names its line and column and the byte span the parser reports.
@@ -217,7 +219,7 @@ fn resolved_all(doc: &Document) -> Vec<(&'static str, String, &'static str)> {
 }
 
 fn wire_label_height(doc: &Document) -> Value<'_> {
-    resolve(doc, &defaults::text::WIRE_LABEL_HEIGHT, Scope::project()).value
+    resolve(doc, &ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT, Scope::project()).value
 }
 
 /// A project with one labelled wire, the label height chosen (`Some`) or not.
@@ -247,7 +249,7 @@ fn save_and_reopen(mut h: H, tag: &str, seed: u64) -> H {
 /// 066b: the first value changed as data. A project that chose no height draws 2.5 mm labels.
 #[test]
 fn a_project_that_chose_no_height_follows_the_built_in() {
-    assert_eq!(defaults::text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(2.5));
+    assert_eq!(ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT.builtin(), Value::Length(2.5));
     let mut h = project(0x66_b1, None);
     let doc = h.doc();
     assert_eq!(doc.settings().wiring.label_height, None);

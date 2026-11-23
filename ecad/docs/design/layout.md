@@ -108,18 +108,32 @@ ecad-electrical/src/
   locations/       locations, functions, location boxes, designations
   numbering/       renumber, fixed and provisional tags
   pages/           page types, folders, frames, generated pages, the cover, their views
-  title_blocks/    today title_block/
+  title_blocks/    what a block's fields show (bind), what an op changes of the frames, the checks
   releases/        revisions, issue, release, the pre-release check
   reports/         report models and the BOM and their view: mod (rows and tables' types), kept/ (mod, update,
                    checks, rows, tables), bom, view; commands/ (bom, boxes, lists)
   checks/          checks split by family: mod (kinds, rows, scope), nets, places, grid, devices, cables; kept,
                    words_check, the checks view
-  styles/          style catalogues, text styles, project defaults (setdefault)
+  styles/          the wire, page, cable and rating table catalogues, what spans every catalogue, project
+                   defaults (setdefault); where texts go is devices/text_place.rs
   properties/      the Properties palette's ECAD section and setprop (props.rs, cmd/prop, cmd/props/* as one
                    file per object kind, not per lane)
   merge.rs         the merge dialog's rules
 ```
 Every command declaration sits in its feature folder, as a `commands.rs` beside the rules it calls.
+
+## ecad-drawing-style: the look
+
+```
+ecad-drawing-style/src/
+  lib.rs           REGISTRY: every crate's data set
+  defaults/        the look's registry entries (text.rs, styles.rs) and its data set (data.rs)
+  text/            text styles (mod.rs), fonts and FontLook (fonts.rs), textstyle and showtext rules (commands.rs)
+  catalogues/      the text, location box and frame catalogues
+  title_blocks/    the block a frame draws (block_of), the built-in house block, the title block commands
+```
+The rules ask the look through `ecad_model::look::Look`, which `FontLook` implements; the cover
+layout and text fitting (`fit`) are still in `ecad-electrical/src/pages/`.
 
 ## ecad-engine: session only
 

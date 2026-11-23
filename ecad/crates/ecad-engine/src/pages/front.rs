@@ -172,7 +172,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
+    let draw = |kind| ecad_drawing_style::text::fonts::text_draw_of(&draws, kind, input.unit);
     let cover_draw = draw(TextKind::Cover);
     let Layout {
         area: (l, _, r, _),

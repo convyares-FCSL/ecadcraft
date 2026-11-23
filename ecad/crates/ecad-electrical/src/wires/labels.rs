@@ -19,8 +19,8 @@ pub struct WireLabel {
     pub error: bool,
     /// Drawn in `ecad.provisional`: no number yet, provisional tags on.
     pub provisional: bool,
-    /// Its text width as the project's font draws it (see
-    /// `text_style::width_in`), which placement keeps clear.
+    /// Its text width as the project's font draws it (the look's
+    /// `Look::width`), which placement keeps clear.
     pub width: f64,
     /// The conductor's own wire label style (its `text.wire_label.style`), else the
     /// project's.

@@ -25,7 +25,7 @@ pub mod list;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ecad_electrical::title_blocks::commands::{layout_of, pages_using};
+use ecad_drawing_style::title_blocks::commands::{layout_of, pages_using};
 use ecad_engine::pages::frame::{FrameInput, FrameText};
 use ecad_model::document::book::Book;
 use ecad_model::document::sheet;
@@ -234,13 +234,13 @@ fn row_line(sheet_text: &str, pages: usize) -> String {
 
 /// The frame's fields as the draft keeps them (every catalogue field, resolved).
 fn fields_of(doc: &ecad_model::Document, id: &StyleRef) -> BTreeMap<String, String> {
-    let cat = &ecad_electrical::styles::frame::CATALOGUE;
+    let cat = &ecad_drawing_style::catalogues::frame::CATALOGUE;
     cat.fields.iter().map(|f| (f.key.to_string(), ecad_model::registry::styles::field(doc, cat, id, f, None).text())).collect()
 }
 
 /// Read the list from `doc`.
 pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
-    let cat = &ecad_electrical::styles::frame::CATALOGUE;
+    let cat = &ecad_drawing_style::catalogues::frame::CATALOGUE;
     let text = FrameText::of(doc);
     ecad_model::registry::styles::rows(doc, cat)
         .into_iter()

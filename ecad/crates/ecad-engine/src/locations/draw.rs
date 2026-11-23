@@ -31,13 +31,13 @@ pub(crate) fn styled_label_entity(
     }) else {
         return e;
     };
-    let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
-    if label == ecad_electrical::styles::text_style::style_of(doc, TextKind::LocationLabel, ecad_model::registry::Scope::project()) {
+    let label = ecad_drawing_style::catalogues::location::box_draw(doc, c).label_style;
+    if label == ecad_drawing_style::text::style_of(doc, TextKind::LocationLabel, ecad_model::registry::Scope::project()) {
         return e;
     }
     // The label style as a whole (height, weight, font, colour), never a literal
     // style name; a font of its own is installed by the page (`install_family`).
-    let own = ecad_electrical::styles::text_style::own_style_of(doc, &label);
+    let own = ecad_drawing_style::text::own_style_of(doc, &label);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.height = own.style.height;
     }
@@ -52,8 +52,8 @@ pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<Stri
         Subject::Aid(a) => Some(a),
         _ => None,
     })?;
-    let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
-    ecad_electrical::styles::text_style::own_style_of(doc, &label).family
+    let label = ecad_drawing_style::catalogues::location::box_draw(doc, c).label_style;
+    ecad_drawing_style::text::own_style_of(doc, &label).family
 }
 
 /// Draw the outlines of `page`'s boxes in their location style
@@ -68,7 +68,7 @@ pub(crate) fn style_boxes(
     }
     let index: std::collections::HashMap<cadcraft_engine::doc::Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for b in boxes {
-        let draw = ecad_electrical::styles::location::box_draw(doc, b.aid);
+        let draw = ecad_drawing_style::catalogues::location::box_draw(doc, b.aid);
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.linetype = draw.linetype.into();
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(draw.lineweight).unwrap_or(25));

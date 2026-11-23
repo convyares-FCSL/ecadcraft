@@ -1,42 +1,27 @@
-//! Title blocks: a frame style's block turned into frame parts, the
-//! values its fields show, the built-in house block, and DXF import.
+//! Title blocks: the values a frame's block fields show, what an op changes of the pages' frames,
+//! and the checks. The block's layout, the built-in house block and the title block commands are
+//! `ecad_drawing_style::title_blocks`; the page reaches them through
+//! [`ecad_model::look::Look::title_block`].
 //!
 //! # Semantics
-//! - A page's frame is its resolved `print.frame.style` (`ecad_model::document::sheet::frame_style`). An own
-//!   frame draws the block its record holds; the built-in `sheet` draws [`house::house`],
-//!   computed for the page's frame width, so it fits any sheet.
+//! - A page's frame is its resolved `print.frame.style` (`ecad_model::document::sheet::frame_style`).
 //! - Fields show values read when the frame's input is worked out ([`crate::pages::frames::FrameInput`]):
 //!   project properties and the newest issued revision's fields only for the keys the block
 //!   reads, so the frame's update map ([`crate::pages::frames::touches`]) redraws it only when one of them
 //!   changes ([`bind`]).
 //! - Drawing never fails: items breaking a bound are skipped and counted (`layout`).
 //!
-//! This module records nothing; the commands are `ecad_engine::title_blocks::commands`.
+//! This module records nothing.
 
 pub mod bind;
 pub mod checks;
-pub mod commands;
-pub mod house;
 
-use std::sync::Arc;
-
-use ecad_model::document::sheet::{self, Margins, SheetSpec};
+use ecad_model::document::sheet::{self, SheetSpec};
 use ecad_model::objects::title_block::TitleBlockLayout;
-use ecad_model::{Document, PageId, StyleRef};
-
-use ecad_model::look::{FrameBlock, FrameText};
+use ecad_model::{Document, PageId};
 
 /// Inset of a caption and of a value from its box's edge, mm.
 pub const INSET_MM: f64 = 1.0;
-
-/// The block of frame style `id` on `spec` with `margins`: its own when it has one, else the
-/// house block computed for the frame's width (built-ins, and own frames without a body).
-pub(crate) fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> FrameBlock {
-    match sheet::frame_block(doc, id) {
-        Some(l) => FrameBlock { frame: id.clone(), layout: Arc::new(l.clone()), builtin: false },
-        None => FrameBlock { frame: id.clone(), layout: Arc::new(house::house(sheet::frame_width(spec, margins), text)), builtin: true },
-    }
-}
 
 /// What an op can change of the pages' grids and keep-out strips through their frames:
 /// what the kept references and place indexes must follow.

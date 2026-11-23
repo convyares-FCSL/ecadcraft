@@ -123,7 +123,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // Project-level things are popouts of the Project panel:
         // with nothing selected, Properties shows the page. Its Function and Location show the
         // project's defaults when the page has none, so the project is a dependency too.
-        v.sections.push(page_section(doc, page));
+        v.sections.push(page_section(doc, &ecad_drawing_style::REGISTRY, page));
         v.deps.insert(ObjectRef::Page(page));
         v.deps.insert(ObjectRef::Project);
         return v;
@@ -192,7 +192,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         if let Some(r) = k.symbol.and_then(|s| doc.representations().get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
-        v.sections.push(device_section(doc, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
+        v.sections.push(device_section(doc, &ecad_drawing_style::REGISTRY, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
     } else if !k.boxes.is_empty() {
         // An aid has no `ObjectRef`, so an aid op rebuilds the view
         // (`ecad_electrical::properties::view`). Devices inside and codes: its page and the list.
@@ -201,7 +201,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             v.deps.extend(doc.representations_of(Subject::Aid(*b)).map(|(_, r)| ObjectRef::Page(r.page)));
         }
         match k.boxes.iter().copied().collect::<Vec<_>>().as_slice() {
-            [b] => v.sections.push(box_section(doc, *b)),
+            [b] => v.sections.push(box_section(doc, &ecad_drawing_style::REGISTRY, *b)),
             many => v.sections.push(Section {
                 title: format!("ECAD · {} LOCATION BOXES", many.len()),
                 kind: ecad_electrical::properties::SectionKind::Objects,

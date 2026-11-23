@@ -192,7 +192,7 @@ pub(crate) fn run_rule(doc: &Document, r: &Representation) -> ecad_model::look::
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
 pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn Look) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
-    use crate::styles::text_style::Block;
+    use crate::devices::text_place::Block;
     use ecad_model::look::TextKind;
     use ecad_model::look::{Shown, TextTarget};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
@@ -217,7 +217,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc, m);
     let pitch = ecad_model::registry::resolve(doc, &crate::defaults::text::LINE_PITCH, ecad_model::registry::Scope::project()).number();
-    let firsts = crate::styles::text_style::run_firsts(doc, page);
+    let firsts = crate::devices::text_place::run_firsts(doc, page);
     // Location prefixes read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
     // The racks' address blocks, worked out once per draw.
@@ -228,7 +228,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         lines: Vec<(TextOf, String, f64, bool, Option<u8>)>,
     }
     let mut pending: Vec<Pending> = Vec::new();
-    let mut fixed: Vec<crate::styles::text_style::TextBox> = Vec::new();
+    let mut fixed: Vec<crate::devices::text_place::TextBox> = Vec::new();
     // A device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
     let own = |c: DeviceId, kind: TextKind| -> Option<ecad_model::look::OwnStyle> {
@@ -278,7 +278,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             if let TextOf::ConnectionPoint(t) = of
                 && let Some((p, h, v)) = props
                     .and_then(|p| p.get(&point_label_key(doc, rid, t)))
-                    .and_then(|s| crate::styles::text_style::parse_at(s))
+                    .and_then(|s| crate::devices::text_place::parse_at(s))
                     .map(|(p, h, v)| (pl.apply(p), h, v))
                     .filter(|(p, _, _)| p.is_finite())
             {
@@ -286,7 +286,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             }
             if labels_shown {
                 let w = m.width(doc, TextKind::PointLabel, ecad_model::look::TextStyle { height, ..label_style }, &value);
-                fixed.push(crate::styles::text_style::text_box(w, height, at, halign, valign));
+                fixed.push(crate::devices::text_place::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
                 text: DerivedText { rep: rid, of, value, at, height, halign, valign, aci: None, own: own(c, kind_of(of)) },
@@ -355,7 +355,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
         pending.push(Pending { block: Block { rep: rid, component: c, lo, hi, vertical: vertical(&pl), placement: pl, w, h }, lines });
     }
-    let placed = crate::styles::text_style::place_blocks(
+    let placed = crate::devices::text_place::place_blocks(
         doc,
         page,
         &pending.iter().filter(|p| p.lines.iter().any(|l| l.3)).map(|p| p.block.clone()).collect::<Vec<_>>(),
@@ -366,8 +366,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let place = placed.get(&p.block.rep).copied().unwrap_or_else(|| {
             // Nothing shown: the first candidate, for Show Hidden Text only.
             let gap = sizes.gap;
-            let (rect, halign) = crate::styles::text_style::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
-            crate::styles::text_style::BlockPlace { rect, halign, moved: false, overlaps: false }
+            let (rect, halign) = crate::devices::text_place::candidates(p.block.lo, p.block.hi, p.block.vertical, p.block.w, p.block.h, gap)[0];
+            crate::devices::text_place::BlockPlace { rect, halign, moved: false, overlaps: false }
         });
         let mut top = place.rect.1.y;
         for (of, value, height, shown, aci) in p.lines {
@@ -440,7 +440,7 @@ fn slot_texts(
         let (ha, va) = (h(slot.h), v(slot.v));
         if on {
             let w = m.width(doc, kind, ecad_model::look::TextStyle { height, ..style }, &value);
-            fixed.push(crate::styles::text_style::text_box(w, height, at, ha, va));
+            fixed.push(crate::devices::text_place::text_box(w, height, at, ha, va));
         }
         out.push(PageText {
             text: DerivedText { rep: rid, of, value, at, height, halign: ha, valign: va, aci, own },
@@ -458,5 +458,5 @@ fn slot_texts(
 pub(crate) fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {
     let term = doc.connection_points().get(&t);
     let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
-    format!("{}point_label.{key}.at", crate::styles::text_style::symbol_prefix(rep))
+    format!("{}point_label.{key}.at", crate::devices::text_place::symbol_prefix(rep))
 }

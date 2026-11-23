@@ -781,7 +781,7 @@ impl Generic for SetpropParams {
                 let plan = locations::plan_box_set(cx.doc, cx.ids, &aids.0, a, typed.as_deref())?;
                 return Ok(locations::set_outcome(cx.doc, a, plan, "aids", &mut cx.state));
             }
-            let ops = crate::continuations::commands::plan_aid_prop(cx.doc, cx.ids, &aids.0, &key, typed.as_deref())?;
+            let ops = crate::continuations::commands::plan_aid_prop(cx.doc, cx.registry, cx.ids, &aids.0, &key, typed.as_deref())?;
             let n = ops.len();
             return Ok(match n {
                 0 => Outcome::answer(json!({"changed": false})),

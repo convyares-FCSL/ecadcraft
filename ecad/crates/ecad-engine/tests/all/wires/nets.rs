@@ -500,7 +500,7 @@ fn wire_labels_take_the_wire_label_text_style() {
     let draw = h.p(|p| ecad_engine::styles::draw::DrawStyles::new(p.ledger.document()));
     let e = ecad_engine::wires::draw::label_entity(&draw, l, cadcraft_engine::doc::Handle(1));
     let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
-    assert_eq!(t.style, ecad_electrical::styles::text_style::STYLE_BOLD);
+    assert_eq!(t.style, ecad_drawing_style::text::STYLE_BOLD);
 }
 
 /// Review of #65, finding 5: the quiet ends (the ends at a cable reference of the wires that

@@ -760,7 +760,7 @@ fn copy_batch(
             if let Op::CreateDevice { id, device: component } = op
                 && *id == new_comp
             {
-                ecad_electrical::styles::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
+                ecad_electrical::devices::text_place::copy_symbol_keys(&mut component.properties, *rid, new_rep);
                 break;
             }
         }

@@ -17,6 +17,9 @@ use crate::registry::Scope;
 use crate::{DeviceId, Document, PageId, RepresentationId, StyleRef, WireId, Word};
 
 /// The registry key of the project font.
+/// The registry key of the wire label cap height (stored in the project settings).
+pub const WIRE_LABEL_HEIGHT_KEY: &str = "text.wire_label.height";
+
 pub const FONT_KEY: &str = "text.font";
 
 crate::word_enum! {
@@ -110,6 +113,12 @@ impl TextKind {
     /// The registry key choosing this kind's text style: `text.<kind>.style`.
     pub fn style_key(self) -> String {
         format!("text.{}.style", self.word())
+    }
+
+    /// The registry key of whether this kind is shown: `text.<kind>.show` (not every kind has
+    /// one).
+    pub fn show_key(self) -> String {
+        format!("text.{}.show", self.word())
     }
 
     /// Words for this kind in labels and echoes: `tag`, `connection point labels`…
@@ -415,4 +424,55 @@ pub trait Look {
     /// The title block of frame style `id` on `spec` with `margins`: its own when it has one,
     /// else the built-in block computed for the frame's width with `text`'s sizes.
     fn title_block(&self, doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> FrameBlock;
+}
+
+/// What the drawing engine knows about fonts on this machine: whether a font is found, and the
+/// width of a text drawn in it.
+pub trait TextMetrics {
+    /// Whether the font `name` (a family, or a face such as `Arial Bold`) is drawn on this
+    /// machine.
+    fn found(&self, name: &str) -> bool;
+    /// The width of `text` at `height` in the font `name`, falling back to the stroke font when
+    /// `name` is not found. May be non-finite; a caller guards it.
+    fn width(&self, name: &str, text: &str, height: f64) -> f64;
+    /// The name of the stroke font, drawn when no family is found.
+    fn stroke_font(&self) -> &str;
+}
+
+/// A fixed-width [`TextMetrics`] for tests: every font is found, and a character is
+/// [`FixedWidth::SHARE`] of the height wide.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FixedWidth;
+
+impl FixedWidth {
+    /// A character's width as a share of the height.
+    pub const SHARE: f64 = 0.6;
+}
+
+impl TextMetrics for FixedWidth {
+    fn found(&self, _name: &str) -> bool {
+        true
+    }
+
+    fn width(&self, _name: &str, text: &str, height: f64) -> f64 {
+        text.chars().count() as f64 * height * Self::SHARE
+    }
+
+    fn stroke_font(&self) -> &str {
+        "stroke"
+    }
+}
+
+impl<T: TextMetrics + ?Sized> TextMetrics for &T {
+    fn found(&self, name: &str) -> bool {
+        (**self).found(name)
+    }
+
+    fn width(&self, name: &str, text: &str, height: f64) -> f64 {
+        (**self).width(name, text, height)
+    }
+
+    fn stroke_font(&self) -> &str {
+        (**self).stroke_font()
+    }
 }

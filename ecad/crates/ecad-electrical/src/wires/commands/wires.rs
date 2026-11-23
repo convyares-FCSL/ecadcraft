@@ -760,12 +760,12 @@ pub(crate) fn net_json(n: &NetView) -> Value {
 }
 
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
-pub(crate) fn settings_json(doc: &Document) -> Value {
+pub(crate) fn settings_json(doc: &Document, registry: &ecad_model::registry::data::Registry) -> Value {
     let w = &doc.settings().wiring;
     json!({
         "scheme": w.scheme.name(),
         "colour_style": ecad_model::naming::words::Word::word(w.colour_style()),
-        "label_height": crate::pages::commands::sheets::wire_label_height(doc),
+        "label_height": crate::pages::commands::sheets::wire_label_height(doc, registry),
         "label_rule": wires::label_rule::label_rule_word(doc),
         "label_min_length": wires::label_rule::label_min_length(doc),
         "digits": w.digits(),

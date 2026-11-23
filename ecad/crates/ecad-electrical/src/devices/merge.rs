@@ -157,8 +157,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     }
     let into_props = doc.devices().get(&into).map(|c| &c.properties);
     for (old, new) in renamed {
-        for (key, value) in crate::styles::text_style::symbol_text_keys(&from_c.properties, old) {
-            let moved = crate::styles::text_style::rename_symbol_key(&key, old, new);
+        for (key, value) in crate::devices::text_place::symbol_text_keys(&from_c.properties, old) {
+            let moved = crate::devices::text_place::rename_symbol_key(&key, old, new);
             let before = into_props.and_then(|p| p.get(&moved)).cloned();
             if before.as_ref() != Some(&value) {
                 ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(into), key: moved, before, after: Some(value) });
@@ -259,7 +259,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             notes.extend(key_notes);
             // An erased symbol's own text keys go with it.
             for (rid, _) in &reps {
-                for (key, value) in crate::styles::text_style::symbol_text_keys(&component.properties, *rid) {
+                for (key, value) in crate::devices::text_place::symbol_text_keys(&component.properties, *rid) {
                     ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(value), after: None });
                 }
             }

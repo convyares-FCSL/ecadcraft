@@ -190,7 +190,7 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
     let (l, b, r, t) = ecad_electrical::pages::generated::area(input);
     let mut pen = Pen { k: unit_scale(input.unit), x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
+    let draw = |kind| ecad_drawing_style::text::fonts::text_draw_of(&draws, kind, input.unit);
     let g = o.strip_pages.geometry;
     let heading = draw(TextKind::TableHeading);
     let lk = Draws {

@@ -256,7 +256,7 @@ pub const MAX_MARGIN_MM: f64 = 50.0;
 
 /// Whether `id` names a frame style in `doc`: the built-in, or a record of the project or the
 /// standard (within [`crate::objects::styles::MAX_STYLES_PER_CATALOGUE`]).
-pub(crate) fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
+pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
     matches!(id, StyleRef::Builtin(w) if w == BUILTIN_FRAME)
         || crate::objects::styles::bounded_record(doc, StyleLayer::Project, FRAME_CATALOGUE, id).is_some()
         || crate::objects::styles::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
@@ -433,6 +433,12 @@ pub fn frame_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
 pub fn margins_of(doc: &Document, page: PageId) -> Margins {
     let id = frame_style(doc, page);
     frame_margins(doc, &id).unwrap_or_default()
+}
+
+/// A text height `height` in drawing units of a project of length unit `unit`, in paper millimetres.
+pub fn height_mm(height: f64, unit: LengthUnit) -> f64 {
+    let k = unit_scale(unit);
+    if k.is_finite() && k > 0.0 { height / k } else { height }
 }
 
 /// The width of the frame of `spec` with `margins`, in millimetres.

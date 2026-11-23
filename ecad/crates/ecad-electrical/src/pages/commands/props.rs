@@ -347,8 +347,9 @@ revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one t
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;
+        let registry = cx.registry;
         if self.is_empty() {
-            return Ok(Outcome::answer(project_json(doc)));
+            return Ok(Outcome::answer(project_json(doc, registry)));
         }
         let given = [self.title, self.drawing_number, self.customer, self.status, self.function, self.location];
         let fields = PROJECT_KEYS.into_iter().zip(given).filter_map(|(k, v)| v.map(|v| (k, v))).collect();
@@ -379,13 +380,13 @@ revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one t
         change.tag_case = self.tag_case.flatten().as_deref().map(tag_case).transpose()?;
         let plan = project_props(doc, cx.ids, &change)?;
         if plan.ops.is_empty() {
-            let mut v = project_json(doc);
+            let mut v = project_json(doc, registry);
             v["changed"] = json!(false);
             return Ok(Outcome::answer(v));
         }
         let message = plan.message.clone();
         Ok(props_outcome(doc, "Project properties", plan, &mut cx.state, move |doc, _| {
-            let mut v = project_json(doc);
+            let mut v = project_json(doc, registry);
             v["changed"] = json!(true);
             if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
                 v["narrowed"] = json!(revisions::NARROWED);

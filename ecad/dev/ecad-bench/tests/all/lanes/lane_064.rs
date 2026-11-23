@@ -45,7 +45,7 @@ fn references_view_agrees(tier: Tier) -> usize {
         r.unwrap();
     }
     assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth));
     let engine = EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY };
     let inputs = Inputs { engine: &engine, frame_page: None };
     let mut view = ReferencesView::build(&Document::default());

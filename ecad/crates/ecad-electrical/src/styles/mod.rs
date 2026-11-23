@@ -1,8 +1,9 @@
-//! The style catalogues (text, location, frame, wire, page, cable, rating table) and what spans
-//! them: finding a style by name, who uses a style, the pages a style change touches, and the checks
-//! a written record passes. A catalogue's mechanism (fields, built-ins, how a field resolves) is
+//! The rules' style catalogues (wire, page, cable, rating table) and what spans every catalogue,
+//! the look's text, location and frame catalogues too (`ecad_drawing_style::catalogues`): finding
+//! a style by name, who uses a style, the pages a style change touches, and the checks a written
+//! record passes. A catalogue's mechanism (fields, built-ins, how a field resolves) is
 //! [`ecad_model::registry::styles`]; which style an object uses is a registry choice entry
-//! (`defaults/styles.rs`).
+//! (`defaults/styles.rs` here, and the look's in `ecad_drawing_style::defaults::styles`).
 //!
 //! Bounds (`ecad_model::objects::styles::MAX_*`): records past them are kept, ignored here and
 //! reported by Checks.
@@ -22,27 +23,20 @@ use ecad_model::{Document, ObjectRef, Op, PageId, Subject, Word};
 
 use ecad_model::registry::Scope;
 use ecad_model::registry::data::Registry;
-use ecad_model::registry::styles::{Catalogue, Count, Reach, Row, chosen, exists, hex_rgb, name, rows};
+use ecad_model::registry::styles::{Catalogue, Count, Reach, Row, chosen, exists, name, rows};
 
 use crate::CmdError;
 
 pub mod cable;
 pub mod checks;
 pub mod commands;
-pub mod frame;
-pub mod location;
 pub mod page;
 pub mod ratingtable;
-pub mod text;
-pub mod text_style;
 pub mod wire;
 
 /// This crate's catalogues: one line each (a new catalogue adds a line).
 #[rustfmt::skip]
 pub static CATALOGUES: &[&Catalogue] = &[
-    &text::CATALOGUE,
-    &location::CATALOGUE,
-    &frame::CATALOGUE,
     &wire::CATALOGUE,
     &page::CATALOGUE,
     &cable::CATALOGUE,
@@ -194,7 +188,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
 ///
 /// # Errors
 /// A value the typed field does not take, in words.
-pub(crate) fn with_fields(
+pub fn with_fields(
     cat: &Catalogue, before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)],
 ) -> Result<StyleRecord, CmdError> {
     let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(cat.catalogue));
@@ -208,15 +202,8 @@ pub(crate) fn with_fields(
 }
 
 /// A record body that is not of the catalogue whose `set` was given it, in words.
-pub(crate) fn wrong_body(b: &StyleBody, one: &str) -> ecad_model::registry::styles::Refused {
+pub fn wrong_body(b: &StyleBody, one: &str) -> ecad_model::registry::styles::Refused {
     ecad_model::registry::styles::Refused(format!("A {} record is not a {}.", b.catalogue(), one.to_lowercase()))
-}
-
-/// Whether `s` is a colour a style field takes: `none`, one IEC 60757 code
-/// (`RD`, `BLU`), or `#rrggbb`.
-pub(crate) fn is_colour(s: &str) -> bool {
-    let t = s.trim();
-    t.eq_ignore_ascii_case("none") || hex_rgb(t).is_some() || crate::cables::words::colour_code(t).is_some_and(|(_, two)| two.is_none())
 }
 
 #[cfg(test)]
@@ -253,16 +240,6 @@ mod tests {
                 ) && builtin_word(e) == wire::NONE;
                 assert!(none || b.as_ref().is_some_and(|b| c.builtin(b).is_some()), "{}: built-in names no built-in style", e.key);
             }
-        }
-    }
-
-    #[test]
-    fn colours_are_none_one_code_or_hex() {
-        for ok in ["none", "NONE", "RD", "blu", "#c62828"] {
-            assert!(is_colour(ok), "{ok}");
-        }
-        for bad in ["", "GNYE", "#12345", "#gggggg", "purple"] {
-            assert!(!is_colour(bad), "{bad}");
         }
     }
 }

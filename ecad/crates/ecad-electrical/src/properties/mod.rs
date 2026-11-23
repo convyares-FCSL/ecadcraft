@@ -126,7 +126,7 @@ pub(crate) fn sheet_choices(doc: &Document) -> Vec<String> {
     out
 }
 
-pub fn page_section(doc: &Document, page: PageId) -> Section {
+pub fn page_section(doc: &Document, registry: &ecad_model::registry::data::Registry, page: PageId) -> Section {
     let book = Book::of(doc);
     let pg = doc.pages().get(&page);
     let number = book.number(doc, page);
@@ -163,7 +163,7 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     sheet.choices = sheet_choices(doc);
     rows.push(sheet);
     // The page's Texts group.
-    text_rows(doc, TextsAt::Page(page), &mut rows);
+    text_rows(doc, registry, TextsAt::Page(page), &mut rows);
     Section {
         title: format!("ECAD · PAGE {number}"),
         kind: SectionKind::Page,
@@ -184,7 +184,7 @@ fn codes(doc: &Document, key: &str) -> Vec<String> {
 /// A location box: Function and Location (editable, either may
 /// be empty), Panel temperature and Style (editable; unset shows the project's, faint), Vertices
 /// and Devices inside.
-pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
+pub fn box_section(doc: &Document, registry: &ecad_model::registry::data::Registry, b: ecad_model::AidId) -> Section {
     use crate::locations::designations::{self as d, Aspect};
     let shape = doc.representations_of(Subject::Aid(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
     let values = crate::locations::box_values(doc, b);
@@ -197,7 +197,7 @@ pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
         rows.push(r);
     }
     rows.push(box_temperature_row(doc, values));
-    rows.push(box_style_row(doc, b));
+    rows.push(box_style_row(doc, registry, b));
     let location = shape.as_ref().map_or(location, |s| crate::locations::label_of(s).0);
     if let Some(s) = &shape {
         rows.push(Row::ro("vertices", "Vertices", s.vertices.len().to_string()));
@@ -231,19 +231,30 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
 
 /// A box's Style row: its own location style's name, else the project's (faint); the
 /// location styles' names as choices.
-fn box_style_row(doc: &Document, b: ecad_model::AidId) -> Row {
-    let style = crate::styles::location::box_style(doc, b);
-    let mut r =
-        Row::rw(crate::locations::BOX_STYLE_KEY, "Style", ecad_model::registry::styles::name(doc, &crate::styles::location::CATALOGUE, &style));
+fn box_style_row(doc: &Document, registry: &ecad_model::registry::data::Registry, b: ecad_model::AidId) -> Row {
+    use ecad_model::registry::styles::{chosen, exists, name, rows};
+    let cat = registry.catalogue(ecad_model::StyleCatalogue::Location);
+    let own = crate::locations::box_values(doc, b).and_then(|x| x.style.as_ref()).filter(|s| cat.is_some_and(|c| exists(doc, c, s)));
+    let project = || registry.find(LOCATION_STYLE_KEY).map(|e| chosen(doc, e, ecad_model::registry::Scope::project()));
+    let style = own.cloned().or_else(project);
+    let shown = match (cat, &style) {
+        (Some(c), Some(s)) => name(doc, c, s),
+        (_, s) => s.as_ref().map(ecad_model::StyleRef::text).unwrap_or_default(),
+    };
+    let mut r = Row::rw(crate::locations::BOX_STYLE_KEY, "Style", shown);
     // An own style naming none that exists falls through to the project's, shown faint too (the
     // Checks list has its row).
-    r.inherited = crate::styles::location::own_style(doc, b).is_none();
-    r.choices = ecad_model::registry::styles::rows(doc, &crate::styles::location::CATALOGUE).into_iter().map(|x| x.name).collect();
+    r.inherited = own.is_none();
+    r.choices = cat.map(|c| rows(doc, c).into_iter().map(|x| x.name).collect()).unwrap_or_default();
     r
 }
 
+/// The registry key of the project's location box style.
+const LOCATION_STYLE_KEY: &str = "location.style";
+
 pub fn device_section(
-    doc: &Document, plc: Option<&crate::plc::kept::Plc>, devices: &BTreeSet<DeviceId>, symbol: Option<ecad_model::RepresentationId>,
+    doc: &Document, registry: &ecad_model::registry::data::Registry, plc: Option<&crate::plc::kept::Plc>, devices: &BTreeSet<DeviceId>,
+    symbol: Option<ecad_model::RepresentationId>,
 ) -> Section {
     let one = devices.len() == 1;
     let mut rows = Vec::new();
@@ -323,9 +334,9 @@ pub fn device_section(
     };
     // The Texts group of one device, and of one symbol when one is picked.
     if let (true, Some(c)) = (one, devices.iter().next().copied()) {
-        text_rows(doc, TextsAt::Device(c), &mut rows);
+        text_rows(doc, registry, TextsAt::Device(c), &mut rows);
         if let Some(r) = symbol.filter(|r| doc.representations().get(r).is_some_and(|x| x.form == ecad_model::Form::Symbol)) {
-            text_rows(doc, TextsAt::Symbol(r, c), &mut rows);
+            text_rows(doc, registry, TextsAt::Symbol(r, c), &mut rows);
         }
     }
     let mut buttons = Vec::new();
@@ -766,7 +777,7 @@ fn shown_words(w: &str) -> &'static str {
 /// The Texts rows of a device, a symbol or a page: one per kind of text, `Default (…)` when the
 /// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
 /// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
-fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
+fn text_rows(doc: &Document, registry: &ecad_model::registry::data::Registry, at: TextsAt, rows: &mut Vec<Row>) {
     use ecad_model::look::TextKind;
     let kinds: &[TextKind] = match at {
         TextsAt::Page(_) => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber, TextKind::ContinuationName],
@@ -777,7 +788,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         _ => "Texts",
     };
     for kind in kinds {
-        let Some(entry) = crate::styles::text_style::show_entry(*kind) else { continue };
+        let Some(entry) = registry.find(&kind.show_key()) else { continue };
         let (key, own, inherited) = match at {
             TextsAt::Device(c) => {
                 let own = doc.devices().get(&c).and_then(|x| x.properties.get(entry.key)).cloned();

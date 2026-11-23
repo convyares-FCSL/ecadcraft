@@ -838,7 +838,7 @@ pub fn check_rows(doc: &Document, look: &dyn ecad_model::look::Look) -> Vec<crat
         out.push(Check { kind: Kind::CoverNotesCut, page: Some(page), at: None, object: Object::None, which: String::new(), fix: None });
     }
     let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), look, look.frame_text(doc).sizes());
-    let cover_mm = crate::pages::frames::height_mm(look.text_style(doc, TextKind::Cover).height, input.unit);
+    let cover_mm = ecad_model::document::sheet::height_mm(look.text_style(doc, TextKind::Cover).height, input.unit);
     let fit = layout(doc, &input, cover_mm).fit;
     if fit.shown < fit.all {
         let which = format!("The cover's symbol legend shows {} of {} symbols.", fit.shown, fit.all);

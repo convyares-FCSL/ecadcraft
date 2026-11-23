@@ -80,8 +80,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
     let text_rows: Vec<(TextKind, Option<usize>, Option<usize>)> = crate::inspector::SYMBOL_KINDS
         .iter()
         .map(|k| {
-            let style = insp.rows.iter().position(|r| r.key == ecad_electrical::styles::text_style::style_entry(*k).key);
-            let show = ecad_electrical::styles::text_style::show_entry(*k).and_then(|e| insp.rows.iter().position(|r| r.key == e.key));
+            let style = insp.rows.iter().position(|r| r.key == ecad_drawing_style::text::style_entry(*k).key);
+            let show = ecad_drawing_style::text::show_entry(*k).and_then(|e| insp.rows.iter().position(|r| r.key == e.key));
             (*k, style, show)
         })
         .collect();

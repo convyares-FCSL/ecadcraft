@@ -142,11 +142,11 @@ impl TextSection {
         if self.rows.iter().any(|r| ecad_electrical::input::text_height(&r.height).is_err()) {
             return Some(BAD_HEIGHT);
         }
-        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_electrical::defaults::text::FONT.parse(&r.font).is_none()) {
-            return Some(ecad_electrical::styles::commands::text::BAD_FONT);
+        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_drawing_style::defaults::text::FONT.parse(&r.font).is_none()) {
+            return Some(ecad_drawing_style::text::commands::BAD_FONT);
         }
-        if ecad_electrical::defaults::text::FONT.parse(&self.font).is_none() {
-            return Some(ecad_electrical::styles::commands::text::BAD_FONT);
+        if ecad_drawing_style::defaults::text::FONT.parse(&self.font).is_none() {
+            return Some(ecad_drawing_style::text::commands::BAD_FONT);
         }
         None
     }
@@ -207,7 +207,7 @@ impl TextSection {
         }
         let mut doc = ecad_model::Document::default();
         doc.edit_parts(|parts| {
-            parts.display.insert(ecad_electrical::defaults::text::FONT.key.into(), self.font.trim().to_string());
+            parts.display.insert(ecad_drawing_style::defaults::text::FONT.key.into(), self.font.trim().to_string());
         });
         let f = ecad_engine::styles::draw::Fonts::resolve(&doc);
         self.status = f.status();
@@ -290,7 +290,7 @@ mod tests {
     fn read() -> TextSection {
         let doc = ecad_model::Document::default();
         let fonts = ecad_engine::styles::draw::Fonts::resolve(&doc);
-        TextSection::from_json(&ecad_electrical::styles::commands::text::textstyle_json(&doc, &fonts, false))
+        TextSection::from_json(&ecad_drawing_style::text::commands::textstyle_json(&doc, &fonts, false))
     }
 
     #[test]

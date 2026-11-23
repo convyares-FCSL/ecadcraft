@@ -100,7 +100,7 @@ fn content(
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
+    let draw = |kind| ecad_drawing_style::text::fonts::text_draw_of(&draws, kind, input.unit);
     let (header, cell_draw, heading) = (draw(TextKind::TableHeader), draw(TextKind::Table), draw(TextKind::TableHeading));
     // The cover's blocks.
     if kind == GenKind::Cover {

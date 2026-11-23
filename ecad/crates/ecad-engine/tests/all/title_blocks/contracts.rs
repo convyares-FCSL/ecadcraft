@@ -9,7 +9,7 @@ use ecad_model::document::sheet::{self, SheetSpec};
 use ecad_model::objects::title_block::{Binding, BlockItem, IfEmpty, Rect, TextDraw, TitleBlockLayout};
 use ecad_model::{PageId, Primitive, Pt};
 use serde_json::{Value, json};
-use {ecad_electrical::title_blocks::house, ecad_engine::title_blocks::dxf};
+use {ecad_drawing_style::title_blocks::house, ecad_engine::title_blocks::dxf};
 
 use crate::common::H;
 
@@ -470,10 +470,10 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
         after: Some(after),
     };
     let mut heavier = rec.clone();
-    ecad_electrical::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
+    ecad_drawing_style::catalogues::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
     assert_eq!(crate::common::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
     let mut a1 = rec.clone();
-    ecad_electrical::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
+    ecad_drawing_style::catalogues::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
     used.edit_parts(|parts| {
         parts.display.insert("print.frame.style".into(), id.clone());
@@ -494,7 +494,7 @@ fn an_out_of_bounds_block_size_is_reported() {
     doc.edit_parts(|parts| {
         parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
     });
-    let rows = ecad_electrical::title_blocks::checks::rows(&doc, &ecad_engine::styles::draw::LOOK);
+    let rows = ecad_electrical::title_blocks::checks::rows(&doc, &ecad_drawing_style::REGISTRY, &ecad_engine::styles::draw::LOOK);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }
 

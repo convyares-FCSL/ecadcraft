@@ -5,12 +5,10 @@
 use std::collections::BTreeMap;
 
 use ecad_model::document::book::Book;
-use ecad_model::document::sheet::{SheetSpec, unit_scale};
+use ecad_model::document::sheet::SheetSpec;
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
-use crate::styles::text_style::fonts::{DrawStyles, TextMetrics};
-use ecad_model::look::{FrameBlock, FrameDraw, FrameText, Look, TextDraw, TextKind};
-use ecad_model::objects::styles::text::Weight;
+use ecad_model::look::{FrameBlock, FrameDraw, FrameText, Look};
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
 pub const LAYER: &str = "ECAD-FRAME";
@@ -100,41 +98,6 @@ pub struct FrameInput {
     pub project: BTreeMap<String, String>,
     /// The newest issued revision's fields the block's fields read (besides `rev`).
     pub newest: BTreeMap<String, String>,
-}
-
-/// `kind`'s style in a project of length unit `unit`, from its resolved `draw`.
-pub fn text_draw_of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
-    let s = draw.style(kind);
-    let mm = height_mm(s.height, unit);
-    // The per-kind fonts decide whether bold is drawn as a heavier stroke
-    // as the engine's `DrawApply::apply` does.
-    let weight = match s.weight {
-        Weight::Bold => draw.fonts_for(kind).bold_lineweight,
-        Weight::Regular => None,
-    };
-    TextDraw { mm, style: s.style_name, weight }
-}
-
-/// A text height `height` in drawing units of a project of length unit `unit`, in paper millimetres.
-pub(crate) fn height_mm(height: f64, unit: LengthUnit) -> f64 {
-    let k = unit_scale(unit);
-    if k.is_finite() && k > 0.0 { height / k } else { height }
-}
-
-/// The text styles of `doc`'s frame, with the fonts `m` finds.
-pub fn frame_text_with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
-    let draw = DrawStyles::with(doc, m);
-    let u = doc.settings().length_unit;
-    let t = |k| text_draw_of(&draw, k, u);
-    FrameText {
-        grid: t(TextKind::Grid),
-        caption: t(TextKind::TitleCaption),
-        value: t(TextKind::TitleValue),
-        main: t(TextKind::TitleMain),
-        page: t(TextKind::TitlePage),
-        rev: t(TextKind::TitleRev),
-        bold_weight: draw.fonts_for(TextKind::TitleMain).bold_lineweight,
-    }
 }
 
 impl FrameInput {
@@ -240,7 +203,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if ecad_model::look::is_reserved_key(key.raw) => true,
         // The frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
-        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::FRAME.key => true,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == ecad_model::document::sheet::FRAME_STYLE_KEY => true,
         // A page type's sheet, frame, title block or zones.
         Effect::Style { catalogue, .. } => {
             *catalogue == ecad_model::StyleCatalogue::Frame

@@ -11,11 +11,11 @@ use ecad_model::document::sheet::{parse_frame_sheet, parse_margins};
 use ecad_model::geometry::units::Mm;
 use ecad_model::look::FrameDraw;
 use ecad_model::objects::styles::FrameStyle;
-use ecad_model::objects::styles::frame::{FrameMargins, FrameSheet};
+use ecad_model::objects::styles::frame::{BlockAt, FrameMargins, FrameSheet};
 use ecad_model::objects::styles::text::StyleColour;
 use ecad_model::{Document, PageId, StyleRef, Word};
 
-use crate::CmdError;
+use ecad_electrical::CmdError;
 use ecad_model::registry::data::Slot;
 use ecad_model::registry::styles::{Builtin, Catalogue, Field};
 use ecad_model::registry::{Kind, Value};
@@ -49,7 +49,7 @@ static FIELDS: [Field; 8] = [
     Field {
         key: "line_colour",
         label: "Line colour",
-        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        kind: Kind::Parsed { max_chars: 16, parse: crate::catalogues::is_colour },
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
@@ -112,8 +112,6 @@ fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::Sty
     }
 }
 
-pub use ecad_model::objects::styles::frame::BlockAt;
-
 fn weight(mm: f64) -> u16 {
     (mm * 100.0).round().clamp(0.0, 211.0) as u16
 }
@@ -129,7 +127,7 @@ pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
 
 /// The look of frame style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::frame::CATALOGUE, id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::catalogues::frame::CATALOGUE, id, k, None);
     FrameDraw {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),
@@ -200,7 +198,7 @@ pub fn set(f: &mut FrameStyle, key: &str, value: Option<&str>) -> Result<(), Cmd
 fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
     match b {
         ecad_model::objects::styles::StyleBody::Frame(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
-        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+        other => Err(ecad_electrical::styles::wrong_body(other, CATALOGUE.one)),
     }
 }
 

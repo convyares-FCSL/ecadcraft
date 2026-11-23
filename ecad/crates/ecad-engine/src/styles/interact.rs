@@ -277,7 +277,7 @@ impl MoveText {
             (Input::Keyword(k) | Input::Text(k), picked) => {
                 let w = k.trim().to_ascii_lowercase();
                 if self.asking_justify {
-                    if ecad_electrical::styles::text_style::parse_justify(&w).is_none() {
+                    if ecad_electrical::devices::text_place::parse_justify(&w).is_none() {
                         return Err(other(ecad_electrical::styles::commands::text::BAD_JUSTIFY));
                     }
                     self.justify = Some(w.to_ascii_uppercase());

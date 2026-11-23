@@ -203,7 +203,7 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
             painted: ecad_engine::cables::draw::painted_marks(p, uid),
             provisional: ecad_engine::cables::draw::provisional_tag_handles(p, page),
             related: related(p, page, &selection),
-            tag_height: ecad_electrical::styles::text_style::text_style(doc, ecad_model::look::TextKind::Tag).height,
+            tag_height: ecad_drawing_style::text::text_style(doc, ecad_model::look::TextKind::Tag).height,
         };
         (data, pick)
     });

@@ -4,10 +4,10 @@
 //! [`crate::generic`].
 //!
 //! Each command is a thin shim: its params struct reads the JSON, the rules in
-//! [`ecad_electrical::styles::commands::text`] decide, and the shim commits the ops and answers in JSON.
+//! [`ecad_drawing_style::text::commands`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_electrical::styles::commands::text::{self as rules, ShowLevel, ShowTarget};
+use ecad_drawing_style::text::commands::{self as rules, ShowLevel, ShowTarget};
 use ecad_model::Word;
 use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
 use schemars::JsonSchema;
@@ -66,7 +66,7 @@ pub(crate) struct ShowtextParams {
 
 impl Command for ShowtextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let kind = rules::kind(&self.kind).map_err(|e| err(e.to_string()))?;
+        let kind = ecad_electrical::styles::commands::text::kind(&self.kind).map_err(|e| err(e.to_string()))?;
         let show = rules::show_word(self.show.flatten().as_deref()).map_err(|e| err(e.to_string()))?;
         let target = ShowTarget { representation: self.representation, component: self.component, conductor: self.conductor, page: self.page };
         on_project(s, |p, pg, _| {

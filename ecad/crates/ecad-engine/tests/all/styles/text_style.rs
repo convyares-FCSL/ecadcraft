@@ -6,7 +6,7 @@ use crate::common::{H, id};
 use cadcraft_engine::doc::{Entity, EntityKind, Lineweight};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
-use {ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR, ecad_model::look::TextKind};
+use {ecad_drawing_style::text::STYLE_BOLD, ecad_drawing_style::text::STYLE_REGULAR, ecad_model::look::TextKind};
 
 const SEED: u64 = 31;
 
@@ -91,7 +91,7 @@ fn textstyle_redraws_the_open_page_in_one_transaction() {
     h.cmdline("u");
     h.cmdline("u");
     let doc = h.doc();
-    assert_eq!(ecad_electrical::styles::text_style::text_style(&doc, TextKind::Tag).height, 2.5);
+    assert_eq!(ecad_drawing_style::text::text_style(&doc, TextKind::Tag).height, 2.5);
     assert_eq!(drawn(&mut h, page, &tag)[0].0, 2.5);
     assert_eq!(drawn(&mut h, page, &tag)[0].1, STYLE_BOLD);
 }
@@ -153,14 +153,14 @@ fn a_kind_may_have_its_own_font() {
         .and_then(|r| r.body.entry("font"));
     assert_eq!(font.as_deref(), Some("Kind Font 031"));
     assert!(!doc.display().contains_key("text.font"), "the project font is unchanged");
-    let s = ecad_electrical::styles::text_style::text_style(&doc, TextKind::Tag);
+    let s = ecad_drawing_style::text::text_style(&doc, TextKind::Tag);
     assert_eq!(s.style_name, "ECAD-TAG-BOLD");
-    assert_eq!(ecad_electrical::styles::text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);
+    assert_eq!(ecad_drawing_style::text::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);
     assert_eq!(drawn(&mut h, page, &tag)[0].1, "ECAD-TAG-BOLD");
     let d = h.pv(|p, pg| pg.drawing_of(p, page)).unwrap();
     assert!(d.text_style("ECAD-TAG-BOLD").is_some() && d.text_style("ECAD-TAG").is_some());
     // `null` goes back to the project font.
     h.run("textstyle", json!({"kind": "tag", "font": null})).unwrap();
-    assert_eq!(ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag).style_name, STYLE_BOLD);
+    assert_eq!(ecad_drawing_style::text::text_style(&h.doc(), TextKind::Tag).style_name, STYLE_BOLD);
     h.check();
 }

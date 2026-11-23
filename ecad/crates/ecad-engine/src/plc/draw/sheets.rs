@@ -14,7 +14,7 @@ use {ecad_electrical::plc::iolist, ecad_electrical::plc::kept::Plc};
 
 /// Sheet `i` of the I/O list page.
 pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, draws: &DrawStyles, unit: LengthUnit, a: Area, i: usize) {
-    let draw = |k| ecad_electrical::pages::frames::text_draw_of(draws, k, unit);
+    let draw = |k| ecad_drawing_style::text::fonts::text_draw_of(draws, k, unit);
     let (heading, header, cell) = (draw(TextKind::TableHeading), draw(TextKind::TableHeader), draw(TextKind::Table));
     let cards = plc.map(iolist::cards_in_order).unwrap_or_default();
     let Some(plc) = plc.filter(|_| !cards.is_empty()) else {
@@ -122,7 +122,7 @@ fn square(d: &mut Draw, x: f64, y: f64, s: Square) {
 
 /// One tile with its top-left corner at (x, y).
 fn tile(doc: &Document, d: &mut Draw, draws: &DrawStyles, unit: LengthUnit, t: &Tile, x: f64, y: f64) {
-    let draw = |k| ecad_electrical::pages::frames::text_draw_of(draws, k, unit);
+    let draw = |k| ecad_drawing_style::text::fonts::text_draw_of(draws, k, unit);
     let room = Some(TILE_W - 3.0);
     let at = |dy: f64| (x + 1.5, y - dy);
     if t.kind == TileKind::Free {
@@ -169,7 +169,7 @@ fn tile(doc: &Document, d: &mut Draw, draws: &DrawStyles, unit: LengthUnit, t: &
 
 /// Sheet `i` of the `plcrack` page.
 pub(crate) fn rack_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, draws: &DrawStyles, unit: LengthUnit, a: Area, i: usize) {
-    let draw = |k| ecad_electrical::pages::frames::text_draw_of(draws, k, unit);
+    let draw = |k| ecad_drawing_style::text::fonts::text_draw_of(draws, k, unit);
     let Some(plc) = plc.filter(|p| !p.racks.is_empty() || !p.cards.is_empty()) else {
         d.text((a.l + 1.0, a.t - row_mm() / 2.0), draw(TextKind::Table), NO_RACKS, HAlign::Left, None, Some(a.r - a.l - 2.0));
         return;

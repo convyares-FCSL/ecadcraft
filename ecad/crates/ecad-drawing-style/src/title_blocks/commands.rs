@@ -14,11 +14,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::run::{Access, Cx, Generic, Outcome};
-use crate::error::CmdError;
-use crate::styles;
-use crate::styles::commands::styles::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
-use crate::title_blocks::{bind, house};
+use crate::title_blocks::house;
+use ecad_electrical::CmdError;
+use ecad_electrical::commands::run::{Access, Cx, Generic, Outcome};
+use ecad_electrical::styles;
+use ecad_electrical::styles::commands::styles::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
+use ecad_electrical::title_blocks::bind;
 use ecad_model::look::FrameText;
 
 /// Refusals, in words.
@@ -29,7 +30,7 @@ pub(crate) const BLANK_SIZE: (f64, f64) = (180.0, 40.0);
 
 /// The frame catalogue.
 fn catalogue() -> &'static ecad_model::registry::styles::Catalogue {
-    &styles::frame::CATALOGUE
+    &crate::catalogues::frame::CATALOGUE
 }
 
 /// The frame `id` names, else the one `name` names (trimmed).
@@ -38,7 +39,7 @@ fn catalogue() -> &'static ecad_model::registry::styles::Catalogue {
 /// Neither given, or no such frame.
 pub fn frame(doc: &Document, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    styles::find(doc, &styles::frame::CATALOGUE, t)
+    styles::find(doc, &crate::catalogues::frame::CATALOGUE, t)
 }
 
 /// The sheet `text` names, else the project's.
@@ -101,7 +102,7 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
     let layer = layer_of(doc, id).ok_or(CmdError::refused(NOT_A_FRAME))?;
     let before = ecad_model::registry::styles::record(doc, layer, FRAME_CATALOGUE, id).cloned();
     let fields = fields(doc, cat, edit.fields)?;
-    let current = ecad_model::registry::styles::name(doc, &crate::styles::frame::CATALOGUE, id);
+    let current = ecad_model::registry::styles::name(doc, &crate::catalogues::frame::CATALOGUE, id);
     let rename = edit.rename.as_deref().filter(|n| *n != current);
     if let Some(n) = rename {
         if !is_name(n) {
@@ -111,7 +112,7 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
             return Err(name_taken(n));
         }
     }
-    let mut after = styles::with_fields(&styles::frame::CATALOGUE, before.as_ref(), rename, &fields)?;
+    let mut after = styles::with_fields(&crate::catalogues::frame::CATALOGUE, before.as_ref(), rename, &fields)?;
     if let (Some(b), StyleBody::Frame(f)) = (edit.body, &mut after.body) {
         f.title_block = Some(b);
     }
@@ -149,7 +150,7 @@ pub(crate) fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<St
     if from.eq_ignore_ascii_case("blank") {
         return Ok(None);
     }
-    styles::find(doc, &styles::frame::CATALOGUE, from).map(Some)
+    styles::find(doc, &crate::catalogues::frame::CATALOGUE, from).map(Some)
 }
 
 /// A new frame's name: the one given, else a unique one from the sheet's size (`A3 title block`,
@@ -209,7 +210,7 @@ pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>)
     }
     set.push((FRAME_SHEET_FIELD.into(), Some(new.spec.text())));
     set.push(("block".into(), Some("bottom_right".into())));
-    let mut rec = styles::with_fields(&styles::frame::CATALOGUE, None, Some(&new.name), &set)?;
+    let mut rec = styles::with_fields(&crate::catalogues::frame::CATALOGUE, None, Some(&new.name), &set)?;
     if let StyleBody::Frame(f) = &mut rec.body {
         f.title_block = Some(new.layout);
     }
@@ -247,7 +248,7 @@ pub(crate) fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
 
 /// The sheet frame `id` is drawn for (`page` for the page's own).
 fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
-    sheet::frame_spec(doc, id).map_or_else(|| styles::frame::PAGE_SHEET.to_string(), |s| s.text())
+    sheet::frame_spec(doc, id).map_or_else(|| crate::catalogues::frame::PAGE_SHEET.to_string(), |s| s.text())
 }
 
 /// One row of `titleblocks`.
@@ -270,7 +271,8 @@ fn row_json(doc: &Document, row: &ecad_model::registry::styles::Row, text: &Fram
 /// The JSON `titleblocks {}` returns: every frame with its sheet, items, users and keys, and the
 /// project keys every frame in use reads.
 pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
-    let rows: Vec<Value> = ecad_model::registry::styles::rows(doc, &styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
+    let rows: Vec<Value> =
+        ecad_model::registry::styles::rows(doc, &crate::catalogues::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
     // The project keys every frame in use reads (Settings ▸ Project info).
     let mut keys = BTreeSet::new();
     let mut seen = BTreeSet::new();
@@ -288,9 +290,9 @@ pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
 /// # Errors
 /// `id` is not a frame.
 pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
-    let cat = &styles::frame::CATALOGUE;
+    let cat = &crate::catalogues::frame::CATALOGUE;
     let row = ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    let mut v = crate::styles::commands::styles::style_json(doc, cat, &row, false);
+    let mut v = ecad_electrical::styles::commands::styles::style_json(doc, cat, &row, false);
     let layout = layout_of(doc, id, spec, text);
     v["builtin"] = json!(row.layer == ecad_model::registry::styles::Layer::Builtin);
     v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
@@ -300,7 +302,7 @@ pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::commands::run). `titleblockimport` reads a DXF with
+// The commands (generic: ecad_electrical::commands::run). `titleblockimport` reads a DXF with
 // CADCraft's reader and stays the engine's.
 
 /// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.

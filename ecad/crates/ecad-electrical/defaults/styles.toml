@@ -1,58 +1,12 @@
-# Style choices; the location, frame, page, cable and rating table catalogues. Wire
-# types are typed records in `wire_types.toml`.
+# The page, cable and rating table catalogues and the wire category. Wire types are typed records
+# in `wire_types.toml`.
 # Built-in defaults. Values only: each key's kind, range, levels and
 # label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
 # Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
 
 [values]
-"text.tag.style" = "tag"
-"text.point_label.style" = "point_label"
-"text.description.style" = "description"
-"text.part_number.style" = "part_number"
-"text.continuation_name.style" = "continuation_name"
-"text.reference.style" = "reference"
-"text.continuation_caption.style" = "continuation_caption"
-"text.wire_label.style" = "wire_label"
-"text.cable_text.style" = "cable_text"
-"text.location.style" = "location"
-"text.title_value.style" = "title_value"
-"text.title_caption.style" = "title_caption"
-"text.title_main.style" = "title_main"
-"text.grid.style" = "grid"
-"text.table.style" = "table"
-"text.table_header.style" = "table_header"
-"text.free.style" = "free"
-"text.title_page.style" = "title_page"
-"text.title_rev.style" = "title_rev"
-"text.table_heading.style" = "table_heading"
-"text.cover.style" = "cover"
-"text.channel_text.style" = "channel_text"
-"text.address.style" = "address"
-"location.style" = "box"
-"print.frame.style" = "sheet"
 "wire.category" = "none"
-
-[fields.location]
-line_type = "dashed"
-line_weight = 0.25
-line_colour = "none"
-label_style = "location"
-fill = "none"
-
-[styles.location.box]
-
-[fields.frame]
-border_weight = 0.5
-inner_weight = 0.25
-line_colour = "none"
-grid_labels = "yes"
-sheet = "page"
-margins = "10,10,10,7"
-centre_marks = "yes"
-block = "bottom_full"
-
-[styles.frame.sheet]
 
 [fields.page]
 sheet = "project"

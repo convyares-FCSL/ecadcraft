@@ -19,11 +19,11 @@ use serde_json::Value;
 use crate::CmdError;
 use crate::devices::tags::TagHigh;
 use crate::locations::designations::Uses;
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::StarterKey;
 use crate::symbols::proposals::Conflict;
 use crate::views::Views;
 use ecad_model::look::Look;
+use ecad_model::look::TextMetrics;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands

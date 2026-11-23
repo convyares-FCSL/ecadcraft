@@ -1,10 +1,10 @@
 //! `titleblockimport`: a new frame from a DXF, or a logo into a title
 //! block's item. It reads the DXF with CADCraft's reader ([`crate::title_blocks::dxf`]), so it is the
-//! engine's; the other title block commands are generic ([`ecad_electrical::title_blocks::commands`]).
+//! engine's; the other title block commands are generic ([`ecad_drawing_style::title_blocks::commands`]).
 
 use cadcraft_engine::{CommandSpec, Session};
+use ecad_drawing_style::title_blocks::commands as rules;
 use ecad_electrical::CmdError;
-use ecad_electrical::title_blocks::commands as rules;
 use ecad_model::Document;
 use ecad_model::objects::styles::StyleRef;
 use schemars::JsonSchema;

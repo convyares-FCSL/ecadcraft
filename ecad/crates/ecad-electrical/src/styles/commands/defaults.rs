@@ -147,7 +147,7 @@ pub(crate) fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Optio
         |v: Option<&str>| v.map(|t| t.trim().parse::<u32>().map_err(|_| CmdError::refused(format!("`{t}` must be a whole number.")))).transpose();
     let small = |n: u32| u8::try_from(n).unwrap_or(u8::MAX);
     match entry.key {
-        k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value),
+        k if k == ecad_model::look::WIRE_LABEL_HEIGHT_KEY => s.wiring.label_height = number(value),
         k if k == defaults::wires::WIRING_LABEL_RULE.key => s.wiring.label_rule = value.map(str::to_string),
         k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => s.wiring.label_min_length = number(value),
         // Whole numbers and words; the entry's kind has checked the range.

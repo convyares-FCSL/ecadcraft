@@ -162,12 +162,12 @@ pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| ecad_model::registry::styles::exists(doc, &crate::styles::frame::CATALOGUE, f));
+        .filter(|f| ecad_model::document::sheet::frame_exists(doc, f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| ecad_model::registry::styles::exists(doc, &crate::styles::frame::CATALOGUE, f));
+        .filter(|f| ecad_model::document::sheet::frame_exists(doc, f));
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false));
     let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);

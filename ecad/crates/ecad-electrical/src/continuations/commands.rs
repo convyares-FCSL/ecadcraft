@@ -106,7 +106,9 @@ fn box_keys(key: &str) -> CmdError {
 /// # Errors
 /// No aid named, an id that is no aid, a key the aid's kind does not have, or a value the rules
 /// refuse.
-pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_aid_prop(
+    doc: &Document, registry: &ecad_model::registry::data::Registry, ids: &mut IdAllocator, aids: &[AidId], key: &str, value: Option<&str>,
+) -> Result<Vec<Op>, CmdError> {
     if aids.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow or location box in `aids`."));
     }
@@ -128,7 +130,14 @@ pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId
             }
             Some(Aid::Box(_)) if key == crate::locations::BOX_STYLE_KEY => {
                 let style = value.map(str::trim).filter(|v| !v.is_empty());
-                let style = style.map(|v| crate::styles::find(doc, &crate::styles::location::CATALOGUE, v)).transpose()?;
+                let style = style
+                    .map(|v| {
+                        registry
+                            .catalogue(ecad_model::StyleCatalogue::Location)
+                            .ok_or(CmdError::refused("No location styles."))
+                            .and_then(|cat| crate::styles::find(doc, cat, v))
+                    })
+                    .transpose()?;
                 ops.extend(box_op(doc, *a, |b| b.style = style));
                 continue;
             }

@@ -1246,7 +1246,7 @@ pub(crate) fn style_word(s: ReferenceStyle) -> &'static str {
 }
 
 /// Everything `projectprops` reports.
-pub(crate) fn project_json(doc: &Document) -> Value {
+pub(crate) fn project_json(doc: &Document, registry: &ecad_model::registry::data::Registry) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
         // The function and location show their codes (fields of the
@@ -1320,7 +1320,7 @@ pub(crate) fn project_json(doc: &Document) -> Value {
     v["tag_prefixes"] = Value::Object(crate::devices::commands::devices::prefixes_json(doc));
     // The wiring settings the Project settings popout edits.
     v["colour_style"] = json!(ecad_model::naming::words::Word::word(doc.settings().wiring.colour_style()));
-    v["label_height"] = json!(wire_label_height(doc));
+    v["label_height"] = json!(wire_label_height(doc, registry));
     // Project settings → Numbering.
     v["provisional"] = json!(ecad_model::naming::numbering::provisional_on(doc));
     v["revisions"] = Value::Array(revs);
@@ -1330,6 +1330,9 @@ pub(crate) fn project_json(doc: &Document) -> Value {
 
 /// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
 /// or the built-in).
-pub fn wire_label_height(doc: &ecad_model::Document) -> f64 {
-    ecad_model::registry::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, ecad_model::registry::Scope::project()).number()
+pub fn wire_label_height(doc: &ecad_model::Document, registry: &ecad_model::registry::data::Registry) -> f64 {
+    registry
+        .sets()
+        .find_map(|s| s.find(ecad_model::look::WIRE_LABEL_HEIGHT_KEY))
+        .map_or(0.0, |e| ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).number())
 }

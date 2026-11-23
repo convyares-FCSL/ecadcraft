@@ -71,21 +71,27 @@ impl crate::checks::CheckSource for TitleBlockRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry, look: &dyn ecad_model::look::Look) -> Vec<Check> {
-        rows(doc, look)
+    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry, look: &dyn ecad_model::look::Look) -> Vec<Check> {
+        rows(doc, registry, look)
     }
 }
 
 /// Every title block row of `doc`.
-pub fn rows(doc: &Document, look: &dyn ecad_model::look::Look) -> Vec<Check> {
-    let mut out = unknown_rows(doc);
-    out.extend(sheet_rows(doc));
+pub fn rows(doc: &Document, registry: &ecad_model::registry::data::Registry, look: &dyn ecad_model::look::Look) -> Vec<Check> {
+    let mut out = unknown_rows(doc, registry);
+    out.extend(sheet_rows(doc, registry));
     out.extend(cut_rows(doc, look));
     out
 }
 
+/// Frame style `id`'s name as the frame catalogue shows it (its ID when no set declares the
+/// catalogue).
+fn frame_name(doc: &Document, registry: &ecad_model::registry::data::Registry, id: &ecad_model::StyleRef) -> String {
+    registry.catalogue(ecad_model::StyleCatalogue::Frame).map_or_else(|| id.text(), |c| ecad_model::registry::styles::name(doc, c, id))
+}
+
 /// `title-binding-unknown`: one row per record whose block this build cannot fully draw.
-fn unknown_rows(doc: &Document) -> Vec<Check> {
+fn unknown_rows(doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
     let mut out = Vec::new();
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
         let Some(cats) = ecad_model::objects::styles::layer_of(doc, layer) else { continue };
@@ -94,7 +100,7 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                 // Only a frame style's body holds a title block.
                 let Some(l) = r.title_block() else { continue };
                 let name = if *cat == ecad_model::StyleCatalogue::Frame {
-                    ecad_model::registry::styles::name(doc, &crate::styles::frame::CATALOGUE, id)
+                    frame_name(doc, registry, id)
                 } else {
                     r.name.as_ref().map_or_else(|| id.text(), |n| n.as_str().to_string())
                 };
@@ -128,7 +134,7 @@ fn count(n: usize, one: &str, many: &str) -> String {
 }
 
 /// `frame-sheet-differs`: pages whose own sheet differs from their frame's.
-fn sheet_rows(doc: &Document) -> Vec<Check> {
+fn sheet_rows(doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
     let mut out = Vec::new();
     for (page, p) in doc.pages().iter().take(MAX_PAGES) {
         let Some(own) = p.sheet else { continue };
@@ -141,7 +147,7 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
             "Page {} is {}, but its frame {} is {}; the frame wins.",
             ecad_model::document::book::page_number(doc, *page),
             crate::title_blocks::sheet_name(&own),
-            ecad_model::registry::styles::name(doc, &crate::styles::frame::CATALOGUE, &id),
+            frame_name(doc, registry, &id),
             crate::title_blocks::sheet_name(&framed)
         );
         out.push(Check {

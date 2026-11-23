@@ -1,8 +1,8 @@
 //! `Variant::Rich` holds every object kind the kept views hold, and is deterministic.
 
 use ecad_bench::generate::{Tier, Variant, generate};
-use ecad_electrical::styles::text_style::fonts::FixedWidth;
 use ecad_model::Document;
+use ecad_model::look::FixedWidth;
 
 /// Ten pages: the bench parts' populations spread over several pages.
 const SMALL: Tier = Tier { name: "rich-test", pages: 10, devices: 100, wires: 500, cables: 50 };
@@ -28,11 +28,11 @@ fn rich_has_every_object_kind() {
     assert!(connectors.iter().any(|(c, _)| doc.connection_points_of(*c).count() >= 4), "a connector with pins");
 
     // The reports' models: terminal strips with terminal blocks, and the PLC.
-    let models = ecad_electrical::views::ReportsView::build(&doc, &ecad_electrical::styles::text_style::fonts::FontLook(FixedWidth));
+    let models = ecad_electrical::views::ReportsView::build(&doc, &ecad_drawing_style::text::fonts::FontLook(FixedWidth));
     let strips = &models.model().strips;
     assert!(!strips.is_empty(), "terminal strips");
     assert!(strips.strips.values().any(|s| s.drawn > 0), "terminal blocks on a strip");
-    let plc = ecad_electrical::plc::kept::Plc::build_with(&doc, &ecad_electrical::styles::text_style::fonts::FontLook(FixedWidth));
+    let plc = ecad_electrical::plc::kept::Plc::build_with(&doc, &ecad_drawing_style::text::fonts::FontLook(FixedWidth));
     assert!(!plc.racks.is_empty(), "PLC racks");
     assert!(!plc.cards.is_empty(), "PLC cards");
     assert!(plc.naming.values().any(|cards| !cards.is_empty()), "cards in racks");

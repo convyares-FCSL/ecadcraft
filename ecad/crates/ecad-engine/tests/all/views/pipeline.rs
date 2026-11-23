@@ -94,7 +94,7 @@ fn the_tree_feed_follows_its_update_map() {
     let doc = Document::default();
     for (what, ops, want) in cases {
         let mut views = Views::new(EngineInputs {
-            look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth)),
+            look: std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth)),
             registry: &ecad_drawing_style::REGISTRY,
         });
         let pending = views.begin(&doc, &ops);
@@ -298,7 +298,7 @@ fn the_connectors_view_follows_the_document() {
     h.cmdline("r");
     h.cmdline("r");
     let log = h.p(|p| p.ledger.log().to_vec());
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth));
     let mut views =
         ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
     let mut doc = Document::default();
@@ -395,8 +395,8 @@ fn the_frame_view_follows_its_update_map() {
     let k1 = b.device("K1");
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
-    let look = ecad_electrical::styles::text_style::fonts::FontLook(metrics);
+    let metrics = ecad_model::look::FixedWidth;
+    let look = ecad_drawing_style::text::fonts::FontLook(metrics);
     let input = FrameInput::with(&doc, first, &ecad_model::document::book::Book::of(&doc), &look, look.frame_text(&doc));
     let index = |p: PageId| doc.page_order().iter().position(|x| *x == p).unwrap();
     let page = |p: PageId| doc.pages()[&p].clone();
@@ -427,7 +427,7 @@ fn the_frame_view_follows_its_update_map() {
         ("a free project property", vec![note(ObjectRef::Project)], false),
         ("nothing", vec![], false),
     ];
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth));
     for (what, ops, want) in cases {
         let after = crate::common::applied(&doc, &ops);
         let mut views = Views::new(EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY });
@@ -444,16 +444,16 @@ fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
     use ecad_electrical::pages::frames::FrameInput;
     use ecad_electrical::views::{EngineInputs, Views};
     use ecad_model::look::Look as _;
-    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
+    let metrics = ecad_model::look::FixedWidth;
     let input = FrameInput::with(
         doc,
         page,
         &ecad_model::document::book::Book::of(doc),
-        &ecad_electrical::styles::text_style::fonts::FontLook(metrics),
-        ecad_electrical::styles::text_style::fonts::FontLook(metrics).frame_text(doc),
+        &ecad_drawing_style::text::fonts::FontLook(metrics),
+        ecad_drawing_style::text::fonts::FontLook(metrics).frame_text(doc),
     );
     let mut views = Views::new(EngineInputs {
-        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(metrics)),
+        look: std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(metrics)),
         registry: &ecad_drawing_style::REGISTRY,
     });
     views.frame_mut().show(page, input);
@@ -521,16 +521,16 @@ fn a_dropped_pending_leaves_the_frame_alone() {
     let page = b.added_pages[0];
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
-    let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
+    let metrics = ecad_model::look::FixedWidth;
     let input = FrameInput::with(
         &doc,
         page,
         &ecad_model::document::book::Book::of(&doc),
-        &ecad_electrical::styles::text_style::fonts::FontLook(metrics),
-        ecad_electrical::styles::text_style::fonts::FontLook(metrics).frame_text(&doc),
+        &ecad_drawing_style::text::fonts::FontLook(metrics),
+        ecad_drawing_style::text::fonts::FontLook(metrics).frame_text(&doc),
     );
     let mut views = Views::new(EngineInputs {
-        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(metrics)),
+        look: std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(metrics)),
         registry: &ecad_drawing_style::REGISTRY,
     });
     views.frame_mut().show(page, input);

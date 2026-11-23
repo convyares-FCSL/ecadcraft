@@ -8,7 +8,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use ecad_electrical::styles::text_style::fonts::FixedWidth;
+use ecad_model::look::FixedWidth;
 
 use crate::measure::median;
 
@@ -37,7 +37,7 @@ fn time<T>(runs: usize, mut f: impl FnMut() -> T) -> f64 {
 pub fn measure(path: &Path, runs: usize) -> Result<Vec<Row>, crate::rich::CorpusError> {
     let o = crate::container::open(path).map_err(crate::rich::CorpusError::Project)?;
     let doc = o.ledger.document();
-    let m = ecad_electrical::styles::text_style::fonts::FontLook(FixedWidth);
+    let m = ecad_drawing_style::text::fonts::FontLook(FixedWidth);
     let models = ecad_electrical::views::ReportsView::build(doc, &m);
     let strips = models.model().strips.clone();
     let rows = vec![

@@ -1,12 +1,13 @@
 //! The CADCraft side of text styles: the engine's text styles and
 //! fonts a page installs, styling a text entity, measuring text in the font it is drawn with, and
 //! drawing hidden texts. The rules (kinds, resolved heights, own styles, placement) are
-//! [`crate::text_style`].
+//! [`ecad_drawing_style::text`] and `ecad_electrical::devices::text_place`.
 
 use ecad_model::Document;
 
-use ecad_electrical::styles::text_style::fonts::{self, TextMetrics};
-use ecad_electrical::styles::text_style::*;
+use ecad_drawing_style::text::fonts;
+use ecad_drawing_style::text::*;
+use ecad_model::look::TextMetrics;
 use ecad_model::look::{OwnStyle, TextKind, TextStyle};
 use ecad_model::objects::styles::text::Weight;
 

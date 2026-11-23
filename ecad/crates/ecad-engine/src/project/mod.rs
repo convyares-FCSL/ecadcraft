@@ -363,7 +363,7 @@ fn placeholder_drawing() -> Drawing {
     let mut d = base_drawing();
     let handle = d.new_handle();
     // The built-in `Free` text style; the page could not be read.
-    let free = ecad_electrical::styles::text_style::text_style(&ecad_model::Document::default(), ecad_model::look::TextKind::Free);
+    let free = ecad_drawing_style::text::text_style(&ecad_model::Document::default(), ecad_model::look::TextKind::Free);
     let text = Text {
         insert: cadcraft_engine::geom::Vec3::new(0.0, 0.0, 0.0),
         align_pt: None,

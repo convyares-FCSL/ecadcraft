@@ -396,7 +396,7 @@ fn f_a_card_at_180_keeps_its_name_block_upright_above() {
 fn h_i_text_styles_and_name_block_lines() {
     let F { mut h, di, .. } = fixture(5123);
     let d = h.doc();
-    let ts = |k| ecad_electrical::styles::text_style::text_style(&d, k).height;
+    let ts = |k| ecad_drawing_style::text::text_style(&d, k).height;
     assert_eq!((ts(ecad_model::look::TextKind::ChannelText), ts(ecad_model::look::TextKind::Address)), (2.5, 2.0));
     let page = h.first_page();
     h.run("setprop", json!({"component": di.hex(), "key": "maker", "value": "Maker A"})).unwrap();

@@ -706,8 +706,8 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             let mut es: Vec<&'static Entry> = Vec::new();
             // A Style row per text kind, chosen for the device.
             for k in SYMBOL_KINDS {
-                es.push(ecad_electrical::styles::text_style::style_entry(k));
-                es.extend(ecad_electrical::styles::text_style::show_entry(k));
+                es.push(ecad_drawing_style::text::style_entry(k));
+                es.extend(ecad_drawing_style::text::show_entry(k));
             }
             let starter = doc
                 .devices()
@@ -723,7 +723,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             let es = ecad_drawing_style::REGISTRY
                 .entries()
                 .filter(|e| {
-                    e.key == defaults::text::WIRE_LABEL_HEIGHT.key
+                    e.key == ecad_drawing_style::defaults::text::WIRE_LABEL_HEIGHT.key
                         || e.group == "Wire labels"
                         || ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::Wire)
                 })

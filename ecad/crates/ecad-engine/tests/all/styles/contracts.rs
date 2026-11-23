@@ -11,7 +11,7 @@ use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::registry::{Scope, Source};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
-use {ecad_electrical::styles::text_style::text_style, ecad_model::look::TextKind};
+use {ecad_drawing_style::text::text_style, ecad_model::look::TextKind};
 
 const SEED: u64 = 50;
 
@@ -131,7 +131,7 @@ fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     assert_eq!(height(&t1, &mut h), Some(2.5));
     let doc = h.doc();
     assert_eq!(doc.devices()[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"));
-    assert!(!ecad_model::registry::styles::exists(&doc, &ecad_electrical::styles::text::CATALOGUE, &StyleRef::parse(&large).unwrap()));
+    assert!(!ecad_model::registry::styles::exists(&doc, &ecad_drawing_style::catalogues::text::CATALOGUE, &StyleRef::parse(&large).unwrap()));
     // Built-in styles stay.
     assert!(h.run("deletestyle", json!({"catalogue": "text", "id": "tag"})).unwrap_err().contains("cannot be deleted"));
 }
@@ -218,9 +218,9 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     h.run("setdefault", json!({"key": "print.frame.style", "level": "page", "page": page.hex(), "value": heavy})).unwrap();
     let doc = h.doc();
-    assert_eq!(styles::frame::frame_draw(&doc, page).border, 100);
-    assert!(!styles::frame::frame_draw(&doc, page).grid_labels);
-    assert_eq!(styles::frame::frame_draw(&doc, p2).border, 50);
+    assert_eq!(ecad_drawing_style::catalogues::frame::frame_draw(&doc, page).border, 100);
+    assert!(!ecad_drawing_style::catalogues::frame::frame_draw(&doc, page).grid_labels);
+    assert_eq!(ecad_drawing_style::catalogues::frame::frame_draw(&doc, p2).border, 50);
     let parts = ecad_engine::pages::frame::parts(&ecad_engine::pages::frame::FrameInput::of(&doc, page, &ecad_model::document::book::Book::of(&doc)));
     assert!(parts.iter().any(|p| p.weight == Some(100)));
 }
@@ -310,12 +310,12 @@ fn a_hostile_style_document_opens_draws_and_reports() {
         p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
     });
     let doc = h.doc();
-    let cat = &styles::text::CATALOGUE;
+    let cat = &ecad_drawing_style::catalogues::text::CATALOGUE;
     assert!(ecad_model::registry::styles::rows(&doc, cat).len() <= 23 + ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_engine::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_electrical::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_electrical::checks::Kind::StyleUnknown).count() >= 2);
-    let name = ecad_model::registry::styles::name(&doc, &ecad_electrical::styles::location::CATALOGUE, &StyleRef::Own(9));
+    let name = ecad_model::registry::styles::name(&doc, &ecad_drawing_style::catalogues::location::CATALOGUE, &StyleRef::Own(9));
     assert!(name.chars().count() <= 64);
     // It draws (the page projected from the document, as a print does) and the reads answer.
     let fan = Default::default();

@@ -96,7 +96,7 @@ pub(crate) fn field_rule(f: &ecad_model::registry::styles::Field) -> String {
 
 /// One entry of a call's `fields`, as given.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum FieldInput {
+pub enum FieldInput {
     /// `null`: back to the inherited value.
     Clear,
     /// Text, or a number written as text.
@@ -145,7 +145,7 @@ fn field_value(doc: &Document, f: &ecad_model::registry::styles::Field, v: Field
 /// # Errors
 /// More than [`MAX_FIELDS_PER_CALL`], a field the catalogue does not have, or a value the field
 /// does not take.
-pub(crate) fn fields(doc: &Document, cat: &Catalogue, given: Vec<(String, FieldInput)>) -> Result<Vec<(String, Option<String>)>, CmdError> {
+pub fn fields(doc: &Document, cat: &Catalogue, given: Vec<(String, FieldInput)>) -> Result<Vec<(String, Option<String>)>, CmdError> {
     if given.len() > MAX_FIELDS_PER_CALL {
         return Err(CmdError::refused(format!("At most {MAX_FIELDS_PER_CALL} fields per call.")));
     }
@@ -713,7 +713,7 @@ pub(crate) fn standard_json(doc: &Document) -> Value {
 }
 
 /// One style as `styles` returns it.
-pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &ecad_model::registry::styles::Row, users: bool) -> Value {
+pub fn style_json(doc: &Document, cat: &Catalogue, row: &ecad_model::registry::styles::Row, users: bool) -> Value {
     let fields: Map<String, Value> = cat
         .fields
         .iter()
@@ -865,13 +865,13 @@ pub struct PromoteParams {
 /// A style field's value as typed: text or a number.
 #[derive(Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub(crate) enum FieldParam {
+pub enum FieldParam {
     Text(String),
     Number(Number),
 }
 
 /// The field inputs of `fields` (null clears a field).
-pub(crate) fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
+pub fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
     let input = |v: Option<FieldParam>| match v {
         None => FieldInput::Clear,
         Some(FieldParam::Text(t)) => FieldInput::Value(t),
