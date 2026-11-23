@@ -443,28 +443,54 @@ pub fn utc(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02} UTC", rem / 3600, rem % 3600 / 60, rem % 60)
 }
 
-/// Whether `a` and `b` name the same existing file (both paths resolved; `false` if either
-/// cannot be).
+/// Whether `a` and `b` name the same file or folder: their canonical paths when both exist,
+/// otherwise their spelling ([`lexical`], either separator, case ignored on Windows and macOS).
+/// Two paths that do not exist yet can match. This is the one path comparison: Save As, the
+/// default projects folder and the release folder checks all use it.
 pub fn same_path(a: &Path, b: &Path) -> bool {
+    let (x, y) = compared(a, b);
+    x == y
+}
+
+/// Whether `a` is `b` or lies inside it, compared as [`same_path`] compares.
+pub fn same_or_below(a: &Path, b: &Path) -> bool {
+    let (x, y) = compared(a, b);
+    x.len() >= y.len() && x.iter().zip(&y).all(|(p, q)| p == q)
+}
+
+/// `path` with `.` dropped and `..` taken back, without touching the disk.
+pub fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// The parts of `a` and `b` to compare: of their canonical paths when both exist, else of their
+/// [`lexical`] spelling.
+fn compared(a: &Path, b: &Path) -> (Vec<String>, Vec<String>) {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => false,
+        (Ok(x), Ok(y)) => (parts(&x), parts(&y)),
+        _ => (parts(&lexical(a)), parts(&lexical(b))),
     }
 }
 
-/// Whether `a` and `b` name the same file or folder: their canonical paths when both exist,
-/// otherwise their spelling (ignoring case and the separator on Windows). Unlike [`same_path`],
-/// two paths that do not exist yet can match.
-pub fn same_path_or_spelling(a: &Path, b: &Path) -> bool {
-    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        return x == y;
-    }
-    if cfg!(windows) {
-        let fold = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
-        fold(a) == fold(b)
-    } else {
-        a == b
-    }
+/// A path's parts, case-folded where the file system ignores case (Windows, macOS).
+fn parts(path: &Path) -> Vec<String> {
+    let fold = cfg!(any(target_os = "windows", target_os = "macos"));
+    path.components()
+        .map(|c| {
+            let t = c.as_os_str().to_string_lossy().replace('\\', "/");
+            if fold { t.to_lowercase() } else { t }
+        })
+        .collect()
 }
 
 /// Whether something is at `path`.

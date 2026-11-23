@@ -296,3 +296,24 @@ fn another_process_is_told_who_holds_the_lock_where_the_system_shows_it() {
         LockAttempt::Acquired { .. } => panic!("the child's lock was not respected"),
     }
 }
+
+#[test]
+fn one_path_rule_reads_dots_either_separator_and_existing_folders_alike() {
+    let t = TempDir::new("same-path");
+    let (folder, unborn) = (t.path("Project"), t.path("Project").join("release").join("Rev A"));
+    std::fs::create_dir_all(&folder).unwrap();
+    // Not on disk yet: compared by spelling, `.` and `..` read.
+    assert!(disk::same_path(&unborn, &folder.join("release").join("x").join("..").join(".").join("Rev A")));
+    assert!(disk::same_or_below(&unborn, &folder));
+    assert!(!disk::same_or_below(&folder, &unborn));
+    // On disk: compared by canonical path.
+    assert!(disk::same_path(&folder, &t.path("Project").join("..").join("Project")));
+    assert!(!disk::same_path(&folder, &t.path("Other")));
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(disk::same_path(&unborn, &t.path("PROJECT").join("Release").join("rev a")));
+    }
+    if cfg!(windows) {
+        let slashed = std::path::PathBuf::from(unborn.to_string_lossy().replace('\\', "/"));
+        assert!(disk::same_path(&unborn, &slashed));
+    }
+}

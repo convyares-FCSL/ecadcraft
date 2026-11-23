@@ -123,11 +123,6 @@ fn show(p: &Path) -> String {
     p.display().to_string()
 }
 
-/// Whether `a` and `b` name the same existing file.
-pub fn same_file(a: &Path, b: &Path) -> bool {
-    ecad_store::disk::same_path(a, b)
-}
-
 /// A version 2 project opened from disk.
 #[derive(Debug)]
 pub struct OpenedDisk {
@@ -349,7 +344,7 @@ impl DiskProject {
     /// # Errors
     /// As [`DiskProject::create`]; the project then stays bound to its previous file.
     pub fn save_as(&mut self, path: &Path, ledger: &mut Ledger, created_ms: Option<u64>, writer: &str) -> Result<Option<String>, DiskError> {
-        if same_file(path, &self.path) {
+        if disk::same_path(path, &self.path) {
             self.save(ledger)?;
             return Ok(None);
         }

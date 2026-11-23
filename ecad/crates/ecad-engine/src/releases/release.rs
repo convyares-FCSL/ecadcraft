@@ -34,6 +34,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use ecad_model::{Document, Op};
+use ecad_store::disk::{lexical, same_or_below, same_path};
 use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
@@ -234,46 +235,8 @@ pub fn from_recorded(p: &Project, v: &str) -> Option<PathBuf> {
     // Recorded with `/` on every platform; joined part by part, so the path reads natively.
     let dir = project_dir(p)?;
     let folder = v.split('/').filter(|c| !c.is_empty() && *c != "." && *c != "..").fold(dir.clone(), |d, c| d.join(c));
-    let releases = lexical(&dir.join(RELEASE_DIR));
-    let f = lexical(&folder);
-    (same_or_below(&f, &releases) && !same_path(&f, &releases) && check_target(p, &folder).is_ok()).then_some(folder)
-}
-
-/// `path` with `.` dropped and `..` taken back, without touching the disk.
-fn lexical(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for c in path.components() {
-        match c {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
-/// The parts of a path to compare: case-insensitive where the file system is (Windows, macOS).
-fn parts(path: &Path) -> Vec<String> {
-    let fold = cfg!(any(target_os = "windows", target_os = "macos"));
-    path.components()
-        .filter(|c| !matches!(c, std::path::Component::CurDir))
-        .map(|c| {
-            let t = c.as_os_str().to_string_lossy().replace('\\', "/");
-            if fold { t.to_lowercase() } else { t }
-        })
-        .collect()
-}
-
-fn same_path(a: &Path, b: &Path) -> bool {
-    parts(a) == parts(b)
-}
-
-/// Whether `a` is `b` or lies inside it.
-fn same_or_below(a: &Path, b: &Path) -> bool {
-    let (a, b) = (parts(a), parts(b));
-    a.len() >= b.len() && a.iter().zip(&b).all(|(x, y)| x == y)
+    let releases = dir.join(RELEASE_DIR);
+    (same_or_below(&folder, &releases) && !same_path(&folder, &releases) && check_target(p, &folder).is_ok()).then_some(folder)
 }
 
 /// Refuse a release folder that is the project's own folder, holds the project file, lies above
@@ -285,10 +248,7 @@ fn same_or_below(a: &Path, b: &Path) -> bool {
 pub(crate) fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
     let f = lexical(folder);
     let bad = match project_dir(p) {
-        Some(dir) => {
-            let dir = lexical(&dir);
-            same_or_below(&dir, &f) || same_path(&f, &dir.join(RELEASE_DIR)) || same_path(&f, &dir.join(RELEASE_DIR).join(REPLACED_DIR))
-        }
+        Some(dir) => same_or_below(&dir, &f) || same_path(&f, &dir.join(RELEASE_DIR)) || same_path(&f, &dir.join(RELEASE_DIR).join(REPLACED_DIR)),
         None => false,
     };
     if bad || f.parent().is_none() {

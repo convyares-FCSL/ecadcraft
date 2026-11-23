@@ -2,7 +2,7 @@
 //! that read the environment, the home folder ([`home`]) and [`normalize`].
 
 use ecad_file::binding::*;
-use ecad_store::disk::same_path_or_spelling as same_path;
+use ecad_store::disk::same_path;
 
 /// The user's home folder (`std::env::home_dir`: on Windows the user profile, whether or not
 /// `HOME` is set). `None` when it is not known.
