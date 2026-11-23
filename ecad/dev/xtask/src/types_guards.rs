@@ -1,4 +1,4 @@
-//! Design 072 §13: the typed-object-model guards that `cargo xtask layers` checks textually. Each
+//! The typed-object-model guards that `cargo xtask layers` checks textually. Each
 //! starts as a ratchet at its exact count in the lane that adds it; the count only falls, and the
 //! end gate checks every guard at 0 as a plain ban.
 //!
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-/// The one file where the word rules may be written out (design 072 §9.1).
+/// The one file where the word rules may be written out.
 const WORDS_FILE: &str = "crates/ecad-model/src/naming/words.rs";
 
 /// The boolean words G2 looks for, as string literals.
@@ -32,18 +32,17 @@ pub enum Scan {
     File(fn(rel: &str, code: &str) -> Vec<usize>),
 }
 
-/// The guards and their counts. Lane 072 A1 recorded the starting counts; later lanes lower them,
-/// and the end of lane F sets each to 0.
+/// The guards and their counts; each only falls.
 #[rustfmt::skip]
 pub const GUARDS: &[Guard] = &[
     Guard { name: "G2", what: "boolean words compared or matched", allowed: 0, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
     Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 0, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
     Guard { name: "G7", what: "angle conversions outside units.rs", allowed: 6, fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
-    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 4, fix: "hold a StyleCatalogue (or the typed role, design 072 §2)", scan: Scan::Line(g9) },
+    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 4, fix: "hold a StyleCatalogue (or the typed role)", scan: Scan::Line(g9) },
     Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 0, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
     Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 0, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
-    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 0, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
-    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 11, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
+    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 0, fix: "an unknown word is a read error; type it", scan: Scan::Line(g10) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 11, fix: "store a Text<N>, LongText<N> or a typed value", scan: Scan::File(g13) },
     Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 0, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
@@ -60,7 +59,7 @@ fn g3(rel: &str, line: &str) -> bool {
     rel != WORDS_FILE && line.find(".all(").is_some_and(|i| line.get(i..).is_some_and(|rest| rest.contains("is_ascii_digit")))
 }
 
-/// The one file where angles change unit (design 072 §9.3, F6/F7).
+/// The one file where angles change unit.
 const UNITS_FILE: &str = "crates/ecad-model/src/geometry/units.rs";
 
 fn g7(rel: &str, line: &str) -> bool {
@@ -105,7 +104,7 @@ fn g14(rel: &str, line: &str) -> bool {
         && (HIDDEN_MARKS.iter().any(|m| line.contains(m)) || HIDDEN_ESCAPES.iter().any(|m| line.to_ascii_lowercase().contains(m)))
 }
 
-/// The crate whose structs are stored (design 072 Part I: stored structs live in ecad-model).
+/// The crate whose structs are stored: stored structs live in ecad-model.
 const STORED_CRATE: &str = "crates/ecad-model/src/";
 
 /// G13: in ecad-model, the fields of a struct deriving `Serialize` typed with `String` or `&str`

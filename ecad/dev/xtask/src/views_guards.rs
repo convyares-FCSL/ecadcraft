@@ -1,6 +1,6 @@
-//! Design 064 §5.2: every derived view has one way in, the project's `Views`. This guard counts
+//! Every derived view has one way in, the project's `Views`. This guard counts
 //! direct full builds of a view type (`ReportModels::build(`, `RefIndex::build(`, …) outside `Views`
-//! and the view's own module; the count only falls and reaches 0 at the end of lane R9 (test C13).
+//! and the view's own module; the count only falls.
 //!
 //! Counted over `src/` of every product and Dev crate (the bench included), outside `//` comments
 //! and outside a file's trailing `#[cfg(test)]` module. A view's own module may build the view and
@@ -10,16 +10,16 @@
 //!
 //! In ecad-electrical, no match over `Effect`/`EffectKind` ends in a wildcard arm, so a new effect
 //! kind needs a decision in every view's note; and view notes route property keys by prefix only
-//! where [`KEY_PREFIXES`] says why (design 064 §9 step 10, overseer ruling 2026-11-21).
+//! where [`KEY_PREFIXES`] says why.
 
 use std::path::PathBuf;
 
 use serde_json::Value;
 
-/// The view types whose `::build(` is counted (design 064 §5.2's inventory).
+/// The view types whose `::build(` is counted.
 const VIEW_TYPES: &[&str] = &["ReportModels", "Checks", "RefIndex", "connectors::Index", "Uses", "Plc", "Strips", "StripPages"];
 
-/// The modules where a view builds itself or its parts (design 064 §5.2: "inside the view: fine"),
+/// The modules where a view may build itself or its parts,
 /// and `Views`. A path ending in `/` is a folder.
 const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/views/",
@@ -58,7 +58,7 @@ const ALLOWED: usize = 3;
 const FRESH_CALLS: &[&str] = &[".detached(", ".report_models("];
 
 /// Every file allowed to work out views from scratch, how many times, and why: a state the
-/// project does not keep, or a check that must not trust the kept views (design 064 §5.2). A
+/// project does not keep, or a check that must not trust the kept views. A
 /// file not listed may not; a listed count is exact, so it only falls.
 const FRESH_BUILDS: &[(&str, usize, &str)] = &[
     ("crates/ecad-engine/src/dev/checks.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
@@ -71,8 +71,7 @@ const FRESH_BUILDS: &[(&str, usize, &str)] = &[
 ];
 
 /// Every direct build inside a view's own module (not `Views`), how many, and why: each must be a
-/// view rebuilding itself or its parts, or a verify pass against a rebuild (design 064 §9 step 10c,
-/// checked by hand 2026-11-21, re-listed after decision 7's map deletions 2026-11-22). A count is
+/// view rebuilding itself or its parts, or a verify pass against a rebuild. A count is
 /// exact, so a new build needs a reason here.
 const OWN_BUILDS: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/pages/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
@@ -110,13 +109,12 @@ fn is_view_module(rel: &str) -> bool {
 const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
 
 /// Files whose view notes (all of `derived/`, and every fn taking an `Effect` elsewhere) route a
-/// property key by its prefix (`.starts_with("`), how many, and why (overseer ruling 2026-11-21).
+/// property key by its prefix (`.starts_with("`), how many, and why.
 /// A key's meaning belongs in data (its definition), not its spelling; the count only falls.
 const KEY_PREFIXES: &[(&str, usize, &str)] = &[];
 
 /// Every place a view widens a change to "everything" (an unclassified or project-wide change
-/// rebuilds all it keeps), per file, how many, and why (lane D2, owner ruling 2026-11-22: no
-/// "unknown means everything" path; each wide case is a named kind of change with its reason, and
+/// rebuilds all it keeps), per file, how many, and why (no "unknown means everything" path; each wide case is a named kind of change with its reason, and
 /// the count only falls). The cable references' `Touch::All` arms each carry
 /// their reason in the code.
 const WIDE: &[(&str, usize, &str)] = &[
@@ -360,7 +358,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
         }
     }
     let mut out = Vec::new();
-    let what = "direct builds of a derived view outside Views (design 064 §5.2)";
+    let what = "direct builds of a derived view outside Views";
     if let Some(p) = super::ratchet_problem("views", found.len(), ALLOWED, what, "read the view through the project's Views") {
         out.push(p);
         if found.len() > ALLOWED {

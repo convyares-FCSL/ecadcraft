@@ -8,7 +8,7 @@ patch guard, the full CI run, the benchmark and the scoped test run. It is a dev
 never shipped.
 
 ## Contents
-- `layers`: the crate-map rules (layers, no OS in Core, `anyhow` and `tokio`, UI components, a README per crate).
+- `layers`: the crate-map rules (layers, no OS in Core, `anyhow` and `tokio`, UI components, a README per crate whose Contents names real files, no history in `src/` comments).
 - `patches`: files changed outside `ecad/` must be listed in `UPSTREAM-PATCHES.md`.
 - `lint`, `ci`: fmt, clippy, tests (slow set included), layers, patches (the QA gate's run).
 - `test-changed`: fast tests of the crates not pushed yet (`--with-dependents` adds their dependents).
@@ -22,7 +22,7 @@ metadata` and runs `cargo`. `anyhow` is allowed here.
 ## Key types
 There are none to start from; the entry point is `main` in `src/main.rs`, and the rule tables
 (layers, allowlists) sit at the top of it. To change a layer rule, edit the table there and
-`docs/design/crates.md` §4.
+the layer table in `docs/design/crates.md`.
 
 ## How to test
 ```bash

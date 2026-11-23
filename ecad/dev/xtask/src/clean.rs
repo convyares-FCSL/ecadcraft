@@ -1,4 +1,4 @@
-//! `cargo xtask clean-builds --root <folder> [--dry-run]` (process clean-up, owner 2026-11-12):
+//! `cargo xtask clean-builds --root <folder> [--dry-run]`:
 //! keep the disk from filling with build folders.
 //!
 //! # Semantics
@@ -400,7 +400,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Reviewer 029: a build folder with any file held open deep inside is left as it was.
+    /// A build folder with any file held open deep inside is left as it was.
     #[cfg(windows)]
     #[test]
     fn a_build_folder_with_a_file_held_deep_inside_is_left_untouched() {
@@ -443,7 +443,7 @@ mod tests {
         path
     }
 
-    /// Reviewer 029: merged worktrees are removed only when nothing would be lost.
+    /// Merged worktrees are removed only when nothing would be lost.
     #[test]
     fn merged_worktrees_are_kept_when_something_would_be_lost() {
         let base = temp("worktrees");

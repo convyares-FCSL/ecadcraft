@@ -1,4 +1,4 @@
-//! Review finding #68 (0.2.3): a `pub` item no other crate uses is `pub(crate)` (the
+//! A `pub` item no other crate uses is `pub(crate)` (the
 //! `unreachable_pub` idea, as a textual ratchet because the lint cannot see across a workspace
 //! and the crates re-export nothing).
 //!
@@ -19,7 +19,7 @@ use serde_json::Value;
 
 /// The crates that still hold unreachable `pub` items, and how many. The count only falls.
 const ALLOWED: &[(&str, usize)] = &[
-    ("ecad-app", 87),
+    ("ecad-app", 86),
     ("ecad-drawing-style", 14),
     ("ecad-electrical", 227),
     ("ecad-engine", 26),
@@ -105,7 +105,7 @@ pub fn unreachable(meta: &Value) -> Result<BTreeMap<String, Vec<(String, usize, 
 /// The guard's problems, if any.
 pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let found = unreachable(meta)?;
-    let what = "`pub` items no other crate uses (finding #68)";
+    let what = "`pub` items no other crate uses";
     let fix = "make them `pub(crate)` (`cargo xtask pub-unreachable` lists them)";
     let mut out = Vec::new();
     let names: BTreeSet<&str> = found.keys().map(String::as_str).chain(ALLOWED.iter().map(|(n, _)| *n)).collect();

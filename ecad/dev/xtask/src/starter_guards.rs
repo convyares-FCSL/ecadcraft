@@ -1,4 +1,4 @@
-//! Review finding #27 (0.2.3): what **kind of device** something is comes from `Device.device_type`
+//! What **kind of device** something is comes from `Device.device_type`
 //! (typed data), never from the starter symbol that draws it. This guard counts the places that
 //! look a starter symbol up from stored data: `of_definition(` (a definition's starter) and
 //! `rep_starter(` (the starter a representation draws).
@@ -87,7 +87,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             }
         }
     }
-    let what = "starter-symbol lookups (`of_definition(`, `rep_starter(`: finding #27)";
+    let what = "starter-symbol lookups (`of_definition(`, `rep_starter(`)";
     let fix = "read the device's `device_type`; a drawing question goes on starter_guards::ALLOWED with its reason";
     let mut out = Vec::new();
     for (rel, found) in &by_file {

@@ -1,4 +1,4 @@
-//! Brief 074 ("Rules"): ecad-engine is only the adapter to CADCraft, so domain rules do not creep
+//! ecad-engine is only the adapter to CADCraft, so domain rules do not creep
 //! back into it. This guard counts the engine's **rule functions**: functions whose inputs are all
 //! Core or standard types (no `Session`, no `Project`, no CADCraft type, no type the engine crate
 //! defines, no `self`), at least one of them a type a Core crate declares (the document, an id, a
@@ -27,7 +27,7 @@ use serde_json::Value;
 /// The engine crate's source folder, from the workspace root.
 const ENGINE_SRC: &str = "crates/ecad-engine/src";
 
-/// The Core crates whose `pub` types count as Core (design 065, `docs/design/crates.md` §1).
+/// The Core crates whose `pub` types count as Core.
 const CORE_CRATES: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
 
 /// Standard and serde types that count as Core. Single capital letters (generic parameters) count
@@ -67,10 +67,10 @@ const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 /// falls. Functions on [`ADAPTERS`] are not counted.
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
-    // The agent gate stays in the engine (brief 074 "What stays").
+    // The agent gate stays in the engine.
     ("crates/ecad-engine/src/agent/gate.rs", 2, "the agent gate: undo step, issue order and the transaction summary it answers with"),
     ("crates/ecad-engine/src/agent/tools.rs", 1, "the MCP tools' list paging"),
-    // The dev tools stay (brief 074 "What stays").
+    // The dev tools stay.
     ("crates/ecad-engine/src/dev/snapshot.rs", 2, "the snapshot's readable labels and index (carved from ecad-inspect in 0.2.3; a dev view)"),
     ("crates/ecad-engine/src/dev/checks.rs", 2, "the live debugger: replay to a sequence number"),
     ("crates/ecad-engine/src/dev/objects.rs", 2, "the live debugger's read-only labels and counts"),
@@ -327,7 +327,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             by_file.insert(rel, found);
         }
     }
-    let what = "engine rule functions (brief 074: inputs only Core types, returns a decision)";
+    let what = "engine rule functions (inputs only Core types, returns a decision)";
     let fix = "move the function to a Core crate (usually ecad-electrical) and call it from the engine";
     let mut out = Vec::new();
     for (rel, found) in &by_file {

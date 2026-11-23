@@ -1,28 +1,27 @@
 //! ECAD workspace checks.
 //!
-//! - `layers`: the layer table of design 065 §4 (Core, Engine, UI kit, App, Programs, Dev): Core
+//! - `layers`: the layer table (Core, Engine, UI kit, App, Programs, Dev): Core
 //!   uses no CADCraft crate and no UI toolkit, and Core crates depend only on Core crates before
 //!   them; only the Engine (`ecad-engine`) uses the drawing engine, and App and Programs reach it
-//!   only through it, in `Cargo.toml` and in their sources (principle P10, proposal §8).
-//!   Developer tools (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product
+//!   only through it, in `Cargo.toml` and in their sources.
+//!   Developer tools (`ecad/dev/`) are kept apart from product code: no product
 //!   crate depends on one except through its own `dev` feature, dev features are read only in a
 //!   crate's `dev` module, and no product source reads a file under `dev/`. ECAD's interface kit
 //!   (class UiKit) uses egui and the drawing style only, and ECAD UI sources do not
-//!   style locally (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI
+//!   style locally. Literal sizes in ECAD UI
 //!   sources are ratcheted: their allowlisted counts only fall. Core crates other than
-//!   `ecad-store` reach no OS (file system, environment, processes, network, clock; design 065
-//!   §3.1). The crate rules of design 061 §6: `anyhow` only in Programs, xtask and ecad-bench,
-//!   `tokio` nowhere, `rayon` only where the work is. Every workspace member has a README in the shape of design
-//!   065 §6 (ratcheted while lane 068 writes them).
+//!   `ecad-store` reach no OS (file system, environment, processes, network, clock). The crate
+//!   rules: `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere, `rayon` only where
+//!   the work is. Every workspace member has a README with the standard sections.
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
-//!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md` (proposal §15, patch guard).
+//!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md`.
 //! - `ci`: fmt, clippy `-D warnings`, tests (the slow set included), layers, patches. ECAD is
-//!   desktop-only (owner, 2026-11-15), so there is no wasm build.
-//! - `bench`: the project load benchmark (brief 012), release build, run on demand only. It is
+//!   desktop-only, so there is no wasm build.
+//! - `bench`: the project load benchmark, release build, run on demand only. It is
 //!   deliberately not part of `ci`; arguments after `bench` are passed to `ecad-bench`.
 //! - `test-changed`: the fast tests of the crates changed since the last push (the upstream
 //!   branch; `--base` for another ref), and with `--with-dependents` of every crate that depends
-//!   on them (brief 017; process clean-up, 2026-11-12). The worker's default check; CI's quick
+//!   on them. The worker's default check; CI's quick
 //!   check runs it with `--base origin/dev --with-dependents` on pull requests into dev.
 //! - `clean-builds`: delete the build folders of every checkout under a folder, skipping those in
 //!   use, and remove worktrees whose branch is merged into `origin/dev` (see [`clean`]).
@@ -37,13 +36,15 @@ use serde_json::Value;
 
 mod clean;
 mod engine_guards;
+mod history_guards;
 mod pub_ratchet;
 mod starter_guards;
 mod types_guards;
 mod views_guards;
 
-/// The layer of an ECAD crate (design 065 §1 and §4): a crate uses only crates in layers above it
-/// (and in its own layer where §4 says so). Engine and UI kit are siblings: neither uses the other.
+/// The layer of an ECAD crate: a crate uses only crates in layers above it
+/// (and in its own layer where the table allows it). Engine and UI kit are siblings: neither uses the
+/// other.
 /// The rules apply to normal dependencies; a dev-dependency (tests) is checked only for the layer
 /// order (below), and is otherwise free, except on Dev crates.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -55,21 +56,21 @@ enum Class {
     /// The link to CADCraft (`ecad-engine`): Core and [`ENGINE_CADCRAFT`]; no UI toolkit or UI
     /// kit, no App or Programs crate.
     Engine,
-    /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
-    /// egui_extras, the token crate and the drawing style (design 065 §1.1), but no `cadcraft-*`
+    /// ECAD's interface kit: may use egui, epaint and
+    /// egui_extras, the token crate and the drawing style, but no `cadcraft-*`
     /// crate and no other ECAD crate, so the widgets stay swappable and test without wgpu.
     UiKit,
     /// The application (`ecad-app`): Core, Engine, UI kit and CADCraft's window crates, but never
     /// `cadcraft-engine` directly and no Programs crate.
     App,
     /// Things a person or agent starts, one `main` each (`ecad-desktop`, `ecad-cli`, `ecad-mcp`):
-    /// anything in the product (other programs too, owner ruling), but never `cadcraft-engine`
+    /// anything in the product (other programs too), but never `cadcraft-engine`
     /// directly.
     Programs,
     /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
-    /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
+    /// product crate may depend on it except through its own `dev` feature.
     Dev,
-    /// `xtask`: a developer tool under `dev/` (design 065 §4 counts it in Dev), exempt from the source guards; no rules.
+    /// `xtask`: a developer tool under `dev/` (counted in Dev), exempt from the source guards; no rules.
     Exempt,
 }
 
@@ -79,13 +80,13 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-file", Class::Core),
     ("ecad-drawing-style", Class::Core),
     ("ecad-engine", Class::Engine),
-    // The electrical rules (design 065; created by the split lane, step 6).
+    // The electrical rules.
     ("ecad-electrical", Class::Core),
-    // The screen tokens (design 065 §1.1); the drawing style is `ecad-drawing-style`.
+    // The screen tokens; the drawing style is `ecad-drawing-style`.
     ("ecad-widgets", Class::UiKit),
     ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Programs),
-    // The application, and the desktop program that runs it (design 065 §2.2, split step 9).
+    // The application, and the desktop program that runs it.
     ("ecad-app", Class::App),
     ("ecad-desktop", Class::Programs),
     ("ecad-mcp", Class::Programs),
@@ -93,10 +94,10 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-xtask", Class::Exempt),
 ];
 
-/// The CADCraft crates the Engine may use (design 065 §4).
+/// The CADCraft crates the Engine may use.
 const ENGINE_CADCRAFT: &[&str] = &["cadcraft-engine", "cadcraft-io"];
 
-/// The layer's name as a README's `Layer:` line writes it (design 065 §6); `xtask` counts as Dev.
+/// The layer's name as a README's `Layer:` line writes it; `xtask` counts as Dev.
 fn layer_name(class: Class) -> &'static str {
     match class {
         Class::Core => "Core",
@@ -108,23 +109,23 @@ fn layer_name(class: Class) -> &'static str {
     }
 }
 
-/// The order inside Core (design 065 §1; owner, 2026-11-15): a Core crate depends only on Core
+/// The order inside Core: a Core crate depends only on Core
 /// crates before it, so no cycle (such as `ecad-file` → `ecad-electrical`) can be written.
 const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
 
-/// Dependencies that break the layer rules for now, each with the step of the crate split (design
-/// 065 §5) that removes it. An entry no longer needed fails `layers`.
+/// Dependencies that break the layer rules for now, each with the change that removes it. An entry
+/// no longer needed fails `layers`.
 const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 
-/// Product crates whose `dev` feature may be on by default (owner, 2026-11-12, design 029 Q1: the
-/// desktop app app's debugger, while the desktop app is the only app; ecad-app since the split, step 9).
+/// Product crates whose `dev` feature may be on by default: ecad-app, for the desktop app's debugger,
+/// while the desktop app is the only app.
 const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
-/// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
+/// Features whose code lives only in a crate's `dev` module.
 const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops"];
 
 /// Files that still read a dev feature outside their crate's `dev` module, with the brief that
-/// will move the code (design 029 §12.4). This list only shrinks: an entry whose file no longer
+/// will move the code. This list only shrinks: an entry whose file no longer
 /// needs it fails `layers`, and a new place is a violation.
 const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-engine/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
@@ -135,8 +136,7 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-engine/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
-/// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
-/// §3.2, brief 037): colours, sizes and fonts come from the tokens of `ecad-widgets`.
+/// Styling written in place, which ECAD UI code may no longer use: colours, sizes and fonts come from the tokens of `ecad-widgets`.
 /// `Tokens::get` reads CADCraft's theme colours directly; `from_rgba` covers every RGBA
 /// constructor (`Color32::from_rgba_unmultiplied`, `Rgba::from_rgba_premultiplied`, …).
 const LOCAL_STYLE: &[&str] = &[
@@ -149,7 +149,7 @@ const LOCAL_STYLE: &[&str] = &[
     "CornerRadius",
     "Rounding::",
     "Tokens::get",
-    // Brief 060 (review 2026-11, finding 8): egui's named colours are local styling too.
+    // egui's named colours are local styling too.
     "Color32::WHITE",
     "Color32::GRAY",
     "Color32::RED",
@@ -157,23 +157,19 @@ const LOCAL_STYLE: &[&str] = &[
 ];
 
 /// ECAD UI files that still style locally: the number of lines that do, and the brief that
-/// restyles the file (design §3.2). The counts only fall: more lines than the count fail `layers`,
+/// restyles the file. The counts only fall: more lines than the count fail `layers`,
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/title_blocks/canvas.rs", 2, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/title_blocks/list.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
     ("crates/ecad-app/src/pages/preview.rs", 6, "restyled with the page view (U4a)"),
-    ("crates/ecad-app/src/pages/project_panel.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/publish/mod.rs", 5, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
-    (
-        "crates/ecad-app/src/inspector/layout_tab.rs",
-        1,
-        "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)",
-    ),
+    ("crates/ecad-app/src/pages/project_panel.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/publish/mod.rs", 5, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
+    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
 ];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
@@ -185,28 +181,27 @@ const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 /// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/developer/mod.rs", 5, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/pages/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/publish/mod.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/inspector/mod.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/text_styles.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/developer/mod.rs", 5, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/style_catalogues.rs", 3, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/pages/project_panel.rs", 6, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/publish/mod.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/search.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/inspector/mod.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/text_styles.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
 ];
 
-/// Sizes written as literals in ECAD UI code (brief 060; review 2026-11, finding 8): a stroke width,
+/// Sizes written as literals in ECAD UI code: a stroke width,
 /// a space or a size that starts with a digit, where `ecad-widgets::tokens` has (or will have) a token
 /// (`line::HAIRLINE_PX`, `space::XS`, …). Matched as the call followed directly by a digit.
 const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
 
-/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one, seeded
-/// on 2026-11-15 (brief 060). Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not
+/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not
 /// listed that has one is a violation.
 const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("crates/ecad-app/src/agent/last_write.rs", 1),
@@ -251,7 +246,7 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
 ];
 
 /// Paths a layer's sources (`src/`, outside `//` comments) must not name, each matched where it
-/// starts a name (design 065 §4). Cargo alone is not enough for App and Programs, because
+/// starts a name. Cargo alone is not enough for App and Programs, because
 /// `cadcraft-ui-egui` and `cadcraft-mcp` can hand engine types through; for ecad-electrical the
 /// check repeats Cargo's rule with a clearer message. Dev tools such as `ecad-bench` may use the
 /// engine directly.
@@ -263,12 +258,11 @@ fn forbidden_paths(name: &str, class: Class) -> &'static [&'static str] {
     }
 }
 
-/// The one Core crate that may reach the OS: storage under the file and the lock (design 065
-/// §3.1). Every other Core crate stays pure data and rules, so it is testable and portable; disk
-/// access belongs to `ecad-store`, and the time is passed in (owner, 2026-11-15).
+/// The one Core crate that may reach the OS: storage under the file and the lock. Every other Core crate stays pure data and rules, so it is testable and portable; disk
+/// access belongs to `ecad-store`, and the time is passed in.
 const CORE_OS_OK: &str = "ecad-store";
 
-/// Direct OS access in Core code (design 065 §3.1, §4), each matched where it starts a name.
+/// Direct OS access in Core code, each matched where it starts a name.
 /// Threads and rayon are allowed.
 const CORE_OS: &[&str] = &[
     "std::fs",
@@ -292,31 +286,31 @@ const CORE_OS: &[&str] = &[
 /// Crates that find the user's folders: Core other than [`CORE_OS_OK`] may not depend on them.
 const CORE_OS_CRATES: &[&str] = &["dirs", "dirs-next", "dirs-sys", "directories", "directories-next"];
 
-/// Crates besides Programs that may use `anyhow` (design 061 §6, brief 060): xtask and
+/// Crates besides Programs that may use `anyhow`: xtask and
 /// ecad-bench's binary. A library returns its own error type, so a caller can react to the kind
-/// of failure (review 2026-11, finding 3); `anyhow` erases it, which only a program's `main` may do.
+/// of failure; `anyhow` erases it, which only a program's `main` may do.
 const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-xtask"];
 
-/// Where `rayon` may appear (design 061 §6, 065 §4), as a plain dependency (normal, not optional,
+/// Where `rayon` may appear, as a plain dependency (normal, not optional,
 /// no target table): where the per-page and per-chunk work is. No wasm `cfg`: ECAD is
 /// desktop-only.
 const RAYON_OK: &[&str] = &["ecad-model", "ecad-file", "ecad-electrical", "ecad-engine"];
 
 /// UI toolkits and ECAD's own UI kit: Core and Engine crates may depend on none of them (the
-/// kit too, so the document and engine crates never draw; design `ui-architecture.md` §2).
+/// kit too, so the document and engine crates never draw).
 const UI_CRATES: &[&str] =
     &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-widgets"];
 
-/// The sections of a crate's README, in order, after its `# <crate name>` title (design 065 §6).
+/// The sections of a crate's README, in order, after its `# <crate name>` title.
 const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not depend on", "## Key types", "## How to test"];
 
-/// Workspace members whose README is missing or not yet in the shape of design 065 §6, seeded on
-/// 2026-11-15 (split lane step 10); lane 068 writes them. The list only shrinks: a member not
+/// Workspace members whose README is missing or lacks the standard sections. The list only
+/// shrinks: a member not
 /// listed whose README fails is a violation, and an entry whose README passes (or that is no
 /// longer a member) fails `layers` until it is removed.
 const README_ALLOWLIST: &[&str] = &[];
 
-/// What a UiKit crate may depend on, besides dev-dependencies (design §2).
+/// What a UiKit crate may depend on, besides dev-dependencies.
 const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-drawing-style"];
 
 fn ecad_root() -> PathBuf {
@@ -496,7 +490,7 @@ fn classed_packages(meta: &Value) -> Result<Vec<(&str, Class, Option<PathBuf>, &
         .collect())
 }
 
-/// Design 065 §4's source checks for App, Programs and ecad-electrical ([`forbidden_paths`]): the
+/// The layer table's source checks for App, Programs and ecad-electrical ([`forbidden_paths`]): the
 /// lines of their `src/` that name a forbidden path. A hard rule: no allowlist.
 fn path_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
@@ -520,10 +514,9 @@ fn path_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Direct OS access in Core crates other than [`CORE_OS_OK`] (design 065 §3.1, §4): every source
+/// Direct OS access in Core crates other than [`CORE_OS_OK`]: every source
 /// line that reaches the OS outside the test module, and every dependency on a crate that finds
-/// the user's folders ([`CORE_OS_CRATES`]). A hard zero since the split lane (step 10); lane
-/// 060's ratchet brought it there.
+/// the user's folders ([`CORE_OS_CRATES`]). A hard zero.
 fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
     const WHY: &str = "Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in";
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
@@ -550,7 +543,7 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Brief 066d (owner, 2026-11-16): drawn text never ignores its style. The crates that draw and
+/// Drawn text never ignores its style. The crates that draw and
 /// lay out pages ([`DRAWN_TEXT_CRATES`]) hold no literal text height, style name or text-size
 /// constant outside the places that define styles ([`DRAWN_TEXT_EXEMPT`]): a text's height, weight,
 /// font and colour come from its `TextKind`'s style. A hard zero.
@@ -578,8 +571,8 @@ const ENGINE_COMMAND_FILES: &[&str] = &[
 /// Paths (fragments of a file's path under the workspace) where literal text styling is allowed,
 /// each with why: the styles, their engine half (fonts and CADCraft styles) and their data define
 /// the sizes; symbol definitions and builders draw
-/// glyph text as line art in symbol units (overseer ruling 1); screen-only overlays (`interact/`)
-/// are sized in pixels; an imported title block keeps the user's own sizes (ruling 4); commands
+/// glyph text as line art in symbol units; screen-only overlays (`interact/`)
+/// are sized in pixels; an imported title block keeps the user's own sizes; commands
 /// draw nothing.
 const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "/styles/",
@@ -677,7 +670,7 @@ fn drawn_text_places(rel: &str, text: &str) -> Vec<String> {
 
 /// [`drawn_text_places`] over [`DRAWN_TEXT_CRATES`], outside [`DRAWN_TEXT_EXEMPT`].
 fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
-    const WHY: &str = "drawn text reads its TextKind's style: height, weight, font and colour come from the styles and their TOML data (brief 066d)";
+    const WHY: &str = "drawn text reads its TextKind's style: height, weight, font and colour come from the styles and their TOML data";
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     for (name, _, dir, _) in classed_packages(meta)? {
@@ -696,7 +689,7 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Brief 070: per crate, the lines that still report an error as text: `Result<_, String>` and
+/// Per crate, the lines that still report an error as text: `Result<_, String>` and
 /// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
 /// A crate without an entry must have none (`ecad-file` and `ecad-store`, since batch 8); `xtask`
 /// is a tool.
@@ -712,12 +705,11 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-model", 6, 7),
 ];
 
-/// Brief 070: the command files (`crates/ecad-engine/src/cmd`) on their own, as the crate rows:
-/// they reach 0 by the end of 070.
+/// The command files (`crates/ecad-engine/src/cmd`) on their own, as the crate rows.
 const CMD_STRING_ERRORS: (usize, usize) = (0, 0);
 
-/// Brief 070: the migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
-/// for CmdError` in ecad-electrical; gone by the end of 070.
+/// The migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
+/// for CmdError` in ecad-electrical: none left.
 const CMD_ERROR_BRIDGES: usize = 0;
 
 /// Crates [`string_error_violations`] does not count.
@@ -753,12 +745,12 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         match STRING_ERROR_ALLOWLIST.iter().find(|(n, _, _)| *n == name) {
             Some((n, r, e)) => {
                 seen.insert(n);
-                const FIX: &str = "return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool (brief 070)";
+                const FIX: &str = "return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool";
                 out.extend(ratchet_problem(n, results, *r, "lines with `Result<_, String>`", FIX));
                 out.extend(ratchet_problem(n, formats, *e, "lines with `Err(format!(`", FIX));
             }
             None if results + formats > 0 => {
-                out.push(format!("{name}: {results} lines with `Result<_, String>` and {formats} with `Err(format!(` but no entry in STRING_ERROR_ALLOWLIST; return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool (brief 070)"));
+                out.push(format!("{name}: {results} lines with `Result<_, String>` and {formats} with `Err(format!(` but no entry in STRING_ERROR_ALLOWLIST; return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool"));
             }
             None => {}
         }
@@ -780,7 +772,7 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         }
         Ok(sum)
     };
-    const FIX: &str = "return CmdError (brief 070)";
+    const FIX: &str = "return CmdError";
     // The engine's session command files (0.2.3: each in its feature folder, plus `commands/`).
     let cmd = "ecad-engine commands";
     let (mut r, mut e) = (0, 0);
@@ -802,11 +794,11 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         (code.lines().filter(|l| l.contains("impl From<String> for CmdError") || l.contains("impl From<&'static str> for CmdError")).count(), 0)
     };
     let (b, _) = count_in(&root.join("crates/ecad-electrical/src"), &bridges)?;
-    out.extend(ratchet_problem("ecad-electrical", b, CMD_ERROR_BRIDGES, "CmdError bridges from text", "return a CmdError variant (brief 070)"));
+    out.extend(ratchet_problem("ecad-electrical", b, CMD_ERROR_BRIDGES, "CmdError bridges from text", "return a CmdError variant"));
     Ok(out)
 }
 
-/// The crate rules of design 061 §6 (065 §4) on ECAD's own manifests in `meta`; CADCraft's and
+/// The crate rules on ECAD's own manifests in `meta`; CADCraft's and
 /// transitive dependencies are not checked:
 /// - `anyhow` only in Programs and [`ANYHOW_OK`] (dev-dependencies aside);
 /// - `tokio` nowhere, dev-dependencies included (ECAD runs no async runtime: commands are
@@ -838,11 +830,11 @@ fn dependency_rule_violations(meta: &Value) -> Result<Vec<String>, String> {
 }
 
 /// What is wrong with the README of crate `name` (in layer `class`), `text` being its content if
-/// it exists (design 065 §6): the first heading is `# <name>`, the [`README_SECTIONS`] follow in
+/// it exists: the first heading is `# <name>`, the [`README_SECTIONS`] follow in
 /// order (other headings may come between), and a `Layer:` line names the crate's layer. Headings
 /// inside fenced code blocks are not headings.
 fn readme_problem(name: &str, class: Class, text: Option<&str>) -> Option<String> {
-    let Some(text) = text else { return Some(format!("{name}: no README.md at the crate root (design 065 §6)")) };
+    let Some(text) = text else { return Some(format!("{name}: no README.md at the crate root")) };
     let mut headings = Vec::new();
     let mut fenced = false;
     for l in text.lines().map(str::trim_end) {
@@ -854,17 +846,17 @@ fn readme_problem(name: &str, class: Class, text: Option<&str>) -> Option<String
     }
     let title = format!("# {name}");
     if headings.first() != Some(&title.as_str()) {
-        return Some(format!("{name}: its README must start with the heading `{title}` (design 065 §6)"));
+        return Some(format!("{name}: its README must start with the heading `{title}`"));
     }
     let mut rest = headings.iter().skip(1);
     if let Some(missing) = README_SECTIONS.iter().find(|s| !rest.any(|h| h == *s)) {
-        return Some(format!("{name}: its README lacks the heading `{missing}`, or has it out of order (design 065 §6)"));
+        return Some(format!("{name}: its README lacks the heading `{missing}`, or has it out of order"));
     }
     let want = layer_name(class);
     match text.lines().find_map(|l| l.strip_prefix("Layer:")).map(str::trim) {
         Some(layer) if layer == want => None,
         Some(layer) => Some(format!("{name}: its README says `Layer: {layer}`, but the crate is in {want}")),
-        None => Some(format!("{name}: its README has no `Layer: {want}` line (design 065 §6)")),
+        None => Some(format!("{name}: its README has no `Layer: {want}` line")),
     }
 }
 
@@ -883,20 +875,65 @@ fn readme_ratchet(results: &[(&str, Option<String>)], allowlist: &[&str]) -> Vec
     out
 }
 
-/// The README check (design 065 §6) over the workspace members in `meta`, with [`README_ALLOWLIST`].
+/// The files and folders a README's `## Contents` section names: each backticked `name/` or `name.rs`, a path
+/// inside the crate (one that starts with `ecad/` names a place elsewhere and is skipped).
+fn readme_contents_paths(text: &str) -> Vec<&str> {
+    let Some(start) = text.find(
+        "
+## Contents
+",
+    ) else {
+        return Vec::new();
+    };
+    let body = &text[start
+        + "
+## Contents
+"
+        .len()..];
+    let body = body
+        .find(
+            "
+## ",
+        )
+        .map_or(body, |end| &body[..end]);
+    body.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|s| {
+            (s.ends_with('/') || s.ends_with(".rs"))
+                && !s.starts_with("ecad/")
+                && s.len() > 1
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '/' | '-'))
+        })
+        .collect()
+}
+
+/// The README checks over the workspace members in `meta`: the shape, with [`README_ALLOWLIST`], and, a hard
+/// rule, that every file or folder its Contents names exists under the crate's `src/` or the crate folder.
 fn readme_violations(meta: &Value) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
     let results: Vec<(&str, Option<String>)> = classed_packages(meta)?
         .into_iter()
         .map(|(name, class, dir, _)| {
-            let text = dir.and_then(|d| std::fs::read_to_string(d.join("README.md")).ok());
+            let text = dir.as_ref().and_then(|d| std::fs::read_to_string(d.join("README.md")).ok());
+            if let (Some(d), Some(t)) = (&dir, &text) {
+                for p in readme_contents_paths(t) {
+                    let rel = p.trim_end_matches('/');
+                    if !d.join("src").join(rel).exists() && !d.join(rel).exists() {
+                        missing.push(format!("{name}: its README's Contents names `{p}`, which does not exist"));
+                    }
+                }
+            }
             (name, readme_problem(name, class, text.as_deref()))
         })
         .collect();
-    Ok(readme_ratchet(&results, README_ALLOWLIST))
+    let mut out = readme_ratchet(&results, README_ALLOWLIST);
+    out.extend(missing);
+    Ok(out)
 }
 
 /// The places in one product source file (`rel`: its path from the workspace folder, `/`
-/// separated) that read a dev feature outside the crate's `dev` module (design 029 §12.3 rule 2),
+/// separated) that read a dev feature outside the crate's `dev` module,
 /// as `rel:line: text`.
 ///
 /// # Semantics
@@ -1066,7 +1103,7 @@ fn literals(span: &str) -> Vec<String> {
 }
 
 /// The places in one product source file (`file`, in the crate folder `krate`, under `root`, the
-/// workspace folder) that read a file under `root/dev/` (design 029 §12.3 rule 3): an
+/// workspace folder) that read a file under `root/dev/`: an
 /// `include_str!`, `include_bytes!` or `include!` invocation, or a `#[path]` attribute, read whole
 /// (it may span lines), with its string literals joined; a path built on `CARGO_MANIFEST_DIR` is
 /// resolved from the crate folder, any other from the file's folder. Comments are skipped.
@@ -1126,7 +1163,8 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Rules 2 and 3 of design 029 §12.3 over the product crates' `src/` folders in `meta`: the
+/// The developer-tool source rules (dev features read only in a `dev` module; no product source
+/// reads a file under `dev/`) over the product crates' `src/` folders in `meta`: the
 /// violations, and the allowlist entries no longer needed.
 fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
@@ -1237,6 +1275,7 @@ fn layers() -> Result<(), String> {
     v.extend(engine_guards::violations(&meta)?);
     v.extend(starter_guards::violations(&meta)?);
     v.extend(pub_ratchet::violations(&meta)?);
+    v.extend(history_guards::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
@@ -1311,7 +1350,7 @@ fn lint() -> Result<(), String> {
 fn ci() -> Result<(), String> {
     lint()?;
     // All features: the fault-injection containment tests run in CI, never in normal builds.
-    // The slow set too (`#[ignore = "slow: …"]`, brief 017): this is the QA gate's full suite.
+    // The slow set too (`#[ignore = "slow: …"]`): this is the QA gate's full suite.
     run(Command::new(env!("CARGO")).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(ecad_root()))
 }
 
@@ -1555,7 +1594,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    /// Brief 066d: literal text styling in drawing code is found; styles, bounds, comments and the
+    /// Literal text styling in drawing code is found; styles, bounds, comments and the
     /// test module are not.
     #[test]
     fn drawn_text_guard_finds_literal_text_styling() {
@@ -1598,8 +1637,8 @@ mod tests {
         assert_eq!(v.len(), 3, "{v:?}");
     }
 
-    /// Design 029 §12.3 rule 1 (and 4): a product crate may depend on a `dev/` crate only
-    /// optionally, through its own `dev` feature, never on by default (except the desktop app, Q1); a
+    /// A product crate may depend on a `dev/` crate only
+    /// optionally, through its own `dev` feature, never on by default (except the desktop app); a
     /// crate is under `dev/` exactly when its class is Dev.
     #[test]
     fn product_crates_reach_developer_tools_only_through_their_dev_feature() {
@@ -1681,7 +1720,7 @@ mod tests {
         let krate = Path::new("C:/w/apps/ecad-mcp");
         let file = Path::new("C:/w/apps/ecad-mcp/src/demo.rs");
         let rows: &[(&str, usize)] = &[
-            // Tester 029 F1: the path on the next line, `include!`, and a path built on the crate
+            // The path on the next line, `include!`, and a path built on the crate
             // folder.
             ("pub const T: &str = include_str!(\n    \"../../../dev/ecad-inspector/page/index.html\"\n);", 1),
             ("include!(\"../../../dev/ecad-inspector/src/text.rs\");", 1),
@@ -1775,7 +1814,7 @@ mod tests {
         }
     }
 
-    /// Brief 017 criterion 4 on the real workspace graph.
+    /// `test-changed` on the real workspace graph.
     #[test]
     fn test_changed_on_this_workspace() {
         let root = ecad_root();
@@ -1835,7 +1874,7 @@ mod tests {
         }
     }
 
-    /// Design §2 (brief 037 criterion 3): the UiKit crate may use egui, epaint, egui_extras and
+    /// The UiKit crate may use egui, epaint, egui_extras and
     /// ecad-drawing-style only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
     /// violation.
     #[test]
@@ -1859,7 +1898,7 @@ mod tests {
         }
     }
 
-    /// Design §3.2 (brief 037 criterion 3): ECAD UI sources take colours, sizes and fonts from the
+    /// ECAD UI sources take colours, sizes and fonts from the
     /// tokens; local styling is found, comments are not.
     #[test]
     fn local_styling_is_found() {
@@ -1888,7 +1927,7 @@ let c = ecad_widgets::color(SHELL.text);",
         }
     }
 
-    /// Brief 060: a literal size is the call followed directly by a digit; a token, a variable or
+    /// A literal size is the call followed directly by a digit; a token, a variable or
     /// a comment is not.
     #[test]
     fn literal_sizes_are_found_and_tokens_are_not() {
@@ -1907,7 +1946,7 @@ let c = ecad_widgets::color(SHELL.text);",
         }
     }
 
-    /// Brief 070: the text-error counter counts lines, outside comments.
+    /// The text-error counter counts lines, outside comments.
     #[test]
     fn text_errors_are_counted_by_line() {
         let text = "fn a() -> Result<u8, String> {
@@ -1919,7 +1958,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         assert_eq!(string_error_counts(text), (2, 1));
     }
 
-    /// Brief 060: the ratchet message for each case.
+    /// The ratchet message for each case.
     #[test]
     fn a_ratchet_count_only_falls() {
         assert!(ratchet_problem("a.rs", 3, 3, "things", "fix").is_none());
@@ -1928,7 +1967,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         assert!(ratchet_problem("a.rs", 0, 3, "things", "fix").is_some_and(|m| m.contains("remove")));
     }
 
-    /// Brief 060: direct OS access in Core is found where a name starts, outside comments and the
+    /// Direct OS access in Core is found where a name starts, outside comments and the
     /// test module.
     #[test]
     fn core_os_access_is_found_outside_comments_and_tests() {
@@ -1950,10 +1989,10 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 061 §6 (065 §4): `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere,
+    /// `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere,
     /// `rayon` only in model, file, electrical and cadcraft as a plain dependency.
     #[test]
-    fn the_dependency_rules_of_design_061() {
+    fn the_dependency_rules() {
         let dep = |name: &str, kind: Value, target: Value| serde_json::json!({"name": name, "kind": kind, "target": target});
         let opt = |name: &str| serde_json::json!({"name": name, "kind": null, "target": null, "optional": true});
         let none = serde_json::json!({});
@@ -1986,7 +2025,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §4: App and Programs sources name no `cadcraft_engine` path, ecad-electrical's
+    /// App and Programs sources name no `cadcraft_engine` path, ecad-electrical's
     /// no `cadcraft_` path; comments and longer names do not count, and other layers are free.
     #[test]
     fn forbidden_paths_are_found_in_app_programs_and_the_rules() {
@@ -2010,7 +2049,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §3.1: a Core crate other than ecad-store may not depend on a crate that finds
+    /// A Core crate other than ecad-store may not depend on a crate that finds
     /// the user's folders; ecad-store and tests may.
     #[test]
     fn core_crates_do_not_find_the_users_folders() {
@@ -2028,7 +2067,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §6: a README starts with `# <crate name>`, has the five sections in order and
+    /// A README starts with `# <crate name>`, has the five sections in order and
     /// names the crate's layer; headings in code blocks do not count.
     #[test]
     fn a_readme_has_the_six_headings_and_the_layer() {
@@ -2079,7 +2118,17 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §6: the README allowlist only shrinks: an unlisted failure fails, a listed one
+    /// A README's Contents names its files and folders in backticks; other backticked words, paths elsewhere
+    /// (`ecad/…`) and the other sections are not read.
+    #[test]
+    fn readme_contents_paths_are_read() {
+        let text =
+            "# c\n## Purpose\n`purpose.rs`\n## Contents\n- `cables/`: cables; `lib.rs`, `Kind`, `ecad/docs/`\n- `a b.rs`\n## Key types\n`keys.rs`\n";
+        assert_eq!(readme_contents_paths(text), vec!["cables/", "lib.rs"]);
+        assert!(readme_contents_paths("# c\n## Purpose\n`x.rs`\n").is_empty());
+    }
+
+    /// The README allowlist only shrinks: an unlisted failure fails, a listed one
     /// does not, and a listed crate that passes or is gone must be removed.
     #[test]
     fn the_readme_allowlist_only_shrinks() {
@@ -2097,7 +2146,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §4: App and Programs reach the engine only through ecad-engine; App may
+    /// App and Programs reach the engine only through ecad-engine; App may
     /// dev-depend on a program (ecad-app's tests use ecad-desktop's startup), never depend on one.
     #[test]
     fn app_and_programs_do_not_use_the_engine_directly() {
@@ -2192,7 +2241,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         );
     }
 
-    /// Core and Engine crates may not depend on ECAD's UI kit or the egui family (design §2).
+    /// Core and Engine crates may not depend on ECAD's UI kit or the egui family.
     #[test]
     fn core_and_engine_crates_may_not_use_the_ui_kit() {
         let rows: &[(&str, &str, usize)] = &[
@@ -2201,7 +2250,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-engine", "epaint", 1),
             ("ecad-mcp", "egui_extras", 0),
             ("ecad-model", "ecad-widgets", 1),
-            // The Core order (design 065 §1): forward edges only.
+            // The Core order: forward edges only.
             ("ecad-file", "ecad-store", 0),
             ("ecad-electrical", "ecad-file", 0),
             ("ecad-file", "ecad-electrical", 1),
