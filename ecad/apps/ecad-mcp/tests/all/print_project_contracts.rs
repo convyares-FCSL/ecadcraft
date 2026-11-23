@@ -1,5 +1,4 @@
-//! Brief 033, MCP contracts (the ECAD rule of brief 011): the `contacts` reply's `table` (design
-//! 033 §4, AC5 and AC6) and `table`'s refusal (§11, AC13), through `execute`; the writes are the
+//! MCP contracts: the `contacts` reply's `table` and `table`'s refusal, through `execute`; the writes are the
 //! agent's transactions and are refused with writes off.
 
 use ecad_mcp::policy;

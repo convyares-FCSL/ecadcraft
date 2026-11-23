@@ -1,4 +1,4 @@
-//! Brief 024 (design 024 §6.4, check G): through `execute`, `setprop` location on one and on
+//! Through `execute`, `setprop` location on one and on
 //! several devices, `locationbox` and `newpage {generated}` record one transaction as the agent and
 //! are refused with writes off; `bom`, `wirelist`, `cablelist` and `printbook` (no `path`) read
 //! with writes off and record nothing; `devices` shows `location_from`; a `path` is refused.

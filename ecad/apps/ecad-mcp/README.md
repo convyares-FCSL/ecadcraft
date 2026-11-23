@@ -28,5 +28,5 @@ library tools, and anything beyond loopback on this machine.
 ```bash
 cargo test -p ecad-mcp
 ```
-Tests are in `tests/all/`; `mcp_contracts.rs` drives commands through `execute`, as every brief that
-adds a command must. To try it by hand, see [`docs/quick-start.md`](../../docs/quick-start.md).
+Tests are in `tests/all/`; `mcp_contracts.rs` drives commands through `execute`; every new or changed
+command gets a test there. To try it by hand, see [`docs/quick-start.md`](../../docs/quick-start.md).

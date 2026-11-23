@@ -1,4 +1,4 @@
-//! The drawing-pack re-run's fixes (2026-11-14) through MCP (brief 011 rule): `plcchannels` with
+//! Drawing-pack fixes through MCP: `plcchannels` with
 //! `point` and `place` of a project symbol with `tag` each record one transaction by
 //! `Author::Agent(<client>)` and are refused with writes off.
 

@@ -1,4 +1,4 @@
-//! Brief 045 (PLC racks and cards) through MCP (brief 011 rule): each write records one
+//! PLC racks and cards through MCP: each write records one
 //! transaction by `Author::Agent(<client>)` and is refused with writes off; the reads work with
 //! writes off and record nothing.
 

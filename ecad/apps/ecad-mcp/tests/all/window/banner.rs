@@ -1,4 +1,4 @@
-//! Brief 043 (U4d) headless in the app: the styled agent banner in the shell's slot (035's data
+//! Headless in the app: the styled agent banner in the shell's slot (the bridge's data
 //! contract and element names kept), the agent pill, History's author chips and session groups
 //! with Undo session, and the agent's last write outlined on the page.
 

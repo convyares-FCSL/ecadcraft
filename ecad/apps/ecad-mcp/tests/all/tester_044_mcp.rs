@@ -1,11 +1,9 @@
-//! Tester 044 (connector devices) through MCP (brief 011 rule; brief 044 AC 9; design 044 §12.1
-//! and row 14): on a project saved at a path with spaces and non-ASCII letters, `connector`
+//! Connector devices through MCP: on a project saved at a path with spaces and non-ASCII letters, `connector`
 //! (row and pins forms), `place` of a pin starter joining a connector, `pinlabel`, `setprop` of the
-//! FP4 keys and `setdefault` of the `connector` area each record one transaction by
-//! `Author::Agent(<client>)` with §4.6's ops; §6.1's refusals and hostile input record nothing;
+//! connector keys and `setdefault` of the `connector` area each record one transaction by
+//! `Author::Agent(<client>)` with the expected ops; refusals and hostile input record nothing;
 //! reads record nothing and name pins `-X01.S:3`; reopened with writes off, every write is
-//! refused and the reads give what they gave before. Written from the brief and design before the
-//! implementation.
+//! refused and the reads give what they gave before.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Op;

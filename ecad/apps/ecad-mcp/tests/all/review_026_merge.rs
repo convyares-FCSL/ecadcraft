@@ -1,7 +1,7 @@
-//! Reviewer 026 (PR #52) findings, through MCP: which side a merge renumbers or joins when one
-//! side renames an existing device into the other's new tag (1), Make them one for two cables (2),
-//! the two-transaction exception only for a line of one finalising `issuerevision` (3), and the
-//! internal `numbering.high.<P>` never merged as a property (4).
+//! Merge corner cases through MCP: which side a merge renumbers or joins when one
+//! side renames an existing device into the other's new tag, Make them one for two cables,
+//! the two-transaction exception only for a line of one finalising `issuerevision`, and the
+//! internal `numbering.high.<P>` never merged as a property.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{CableId, DeviceId, Document, Subject};

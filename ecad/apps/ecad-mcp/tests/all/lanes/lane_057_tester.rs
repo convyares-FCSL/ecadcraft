@@ -1,9 +1,9 @@
-//! Tester 057 through MCP (brief 057 AC 4, design 057 §8.3, §11 check 17; brief 011 rule): on a
+//! Rating tables through MCP: on a
 //! project saved at a path with spaces and non-ASCII letters, `rating` and `ratingtable {csv}`
 //! record one transaction by `Author::Agent(<client>)` and one undo restores; `ratingtable
 //! {import}` is refused over MCP (it reads a file); reopened with writes off the writes are refused
 //! and record nothing while `ratings` works and reads what it read before. Every table value is
-//! made up (owner, Q11). Written from the brief and design before the implementation.
+//! made up.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Op;

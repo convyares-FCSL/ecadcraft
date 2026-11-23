@@ -1,5 +1,4 @@
-//! Tester 034 through MCP (brief 011 rule, brief 034 AC 7, design 034 §12), written from the
-//! brief and design before the implementation: every new symbol placed by `execute place` records
+//! Library symbols through MCP: every new symbol placed by `execute place` records
 //! one transaction by `Author::Agent(<client>)` with one `EmbedDefinition` (origin = the starter
 //! library and the key's ID), one new device `-<prefix><next>`, the catalogue's labels in order
 //! and the name as description; a second placement embeds nothing; a change-over join and ratings

@@ -1,4 +1,4 @@
-//! Brief 032, MCP contract (the ECAD rule of brief 011, design 032 §12): `wire` merging and
+//! MCP contract: `wire` merging and
 //! folding, `joinwires`, `cableslash` continuing a cable, `cablecontinue`'s refusal and
 //! `wiresettings` through `execute` record the agent's transaction (or none), and are refused with
 //! writes off.

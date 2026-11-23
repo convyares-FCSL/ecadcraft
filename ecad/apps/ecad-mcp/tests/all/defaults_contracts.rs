@@ -1,4 +1,4 @@
-//! Brief 042 (U4c) through MCP (brief 011 rule): `setdefault` records one transaction by
+//! Defaults through MCP: `setdefault` records one transaction by
 //! `Author::Agent(<client>)`, a refused level gives the reason and the allowed levels, and with
 //! writes off it is refused and records nothing.
 

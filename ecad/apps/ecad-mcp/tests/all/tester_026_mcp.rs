@@ -1,7 +1,7 @@
-//! Tester 026 (numbering) through MCP: the two-transaction exception of `issuerevision
+//! Numbering through MCP: the two-transaction exception of `issuerevision
 //! {provisional: "finalise"}` and nothing else, and merges with `Choice::MakeOne`, renames on both
 //! sides, provisional duplicates and fixed flags. A probe that found a bug is
-//! `#[ignore = "tester 026: <bug>"]` and fails until it is fixed.
+//! marked `#[ignore]` with the bug named and fails until it is fixed.
 
 use std::collections::BTreeSet;
 

@@ -1,6 +1,6 @@
-//! Tester 032 through MCP (design 032 §12, FP-W3): each changed command driven through `execute`
-//! records one transaction by `Author::Agent(<client>)` with the ops the design names, and is
-//! refused with writes off. Written from the brief and design before the implementation.
+//! Wire and net commands through MCP: each command driven through `execute`
+//! records one transaction by `Author::Agent(<client>)` with the expected ops, and is
+//! refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{Op, Transaction};

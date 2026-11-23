@@ -1,4 +1,4 @@
-//! Brief 051 (PLC visuals) through MCP (brief 011 rule, design 051 §7): `plcpage` and a fence
+//! PLC visuals through MCP: `plcpage` and a fence
 //! record one transaction by `Author::Agent(<client>)` and are refused with writes off; `plcracks`
 //! returns the tiles' data with writes off and records nothing.
 

@@ -1,4 +1,4 @@
-//! Brief 036, MCP contract (the ECAD rule of brief 011, design 036 §13 M): `connection_points` with a
+//! MCP contract: `connection_points` with a
 //! type and level, `place` of a level starter, `terminalblocklabel`, `toposition`, `jumper` with levels,
 //! `setprop` of `term_label.*`, `rating.*`, `part_number.lnpe`, `connection_points` with type codes, and
 //! `projectprops strip_lnpe_part_number` through `execute` record the agent's transaction and are

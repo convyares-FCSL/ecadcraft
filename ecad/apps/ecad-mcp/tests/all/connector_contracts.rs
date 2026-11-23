@@ -1,6 +1,6 @@
-//! Brief 044 (connector devices) through MCP (brief 011 rule, design 044 §12.1): `connector` as a
+//! Connector devices through MCP: `connector` as a
 //! row and as pins, `place` joining a half, and `pinlabel` each record one transaction by
-//! `Author::Agent(<client>)`; the refusals of §6.1 record nothing; with writes off each is refused.
+//! `Author::Agent(<client>)`; the refusals record nothing; with writes off each is refused.
 
 use ecad_mcp::policy;
 use ecad_model::{DeviceId, Op};

@@ -1,11 +1,9 @@
-//! Tester 045 through MCP (brief 011 rule; briefs 045a AC 7, 045b AC 7; design 045 §13 R; FP1
-//! condition 1 for merge): on a project saved at a path with spaces and non-ASCII letters, every
+//! PLC racks and cards through MCP: on a project saved at a path with spaces and non-ASCII letters, every
 //! PLC write (`place` of a card body with rack and slot, `plcslot`, `setprop plc.*`, `setdefault
 //! plc.*`, `place` of a cell with device and channel, `plcchannels`, `plcchannel`, `plcaddress`)
 //! records one transaction by `Author::Agent(<client>)`; reopened with writes off each is refused
 //! and records nothing, and `plcracks`, `checks` and `defaults {group: "PLC"}` read and record
-//! nothing. The merge preview names a rack by its tag, never by its hex ID. Written from the briefs
-//! and design before the implementation; ignored until phase 2.
+//! nothing. The merge preview names a rack by its tag, never by its hex ID.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Op;

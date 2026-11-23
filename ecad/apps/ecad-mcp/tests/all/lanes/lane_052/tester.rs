@@ -1,4 +1,4 @@
-//! Tester 052 over MCP: hostile and bounded input to the brief 052 commands through `execute`
+//! Hostile and bounded input to the location, function and designation commands through `execute`
 //! is refused with a message, writes nothing and never panics; an agent's merge is one
 //! transaction that its own undo takes back exactly.
 

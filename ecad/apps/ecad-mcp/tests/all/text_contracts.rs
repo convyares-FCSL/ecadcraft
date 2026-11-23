@@ -1,4 +1,4 @@
-//! Brief 031, MCP contract (the ECAD rule of brief 011, design 031 §10.7): `textstyle` and
+//! MCP contract: `textstyle` and
 //! `defaults` through `execute`: each write records one transaction by `Author::Agent(<client>)`
 //! and is refused with writes off; the reads answer with writes off and record nothing; the
 //! property commands refuse `text.` keys.

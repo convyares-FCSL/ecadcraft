@@ -1,4 +1,4 @@
-//! Lane 072 B (design 072 §2.3, brief 011): `place` through MCP records the device with the type
+//! `place` through MCP records the device with the type
 //! its symbol declares, as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};

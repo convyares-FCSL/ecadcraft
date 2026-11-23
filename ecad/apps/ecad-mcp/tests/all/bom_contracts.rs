@@ -1,4 +1,4 @@
-//! Brief 047 through MCP (brief 011 rule, design 047 §7.5): `partline` (add, kit, edit, remove),
+//! MCP contract: `partline` (add, kit, edit, remove),
 //! `bomitem` (add, edit, delete) and `article` each record one transaction by
 //! `Author::Agent(<client>)` and are refused with writes off; a `for` naming a fuse the bank lacks
 //! is refused in words and writes nothing; `bom` works with writes off and records nothing;

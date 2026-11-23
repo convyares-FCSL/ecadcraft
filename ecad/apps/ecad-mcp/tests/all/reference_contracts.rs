@@ -1,4 +1,4 @@
-//! Brief 025, MCP contract (the ECAD rule of brief 011): `setprop` with `contacts` and `mirror`,
+//! MCP contract: `setprop` with `contacts` and `mirror`,
 //! `mirrormove` and a `place` join through `execute` record the agent's transaction and are
 //! refused with writes off; `references`, `contacts` and `refgoto` work with writes off and record
 //! nothing.

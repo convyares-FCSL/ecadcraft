@@ -1,10 +1,10 @@
-//! Tester 031 through MCP (brief 011 rule; brief 031 AC 4 and AC 7; design 031 §10.7): on a
+//! Text styles through MCP: on a
 //! project saved at a path with spaces and non-ASCII letters, every text write (`textstyle`,
 //! `showtext` at four levels, `movetext` and its reset, `text` with `justify`) records one
 //! transaction by `Author::Agent(<client>)`; `textstyle {}`, `pagetexts` and `defaults` read and
-//! record nothing; `projectprops`, `pageprops` and `setprop` refuse `text.` keys with design
-//! §10.6's sentence; reopened with writes off, every write is refused and the reads give what they
-//! gave before. Written from the brief and design before the implementation.
+//! record nothing; `projectprops`, `pageprops` and `setprop` refuse `text.` keys with
+//! an explanatory message; reopened with writes off, every write is refused and the reads give what they
+//! gave before.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use serde_json::{Value, json};

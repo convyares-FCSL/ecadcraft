@@ -1,8 +1,8 @@
-//! Tester 030 through MCP (brief 011 rule, brief 030 AC 6, design 030 §10): on a project saved at
+//! Accessories and jumpers through MCP: on a project saved at
 //! a path with spaces and non-ASCII letters, every accessory and jumper write records one
 //! transaction by `Author::Agent(<client>)`; reopened with writes off, every write with real IDs
 //! is refused and `stripplan`, `bom`, `checks` and the renumber preview give what they gave before
-//! the save and record nothing. Written from the brief and design before the implementation.
+//! the save and record nothing.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{ObjectRef, Op, Transaction};

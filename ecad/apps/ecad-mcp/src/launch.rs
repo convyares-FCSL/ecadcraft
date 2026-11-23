@@ -1,4 +1,4 @@
-//! Opening the ECAD window for `--launch` (brief 035, design §9.3), on Windows and Linux.
+//! Opening the ECAD window for `--launch`, on Windows and Linux.
 //!
 //! # Semantics
 //! - The desktop app is found as `ECAD_DESKTOP` (a full path), else `ecad-desktop(.exe)` beside the running

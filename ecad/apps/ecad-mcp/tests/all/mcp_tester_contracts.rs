@@ -1,6 +1,6 @@
-//! Brief 011, the tester's acceptance tests (written from the brief, independent of the worker's
-//! `mcp_contracts.rs`). They drive `ecad-mcp` only through JSON-RPC lines, in-process or over the
-//! built binary's real stdin and stdout, and look at the project's ledger from outside.
+//! Independent acceptance tests of ECAD over MCP, apart from `mcp_contracts.rs`.
+//! They drive `ecad-mcp` only through JSON-RPC lines, in-process or over the built
+//! binary's real stdin and stdout, and look at the project's ledger from outside.
 //!
 //! Criteria: 2 (the transaction cap must leave the project as it was), 3 (every catalogued command
 //! refused with writes off, notifications included), 4 (raw CADCraft edits on an ECAD page give the

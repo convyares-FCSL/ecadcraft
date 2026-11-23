@@ -1,4 +1,4 @@
-//! Helpers shared by this crate's tests (brief 062): the kittest harness around a [`App`], a
+//! Helpers shared by this crate's tests: the kittest harness around a [`App`], a
 //! temporary folder, and a pointer click.
 //!
 //! [`harness`] takes [`Opts`]; the defaults are the window most tests used (1920×1200, CADCraft's

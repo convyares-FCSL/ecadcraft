@@ -1,4 +1,4 @@
-//! Lane 072 D (design 072 §4; brief 011): a wire's size, colours and rating inputs set through
+//! A wire's size, colours and rating inputs set through
 //! MCP's `execute` record one `ModifyWire` by the agent; a value that does not read, and a key a
 //! wire does not have, are refused and record nothing; `wire` point to point records its route
 //! and the wire the rewrite made; `cableslash` across a loose line puts the core on the line;

@@ -1,4 +1,4 @@
-//! Tester 059a through MCP (design 059 §4.6, §11; the owner's rules 7 and 8): hostile and
+//! Cable manager commands through MCP: hostile and
 //! oversized parameters to `cablenew`, `cableedit`, `cableremove` and `cableslash` are refused in
 //! bounded words with nothing recorded; a session of cable-manager edits, undone and redone, saves,
 //! reopens and replays to the same document.

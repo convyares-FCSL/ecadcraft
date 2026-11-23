@@ -1,4 +1,4 @@
-//! The demo project (`cargo xtask demo`, owner request of 2026-11-08): a small control panel
+//! The demo project (`cargo xtask demo`): a small control panel
 //! built from a checked-in list of commands (`ecad/examples/demo/commands.jsonl`) through the
 //! same `execute` tool an MCP client uses, so the demo is rebuilt from source whenever the model or
 //! the file format changes and never goes stale.

@@ -1,4 +1,4 @@
-//! Brief 020a, MCP contract (the ECAD rule of brief 011): every history and branch command
+//! MCP contract: every history and branch command
 //! through `execute` records the same transaction (or branch row) as the click, by the agent,
 //! and is refused with writes off; the read forms work with writes off and record nothing.
 

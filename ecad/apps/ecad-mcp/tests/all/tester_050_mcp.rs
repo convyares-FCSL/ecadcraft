@@ -1,14 +1,11 @@
-//! Tester 050 (style model and wire categories) through MCP (brief 011 rule; design 050 §6.8 and
-//! §12 checks 8, 10 and 18; the overseer's FP1–FP3 ruling: merge tests). On a project saved at a
+//! Style model and wire categories through MCP. On a project saved at a
 //! path with spaces and non-ASCII letters, each new or changed writing command (`standard` new,
-//! name, from, remove; `style`; `deletestyle`; `promote`; `setdefault` at `standard`; 050b's
+//! name, from, remove; `style`; `deletestyle`; `promote`; `setdefault` at `standard`;
 //! `category` and `wire {category}`) records one transaction by `Author::Agent(<client>)`, and one
 //! `u` restores the document; `styles` and `standard {}` record nothing; with writes off every
 //! write is refused and reads are unchanged. Branches: the same style changed differently on two
 //! branches is one conflict worded with the style's name; different styles, different standard
 //! values and a concurrent drawing edit merge cleanly; the standard header is one unit.
-//!
-//! Written from the briefs and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{Author, Document, Op};

@@ -1,4 +1,4 @@
-//! Brief 035 headless in the app (design 035 §12, app UI tests): the Agent access row in the
+//! Headless in the app: the Agent access row in the
 //! Developer section, the settings file, the banner's controls (Pause, Resume, Disconnect,
 //! Dismiss) and Undo session with and without the person's steps on top, by element name.
 

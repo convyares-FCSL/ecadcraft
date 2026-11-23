@@ -1,8 +1,7 @@
-//! Tester 033 through MCP (brief 033 "MCP contract tests", design 033 §15): every new or changed
-//! write records one transaction by `Author::Agent(<client>)` and sets the keys design §10 names;
-//! the refusals of AC8 and AC13 write nothing; the `contacts` reply carries `table`; reopened with
-//! writes off, every write is refused and reads give what they gave. Written from the brief and
-//! design before the implementation.
+//! Print project commands through MCP: every new or changed
+//! write records one transaction by `Author::Agent(<client>)` and sets the expected keys;
+//! the refusals write nothing; the `contacts` reply carries `table`; reopened with
+//! writes off, every write is refused and reads give what they gave.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Op;

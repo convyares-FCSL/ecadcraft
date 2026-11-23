@@ -1,4 +1,4 @@
-//! Brief 035 on the server side: `--connect` and `--launch` on the command line, a `--connect`
+//! The server side of the live bridge: `--connect` and `--launch` on the command line, a `--connect`
 //! server with no window (headless, `ecad_connection`, `screenshot`), and `agentaccess` refused
 //! to agents in every mode (MCP contract test of the new command).
 

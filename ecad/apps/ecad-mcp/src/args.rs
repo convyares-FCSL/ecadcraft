@@ -24,7 +24,7 @@ pub enum Invocation {
         project: Option<String>,
         create: bool,
         options: Options,
-        /// `--connect <port>` (brief 035): headless until the window answers, then bridged.
+        /// `--connect <port>`: headless until the window answers, then bridged.
         connect: Option<u16>,
         /// `--launch`: open the window when nothing answers (needs `--connect`).
         launch: bool,

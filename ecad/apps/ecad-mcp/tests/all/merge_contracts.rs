@@ -1,4 +1,4 @@
-//! Brief 020b, MCP contract (the ECAD rule of brief 011): `merge` (into the parent, and update
+//! MCP contract: `merge` (into the parent, and update
 //! from the parent) and `undomerge` through `execute` record one merge transaction by the agent;
 //! the preview reads and records nothing, also with writes off; a conflict without a choice is
 //! refused naming it and how to choose; plain undo of a merge asks first.

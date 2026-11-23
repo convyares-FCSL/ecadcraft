@@ -1,6 +1,6 @@
-//! Brief 028, MCP contract (the ECAD rule of brief 011, design 028 §10): `place` of a terminal
+//! MCP contract: `place` of a terminal block
 //! on a wire, `connection_points`, `bridge`, `setprop` with `connection_points` and `cores`, and `newpage` of a
-//! terminal plan through `execute` record the agent's transaction and are refused with writes
+//! terminal strip plan through `execute` record the agent's transaction and are refused with writes
 //! off; `stripplan`, `cablecores`, `cablelist` and `checks` work with writes off and record
 //! nothing.
 

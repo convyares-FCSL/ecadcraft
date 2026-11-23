@@ -1,15 +1,13 @@
-//! Tester 035: the live MCP bridge, from outside (brief 035 AC 1–11, 13; design 035 §3–§8, §11,
-//! §12 checks 1–11 and the app UI checks). Written from the brief and the design only, before
-//! the implementation.
+//! The live MCP bridge, from outside.
 //!
-//! Harness (design §12): a headless `App` (egui_kittest) with agent access turned on at a free
+//! Harness: a headless `App` (egui_kittest) with agent access turned on at a free
 //! port through the `agentaccess` command, as the ECAD Dev row does; an `ecad-mcp` server in
 //! `--connect` mode on its own thread, served over a pipe exactly as over stdio (closing the pipe
 //! is stdin closing); the test thread pumps the app's frames until each reply arrives (10 s
 //! guard, longer only for the 5 s hold). Raw control lines go over a real socket with the token
 //! read from upstream's token file.
 //!
-//! Adapted to the build in phase 2 (`Agent::use_settings` gives each test its own settings folder).
+//! `Agent::use_settings` gives each test its own settings folder.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};

@@ -1,6 +1,6 @@
-//! Brief 033, MCP contracts for the pack quick fixes (design 033 §6–§8): the pending-revision
-//! marker (AC9), revision columns and custom fields (AC10), the tag style and its rewrite (AC11),
-//! renumbering under `typed` (AC12). Each write is the agent's transaction; writes off refuse.
+//! MCP contracts for the pack quick fixes: the pending-revision
+//! marker, revision columns and custom fields, the tag style and its rewrite,
+//! renumbering under `typed`. Each write is the agent's transaction; writes off refuse.
 
 use ecad_mcp::policy;
 use ecad_model::{Author, ObjectRef, Op, PageId};

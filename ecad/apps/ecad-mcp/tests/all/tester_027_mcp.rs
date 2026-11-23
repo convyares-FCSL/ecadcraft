@@ -1,4 +1,4 @@
-//! Tester 027 (release) through MCP: `release {provisional: "finalise"}` records one
+//! Release through MCP: `release {provisional: "finalise"}` records one
 //! transaction as the agent (as `issuerevision` does), a release taken back by the per-call cap
 //! leaves the file on disk agreeing with the reply, and `rev` given as odd text with writes off
 

@@ -1,4 +1,4 @@
-//! Brief 054 (design 054 §12, AC16): page types, folder start numbers, Renumber pages and
+//! Page types, folder start numbers, Renumber pages and
 //! `deletepage` through MCP. Each write records one transaction by `Author::Agent(<client>)` that
 //! one `u` undoes, and is refused with writes off.
 

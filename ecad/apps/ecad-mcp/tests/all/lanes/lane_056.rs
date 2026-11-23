@@ -1,4 +1,4 @@
-//! Brief 056 (the PLC signal list) through MCP (brief 011 rule, design 056 §10):
+//! The PLC signal list through MCP:
 //! `plcchannel {tag, safe}`, `plcmaketags`, `plcimport` and `plccardtype` record one transaction
 //! by `Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
 //! `plcexport` and `iolist` work with writes off and record nothing.

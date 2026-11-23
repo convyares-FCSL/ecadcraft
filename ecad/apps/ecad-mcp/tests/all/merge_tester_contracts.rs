@@ -1,4 +1,4 @@
-//! Tester contracts for brief 020b (merge into main, update from main) through `execute`, as the
+//! Merge into main and update from main through `execute`, as the
 //! History tab's clicks send them: a clean merge survives save and reopen and its undo still asks
 //! in a later session; conflicts of every kind offer choices and every offered choice merges (never
 //! a dead end); merging an already merged branch; undo and redo across a merge; the file verifies.

@@ -1,4 +1,4 @@
-//! Brief 030, MCP contract (the ECAD rule of brief 011, design 030 §10): `accessory`, `jumper`
+//! MCP contract: `accessory`, `jumper`
 //! (make, extend, shorten, split, delete), `setprop` of `acc.*`, `jumper_bar.<n>`, `jumper.bar` and
 //! accessory part keys, `projectprops` with `strip_*` and `renumber {kind: "terminal_blocks"}` with
 //! accessory keys and jumper bars, through `execute`, record the agent's transaction and are refused

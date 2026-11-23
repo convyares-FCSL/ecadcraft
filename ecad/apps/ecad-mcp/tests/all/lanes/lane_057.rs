@@ -1,4 +1,4 @@
-//! Lane 057 through MCP (brief 011 rule; design 057 §8.3): `rating` and `ratingtable {csv}` record
+//! Ratings through MCP: `rating` and `ratingtable {csv}` record
 //! one transaction by the agent, undone by one `u`, and are refused with writes off;
 //! `ratingtable {import}` and `{export}` are refused in every mode; `ratings` runs with writes off.
 //!

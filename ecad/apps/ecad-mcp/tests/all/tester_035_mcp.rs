@@ -1,10 +1,7 @@
-//! Tester 035, the `ecad-mcp` side without a window (brief 035 AC 11, 12, 13 partly; design 035
-//! §3.3, §9, §11, §12 checks 10 and 12). Written from the brief and the design before the
-//! implementation: names of the new API are guesses, gathered in [`connect_server`] and
-//! [`launch`] so phase 2 adapts them in one place.
+//! The `ecad-mcp` side of the live bridge without a window: `--connect` and `--launch`,
+//! gathered in [`connect_server`] and [`launch`].
 //!
-//! The bridged checks (a real desktop app on the port) are in the desktop app's `tester_035_bridge` module:
-//! `ecad-app` depends on `ecad-mcp` (for its tests), not the other way round.
+//! The bridged checks (a real desktop app on the port) are in this crate's `window` test module.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;

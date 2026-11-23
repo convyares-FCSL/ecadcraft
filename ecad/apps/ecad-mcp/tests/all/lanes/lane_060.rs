@@ -1,4 +1,4 @@
-//! Brief 060 (R0): `setprop` on several components through MCP walks the single-component rules,
+//! `setprop` on several components through MCP walks the single-component rules,
 //! records one agent transaction, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};

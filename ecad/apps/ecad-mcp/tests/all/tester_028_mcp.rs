@@ -1,4 +1,4 @@
-//! Tester 028 through MCP (brief 011 rule, design 028 §10): on a saved project with a strip, a
+//! Terminal strips through MCP: on a saved project with a strip, a
 //! bridge, offers and cores, at a path with spaces and non-ASCII letters, every strip write records
 //! `Author::Agent`; reopened with writes off, every write with real IDs is refused and every read
 //! (`stripplan`, `cablecores`, `cablelist`, `checks`, a renumber preview) works, gives what it gave

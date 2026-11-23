@@ -1,4 +1,4 @@
-//! Brief 046 through MCP (brief 011 rule, design 046 §11 #14): `newpage` with `style` and
+//! Terminal strip pages through MCP: `newpage` with `style` and
 //! `setdefault` of `terminal_block.plan.style` at page level each record one transaction by
 //! `Author::Agent(<client>)`; with writes off both are refused and nothing is recorded.
 

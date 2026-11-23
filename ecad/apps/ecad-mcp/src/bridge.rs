@@ -1,4 +1,4 @@
-//! The client side of the live bridge (brief 035, design §9): one `ecad-mcp --connect PORT` is
+//! The client side of the live bridge: one `ecad-mcp --connect PORT` is
 //! headless until an ECAD window answers on the port, and bridged once one does.
 //!
 //! # Semantics
@@ -22,14 +22,14 @@ use std::time::Duration;
 use cadcraft_mcp::{Backend, Remote};
 use serde_json::{Value, json};
 
-/// The port the desktop app listens on by default (design 035 §17, 1).
+/// The port the desktop app listens on by default.
 pub const DEFAULT_PORT: u16 = ecad_engine::agent::access::DEFAULT_PORT;
 /// How long the probe waits for the window to accept.
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 /// How long `ecad.bye` may take when the server stops.
 pub const BYE_TIMEOUT: Duration = Duration::from_secs(1);
 
-// The words the window shares (design 065 §3, cut 12), at their old paths.
+// The words the window shares, at their old paths.
 pub use ecad_engine::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
 
 /// Where the server's calls go.
@@ -70,7 +70,7 @@ pub fn not_answering(port: u16) -> String {
     format!("The ECAD window at {} is not answering (closed?). Reopen ECAD with agent access on; nothing was changed.", addr(port))
 }
 
-/// Upstream's [`Remote`] wording turned into ECAD's (design 035 §9.2, §11), for the window on
+/// Upstream's [`Remote`] wording turned into ECAD's, for the window on
 /// `port`:
 /// - a refusal the window says did not run keeps the window's own sentence (it already says
 ///   nothing was changed); upstream's bare transport words (`timeout`, `busy`, `unauthorized`)

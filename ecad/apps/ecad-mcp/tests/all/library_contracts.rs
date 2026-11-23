@@ -1,4 +1,4 @@
-//! Brief 034, MCP contract (the ECAD rule of brief 011, design 034 §12): placing each new symbol
+//! MCP contract: placing each new symbol
 //! of the component library through `execute` records one transaction authored by the agent,
 //! embedding its definition once; a change-over join and ratings are recorded the same way; every
 //! one is refused with writes off; hostile keys and ratings get an error, never a panic.

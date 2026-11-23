@@ -1,4 +1,4 @@
-//! Tester probe for brief 024 over MCP: Print Book and the reports never write a file for an
+//! Over MCP, Print Book and the reports never write a file for an
 //! agent, in any spelling of the file parameter or mode; a book of more than 10 pages comes back
 //! as one base64 PDF; the location writes are refused with writes off.
 

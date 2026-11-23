@@ -1,7 +1,7 @@
-//! Lane 059 through MCP (brief 011 rule; design 059 §4.6): `cablenew`, `cableedit`, `cableremove`
+//! Cable manager commands through MCP: `cablenew`, `cableedit`, `cableremove`
 //! and `cableslash` in assign mode record one transaction by the agent, undone by one `u`; their
 //! refusals (cores in use, drawn, more wires than cores, an unknown key) write nothing; with
-//! writes off every one is refused. A cable not drawn round-trips through the file (FD1).
+//! writes off every one is refused. A cable not drawn round-trips through the file.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{Author, Document, Op};

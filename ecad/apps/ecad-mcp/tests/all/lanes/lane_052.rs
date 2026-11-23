@@ -1,4 +1,4 @@
-//! Brief 052b, MCP contract (the ECAD rule of brief 011, design 052 §10.22): `setlocation`,
+//! MCP contract: `setlocation`,
 //! `setfunction`, `designationadd`, `designationedit`, `designationmerge` and
 //! `designationremove` through `execute` record the agent's transaction and are refused with
 //! writes off; `designations` reads with writes off.

@@ -1,4 +1,4 @@
-//! Brief 027 (design 027 §10, check G): through `execute`, `prerelease` works with writes off,
+//! Through `execute`, `prerelease` works with writes off,
 //! records nothing and lists an `orphan-reference` row; `release` of the pending revision records
 //! `Issue Rev B` with `rev.<n>.released` as the agent, writes the files and a manifest whose hashes
 //! match, and is refused with writes off; with an error and no `accept` it refuses with the way

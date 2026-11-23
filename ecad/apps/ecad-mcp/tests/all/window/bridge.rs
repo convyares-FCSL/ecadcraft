@@ -1,4 +1,4 @@
-//! Brief 035 (design 035 §12): MCP contract tests over the live bridge. Each test builds an app
+//! MCP contract tests over the live bridge. Each test builds an app
 //! headless (egui_kittest) with agent access on at a free port, runs an `ecad-mcp --connect`
 //! server on a second thread, and pumps the app's frames until each reply arrives (10 s guard).
 //!

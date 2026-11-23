@@ -1,4 +1,4 @@
-//! Brief 049 through MCP (brief 011 rule, design 049 §10.1): `contcaption` and `place` with a
+//! Continuations through MCP: `contcaption` and `place` with a
 //! caption each record one transaction by `Author::Agent(<client>)` and are refused with writes
 //! off; `references` and `refgoto` read an arrow's other ends and record nothing; hostile captions are
 //! errors in words.

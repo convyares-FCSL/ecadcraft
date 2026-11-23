@@ -1,5 +1,5 @@
-//! Brief 072 lane E (design 072 §5.1): the page commands through MCP record `ModifyPage` with the
-//! agent as author, keep a generated page's kind, and are refused with writes off (brief 011).
+//! The page commands through MCP record `ModifyPage` with the
+//! agent as author, keep a generated page's kind, and are refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, GenKind, Op, PageId, PageKind};

@@ -1,11 +1,10 @@
-//! Tester 054 through MCP (brief 011 rule; design 054 §12.1 AC16). On a project saved at a path
+//! Page types and numbering through MCP. On a project saved at a path
 //! with spaces and non-ASCII letters, each writing form (`newpage {type}`, `newpage {type,
 //! generated, after}`, `setstyle {catalogue: "page"}` new and change, `setdefault page.type` at page
 //! level, `projectprops {props: {cover.notes}}`,
 //! `folderprops`, `renumberpages`, `deletepage`) records one transaction by
 //! `Author::Agent(<client>)`, and one `u` restores the document; `styles {catalogue: page}` records
 //! nothing; with writes off every write is refused with `WRITES_OFF` and reads are unchanged.
-//! Written from brief and design 054 before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::{Author, Document, Op};

@@ -1,4 +1,4 @@
-//! Helpers shared by this crate's tests (brief 062): an in-memory MCP client with writes on, and the
+//! Helpers shared by this crate's tests: an in-memory MCP client with writes on, and the
 //! "one transaction, by the agent" check that nearly every command test makes.
 //!
 //! [`Client`] and [`AGENT`] stay in `mcp_contracts` (re-exported here), where the other tests import them.

@@ -1,4 +1,4 @@
-//! Tester 036 through MCP (brief 011 rule; brief 036 AC 9; design 036 §13 M): on a project saved
+//! Terminal block levels through MCP: on a project saved
 //! at a path with spaces and non-ASCII letters, every new or changed write (`connection_points` with type
 //! and level, `place` of a level starter, `terminalblocklabel`, `toposition`, `jumper` with levels,
 //! `setprop` of `term_label.*`, `rating.*`, `part_number.<code>`, offers with codes, `link.*`
@@ -6,7 +6,6 @@
 //! transaction by `Author::Agent(<client>)`; hostile input is refused and records nothing;
 //! `stripplan`, `bom`, `checks` and `defaults {group: "Terminals"}` read and record nothing;
 //! reopened with writes off, every write is refused and the reads give what they gave before.
-//! Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::Op;

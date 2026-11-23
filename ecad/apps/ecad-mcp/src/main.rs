@@ -1,4 +1,4 @@
-//! `ecad-mcp`: ECAD over MCP on stdin and stdout, headless (brief 011).
+//! `ecad-mcp`: ECAD over MCP on stdin and stdout, headless.
 //!
 //! Usage: `ecad-mcp [--write] [--agent <name>] [--connect <port>] [--launch] [--create] [<project.ecad>]`. Logs go to stderr
 //! only; stdout carries JSON-RPC. See `ecad/docs/quick-start.md`.
@@ -10,7 +10,7 @@ use ecad_mcp::EcadMcp;
 use ecad_mcp::args::{Invocation, USAGE, parse_args};
 
 fn main() -> ExitCode {
-    // Verify mode (brief 013): the model reads no environment, so the program passes the switch in.
+    // Verify mode: the model reads no environment, so the program passes the switch in.
     ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(
         std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref(),
     ));
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
         }
     };
     if let Some(port) = connect {
-        // Brief 035: one server, headless until the window answers on the port. The headless
+        // One server, headless until the window answers on the port. The headless
         // project is opened only at the first headless call, so a file the window has open is
         // never locked here first.
         if let Some(p) = &project {

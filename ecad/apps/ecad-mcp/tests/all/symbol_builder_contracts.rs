@@ -1,4 +1,4 @@
-//! Brief 048 (symbol builder) through MCP (brief 011 rule, design 048 §12.1): `symbolnew`,
+//! Symbol builder through MCP: `symbolnew`,
 //! `symboledit`, `symbolupdate` and `makesymbol` each record one transaction by
 //! `Author::Agent(<client>)` with the expected ops, and are refused with writes off with the head
 //! unchanged; `symbolimpact` reads only and is allowed with writes off.

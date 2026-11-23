@@ -1,4 +1,4 @@
-//! Brief 050a through MCP (brief 011 rule, design 050 §6.8): `standard` (`new`, `name`,
+//! Styles and standards through MCP: `standard` (`new`, `name`,
 //! `remove`), `style`, `deletestyle`, `promote` and `setdefault` at `standard` each record one
 //! transaction by `Author::Agent(<client>)`, are refused with writes off, and one undo restores
 //! the document; `styles` and `standard {}` read with writes off. `standard {from}` names another

@@ -1,4 +1,4 @@
-//! Brief 011's MCP contract rule applied to the commands briefs 009 and 010 added or changed:
+//! MCP contract of the cable and page commands:
 //! `cablecore`, `cablefan`, `cablereference`, `cablecontinue`, `cablegoto`, `cablereferences`, `renamepage` and
 //! `movepage`. Every test drives the server through JSON-RPC lines, in-process.
 //!

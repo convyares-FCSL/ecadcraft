@@ -1,4 +1,4 @@
-//! ecad-mcp: ECAD over the Model Context Protocol, headless (brief 011).
+//! ecad-mcp: ECAD over the Model Context Protocol, headless.
 //!
 //! It composes CADCraft's MCP server (`cadcraft-mcp`) from ECAD's side, with no upstream change:
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
@@ -17,7 +17,7 @@
 //! CADCraft's `command_line`, `script`, `cancel`, `new_drawing` and `open` tools are not offered:
 //! typed lines could reach file commands and several commands per call.
 //!
-//! **Bridged mode** (brief 035, [`bridge`]): with `--connect PORT` one server is headless until
+//! **Bridged mode** ([`bridge`]): with `--connect PORT` one server is headless until
 //! the ECAD window answers on the port, and bridged once one does: every call then goes to the
 //! window, which runs the same gate ([`gate`]) on the person's own session between two frames,
 //! recording the agent as the author for that call only. `--launch` opens the window
@@ -32,8 +32,7 @@ pub mod bridge;
 pub mod demo;
 pub mod launch;
 
-// The gate, policy and tools live in `ecad_engine::agent` (design 065 §3, cut 12), shared with
-// the window's live bridge; their old paths here keep working.
+// The gate, policy and tools live in `ecad_engine::agent`, shared with the window's live bridge.
 pub use ecad_engine::agent::{gate, policy, tools};
 
 use std::cell::RefCell;
@@ -108,7 +107,7 @@ impl State {
     }
 
     /// Whether the next call goes to the window (probing while undecided). Bridging closes the
-    /// headless project, so its file's writer lock is released (review of PR #69, 1).
+    /// headless project, so its file's writer lock is released.
     fn bridged(&mut self) -> Result<bool, String> {
         let (agent, write) = (self.agent.clone(), self.write);
         let b = match self.link.as_mut() {
@@ -123,7 +122,7 @@ impl State {
 
     /// A `--connect` server keeps a headless project **file** open only once headless has
     /// recorded something (it then sticks). Until then the file is closed after every request
-    /// line, so it is not locked while the person opens it in the window (review of PR #69, 1). A
+    /// line, so it is not locked while the person opens it in the window. A
     /// project in memory locks nothing and stays open.
     fn release_unstuck(&mut self) {
         if !self.link.as_ref().is_some_and(|l| l.mode != bridge::Mode::Headless { stuck: true }) {
@@ -307,7 +306,7 @@ pub struct EcadMcp {
 /// Install the ECAD commands, or say why they are missing.
 fn install() -> Result<(), String> {
     ecad_engine::install();
-    // Brief 024: `printbook` plots through CADCraft's PDF plotter.
+    // `printbook` plots through CADCraft's PDF plotter.
     ecad_engine::export::printbook::install_io();
     if ecad_engine::cad::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
@@ -321,7 +320,7 @@ fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, Strin
     let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
     let mut headless = Headless { session: Session::empty() };
     // Writes off: the file is opened for reading only, so it is never changed, not even by the
-    // database's own bookkeeping (brief 021: a version 2 file is a redb database).
+    // database's own bookkeeping (a project file is a redb database).
     let seed = ecad_engine::session_seed();
     let (project, summary) = if write {
         ProjectHandle::open_file(&mut headless.session, &path, seed)?
@@ -396,7 +395,7 @@ impl EcadMcp {
         Self::build(Some(Local { headless, project }), None, None, opts)
     }
 
-    /// A `--connect` server (brief 035): headless until an ECAD window answers on `port`, bridged
+    /// A `--connect` server: headless until an ECAD window answers on `port`, bridged
     /// once one does; `opener` opens the headless project at the first headless call. With
     /// `launch`, a call that finds no window opens one first.
     ///

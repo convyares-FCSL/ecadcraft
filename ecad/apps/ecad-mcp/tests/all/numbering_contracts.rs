@@ -1,4 +1,4 @@
-//! Brief 026, MCP contract (the ECAD rule of brief 011): `renumber` (preview and apply),
+//! MCP contract: `renumber` (preview and apply),
 //! `finalise`, `setprop` tag with each `conflict`, `setprop tag_fixed`, `numbering`,
 //! `issuerevision` with `provisional`, and the merge choice `one`, each through `execute`: the
 //! transaction it records, `Author::Agent(<client>)`, and that the writes are refused with writes

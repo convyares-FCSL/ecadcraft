@@ -1,4 +1,4 @@
-//! Lane 072 F, F1b (design 072 §6.2; brief 011): a continuation is a drawing aid. Placed through
+//! A continuation is a drawing aid. Placed through
 //! MCP's `execute` it records `CreateAid` with its point owned by the aid; `setprop {aids}` and
 //! `contcaption` record one `ModifyAid` each; `references {aid}` lists its other end; all by the
 //! agent, and every one refused with writes off.

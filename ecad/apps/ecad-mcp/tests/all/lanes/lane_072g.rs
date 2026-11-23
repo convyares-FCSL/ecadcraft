@@ -1,4 +1,4 @@
-//! Lane 072 G (design 072 §8, F36; brief 011): `setstyle` on a wire type through MCP records the
+//! `setstyle` on a wire type through MCP records the
 //! typed record (size, colours, insulation) as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};

@@ -1,4 +1,4 @@
-//! Lane 072 C (design 072 §3, brief 011): a PLC module's field set through MCP's `setprop` records
+//! A PLC module's field set through MCP's `setprop` records
 //! one `ModifyDevice` with the typed field, as the agent, and is refused with writes off.
 
 use ecad_mcp::{EcadMcp, Options};

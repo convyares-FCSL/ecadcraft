@@ -1,4 +1,4 @@
-//! Brief 055 through MCP (brief 011 rule, design 055 §9, §12.1 L): `titleblock` (new and write)
+//! Title blocks through MCP: `titleblock` (new and write)
 //! and `titleblockimport` (a block and a logo) each record one transaction by
 //! `Author::Agent(<client>)`, are refused with writes off, and one undo restores the document;
 //! `titleblocks` and `titleblock {id}` read with writes off. `path` names a file: refused.
