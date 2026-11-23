@@ -228,7 +228,7 @@ impl ReleaseDialog {
                 for (g, rows) in &v.groups {
                     let glyph = rows.first().map_or(Severity::Info, |(c, _)| c.severity());
                     let mut open = !self.collapsed.contains(g);
-                    let title = format!("{} {}", glyph.glyph(), g.words());
+                    let title = format!("{} {}", severity_glyph(glyph), g.words());
                     let count = rows.len().to_string();
                     let name = format!("ecad.release.group.{}", g.id());
                     if prim::SectionHeader::new(&mut open, &title).summary(&count).name(&name).show(ui).clicked() {
@@ -251,7 +251,7 @@ impl ReleaseDialog {
                         out = Some(Out::ShowReports);
                     }
                     for (i, (c, place)) in rows.iter().take(ROWS_SHOWN).enumerate() {
-                        let text = format!("{} {:<34} {:<9} {}", c.severity().glyph(), c.kind.words(), place, c.which);
+                        let text = format!("{} {:<34} {:<9} {}", severity_glyph(c.severity()), c.kind.words(), place, c.which);
                         let ink = ecad_widgets::color(Self::tone(c.severity()).text());
                         let r = ui
                             .add(egui::Label::new(RichText::new(text).monospace().color(ink)).sense(egui::Sense::click()))
@@ -330,6 +330,15 @@ impl ReleaseDialog {
 
 /// The height of the check's rows.
 const ROWS_HEIGHT: f32 = size::DIALOG_S - size::ROW_GROUP * 2.0;
+
+/// The glyph shown before a check row and its group: ● error, ▲ warning, · info.
+fn severity_glyph(s: Severity) -> &'static str {
+    match s {
+        Severity::Error => "\u{25cf}",
+        Severity::Warning => "\u{25b2}",
+        Severity::Info => "\u{b7}",
+    }
+}
 
 /// Open `folder` in the system's file manager (the host's).
 ///

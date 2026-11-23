@@ -72,15 +72,6 @@ impl Severity {
             Severity::Info => "info",
         }
     }
-
-    /// The glyph shown before a row.
-    pub fn glyph(self) -> &'static str {
-        match self {
-            Severity::Error => "\u{25cf}",
-            Severity::Warning => "\u{25b2}",
-            Severity::Info => "\u{b7}",
-        }
-    }
 }
 
 /// One row per check kind: its variant, its JSON name
