@@ -142,7 +142,7 @@ pub struct Mirrored {
 /// # Errors
 /// No such component, or [`mirror_for`]'s refusals.
 pub(crate) fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
-    let comp = doc.devices().get(&c).ok_or(CmdError::refused("no such component"))?;
+    let comp = doc.devices().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
     let after = mirror_for(doc, c, at, placement)?;
     let before = comp.device_type.as_contacts().and_then(|x| x.contact_table()).map(|t| Placement::of_table(t).word());
     if before == after {

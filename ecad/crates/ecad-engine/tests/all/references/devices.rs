@@ -311,7 +311,7 @@ fn g_hover_properties_and_go_to() {
     );
     assert!(view.deps.contains(&ObjectRef::Page(x.p105)), "renumbering 105 refreshes the rows");
     let e = x.h.run("references", json!({"component": "00000000000000000000000000000001"})).unwrap_err();
-    assert_eq!(e, "no such component");
+    assert_eq!(e, "No such device.");
 }
 
 /// Edits of a drawn reference are refused with words; a window move of a coil with its table

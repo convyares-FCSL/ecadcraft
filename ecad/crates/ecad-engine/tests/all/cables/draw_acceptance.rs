@@ -343,7 +343,7 @@ fn cablecore_json_contract_table() {
         Row {
             name: "batch, no such cable",
             params: |f| json!({"cable": f.wires[0].hex(), "cores": ["1", "2", "3", "4"]}),
-            want: Err("no such cable"),
+            want: Err("No such cable."),
         },
     ];
     let mut failures = Vec::new();

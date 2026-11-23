@@ -5,7 +5,7 @@ use ecad_model::naming::text::TextError;
 use ecad_model::{Device, DeviceId, Document, ObjectRef, Op, TextField};
 
 use crate::error::CmdError;
-use crate::properties::commands::{Build, NO_SUCH_OBJECT, PropRule};
+use crate::properties::commands::{Build, PropRule};
 
 /// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
@@ -102,8 +102,8 @@ pub(crate) fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Op
 
 fn device_of(doc: &Document, o: ObjectRef) -> Result<(DeviceId, &Device), CmdError> {
     match o {
-        ObjectRef::Device(c) => doc.devices().get(&c).map(|d| (c, d)).ok_or(CmdError::refused(NO_SUCH_OBJECT)),
-        _ => Err(CmdError::refused(NO_SUCH_OBJECT)),
+        ObjectRef::Device(c) => doc.devices().get(&c).map(|d| (c, d)).ok_or(CmdError::NotFound(ecad_model::Noun::Object)),
+        _ => Err(CmdError::NotFound(ecad_model::Noun::Object)),
     }
 }
 
@@ -131,7 +131,7 @@ pub fn with_text(d: &Device, f: TextField, value: Option<&str>) -> Result<Device
 /// [`text_refusal`].
 pub(crate) fn text_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
-    let f = TextField::of_key(key).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let f = TextField::of_key(key).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     let after = with_text(d, f, value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }

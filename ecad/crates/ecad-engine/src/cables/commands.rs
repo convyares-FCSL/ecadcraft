@@ -222,7 +222,7 @@ impl Command for CablefanParams {
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
             if !doc.cables().contains_key(&cable) {
-                return Err(CmdError::refused("no such cable"));
+                return Err(CmdError::NotFound(ecad_model::Noun::Cable));
             }
             let title = cable_title(doc, cable);
             let ends = ecad_electrical::cables::layout::fan_ends(
@@ -349,7 +349,7 @@ impl Command for CableviewParams {
                 return Ok(json!({ "views": views }));
             };
             if !doc.cables().contains_key(&k) {
-                return Err(CmdError::refused("no such cable"));
+                return Err(CmdError::NotFound(ecad_model::Noun::Cable));
             }
             if p.faults.fail_view_switches > 0 {
                 p.faults.fail_view_switches -= 1;

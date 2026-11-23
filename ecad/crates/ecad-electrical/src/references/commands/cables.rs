@@ -106,7 +106,7 @@ pub(crate) fn continue_cable(
     }
     let plan = cables::plan_continue(doc, page, cable, members, at, toward, tol, look)?;
     let source = doc.representations().get(&plan.source).ok_or(CmdError::refused(cables::no_reference(doc, cable)))?;
-    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let mut reference = reference_ops(ids, page, style.clone(), cable, at);
     let mut source_after = source.clone();
     let mut cable_after = c.clone();
@@ -339,7 +339,7 @@ impl Generic for CablereferencesParams {
         if let Some(k) = self.cable
             && !doc.cables().contains_key(&k)
         {
-            return Err(CmdError::refused("no such cable"));
+            return Err(CmdError::NotFound(ecad_model::Noun::Cable));
         }
         let references: Vec<_> = cables::all(doc).into_iter().filter(|r| self.cable.is_none_or(|k| r.cable == k)).collect();
         Ok(Outcome::answer(json!({ "references": crate::references::cables::references_json(doc, &references) })))

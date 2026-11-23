@@ -88,17 +88,17 @@ pub fn folder_name(text: &str) -> Result<String, CmdError> {
 /// That folder `f`, when given, exists.
 ///
 /// # Errors
-/// [`msg::NO_SUCH_FOLDER`].
+/// [`CmdError::NotFound`].
 pub fn check_folder(doc: &Document, f: Option<FolderId>) -> Result<(), CmdError> {
     match f {
-        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
+        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::NotFound(ecad_model::Noun::Folder)),
         _ => Ok(()),
     }
 }
 
 /// The folder `f`.
 fn folder(doc: &Document, f: FolderId) -> Result<Folder, CmdError> {
-    doc.folders().get(&f).cloned().ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))
+    doc.folders().get(&f).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Folder))
 }
 
 /// The folders whose parent is `parent`, in folder order.
@@ -209,7 +209,7 @@ pub(crate) fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>,
     if depth_of(doc, parent) + height(doc, f) > MAX_FOLDER_DEPTH {
         return Err(too_deep());
     }
-    let from = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let from = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::NotFound(ecad_model::Noun::Folder))?;
     let to = folder_slot(doc, f, parent, index);
     if to == from && parent == old.parent {
         return Ok(Vec::new());
@@ -250,7 +250,7 @@ pub(crate) fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder
         let after = Folder { parent: old.parent, ..before.clone() };
         ops.push(Op::ModifyFolder { id: sub, before, after });
     }
-    let index = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let index = doc.folder_order().iter().position(|x| *x == f).ok_or(CmdError::NotFound(ecad_model::Noun::Folder))?;
     ops.push(Op::RemoveFolder { id: f, folder: old.clone(), index });
     let to = match old.parent.and_then(|x| doc.folders().get(&x)) {
         Some(x) => format!("\"{}\"", x.name),
@@ -298,10 +298,10 @@ pub fn check_number(doc: &Document, book: &Book, page: Option<PageId>, number: &
 /// No such folder or page.
 pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderId>, index: Option<usize>) -> Result<Vec<Op>, CmdError> {
     check_folder(doc, folder)?;
-    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
     let mut ops = Vec::new();
     let now = Page { folder, ..old.clone() };
-    let from = doc.page_order().iter().position(|p| *p == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let from = doc.page_order().iter().position(|p| *p == page).ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
     let order: Vec<PageId> = doc.page_order().iter().copied().filter(|p| *p != page).collect();
     let in_folder: Vec<PageId> =
         order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders().contains_key(f)) == folder).collect();
@@ -431,8 +431,8 @@ pub(crate) struct PageMoved {
 /// A title that does not read ([`page_title`]); no such page.
 pub(crate) fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<PageMoved, CmdError> {
     let title = page_title(title)?;
-    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
-    let index = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
+    let index = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
     if old.title == title {
         return Ok(PageMoved { title: title.to_string(), index: index + 1, ops: Vec::new() });
     }
@@ -450,8 +450,8 @@ pub(crate) fn rename_page(doc: &Document, page: PageId, title: &str) -> Result<P
 pub(crate) fn move_page_to(doc: &Document, page: PageId, index: Option<usize>) -> Result<PageMoved, CmdError> {
     let n = doc.page_order().len();
     let to = index.filter(|i| (1..=n).contains(i)).ok_or_else(|| CmdError::input(format!("`index` must be a whole number from 1 to {n}")))?;
-    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
-    let from = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
+    let from = doc.page_order().iter().position(|x| *x == page).ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
     let title = old.title.to_string();
     if from + 1 == to {
         return Ok(PageMoved { title, index: to, ops: Vec::new() });
@@ -510,7 +510,7 @@ fn code_with(doc: &Document, pending: &Pending, a: Aspect, key: &str) -> String 
 pub(crate) fn page_props(
     doc: &Document, ids: &mut IdAllocator, page: PageId, change: &PageChange, reports: Option<&ReportModels>,
 ) -> Result<PropsPlan, CmdError> {
-    let old = doc.pages().get(&page).cloned().ok_or(CmdError::refused(msg::NO_SUCH_PAGE))?;
+    let old = doc.pages().get(&page).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Page))?;
     let book = Book::of(doc);
     let mut ops = Vec::new();
     // Every change goes into one `ModifyPage`, written after the list entries it names.

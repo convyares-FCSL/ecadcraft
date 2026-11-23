@@ -175,7 +175,7 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
             Ok(Deleted { ops: remove_routes(doc, &[r]), released: 0, kept: None, message: None })
         }
         Doomed::Device(c) => {
-            let component = doc.devices().get(&c).ok_or(CmdError::refused("no such component"))?;
+            let component = doc.devices().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
             ops.extend(crate::wires::routes::free_points_ops(doc, doc.connection_points_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.connection_points_of(c) {
@@ -195,7 +195,7 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
             Ok(Deleted { ops, released, kept: None, message })
         }
         Doomed::Cable(k) => {
-            let cable = doc.cables().get(&k).ok_or(CmdError::refused("no such cable"))?;
+            let cable = doc.cables().get(&k).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
             // Its named points go with it: the lines on them end free.
             ops.extend(crate::wires::routes::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
             ops.extend(remove_representations(doc, Subject::Cable(k)));

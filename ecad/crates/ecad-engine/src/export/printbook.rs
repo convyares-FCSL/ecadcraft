@@ -78,7 +78,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, reports: Option<&ReportModels
         Scope::All => Ok(Resolved { pages: b.order.clone(), ..Resolved::default() }),
         Scope::Folder(f) => {
             if !doc.folders().contains_key(f) {
-                return Err("no such folder".into());
+                return Err(ecad_electrical::CmdError::NotFound(ecad_model::Noun::Folder).to_string());
             }
             let mut set = BTreeSet::new();
             folder_pages(doc, *f, &mut set);

@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome};
-use crate::error::{CmdError, msg};
+use crate::error::CmdError;
 use crate::pages::page_types::*;
 use crate::reports::kept::ReportModels;
 
@@ -53,7 +53,7 @@ pub(crate) struct FolderStart {
 /// # Errors
 /// No such folder (a start key whose folder is gone may only be cleared).
 pub(crate) fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<String>>) -> Result<FolderStart, CmdError> {
-    let old = doc.folders().get(&folder).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let old = doc.folders().get(&folder).ok_or(CmdError::NotFound(ecad_model::Noun::Folder))?;
     let before = old.start.as_ref().map(|s| s.as_str().to_string());
     let write = match start {
         None => None,
@@ -87,7 +87,7 @@ pub(crate) fn start_words(name: &str, after: Option<&str>) -> String {
 /// No such folder.
 pub(crate) fn folder_scope(doc: &Document, folder: Option<FolderId>) -> Result<Option<FolderId>, CmdError> {
     match folder {
-        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
+        Some(f) if !doc.folders().contains_key(&f) => Err(CmdError::NotFound(ecad_model::Noun::Folder)),
         f => Ok(f),
     }
 }
@@ -144,7 +144,7 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
     let set: BTreeSet<PageId> = pages.iter().copied().collect();
     for page in &set {
         if !doc.pages().contains_key(page) {
-            return Err(CmdError::refused(msg::NO_SUCH_PAGE));
+            return Err(CmdError::NotFound(ecad_model::Noun::Page));
         }
         if crate::pages::generated::kind_of(doc, *page).is_none() || doc.representations_on(*page).next().is_some() {
             return Err(CmdError::refused(DRAWN_PAGE));

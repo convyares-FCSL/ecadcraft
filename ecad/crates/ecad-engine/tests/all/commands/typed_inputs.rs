@@ -168,8 +168,8 @@ fn the_sheet_commands_refuse_input_uniformly() {
 fn the_sheet_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("newfolder", json!({"name": " "}), ecad_electrical::msg::FOLDER_NAME),
-        ("newfolder", json!({"name": "A", "parent": "00000000000000000000000000000001"}), "no such folder"),
-        ("movefolder", json!({"folder": "00000000000000000000000000000001", "parent": null}), "no such folder"),
+        ("newfolder", json!({"name": "A", "parent": "00000000000000000000000000000001"}), "No such folder."),
+        ("movefolder", json!({"folder": "00000000000000000000000000000001", "parent": null}), "No such folder."),
         ("pageprops", json!({"title": null}), ecad_electrical::msg::PAGE_TITLE),
         ("pageprops", json!({"generated": "bom"}), ecad_electrical::pages::generated::KIND_FIXED),
         ("pageprops", json!({"number": "a b"}), "A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`)."),
@@ -619,7 +619,7 @@ fn the_reference_commands_keep_their_rule_words() {
     let c = k["component"].as_str().unwrap_or_default().to_string();
     let rows: &[(&str, Value, &str)] = &[
         ("refgoto", json!({"source": "00000000000000000000000000000001"}), "no such reference"),
-        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": "below"}), "no such component"),
+        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": "below"}), "No such device."),
         ("mirrormove", json!({"component": c, "at": [1, 1], "placement": "below"}), "give `at` or `placement`, not both"),
         ("mirrormove", json!({"component": c}), "`at` ([x, y]) or `placement` (auto, below, right, off) is required"),
         ("mirrormove", json!({"component": c, "at": [99999, 0]}), "Put the table within 2000 mm of its coil."),
@@ -684,7 +684,7 @@ fn the_terminal_block_commands_keep_their_rule_words() {
         ),
         ("bridge", json!({"from": "00000000000000000000000000000001", "to": "00000000000000000000000000000002"}), "No such terminal block."),
         ("stripplan", json!({"strip": "00000000000000000000000000000001"}), "No such terminal strip."),
-        ("cablecores", json!({"cable": "00000000000000000000000000000001"}), "no such cable"),
+        ("cablecores", json!({"cable": "00000000000000000000000000000001"}), "No such cable."),
     ];
     let mut h = H::new(7027);
     for (cmd, params, says) in rows {
@@ -1262,11 +1262,11 @@ fn the_page_type_commands_keep_their_rule_words() {
     let first = h.first_page().hex();
     let rows: &[(&str, Value, &str)] = &[
         ("folderprops", json!({"folder": f, "start": "1234567"}), "A start number is 1 to 6 digits."),
-        ("folderprops", json!({"folder": "000000000000000000000000000000ab"}), "no such folder"),
-        ("renumberpages", json!({"folder": "000000000000000000000000000000ab"}), "no such folder"),
+        ("folderprops", json!({"folder": "000000000000000000000000000000ab"}), "No such folder."),
+        ("renumberpages", json!({"folder": "000000000000000000000000000000ab"}), "No such folder."),
         ("deletepage", json!({}), "`page` (hex id) is required"),
         ("deletepage", json!({"pages": []}), "Give the page to delete."),
-        ("deletepage", json!({"page": "000000000000000000000000000000ab"}), "no such page"),
+        ("deletepage", json!({"page": "000000000000000000000000000000ab"}), "No such page."),
         ("deletepage", json!({"page": first}), "Deleting a drawn page comes later; move its content first."),
     ];
     for (cmd, params, says) in rows {
@@ -1649,7 +1649,7 @@ fn setprop_keeps_its_rule_words() {
             "`conflict` must be \"swap\", \"merge\" or \"next\", not \"sideways\"",
         ),
         (json!({"component": a, "key": "tag", "value": tag_b}), "is used by"),
-        (json!({"component": "000000000000000000000000000000ab", "key": "description", "value": "x"}), "no such object"),
+        (json!({"component": "000000000000000000000000000000ab", "key": "description", "value": "x"}), "No such object."),
     ];
     for (params, says) in rows {
         let e = h.run("setprop", params.clone()).err().unwrap_or_default();
@@ -1830,10 +1830,10 @@ fn the_device_commands_refuse_input_uniformly() {
 fn the_device_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("deviceprops", json!({"component": "000000000000000000000000000000ab"}), "No such device."),
-        ("devicedelete", json!({"component": "000000000000000000000000000000ab"}), "no such component"),
+        ("devicedelete", json!({"component": "000000000000000000000000000000ab"}), "No such device."),
         ("ecaddelete", json!({}), "`conductor`, `component` or `cable` (hex id) is required"),
         ("ecaddelete", json!({"conductor": "000000000000000000000000000000ab"}), "no such conductor"),
-        ("ecaddelete", json!({"cable": "000000000000000000000000000000ab"}), "no such cable"),
+        ("ecaddelete", json!({"cable": "000000000000000000000000000000ab"}), "No such cable."),
         ("tagsettings", json!({"padding": 7}), "`padding` must be a whole number from 1 to 6"),
         ("tagsettings", json!({"prefixes": {"coil": "K1"}}), "A prefix is 1 to 10 letters, for example K or SR."),
         ("tagsettings", json!({"prefixes": {"xyz": "K"}}), "No symbol \"xyz\". Type List to see them."),

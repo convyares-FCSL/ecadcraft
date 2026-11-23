@@ -106,7 +106,7 @@ fn with_writes_off_the_strip_writes_are_refused_and_the_reads_work() {
     let plan = c.exec("stripplan", json!({}));
     assert_eq!(plan["strips"], json!([]));
     let m = c.refused("execute", json!({"command": "cablecores", "params": {"cable": "00000000000000000000000000000001"}}));
-    assert!(m.contains("no such cable"), "{m}");
+    assert!(m.contains("No such cable."), "{m}");
     c.exec("cablelist", json!({}));
     c.exec("checks", json!({}));
     assert_eq!(c.log(), before, "nothing recorded");

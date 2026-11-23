@@ -77,7 +77,7 @@ fn with_writes_off_the_writes_are_refused_and_the_reads_work() {
     let x = c.exec("references", json!({}));
     assert_eq!(x["references"], json!([]));
     let m = c.refused("execute", json!({"command": "contacts", "params": {"component": "00000000000000000000000000000001"}}));
-    assert!(m.contains("no such component"), "{m}");
+    assert!(m.contains("No such device."), "{m}");
     let m = c.refused("execute", json!({"command": "refgoto", "params": {"source": "00000000000000000000000000000001"}}));
     assert!(m.contains("no such reference"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");

@@ -32,9 +32,6 @@ pub(crate) const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
 /// its number, and typing `-K?` makes one.
 pub(crate) const PROVISIONAL_FIXED: &str = "A provisional tag's state can't be set; give it a number first (Finalise).";
 
-/// The refusal of an object the input names that the project does not have.
-pub(crate) const NO_SUCH_OBJECT: &str = "no such object";
-
 /// A row's check: the value to store for `key` on `object` (`None` clears it), or the refusal.
 pub type Check = fn(&Document, &ecad_model::registry::data::Registry, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
 
@@ -334,15 +331,15 @@ pub(crate) struct ValueSet {
 /// `setprop` of a `Value` row on one object.
 ///
 /// # Errors
-/// The rule's refusal; [`NO_SUCH_OBJECT`].
+/// The rule's refusal; [`CmdError::NotFound`].
 pub(crate) fn plan_value(
     doc: &Document, registry: &ecad_model::registry::data::Registry, object: ObjectRef, key: &str, typed: Option<&str>,
 ) -> Result<ValueSet, CmdError> {
     let after = value(doc, registry, object, key, typed)?;
     let before = match object {
         // A cable's tag and description are fields: read them as `setprop` does.
-        ObjectRef::Cable(c) => doc.cables().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).map(str::to_string),
-        _ => props_of(doc, object).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).cloned(),
+        ObjectRef::Cable(c) => doc.cables().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?.get(key).map(str::to_string),
+        _ => props_of(doc, object).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?.get(key).cloned(),
     };
     if before == after {
         return Ok(ValueSet { op: None, note: None });
@@ -361,7 +358,7 @@ pub(crate) fn plan_value(
 /// a refusal on any refuses all. A tag is one per device, so `tag` is refused.
 ///
 /// # Errors
-/// [`ONE_TAG_PER_DEVICE`], [`NO_SUCH_OBJECT`], or the first rule that refuses.
+/// [`ONE_TAG_PER_DEVICE`], [`CmdError::NotFound`], or the first rule that refuses.
 pub(crate) fn plan_many(
     doc: &Document, registry: &ecad_model::registry::data::Registry, cs: &[DeviceId], key: &str, typed: Option<&str>,
 ) -> Result<Vec<Op>, CmdError> {
@@ -370,7 +367,7 @@ pub(crate) fn plan_many(
     }
     let mut ops = Vec::new();
     for c in cs {
-        let comp = doc.devices().get(c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+        let comp = doc.devices().get(c).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
         let key = component_key(doc, *c, key);
         let o = ObjectRef::Device(*c);
         match rule_for(doc, o, &key).build {
@@ -407,12 +404,12 @@ pub(crate) enum DeviceSet {
 /// forward, unless `merge`, which makes this device part of that one.
 ///
 /// # Errors
-/// [`NO_SUCH_OBJECT`]; the value rule's refusal; a taken tag without `merge`.
+/// [`CmdError::NotFound`]; the value rule's refusal; a taken tag without `merge`.
 pub(crate) fn plan_device(
     doc: &Document, registry: &ecad_model::registry::data::Registry, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str,
     typed: Option<&str>, merge: bool,
 ) -> Result<DeviceSet, CmdError> {
-    let component = doc.devices().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let component = doc.devices().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     let value = value(doc, registry, ObjectRef::Device(c), key, typed)?;
     let before = component.value(key);
     if key == TAG_KEY
@@ -566,12 +563,12 @@ pub(crate) enum TagSet {
 /// come here. `tag_high` is caught up.
 ///
 /// # Errors
-/// [`NO_SUCH_OBJECT`]; a tag that does not read; a connector's half tag; a taken tag without a
+/// [`CmdError::NotFound`]; a tag that does not read; a connector's half tag; a taken tag without a
 /// conflict answer, or with one that does not apply.
 pub(crate) fn plan_tag(
     doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Option<&str>, conflict: Option<Conflict>,
 ) -> Result<TagSet, CmdError> {
-    let before = tag_of(doc, o).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
+    let before = tag_of(doc, o).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     let value = match typed.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
         Some(v) => Some(match enter_tag_value(v, crate::defaults::print::tag_style(doc))? {

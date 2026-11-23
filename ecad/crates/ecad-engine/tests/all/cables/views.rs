@@ -623,7 +623,7 @@ fn the_json_form() {
     let head = g.h.head();
     let e = |h: &mut H, p: Value| h.run("cableview", p).unwrap_err();
     assert!(e(&mut g.h, json!({"cable": "zz"})).contains("`cable` must be a hex id"));
-    assert!(e(&mut g.h, json!({"cable": "00000000000000000000000000001234"})).contains("no such cable"));
+    assert!(e(&mut g.h, json!({"cable": "00000000000000000000000000001234"})).contains("No such cable."));
     assert!(e(&mut g.h, json!({"cable": g.c1.hex(), "view": "both"})).contains(r#"`view` must be one of "traditional", "fan""#));
     assert!(e(&mut g.h, json!({"cable": g.c1.hex(), "view": 3})).contains(r#"`view` must be one of "traditional", "fan""#));
     assert!(e(&mut g.h, json!({"view": "fan"})).contains("`view` needs `cable`"));

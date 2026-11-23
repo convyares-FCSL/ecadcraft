@@ -642,7 +642,7 @@ pub fn item_unit_metres(doc: &Document) -> bool {
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.
 pub(crate) fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
-    let props = doc.devices().get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
+    let props = doc.devices().get(&c).map(|x| &x.properties).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
     let given = |f: Field| fields.iter().find(|(g, _)| *g == f).map(|(_, v)| v.clone());
     let metres = match given(Field::Unit) {
         Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,

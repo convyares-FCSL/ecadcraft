@@ -302,7 +302,7 @@ fn ac1_json_form_results_and_errors_table() {
     let cases: Vec<(Value, Result<Value, &str>)> = vec![
         (json!({}), Ok(json!({"views": {c1.clone(): "traditional"}}))),
         (json!({"cable": c1, "view": "traditional"}), Ok(json!({"changed": false}))),
-        (json!({"cable": "00000000000000000000000000000001"}), Err("no such cable")),
+        (json!({"cable": "00000000000000000000000000000001"}), Err("No such cable.")),
         (json!({"cable": "not hex"}), Err("`cable` must be a hex id, or null")),
         (json!({"cable": 12}), Err("`cable` must be a hex id, or null")),
         (json!({"cable": c1, "view": "Fan!"}), Err("`view` must be one of \"traditional\", \"fan\", or null")),

@@ -107,20 +107,20 @@ pub fn device_references_json(
         }
         (Some(c), _) => {
             if !doc.devices().contains_key(&c) {
-                return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
+                return Err(CmdError::NotFound(ecad_model::Noun::Device));
             }
             BTreeSet::from([Group::Device(c)])
         }
         (None, Some(k)) => {
             if !doc.cables().contains_key(&k) {
-                return Err(CmdError::refused(crate::msg::NO_SUCH_CABLE));
+                return Err(CmdError::NotFound(ecad_model::Noun::Cable));
             }
             BTreeSet::from([Group::Cable(k)])
         }
         (None, None) => match page {
             Some(p) => {
                 if !doc.pages().contains_key(&p) {
-                    return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
+                    return Err(CmdError::NotFound(ecad_model::Noun::Page));
                 }
                 doc.representations_on(p).filter_map(|(r, _)| idx.member(r).map(|(g, _)| g)).collect()
             }
@@ -199,7 +199,7 @@ pub fn device_references_json(
 /// Unknown component.
 pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn Look) -> Result<Value, CmdError> {
     if !doc.devices().contains_key(&c) {
-        return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
+        return Err(CmdError::NotFound(ecad_model::Noun::Device));
     }
     let dev = device(doc, c);
     let offer = offer_of(doc, c);

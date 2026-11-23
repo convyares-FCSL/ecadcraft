@@ -16,7 +16,7 @@ use super::sheets::{
 };
 use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
-use crate::error::{CmdError, msg};
+use crate::error::CmdError;
 use crate::pages::generated;
 use crate::releases::revisions;
 
@@ -314,7 +314,7 @@ clears; no fields: the current values, read only)";
         }
         let page = self.page.or(cx.page).ok_or(CmdError::input("`page` (hex id) is required: no page is shown"))?;
         if !doc.pages().contains_key(&page) {
-            return Err(CmdError::refused(msg::NO_SUCH_PAGE));
+            return Err(CmdError::NotFound(ecad_model::Noun::Page));
         }
         if !change.writes() {
             return Ok(Outcome::answer(page_json(doc, &Book::of(doc), page, cx.derived.kept_reports())));

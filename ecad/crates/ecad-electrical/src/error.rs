@@ -73,7 +73,8 @@ impl From<CmdError> for String {
     }
 }
 
-/// Refusals said in more than one place, so their words live once.
+/// Refusals said in more than one place, so their words live once. Something the input names that
+/// the project does not have is [`CmdError::NotFound`], not a message here.
 pub mod msg {
     /// `setprop` of a wire number on one conductor.
     pub const USE_WIRENUMBER: &str = "use wirenumber: a wire number belongs to the whole net";
@@ -85,14 +86,6 @@ pub mod msg {
     pub const NO_ENDS_TO_JOIN: &str = "There are no wire ends to join here.";
     /// A wire-number command on a net without a wire.
     pub const NO_NUMBER_TO_FIX: &str = "That net has no number to fix yet.";
-    /// A folder the input names that the project does not have (pages, folders and revisions).
-    pub const NO_SUCH_FOLDER: &str = "no such folder";
-    /// A page the input names that the project does not have (pages, folders and revisions).
-    pub const NO_SUCH_PAGE: &str = "no such page";
-    /// A component the input names that the project does not have (continuations, cross-references).
-    pub const NO_SUCH_COMPONENT: &str = "no such component";
-    /// A cable the input names that the project does not have (cable references, cross-references).
-    pub const NO_SUCH_CABLE: &str = "no such cable";
     /// A folder name that does not read.
     pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
     /// A page title that does not read.

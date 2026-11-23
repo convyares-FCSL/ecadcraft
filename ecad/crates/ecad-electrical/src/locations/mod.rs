@@ -642,7 +642,7 @@ pub(crate) fn plan_box_with(
     doc: &Document, ids: &mut IdAllocator, page: PageId, values: &[(Aspect, &str)], vertices: Vec<Pt>,
 ) -> Result<Planned, CmdError> {
     if !doc.pages().contains_key(&page) {
-        return Err(CmdError::refused(crate::msg::NO_SUCH_PAGE));
+        return Err(CmdError::NotFound(ecad_model::Noun::Page));
     }
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();

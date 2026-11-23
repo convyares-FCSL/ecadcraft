@@ -814,7 +814,7 @@ fn cablefan_moves_the_join_along_the_spine() {
         (json!({"cable": k, "at": "x"}), "`at` must be a point"),
         (json!({"cable": k, "end": "C", "at": 0.5}), "`end` must be"),
         (json!({"cable": "zz", "at": 0.5}), "`cable` must be a hex id"),
-        (json!({"cable": "000000000000000000000000000000ab", "end": "A", "at": 0.5}), "no such cable"),
+        (json!({"cable": "000000000000000000000000000000ab", "end": "A", "at": 0.5}), "No such cable."),
     ];
     for (params, words) in cases {
         let e = f.h.run("cablefan", params.clone()).unwrap_err();

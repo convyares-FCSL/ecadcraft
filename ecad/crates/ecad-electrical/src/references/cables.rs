@@ -295,7 +295,7 @@ pub(crate) const TOWARD_EQUAL: &str = "`toward` must differ from `at`";
 /// # Errors
 /// `no such cable`, or the refusal's words.
 pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(), CmdError> {
-    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let references = references_of(doc, cable);
     if references.iter().any(|(_, r)| r.page == page) {
         return Err(CmdError::refused(already_here(doc, cable)));
@@ -378,7 +378,7 @@ pub fn plan_continue(
     if at.near(toward, tol) {
         return Err(CmdError::refused(TOWARD_EQUAL));
     }
-    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let references = references_of(doc, cable);
     let Some((source, s)) = references.first().map(|(id, r)| (*id, *r)) else { return Err(CmdError::refused(no_reference(doc, cable))) };
     if references.len() >= MAX_REFERENCES_PER_CABLE {
@@ -901,7 +901,7 @@ pub struct Continued {
 /// `cable` already has a slash on this page; none of its wires or lines runs on this page; a
 /// crossed wire or line is not one of its cores.
 pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed: &[CorePosition]) -> Result<Vec<Continued>, CmdError> {
-    let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let c = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let tag = title(doc, cable);
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
         return Err(CmdError::refused(format!("{tag} already has a slash on this page.")));

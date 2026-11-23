@@ -81,7 +81,7 @@ impl Generic for CablecoresParams {
         let k = self.cable;
         let doc = cx.doc;
         let o = cx.derived.reports(doc);
-        let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
+        let row = o.cable_row(k).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
         let wire = |w: WireId| o.wire(w).cloned();
         let style = doc.settings().reference_style();
         let o_chain = |i: usize| o.chain_ends(&row, i, style);

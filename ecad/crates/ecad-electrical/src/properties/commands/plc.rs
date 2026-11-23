@@ -145,7 +145,7 @@ fn single_group<'a>(m: &'a mut PlcModule, who: &str) -> Result<&'a mut ecad_mode
 /// # Errors
 /// A value that does not read, or a key the module's function has no field for.
 fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let c = module(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
+    let c = module(doc, o).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     let who = crate::devices::tags::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     let mut ops = Vec::new();
@@ -157,7 +157,7 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
         channels::set_field(doc, &mut ops, c, i, what, checked.as_deref())?;
         return Ok(one(ops));
     }
-    let mut module = edit::module_of(doc, c).cloned().ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
+    let mut module = edit::module_of(doc, c).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     match key {
         rack::RACK_KEY => {
             module.rack = match v.filter(|t| !t.eq_ignore_ascii_case("none")) {
@@ -223,10 +223,10 @@ fn plan_module(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> 
 /// # Errors
 /// A value that does not read, or a key its head has no field for.
 fn plan_station(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    let c = station(doc, o).ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
+    let c = station(doc, o).ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     let who = crate::devices::tags::tag_words(doc, c);
     let v = value.map(str::trim).filter(|v| !v.is_empty());
-    let mut s: PlcRack = edit::station_of(doc, c).cloned().ok_or(CmdError::refused(crate::properties::commands::NO_SUCH_OBJECT))?;
+    let mut s: PlcRack = edit::station_of(doc, c).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Object))?;
     match key {
         NETWORK => s.network = text::<32>(key, v)?,
         NETWORK_ADDRESS => {

@@ -98,7 +98,7 @@ pub(crate) fn partline_targets(doc: &Document, component: Option<DeviceId>, devi
 pub(crate) fn plan_partline(doc: &Document, cs: &[DeviceId], change: PartlineChange) -> Result<PartlinePlan, CmdError> {
     let mut ops = Vec::new();
     let mut rows = Vec::new();
-    let no_component = || CmdError::refused("no such component");
+    let no_component = || CmdError::NotFound(ecad_model::Noun::Device);
     let (label, message) = match change {
         PartlineChange::Add { lines, kit } => {
             let kit = match kit {

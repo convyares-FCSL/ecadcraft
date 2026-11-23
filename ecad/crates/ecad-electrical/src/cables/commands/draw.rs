@@ -18,9 +18,6 @@ use crate::error::CmdError;
 
 /// No conductor with the ID given.
 const NO_CONDUCTOR: &str = "no such conductor";
-/// No cable with the ID given.
-const NO_CABLE: &str = "no such cable";
-
 /// What the slash `from → to` crosses on `page`.
 ///
 /// # Errors
@@ -58,7 +55,7 @@ pub enum SlashTarget {
 pub fn slash_target(doc: &Document, existing: Option<CableId>, tag: Option<&str>) -> Result<SlashTarget, CmdError> {
     let k = match existing {
         Some(k) if doc.cables().contains_key(&k) => Some(k),
-        Some(_) => return Err(CmdError::refused(NO_CABLE)),
+        Some(_) => return Err(CmdError::NotFound(ecad_model::Noun::Cable)),
         None => tag.and_then(|t| crate::references::cables::cable_tagged(doc, t)),
     };
     Ok(match k {
@@ -205,7 +202,14 @@ pub fn add_to_cable(
         return Err(CmdError::refused(format!("`conductors` lists wire {} twice; nothing was changed", w.hex())));
     }
     let had = match existing {
-        Some(c) => doc.cables().get(&c).ok_or(CmdError::refused(NO_CABLE))?.cores.iter().filter(|m| m.position != CorePosition::Unplaced).count(),
+        Some(c) => doc
+            .cables()
+            .get(&c)
+            .ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?
+            .cores
+            .iter()
+            .filter(|m| m.position != CorePosition::Unplaced)
+            .count(),
         None => 0,
     };
     if had.saturating_add(conductors.len()) > MAX_CABLE_MEMBERS {
@@ -291,7 +295,7 @@ pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<Cor
     let Some(cable) = doc.cables_of(conductor).first().copied() else {
         return Err(CmdError::refused(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor))));
     };
-    let cab = doc.cables().get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
+    let cab = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let members = cab.cores.as_slice();
     let index = members.iter().position(|m| m.wire() == Some(conductor)).ok_or(CmdError::refused(NO_CONDUCTOR))?;
     let old = members.get(index).and_then(|m| m.label_str().map(str::to_string));
@@ -313,7 +317,7 @@ pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<Cor
 /// # Errors
 /// No such cable; not one label per member; a label that does not read (`Core 2: …`).
 pub fn cores(doc: &Document, cable: CableId, given: &[Option<String>]) -> Result<(Vec<Option<String>>, Vec<Op>), CmdError> {
-    let cab = doc.cables().get(&cable).ok_or(CmdError::refused(NO_CABLE))?;
+    let cab = doc.cables().get(&cable).ok_or(CmdError::NotFound(ecad_model::Noun::Cable))?;
     let members = &cab.cores;
     if given.len() != members.len() {
         return Err(CmdError::refused(format!(
