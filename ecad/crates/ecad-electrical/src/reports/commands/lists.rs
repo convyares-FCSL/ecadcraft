@@ -12,17 +12,6 @@ use crate::error::CmdError;
 use crate::reports::kept::{CableColumn, ReportModels};
 use crate::reports::{self, Group, Table};
 
-/// `bom`'s `group`: "location" (the default) or "part".
-///
-/// # Errors
-/// Any other word.
-pub fn bom_group(word: Option<&str>) -> Result<Group, CmdError> {
-    match word {
-        None => Ok(Group::Location),
-        Some(t) => Group::parse(t).ok_or(CmdError::refused("`group` is \"location\" or \"part\"")),
-    }
-}
-
 /// `bom`'s `columns` for this call: whether the article column is
 /// shown (`None`: as the project's report settings say).
 ///
@@ -194,9 +183,9 @@ enum Lines {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BomParams {
-    /// "location" (default) or "part".
+    /// Location (default) or part.
     #[serde(default)]
-    group: Option<String>,
+    group: Option<Group>,
     /// Optional columns for this call: ["article"].
     #[serde(default)]
     columns: Option<Vec<String>>,
@@ -225,7 +214,7 @@ impl Generic for BomParams {
     const IO: Io = CSV;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let group = bom_group(self.group.as_deref())?;
+        let group = self.group.unwrap_or_default();
         // The report settings for this call only.
         let columns = bom_columns(self.columns.as_deref())?;
         let lines = self.lines.map(|l| l == Lines::Nested);

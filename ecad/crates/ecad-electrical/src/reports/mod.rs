@@ -328,21 +328,13 @@ impl CableRow {
     }
 }
 
-/// BOM grouping.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Group {
-    #[default]
-    Location,
-    Part,
-}
-
-impl Group {
-    pub fn parse(t: &str) -> Option<Group> {
-        match t.trim() {
-            "location" => Some(Group::Location),
-            "part" => Some(Group::Part),
-            _ => None,
-        }
+ecad_model::word_enum! {
+    /// BOM grouping.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum Group {
+        #[default]
+        Location,
+        Part,
     }
 }
 

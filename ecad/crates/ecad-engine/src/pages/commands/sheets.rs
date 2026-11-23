@@ -174,10 +174,10 @@ pub(crate) struct IssuerevisionParams {
     /// Who approved it (null clears).
     #[serde(default, deserialize_with = "nullable")]
     approved: Option<Option<String>>,
-    /// With provisional tags or wire numbers present: "finalise" them first, or "issue" them as
-    /// they are.
+    /// With provisional tags or wire numbers present: finalise them first, or issue them as they
+    /// are.
     #[serde(default)]
-    provisional: Option<String>,
+    provisional: Option<ecad_electrical::releases::release::Provisional>,
 }
 
 impl Command for IssuerevisionParams {
@@ -188,7 +188,7 @@ impl Command for IssuerevisionParams {
             // issued as they are, as asked; without an answer the ways forward are named. The
             // Finalise and the issue are planned together, on the state Finalise leaves, and
             // recorded as ONE transaction: one history entry, one undo, nothing to take back.
-            let (finalise, note) = crate::releases::release::numbering_seam::plan_before_issue_of(p, self.provisional.as_deref())?;
+            let (finalise, note) = crate::releases::release::numbering_seam::plan_before_issue_of(p, self.provisional.map(ecad_model::Word::word))?;
             let IssuePlan { ops, rev, date, head, .. } = plan_issue_of(p, &finalise, &f)?;
             let label = format!("Issue Rev {rev}");
             let all: Vec<Op> = finalise.into_iter().chain(ops).collect();

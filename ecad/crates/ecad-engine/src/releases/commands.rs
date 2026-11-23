@@ -7,6 +7,9 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
+use ecad_electrical::commands::input::Said;
+use ecad_electrical::defaults::print::PrintColour;
+use ecad_electrical::releases::release::{Accept, Existing, Provisional};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -41,9 +44,9 @@ pub(crate) struct PrereleaseParams {
     /// Rows per group (50, at most 2000).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     limit: Option<u64>,
-    /// "errors": the check's errors are accepted.
+    /// Errors: the check's errors are accepted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    accept: Option<String>,
+    accept: Option<Accept>,
 }
 
 impl Command for PrereleaseParams {
@@ -67,18 +70,18 @@ pub(crate) struct ReleaseParams {
     /// The lists to write, by slot name (default all).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reports: Option<Vec<String>>,
-    /// "errors": release although the check found errors.
+    /// Errors: release although the check found errors.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    accept: Option<String>,
-    /// Provisional items: "finalise" (number them first) or "issue" (issue as they are).
+    accept: Option<Accept>,
+    /// Provisional items: finalise (number them first) or issue (issue as they are).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    provisional: Option<String>,
-    /// When the folder exists: "add-missing", "replace" or "keep-both".
+    provisional: Option<Provisional>,
+    /// When the folder exists: add the missing files, replace it, or keep both.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    existing: Option<String>,
-    /// "mono" or "colour" (default the project's print setting).
+    existing: Option<Existing>,
+    /// Mono or colour (also `color` or `screen`; default the project's print setting).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    colour: Option<String>,
+    colour: Option<Said<PrintColour>>,
     /// Draw lines with their weights (default true).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     lineweights: Option<bool>,

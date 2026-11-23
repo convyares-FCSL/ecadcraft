@@ -397,6 +397,12 @@ impl<'de, T: Words> Deserialize<'de> for Said<T> {
     }
 }
 
+impl<T: ecad_model::Word> serde::Serialize for Said<T> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.0.word())
+    }
+}
+
 impl<T: Words> JsonSchema for Said<T> {
     fn inline_schema() -> bool {
         true

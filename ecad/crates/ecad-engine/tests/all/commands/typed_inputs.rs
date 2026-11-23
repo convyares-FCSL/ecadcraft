@@ -100,6 +100,14 @@ fn closed_word_sets_are_listed() {
         ("projectprops", r#"revision_pending?: "star"|"draft"|"off""#),
         ("newpage", r#"generated?: "cover"|"contents"|"revisions"|"bom-location"|"terminal_blocks"|"cables"|"plcrack"|"iolist""#),
         ("newpage", r#"style?: "table"|"graphic""#),
+        ("bom", r#"group?: "location"|"part""#),
+        ("printbook", r#"colour?: "mono"|"colour""#),
+        ("release", r#"accept?: "errors""#),
+        ("release", r#"provisional?: "finalise"|"issue""#),
+        ("release", r#"existing?: "add-missing"|"replace"|"keep-both""#),
+        ("release", r#"colour?: "mono"|"colour""#),
+        ("prerelease", r#"accept?: "errors""#),
+        ("issuerevision", r#"provisional?: "finalise"|"issue""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
@@ -335,11 +343,11 @@ fn the_output_commands_keep_their_rule_words() {
             json!({"location": "+CP1", "corners": [[0, 0], [50, 50]], "proposal": "x"}),
             r#"`proposal` must be one of "propose", "move", "keep", or null"#,
         ),
-        ("bom", json!({"group": "x"}), "`group` is \"location\" or \"part\""),
+        ("bom", json!({"group": "x"}), r#"`group` must be one of "location", "part", or null"#),
         ("bom", json!({"columns": ["x"]}), "`columns` lists optional columns: [\"article\"]"),
         ("printbook", json!({"scope": "some"}), scope),
         ("printbook", json!({"scope": {}}), scope),
-        ("printbook", json!({"colour": "pink"}), "`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)"),
+        ("printbook", json!({"colour": "pink"}), r#"`colour` must be one of "mono", "colour", or null"#),
     ];
     let mut h = H::new(7009);
     for (cmd, params, says) in rows {
@@ -1529,7 +1537,7 @@ fn the_release_commands_refuse_input_uniformly() {
         ("release", json!({"rev": 1}), "`rev` must be text, or null"),
         ("release", json!({"reports": "bom"}), "`reports` must be a list of texts, or null"),
         ("release", json!({"lineweights": "x"}), "`lineweights` must be true or false, or null"),
-        ("release", json!({"colour": true}), "`colour` must be text, or null"),
+        ("release", json!({"colour": true}), r#"`colour` must be one of "mono", "colour", or null"#),
         (
             "release",
             json!({"x": 1}),
@@ -1547,8 +1555,8 @@ fn the_release_commands_refuse_input_uniformly() {
 fn the_release_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("release", json!({"reports": ["nope"]}), "`reports` names \"nope\"; the slots are "),
-        ("release", json!({"existing": "x"}), "`existing` is \"add-missing\", \"replace\" or \"keep-both\", not \"x\""),
-        ("release", json!({"colour": "x"}), "`colour` is \"mono\""),
+        ("release", json!({"existing": "x"}), r#"`existing` must be one of "add-missing", "replace", "keep-both", or null"#),
+        ("release", json!({"colour": "x"}), r#"`colour` must be one of "mono", "colour", or null"#),
     ];
     let mut h = H::new(7061);
     for (cmd, params, says) in rows {

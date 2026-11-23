@@ -160,35 +160,41 @@ pub fn mono(doc: &ecad_model::Document) -> bool {
     ecad_model::registry::resolve(doc, &COLOUR, ecad_model::registry::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
 }
 
-/// A print command's `colour` parameter (`mono`, `colour`, or `screen` as `colour`), or the
-/// project's [`COLOUR`] when it gives none: whether to print mono.
+/// A print colour as a call names it: mono, or colour (also `color` and `screen`).
+impl crate::commands::input::Words for PrintColour {
+    const WORDS: &'static [&'static str] = <PrintColour as ecad_model::Word>::WORDS;
+
+    fn read(text: &str) -> Option<PrintColour> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "mono" => Some(PrintColour::Mono),
+            "colour" | "color" | "screen" => Some(PrintColour::Colour),
+            _ => None,
+        }
+    }
+}
+
+/// A print command's `colour` parameter, or the project's [`COLOUR`] when it gives none: whether
+/// to print mono.
 ///
 /// # Errors
-/// Any other value, in words.
+/// A value that is not a print colour, in words.
 pub fn mono_param(doc: &ecad_model::Document, params: &serde_json::Value) -> Result<bool, CmdError> {
     match params.get("colour") {
         None | Some(serde_json::Value::Null) => Ok(mono(doc)),
-        Some(v) => match v.as_str() {
-            Some(w) => mono_word(doc, Some(w)),
-            None => Err(CmdError::input(COLOUR_WORDS)),
-        },
+        Some(v) => v
+            .as_str()
+            .and_then(<PrintColour as crate::commands::input::Words>::read)
+            .map(|c| mono_of(doc, Some(c)))
+            .ok_or(CmdError::input(COLOUR_WORDS)),
     }
 }
 
 /// The refusal of a `colour` that is not a print colour.
 pub const COLOUR_WORDS: &str = "`colour` is \"mono\" (black, the colour code in the wire label) or \"colour\" (wire colours)";
 
-/// [`mono_param`] with the `colour` word read: `None` is the project's [`COLOUR`].
-///
-/// # Errors
-/// A word that is not a print colour.
-pub fn mono_word(doc: &ecad_model::Document, word: Option<&str>) -> Result<bool, CmdError> {
-    match word.map(str::trim) {
-        None => Ok(mono(doc)),
-        Some("mono") => Ok(true),
-        Some("colour" | "color" | "screen") => Ok(false),
-        Some(_) => Err(CmdError::input(COLOUR_WORDS)),
-    }
+/// Whether to print mono: as `colour` says, else as the project's [`COLOUR`] says.
+pub fn mono_of(doc: &ecad_model::Document, colour: Option<PrintColour>) -> bool {
+    colour.map_or_else(|| mono(doc), |c| c == PrintColour::Mono)
 }
 
 /// Every entry of this file, in the order `defaults` lists them.

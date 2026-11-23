@@ -108,10 +108,10 @@ pub(crate) struct PrintbookParams {
     /// The PDF file to write.
     #[serde(default)]
     path: Option<String>,
-    /// "mono" (black, the colour code in the wire label) or "colour" (wire colours); default the
-    /// project's `print.colour`.
+    /// Mono (black, the colour code in the wire label) or colour (wire colours; also `color` or
+    /// `screen`); default the project's `print.colour`.
     #[serde(default)]
-    colour: Option<String>,
+    colour: Option<ecad_electrical::commands::input::Said<ecad_electrical::defaults::print::PrintColour>>,
     /// Print lineweights (default true).
     #[serde(default)]
     lineweights: Option<bool>,
@@ -124,9 +124,9 @@ impl Command for PrintbookParams {
         let path = self.path;
         // No `colour` given prints as the project's `print.colour` says (mono by
         // default).
-        let colour = self.colour;
+        let colour = self.colour.map(|c| c.0);
         let v = on_any_page(s, |p, _| {
-            let mono = ecad_electrical::defaults::print::mono_word(p.ledger.document(), colour.as_deref())?;
+            let mono = ecad_electrical::defaults::print::mono_of(p.ledger.document(), colour);
             print_project(p, &scope, Options { mono, lineweights, pending: false }, path.as_deref(), &mut |_, _| true)
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {

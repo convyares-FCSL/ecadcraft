@@ -21,6 +21,40 @@ use serde_json::Value;
 use crate::checks::{Check, Severity};
 use crate::reports::{Cell, Table};
 
+ecad_model::word_enum! {
+    /// What a release accepts: the check's errors.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Accept {
+        Errors,
+    }
+}
+
+ecad_model::word_enum! {
+    /// What an issue does with provisional tags and wire numbers.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Provisional {
+        /// Number them first, in one transaction before the issue.
+        Finalise,
+        /// Issue them as they are.
+        Issue,
+    }
+}
+
+ecad_model::word_enum! {
+    /// What a release does when its folder exists.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Existing {
+        /// Write only the files that are missing.
+        #[strum(serialize = "add-missing")]
+        AddMissing,
+        /// Write the folder again.
+        Replace,
+        /// Write a new folder beside it.
+        #[strum(serialize = "keep-both")]
+        KeepBoth,
+    }
+}
+
 /// Most characters of a file stem.
 pub(crate) const MAX_STEM: usize = 80;
 /// Rows per group `prerelease` returns by default, and at most.
