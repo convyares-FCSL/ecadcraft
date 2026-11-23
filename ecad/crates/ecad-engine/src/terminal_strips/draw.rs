@@ -284,7 +284,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
     for p in &placed {
         match p.col {
             Col::Gap(acc) => gap(pen, acc, p, g, yc, s, lk),
-            Col::Term(_, r) => {
+            Col::Block(_, r) => {
                 let up = ecad_electrical::terminal_strips::raise(r);
                 let (bot, top) = (yc - half + up, yc + half + up);
                 let cx = p.cx();
@@ -417,12 +417,12 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
     let half = g.body / 2.0;
     let mut i = 0;
     while i < placed.len() {
-        let Some(Col::Term(_, r)) = placed.get(i).map(|p| p.col) else {
+        let Some(Col::Block(_, r)) = placed.get(i).map(|p| p.col) else {
             i += 1;
             continue;
         };
         let mut e = i + 1;
-        while let Some(Col::Term(_, n)) = placed.get(e).map(|p| p.col) {
+        while let Some(Col::Block(_, n)) = placed.get(e).map(|p| p.col) {
             if n.label != r.label {
                 break;
             }
@@ -435,13 +435,13 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
                 .get(i..e)
                 .unwrap_or_default()
                 .iter()
-                .filter_map(|p| if let Col::Term(_, x) = p.col { Some(ecad_electrical::terminal_strips::raise(x)) } else { None })
+                .filter_map(|p| if let Col::Block(_, x) = p.col { Some(ecad_electrical::terminal_strips::raise(x)) } else { None })
                 .fold(0.0, f64::max);
             pen.rect((a.x - 0.5, yc - half - 0.8), (z.x + z.w + 0.5, yc + half + top + 0.8));
             // Internal bridges: levels of one group joined near the bottom.
             let mut groups: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
             for p in placed.get(i..e).unwrap_or_default() {
-                if let Col::Term(_, x) = p.col
+                if let Col::Block(_, x) = p.col
                     && let Some(gr) = x.internal_bridge
                 {
                     groups.entry(gr).or_default().push(p.cx());
@@ -462,14 +462,14 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
 
 /// Jumper bars in lanes in the band's upper half, with continuation stubs at the sheet's edges.
 fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
-    let positions: Vec<usize> = placed.iter().filter_map(|p| if let Col::Term(i, _) = p.col { Some(s.position_index(i)) } else { None }).collect();
+    let positions: Vec<usize> = placed.iter().filter_map(|p| if let Col::Block(i, _) = p.col { Some(s.position_index(i)) } else { None }).collect();
     let (Some(lo), Some(hi)) = (positions.iter().min().copied(), positions.iter().max().copied()) else { return };
     for l in s.acc.jumper_bars.iter().filter(|l| l.span > 0 && l.last >= lo && l.first <= hi) {
         let y = yc + 3.0 + l.lane.min(4) as f64 * JUMPER_BAR_LANE_MM;
         let pts: Vec<(f64, bool)> = placed
             .iter()
             .filter_map(|p| match p.col {
-                Col::Term(i, r) => {
+                Col::Block(i, r) => {
                     let pi = s.position_index(i);
                     (l.first <= pi && pi <= l.last && l.runs_on(r.level)).then(|| (p.cx(), l.labels.contains(&r.label) && l.names_level(r.level)))
                 }
@@ -504,7 +504,7 @@ fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
 fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Draws) {
     let mut groups: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
     for p in placed {
-        if let Col::Term(_, r) = p.col
+        if let Col::Block(_, r) = p.col
             && let Some(gr) = r.bridge_group
         {
             groups.entry(gr).or_default().push(p.cx());
@@ -571,7 +571,7 @@ fn cables(
         .get(..c0)
         .unwrap_or_default()
         .iter()
-        .filter_map(|(c, _)| if let Col::Term(_, r) = c { Some(r) } else { None })
+        .filter_map(|(c, _)| if let Col::Block(_, r) = c { Some(r) } else { None })
         .flat_map(|r| r.outside.iter().filter_map(|c| c.cable.as_ref().map(|(k, _)| *k)))
         .collect();
     for ((k, a, b, tag, far), lane) in order.iter().zip(&lanes) {

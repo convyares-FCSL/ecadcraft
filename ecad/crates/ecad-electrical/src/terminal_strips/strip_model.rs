@@ -27,7 +27,7 @@ pub struct SideCell {
 /// One row of a strip's plan: one level of a position (a one-level position is
 /// one row).
 #[derive(Debug, Clone, PartialEq)]
-pub struct TermRow {
+pub struct BlockRow {
     /// The level's terminal (the in point of a two-point level); `None` for a free or spare row.
     pub connection_point: Option<ConnectionPointId>,
     /// The out point of a two-point level (its outside cells come from it).
@@ -41,7 +41,7 @@ pub struct TermRow {
     pub level: u32,
     pub level_name: String,
     /// The position's type.
-    pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
+    pub ty: &'static crate::terminal_strips::terminal_blocks::BlockType,
     /// A level of a drawn position that no symbol draws.
     pub free: bool,
     pub pe: bool,
@@ -57,7 +57,7 @@ pub struct TermRow {
     pub go: Option<(PageId, Pt)>,
 }
 
-impl TermRow {
+impl BlockRow {
     /// A position the offer adds, with no level drawn.
     pub fn spare(&self) -> bool {
         self.connection_point.is_none() && !self.free
@@ -79,8 +79,8 @@ impl TermRow {
         self.ty.breaks
     }
 
-    fn blank(label: String, ty: &'static crate::terminal_strips::terminal_blocks::TermType, level: u32, level_name: String) -> TermRow {
-        TermRow {
+    fn blank(label: String, ty: &'static crate::terminal_strips::terminal_blocks::BlockType, level: u32, level_name: String) -> BlockRow {
+        BlockRow {
             connection_point: None,
             out: None,
             shown: label.clone(),
@@ -105,7 +105,7 @@ impl TermRow {
 /// One terminal type on a strip: positions drawn and spare, and its BOM part data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeCount {
-    pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
+    pub ty: &'static crate::terminal_strips::terminal_blocks::BlockType,
     pub drawn: usize,
     pub spare: usize,
     pub part_number: Option<String>,
@@ -134,7 +134,7 @@ pub struct StripData {
     pub drawn_pe: usize,
     pub spare: usize,
     pub spare_pe: usize,
-    pub rows: Vec<TermRow>,
+    pub rows: Vec<BlockRow>,
     pub part_number: Option<String>,
     pub maker: Option<String>,
     pub part_number_pe: Option<String>,
@@ -204,12 +204,12 @@ impl StripData {
     }
 
     /// The highest drawn terminal (by label), for the too-many-terminals go-to.
-    pub fn highest(&self) -> Option<&TermRow> {
+    pub fn highest(&self) -> Option<&BlockRow> {
         self.rows.iter().rev().find(|r| r.connection_point.is_some())
     }
 
     /// The highest drawn row of type `t`.
-    pub fn highest_of(&self, t: &crate::terminal_strips::terminal_blocks::TermType) -> Option<&TermRow> {
+    pub fn highest_of(&self, t: &crate::terminal_strips::terminal_blocks::BlockType) -> Option<&BlockRow> {
         self.rows.iter().rev().find(|r| r.connection_point.is_some() && r.ty == t)
     }
 
@@ -229,7 +229,7 @@ impl StripData {
     }
 
     /// A drawn row by terminal.
-    pub fn row_of(&self, t: ConnectionPointId) -> Option<&TermRow> {
+    pub fn row_of(&self, t: ConnectionPointId) -> Option<&BlockRow> {
         self.rows.iter().find(|r| r.connection_point == Some(t))
     }
 
@@ -244,7 +244,7 @@ impl StripData {
         }
         gap(&mut out, accessories, "start", &self.acc.start);
         for (i, r) in self.rows.iter().enumerate() {
-            out.push(PlanItem::Term(i, r));
+            out.push(PlanItem::Block(i, r));
             let last_of_label = self.rows.get(i + 1).is_none_or(|n| n.label != r.label);
             if last_of_label && let Some(items) = self.acc.after.get(&r.label) {
                 gap(&mut out, accessories, &r.label, items);
@@ -296,7 +296,7 @@ pub enum PlanItem<'a> {
     /// An accessory in a gap: `start`, `end` or the label it follows.
     Gap { gap: &'a str, acc: crate::terminal_strips::accessories::Acc },
     /// A position (its index in [`StripData::rows`]).
-    Term(usize, &'a TermRow),
+    Block(usize, &'a BlockRow),
 }
 
 /// The strips of a project (see the module's update map).
@@ -652,7 +652,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
     let mut grids: BTreeMap<PageId, ecad_model::document::sheet::Grid> = BTreeMap::new();
-    let mut rows: Vec<TermRow> = Vec::new();
+    let mut rows: Vec<BlockRow> = Vec::new();
     // Bridges, for groups: union of terminals joined by a bridge.
     let mut parent: BTreeMap<ConnectionPointId, ConnectionPointId> = mine.iter().map(|t| (*t, *t)).collect();
     fn find(p: &mut BTreeMap<ConnectionPointId, ConnectionPointId>, t: ConnectionPointId) -> ConnectionPointId {
@@ -673,7 +673,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
     // The conductors on one terminal, sorted into inside and outside cells (two-point levels
     // by their point).
-    let mut cells = |t: ConnectionPointId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
+    let mut cells = |t: ConnectionPointId, side: Option<bool>, page: Option<PageId>, row: &mut BlockRow, d: &mut StripData| {
         for (w, end) in doc.ends_at(t) {
             d.wires.insert(w);
             let Some(cond) = doc.wires().get(&w) else { continue };
@@ -768,7 +768,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                 if n > ty.count() {
                     continue;
                 }
-                let mut r = TermRow::blank(pos.label.clone(), ty, n, level_name);
+                let mut r = BlockRow::blank(pos.label.clone(), ty, n, level_name);
                 r.label_overridden = over.is_some();
                 r.shown = over.unwrap_or(derived);
                 r.free = true;
@@ -799,7 +799,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                 if let Some(p) = page {
                     d.pages.insert(p);
                 }
-                let mut row = TermRow::blank(pos.label.clone(), ty, n, level_name.clone());
+                let mut row = BlockRow::blank(pos.label.clone(), ty, n, level_name.clone());
                 row.connection_point = Some(t);
                 row.out = out;
                 row.pe = pe || ty.pe_level == Some(n);
@@ -872,7 +872,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             let (ft, pe) = (tt::feedthrough(), tt::by_code("pe").unwrap_or_else(tt::feedthrough));
             for n in &spare {
                 let ty = if pe_set.contains(n) { pe } else { ft };
-                rows.push(TermRow::blank(n.to_string(), ty, 1, "1".into()));
+                rows.push(BlockRow::blank(n.to_string(), ty, 1, "1".into()));
                 if let Some(x) = spare_by_type.get_mut(tt::index_of(ty)) {
                     *x += 1;
                 }
@@ -902,7 +902,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
                 let Some(n) = free.pop_front() else { break };
                 for lvl in 1..=ty.count() {
                     let name = names.get(usize::try_from(lvl - 1).unwrap_or(0)).cloned().unwrap_or_else(|| lvl.to_string());
-                    let mut r = TermRow::blank(n.to_string(), ty, lvl, name.clone());
+                    let mut r = BlockRow::blank(n.to_string(), ty, lvl, name.clone());
                     r.shown = if ty.multi() { format!("{n}{separator}{name}") } else { n.to_string() };
                     rows.push(r);
                 }
@@ -965,7 +965,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
 
 /// The strip key of a type's part field: feed-through keeps `part_number`, `maker`; every
 /// other type `<field>.<code>` (`part_number.lnpe`; `part_number.pe` follows this rule).
-pub fn type_key(t: &crate::terminal_strips::terminal_blocks::TermType, field: &str) -> String {
+pub fn type_key(t: &crate::terminal_strips::terminal_blocks::BlockType, field: &str) -> String {
     if t.code == "ft" { field.to_string() } else { format!("{field}.{}", t.code) }
 }
 
@@ -973,7 +973,7 @@ pub fn type_key(t: &crate::terminal_strips::terminal_blocks::TermType, field: &s
 /// `strip_<code>_<field>` (recorded in `inherits`), else the registry's description. A
 /// feed-through's part is the strip's own fields ([`type_key`] is then the field's key).
 fn type_parts(
-    doc: &Document, strip: &ecad_model::Device, ty: &'static crate::terminal_strips::terminal_blocks::TermType, drawn: usize, spare: usize,
+    doc: &Document, strip: &ecad_model::Device, ty: &'static crate::terminal_strips::terminal_blocks::BlockType, drawn: usize, spare: usize,
     inherits: &mut BTreeSet<String>,
 ) -> TypeCount {
     let mut get = |field: &str| -> Option<String> {

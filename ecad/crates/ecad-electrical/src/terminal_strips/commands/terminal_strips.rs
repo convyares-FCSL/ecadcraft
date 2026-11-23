@@ -4,7 +4,7 @@
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
 //! build the reports, commit and answer in JSON.
 
-use crate::terminal_strips::strip_model::{StripData, TermRow};
+use crate::terminal_strips::strip_model::{BlockRow, StripData};
 use ecad_model::geometry::units::Radians;
 use ecad_model::{LevelIo, PointKey};
 use serde_json::{Value, json};
@@ -101,7 +101,7 @@ pub fn plan_fence(
 /// What a Place Terminals line places.
 #[derive(Debug, Clone)]
 pub(crate) struct FenceKind {
-    pub ty: &'static tt::TermType,
+    pub ty: &'static tt::BlockType,
     /// The level (`None`: whole-terminal symbols).
     pub level: Option<u32>,
     /// The position typed at the prompt, for the first crossing.
@@ -280,7 +280,7 @@ pub fn land_level(
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::BlockType, word: &str) -> Result<Option<u32>, CmdError> {
     let w = word.trim();
     if !t.multi() {
         return Ok(Some(1));
@@ -310,7 +310,7 @@ pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &
 ///
 /// # Errors
 /// A word that names no type.
-pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, CmdError> {
+pub fn block_type(word: Option<&str>, pe: bool) -> Result<&'static tt::BlockType, CmdError> {
     match word {
         Some(w) => tt::by_word(w).ok_or_else(|| {
             CmdError::refused(format!(
@@ -328,7 +328,7 @@ pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, 
 pub struct TerminalBlocksInput {
     /// The strip joined (`None`: a new strip).
     pub strip: Option<DeviceId>,
-    pub ty: &'static tt::TermType,
+    pub ty: &'static tt::BlockType,
     /// The level word (`None`: level 1).
     pub level: Option<String>,
     /// The position for the first crossing.
@@ -370,7 +370,7 @@ pub fn plan_terminal_blocks(
 /// The shown labels of `f`'s terminals once committed, and the echo of the line: the range placed, the
 /// wires, positions and level, and any stored wire number
 /// an out half did not keep (said, never dropped silently).
-pub fn connection_points_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
+pub fn connection_points_message(doc: &Document, ty: &tt::BlockType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
     let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| tt::connection_point_name(doc, *t)).collect();
     let range = match shown.as_slice() {
         [one] => one.clone(),
@@ -527,7 +527,7 @@ pub(crate) fn plan_fields_json() -> Value {
 /// One plan row as JSON (the keys the terminal plan exports): `label` is the shown
 /// label (the position for a one-level position, as before); `type` keeps `feed-through` and
 /// `pe` and is the type code otherwise.
-pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
+pub fn row_json(r: &BlockRow, style: ecad_model::ReferenceStyle) -> Value {
     let mut o = serde_json::Map::new();
     put(&mut o, "connection_point", r.connection_point.map(|t| t.hex()));
     put(&mut o, "out", r.out.map(|t| t.hex()));
@@ -607,7 +607,7 @@ pub(crate) fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first
         .iter()
         .map(|item| match item {
             terminal_strips::strip_model::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
-            terminal_strips::strip_model::PlanItem::Term(i, r) => {
+            terminal_strips::strip_model::PlanItem::Block(i, r) => {
                 let mut v = row_json(r, style);
                 if accessories {
                     v["kind"] = json!("terminal_block");

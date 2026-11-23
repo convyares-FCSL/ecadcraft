@@ -21,7 +21,7 @@ use ecad_model::connectivity::jumper_bars::{self, Positions};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, Properties};
 
 use crate::CmdError;
-use crate::terminal_strips::strip_model::TermRow;
+use crate::terminal_strips::strip_model::BlockRow;
 
 /// What every placement key starts with.
 pub(crate) const ACC_PREFIX: &str = "acc.";
@@ -615,7 +615,7 @@ impl Parts<'_> {
 }
 
 /// A strip's accessories on `doc`, from its properties and its plan rows (label order).
-pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
+pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[BlockRow]) -> StripAcc {
     let mut a = StripAcc::default();
     // One entry per position (rows are levels; plan order).
     let mut order: Vec<String> = Vec::with_capacity(rows.len());
@@ -626,7 +626,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
     }
     let index: BTreeMap<&str, usize> = order.iter().enumerate().map(|(i, l)| (l.as_str(), i)).collect();
     // A position's last row (its PE-ness for end plates) and its levels.
-    let mut last_row: BTreeMap<&str, &TermRow> = BTreeMap::new();
+    let mut last_row: BTreeMap<&str, &BlockRow> = BTreeMap::new();
     let mut levels_at: BTreeMap<&str, BTreeSet<u32>> = BTreeMap::new();
     for r in rows {
         last_row.insert(r.label.as_str(), r);

@@ -72,7 +72,7 @@ pub(crate) fn land_result(doc: &Document, t: ConnectionPointId, land: &Land) -> 
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::BlockType, word: &str) -> Result<Option<u32>, CmdError> {
     rules::level_word(doc, c, t, word)
 }
 

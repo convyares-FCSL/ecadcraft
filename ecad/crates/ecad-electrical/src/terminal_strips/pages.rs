@@ -26,7 +26,7 @@ use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 use crate::defaults::strip_pages as entries;
 use crate::reports::kept::ReportModels;
 use crate::terminal_strips::accessories::Acc;
-use crate::terminal_strips::strip_model::{PlanItem, StripData, Strips, TermRow};
+use crate::terminal_strips::strip_model::{BlockRow, PlanItem, StripData, Strips};
 
 /// Gap between the tag box and the first column.
 pub const TAG_GAP_MM: f64 = 2.0;
@@ -133,7 +133,7 @@ fn project_sheet(doc: &Document) -> SheetSpec {
 #[derive(Debug, Clone, Copy)]
 pub enum Col<'a> {
     /// A plan row (one level of a position): its index in `StripData::rows`.
-    Term(usize, &'a TermRow),
+    Block(usize, &'a BlockRow),
     /// A gap accessory.
     Gap(Acc),
 }
@@ -147,20 +147,20 @@ pub fn columns<'a>(s: &'a StripData, g: &Geometry) -> (Vec<(Col<'a>, f64)>, Vec<
     let mut open: Option<(usize, f64, bool)> = None;
     for item in s.plan(true) {
         let (col, w, starts) = match item {
-            PlanItem::Term(i, r) => (Col::Term(i, r), g.pitch, s.first_of_position(i)),
+            PlanItem::Block(i, r) => (Col::Block(i, r), g.pitch, s.first_of_position(i)),
             PlanItem::Gap { acc, .. } => (Col::Gap(acc), Geometry::gap_width(acc), false),
         };
         let at = cols.len();
         match open.as_mut() {
-            Some((_, width, has_term)) if !(starts && *has_term) => {
+            Some((_, width, has_block)) if !(starts && *has_block) => {
                 *width += w;
-                *has_term |= matches!(col, Col::Term(..));
+                *has_block |= matches!(col, Col::Block(..));
             }
             _ => {
                 if let Some((first, width, _)) = open.take() {
                     blocks.push((first, at, width));
                 }
-                open = Some((at, w, matches!(col, Col::Term(..))));
+                open = Some((at, w, matches!(col, Col::Block(..))));
             }
         }
         cols.push((col, w));

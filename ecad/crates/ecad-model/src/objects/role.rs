@@ -74,7 +74,7 @@ pub enum Role {
     /// A cable's hidden fan anchor (`fan-anchor`).
     FanAnchor,
     /// A terminal level's fuse (`terminalblockfuse`).
-    FuseTerm,
+    TerminalBlockFuse,
     /// A converted drawing (`drawn`).
     Drawn,
 }
@@ -90,7 +90,7 @@ impl Role {
     pub fn part(self) -> Option<PartRole> {
         match self {
             Role::Part(p) => Some(p),
-            Role::Route | Role::Slash | Role::Reference | Role::LocationBox | Role::FanAnchor | Role::FuseTerm | Role::Drawn => None,
+            Role::Route | Role::Slash | Role::Reference | Role::LocationBox | Role::FanAnchor | Role::TerminalBlockFuse | Role::Drawn => None,
         }
     }
 }
@@ -110,7 +110,7 @@ impl Word for Role {
         Role::Reference,
         Role::LocationBox,
         Role::FanAnchor,
-        Role::FuseTerm,
+        Role::TerminalBlockFuse,
         Role::Drawn,
     ];
     const WORDS: &'static [&'static str] = &[
@@ -139,7 +139,7 @@ impl Word for Role {
             Role::Reference => "reference",
             Role::LocationBox => "box",
             Role::FanAnchor => "fan-anchor",
-            Role::FuseTerm => "terminalblockfuse",
+            Role::TerminalBlockFuse => "terminalblockfuse",
             Role::Drawn => "drawn",
         }
     }

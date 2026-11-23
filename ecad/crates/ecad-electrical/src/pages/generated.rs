@@ -559,7 +559,7 @@ fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TR
         let mut last_cable: Option<ecad_model::CableId> = None;
         for item in s.plan(true) {
             let (ri, r) = match item {
-                crate::terminal_strips::strip_model::PlanItem::Term(i, r) => (i, r),
+                crate::terminal_strips::strip_model::PlanItem::Block(i, r) => (i, r),
                 // A gap row is a full row, the word in Inside target,
                 // a mark across Terminal, the part in Place.
                 crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {

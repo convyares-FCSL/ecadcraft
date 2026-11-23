@@ -75,7 +75,7 @@ pub(crate) struct Base {
     comp: ecad_model::DeviceId,
     comp_v: Device,
     pub(crate) term: ecad_model::ConnectionPointId,
-    pub(crate) term_v: ConnectionPoint,
+    pub(crate) point_v: ConnectionPoint,
     term3: ecad_model::ConnectionPointId,
     sym: ecad_model::ItemId,
     item: ecad_model::ItemId,
@@ -133,7 +133,7 @@ pub(crate) fn base() -> Base {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let point_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
     let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
@@ -192,7 +192,7 @@ pub(crate) fn base() -> Base {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddConnectionPoint { id: term, connection_point: term_v.clone() },
+                Op::AddConnectionPoint { id: term, connection_point: point_v.clone() },
                 Op::AddConnectionPoint { id: term2, connection_point: point("2") },
                 Op::AddConnectionPoint { id: term3, connection_point: point("3") },
                 Op::AddConnectionPoint { id: term4, connection_point: point("4") },
@@ -228,7 +228,7 @@ pub(crate) fn base() -> Base {
         comp,
         comp_v,
         term,
-        term_v,
+        point_v,
         term3,
         sym,
         item,
@@ -297,7 +297,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             id: b.ids.fresh(),
             connection_point: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default() },
         },
-        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
@@ -390,8 +390,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::DeleteDevice { id: b.comp, device: Device::default() },
         Op::ModifyDevice { id: b.comp, before: Device::default(), after: b.comp_v.clone() },
         Op::ModifyDevice { id: missing_comp, before: Device::default(), after: Device::default() },
-        Op::AddConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
-        Op::RemoveConnectionPoint { id: b.ids.fresh(), connection_point: b.term_v.clone() },
+        Op::AddConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+        Op::RemoveConnectionPoint { id: b.ids.fresh(), connection_point: b.point_v.clone() },
         Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_sym_v.clone(), after: b.rep_wire_v.clone() },
         Op::UnlinkRepresentation { id: b.ids.fresh(), rep: b.rep_sym_v.clone() },
@@ -540,7 +540,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     // Delete a terminal, then the wire that ended at it: in between, the wire is attached to a
     // missing terminal.
     let ops = vec![
-        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
         Op::ModifyCable { id: b.cable, before: b.cable_v.clone(), after: Cable { cores: Vec::new(), ..b.cable_v.clone() } },
         Op::DeleteWire { id: b.wire, wire: b.wire_v.clone() },
         // The route landing on it is freed too (design 072 F31).
@@ -610,7 +610,7 @@ fn a_transaction_failing_the_end_check_is_rolled_back() {
     // cable still lists the wire and the route still lands on the terminal.
     let ops = vec![
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) },
-        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
     ];
     let r = b.ledger.commit(Author::User, "dangling", ops);
     let Err(ModelError::Invariant(m)) = r else { panic!("{r:?}") };
@@ -666,7 +666,7 @@ fn a_damaged_history_opens_at_its_last_good_transaction() {
     bad.seq = 3;
     bad.ops = vec![
         Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } },
-        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
     ];
     log.push(bad);
     let (ledger, failure) = Ledger::replay_prefix(log, 0);

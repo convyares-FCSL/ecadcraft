@@ -689,7 +689,7 @@ fn copy_batch(
     }
     let (Some(sdoc), Some(smap)) = (src_doc, src_map) else { return Ok(()) };
     let mut consumed: BTreeSet<Handle> = BTreeSet::new();
-    let mut term_map: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
+    let mut point_map: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
 
     // Whole component representations: independent copies.
     for (rid, r) in sdoc.representations().iter().filter(|(_, r)| r.page == cx.page) {
@@ -724,7 +724,7 @@ fn copy_batch(
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.connection_points_of(src_comp) {
             let nt: ConnectionPointId = cx.ids.fresh();
-            term_map.insert(src_t, nt);
+            point_map.insert(src_t, nt);
             t.ops.push(Op::AddConnectionPoint { id: nt, connection_point: ConnectionPoint { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
@@ -743,14 +743,14 @@ fn copy_batch(
         let mut cps = BTreeMap::new();
         if r.form == Form::Symbol {
             for (src_t, at) in &r.connection_points {
-                cps.insert(term_map.get(src_t).copied().ok_or("connection point not copied")?, *at);
+                cps.insert(point_map.get(src_t).copied().ok_or("connection point not copied")?, *at);
             }
         }
         for (src_t, sh) in &marker_handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied marker missing")?;
             let at = marker_position(e).ok_or("copied marker is not a marker")?;
-            let nt = term_map.get(src_t).copied().ok_or("connection point not copied")?;
+            let nt = point_map.get(src_t).copied().ok_or("connection point not copied")?;
             cps.insert(nt, at);
             t.new_markers.push(((new_rep, nt), nh));
             consumed.insert(nh);
@@ -803,7 +803,7 @@ fn copy_batch(
         let points = points.ok_or(ROUTE_SHAPE)?;
         let mut ends = [RouteEnd::Free; 2];
         for ((end, slot), src_end) in End::BOTH.into_iter().zip(ends.iter_mut()).zip(src.ends) {
-            match src_end.point().and_then(|src_t| term_map.get(&src_t)) {
+            match src_end.point().and_then(|src_t| point_map.get(&src_t)) {
                 Some(nt) => *slot = RouteEnd::Point(*nt),
                 None => fresh_ends.push((new_r, end)),
             }

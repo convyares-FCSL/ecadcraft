@@ -978,7 +978,7 @@ pub(crate) fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &s
 pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
-    let obj = |r: Option<&crate::terminal_strips::strip_model::TermRow>| {
+    let obj = |r: Option<&crate::terminal_strips::strip_model::BlockRow>| {
         r.and_then(|r| r.connection_point).map_or(Object::Device(s.component), Object::ConnectionPoint)
     };
     for (i, (key, items)) in s.acc.orphans.iter().enumerate() {

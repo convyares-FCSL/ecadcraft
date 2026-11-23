@@ -9,7 +9,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::terminal_strips::{TerminalBlocksInput, connection_points_message, plan_terminal_blocks, term_type};
+use super::terminal_strips::{TerminalBlocksInput, block_type, connection_points_message, plan_terminal_blocks};
 use crate::cables::words::{MAX_COORD, OUT_OF_RANGE};
 use crate::commands::input::Point;
 use crate::commands::run::{Cx, Generic, LastPlaced, Outcome, Slot, State};
@@ -47,7 +47,7 @@ impl Generic for TerminalBlocksParams {
     const STATE: State = State::LastPlaced;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let ty = term_type(self.ty.as_deref(), self.pe.unwrap_or(false))?;
+        let ty = block_type(self.ty.as_deref(), self.pe.unwrap_or(false))?;
         let (from, to) = (self.from.0, self.to.0);
         let bad = |q: Pt| !(q.x.abs() <= MAX_COORD && q.y.abs() <= MAX_COORD);
         if bad(from) || bad(to) {

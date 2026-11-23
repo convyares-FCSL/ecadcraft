@@ -55,7 +55,7 @@ use ecad_model::{ConnectionPointId, DeviceId, Document, End, PageId, Pt, Represe
 
 use crate::CmdError;
 use cores::*;
-use strip_model::{StripData, TermRow};
+use strip_model::{BlockRow, StripData};
 
 /// The strip property that offers positions.
 pub(crate) const OFFER_KEY: &str = "terminal_blocks";
@@ -152,7 +152,7 @@ impl Offer {
     }
 
     /// Positions offered of type `t`.
-    pub fn of(&self, t: &crate::terminal_strips::terminal_blocks::TermType) -> u32 {
+    pub fn of(&self, t: &crate::terminal_strips::terminal_blocks::BlockType) -> u32 {
         self.counts.get(crate::terminal_strips::terminal_blocks::index_of(t)).copied().unwrap_or(0)
     }
 }
@@ -259,11 +259,11 @@ pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model
 pub(crate) const STAGGER_MM: f64 = 1.5;
 
 /// How far level `r` is raised.
-pub fn raise(r: &TermRow) -> f64 {
+pub fn raise(r: &BlockRow) -> f64 {
     if r.ty.multi() { f64::from(r.level.saturating_sub(1).min(16)) * STAGGER_MM } else { 0.0 }
 }
 
 /// Whether `r` is the first plan row of its position (a marker is drawn once per position).
-pub fn first_of_label(s: &StripData, r: &TermRow) -> bool {
+pub fn first_of_label(s: &StripData, r: &BlockRow) -> bool {
     s.rows.iter().find(|x| x.label == r.label).is_some_and(|x| std::ptr::eq(x, r))
 }

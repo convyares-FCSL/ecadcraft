@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_electrical::reports::kept::ReportModels;
-use ecad_electrical::terminal_strips::strip_model::{PlanItem, SideCell, StripData, TermRow};
+use ecad_electrical::terminal_strips::strip_model::{BlockRow, PlanItem, SideCell, StripData};
 use ecad_model::DeviceId;
 use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
 use serde_json::json;
@@ -22,7 +22,7 @@ use serde_json::json;
 use crate::workspace::ListAction;
 
 /// A row: its strip and its place in the strip's plan.
-pub(crate) type TermKey = (DeviceId, u32);
+pub(crate) type BlockKey = (DeviceId, u32);
 
 pub const STRIP: ColumnId = ColumnId(0);
 pub const IN_TARGET: ColumnId = ColumnId(1);
@@ -74,9 +74,9 @@ pub fn bands() -> Vec<ecad_widgets::table::Band> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlanRow {
     /// A level of a position.
-    Term {
+    Block {
         tag: String,
-        row: Box<TermRow>,
+        row: Box<BlockRow>,
         /// The first row of its position (the Position cell is an input only there).
         first: bool,
         marker: bool,
@@ -91,10 +91,10 @@ pub enum PlanRow {
 #[derive(Debug)]
 pub struct TerminalStripPlanSource {
     cols: Vec<Column>,
-    keys: Vec<TermKey>,
-    rows: HashMap<TermKey, PlanRow>,
+    keys: Vec<BlockKey>,
+    rows: HashMap<BlockKey, PlanRow>,
     /// Each strip's keys, in plan order.
-    by_strip: BTreeMap<DeviceId, Vec<TermKey>>,
+    by_strip: BTreeMap<DeviceId, Vec<BlockKey>>,
 }
 
 impl Default for TerminalStripPlanSource {
@@ -120,7 +120,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
                 };
                 out.push(PlanRow::Gap { tag: s.tag.clone(), mark: acc.mark().to_string(), words });
             }
-            PlanItem::Term(i, r) => {
+            PlanItem::Block(i, r) => {
                 let pi = s.position_index(i);
                 let at = s.jumper_bars_at(i);
                 let n = at.iter().map(|(l, _)| l.lane + 1).max().unwrap_or(0);
@@ -131,7 +131,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
                     }
                 }
                 let text = r.bridge_group.map_or_else(String::new, |g| format!("\u{25cf} {g}"));
-                out.push(PlanRow::Term {
+                out.push(PlanRow::Block {
                     tag: s.tag.clone(),
                     first: s.first_of_position(i),
                     marker: s.acc.markers.contains(&r.label),
@@ -146,18 +146,18 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
 }
 
 impl TerminalStripPlanSource {
-    pub fn row(&self, k: TermKey) -> Option<&PlanRow> {
+    pub fn row(&self, k: BlockKey) -> Option<&PlanRow> {
         self.rows.get(&k)
     }
 
     /// Replace strip `c`'s rows with `rows` (none: the strip went). Returns the keys touched: its
     /// old and new rows.
-    fn set_strip(&mut self, c: DeviceId, rows: Vec<PlanRow>) -> Vec<TermKey> {
+    fn set_strip(&mut self, c: DeviceId, rows: Vec<PlanRow>) -> Vec<BlockKey> {
         let mut touched = self.by_strip.remove(&c).unwrap_or_default();
         for k in &touched {
             self.rows.remove(k);
         }
-        let keys: Vec<TermKey> = (0..rows.len()).map(|i| (c, u32::try_from(i).unwrap_or(u32::MAX))).collect();
+        let keys: Vec<BlockKey> = (0..rows.len()).map(|i| (c, u32::try_from(i).unwrap_or(u32::MAX))).collect();
         for (k, r) in keys.iter().zip(rows) {
             self.rows.insert(*k, r);
         }
@@ -177,21 +177,21 @@ impl TerminalStripPlanSource {
 }
 
 impl TableSource for TerminalStripPlanSource {
-    type Key = TermKey;
+    type Key = BlockKey;
 
     fn columns(&self) -> &[Column] {
         &self.cols
     }
 
-    fn keys(&self) -> &[TermKey] {
+    fn keys(&self) -> &[BlockKey] {
         &self.keys
     }
 
-    fn contains(&self, key: TermKey) -> bool {
+    fn contains(&self, key: BlockKey) -> bool {
         self.rows.contains_key(&key)
     }
 
-    fn cell(&self, key: TermKey, col: ColumnId) -> Cell {
+    fn cell(&self, key: BlockKey, col: ColumnId) -> Cell {
         let Some(r) = self.rows.get(&key) else { return Cell::Empty };
         let (tag, row, first, marker, lanes, place) = match r {
             PlanRow::Gap { tag, mark, words } => {
@@ -202,7 +202,7 @@ impl TableSource for TerminalStripPlanSource {
                     _ => Cell::Empty,
                 };
             }
-            PlanRow::Term { tag, row, first, marker, lanes, place } => (tag, row, *first, *marker, lanes, place),
+            PlanRow::Block { tag, row, first, marker, lanes, place } => (tag, row, *first, *marker, lanes, place),
         };
         let drawn = row.connection_point.is_some();
         let cable = |c: &SideCell| c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into()));
@@ -231,9 +231,9 @@ impl TableSource for TerminalStripPlanSource {
         }
     }
 
-    fn row_label(&self, key: TermKey) -> String {
+    fn row_label(&self, key: BlockKey) -> String {
         match self.rows.get(&key) {
-            Some(PlanRow::Term { tag, row, .. }) => format!("Terminal {tag}:{}", row.shown),
+            Some(PlanRow::Block { tag, row, .. }) => format!("Terminal {tag}:{}", row.shown),
             Some(PlanRow::Gap { tag, words, .. }) => format!("Accessory {tag}: {words}"),
             None => String::new(),
         }
@@ -241,7 +241,7 @@ impl TableSource for TerminalStripPlanSource {
 }
 
 /// The command line an edit of `col` on `row` (of strip `c`) runs, `value` trimmed.
-pub fn edit_line(c: DeviceId, row: &TermRow, col: ColumnId, value: &str) -> Option<String> {
+pub fn edit_line(c: DeviceId, row: &BlockRow, col: ColumnId, value: &str) -> Option<String> {
     let v = value.trim();
     let strip = c.hex();
     match col {
@@ -262,14 +262,14 @@ pub fn edit_line(c: DeviceId, row: &TermRow, col: ColumnId, value: &str) -> Opti
 #[derive(Debug)]
 pub struct TerminalStripPlanView {
     pub source: TerminalStripPlanSource,
-    pub table: Table<TermKey>,
+    pub table: Table<BlockKey>,
     /// (project serial, models build, strip filter, accessories, reference style) of the build.
     built: Option<(u64, u64, Option<DeviceId>, bool, u64)>,
     /// The strips revision last read, and each strip's own.
     revision: u64,
     strips: BTreeMap<DeviceId, u64>,
     /// The cell whose edit is running (its refusal goes under it).
-    pending: Option<(TermKey, ColumnId)>,
+    pending: Option<(BlockKey, ColumnId)>,
     /// Rebuilds and patched keys (tests).
     pub rebuilds: u64,
 }
@@ -353,7 +353,7 @@ impl TerminalStripPlanView {
         for e in self.table.show(ui, &self.source) {
             match e {
                 TableEvent::Commit { key, col, value } if writable => {
-                    if let Some(PlanRow::Term { row, .. }) = self.source.row(key)
+                    if let Some(PlanRow::Block { row, .. }) = self.source.row(key)
                         && let Some(line) = edit_line(key.0, row, col, &value)
                     {
                         self.pending = Some((key, col));
@@ -361,7 +361,7 @@ impl TerminalStripPlanView {
                     }
                 }
                 TableEvent::GoTo { key, .. } | TableEvent::Open(key) => {
-                    if let Some(PlanRow::Term { row, .. }) = self.source.row(key)
+                    if let Some(PlanRow::Block { row, .. }) = self.source.row(key)
                         && let Some((pg, at)) = row.go
                     {
                         out.push(ListAction::GoTo(pg, at));

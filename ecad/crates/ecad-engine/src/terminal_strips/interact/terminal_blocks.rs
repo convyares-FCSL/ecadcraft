@@ -66,7 +66,7 @@ struct PlaceTerminalBlocks {
     strip: Option<DeviceId>,
     pe: bool,
     /// The type, its level (`None`: whole terminals), and a typed position.
-    ty: &'static tt::TermType,
+    ty: &'static tt::BlockType,
     level: Option<u32>,
     position: Option<String>,
     first: Option<Pt>,

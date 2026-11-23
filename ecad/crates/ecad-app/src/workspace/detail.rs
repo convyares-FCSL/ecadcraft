@@ -21,7 +21,7 @@ use crate::shell::app::App;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selected {
     Device(DeviceId),
-    ConnectionPoint(crate::terminal_strips::plan::TermKey),
+    ConnectionPoint(crate::terminal_strips::plan::BlockKey),
     Card(usize),
     /// A channel row of Project ▸ PLC.
     Channel(crate::plc::list::IoKey),

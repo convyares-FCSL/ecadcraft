@@ -348,7 +348,7 @@ pub(crate) fn plan_toposition(
             subject: Subject::Device(strip),
             page,
             form: rep.form,
-            role: ecad_model::Role::FuseTerm,
+            role: ecad_model::Role::TerminalBlockFuse,
             items: rep.items.clone(),
             connection_points: cps,
         },

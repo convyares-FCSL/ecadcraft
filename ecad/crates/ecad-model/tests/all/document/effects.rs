@@ -63,9 +63,9 @@ fn pairs_fold() {
     let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".parse().unwrap(), before: None, after: Some("9".into()) };
     let page_pair =
         vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 1 }];
-    let term_pair = vec![
-        Op::RemoveConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
-        Op::AddConnectionPoint { id: b.term, connection_point: b.term_v.clone() },
+    let point_pair = vec![
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+        Op::AddConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
     ];
     let folder_pair = vec![
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
@@ -76,7 +76,7 @@ fn pairs_fold() {
     let before_other = vec![set(b.page), page_pair[0].clone(), page_pair[1].clone()];
     let cases: &[(&str, &[Op], usize)] = &[
         ("page rename or move", &page_pair, 1),
-        ("connection point relabel", &term_pair, 1),
+        ("connection point relabel", &point_pair, 1),
         ("folder move", &folder_pair, 1),
         ("split by a property of the page", &split, 3),
         ("two pages", &two_ids, 2),

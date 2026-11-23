@@ -48,7 +48,7 @@ pub(crate) const MAX_OFFER_CHARS: usize = 64;
 
 /// A terminal type.
 #[derive(Debug)]
-pub struct TermType {
+pub struct BlockType {
     /// The whole-terminal starter (`termlnpe`); for one-level types the starter itself.
     pub key: StarterKey,
     /// The starter of each level, level 1 first (`termlnpe.1`…); empty for a one-level type.
@@ -71,13 +71,13 @@ pub struct TermType {
     pub pe_level: Option<u32>,
 }
 
-impl PartialEq for TermType {
+impl PartialEq for BlockType {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key
     }
 }
 
-impl TermType {
+impl BlockType {
     /// How many levels.
     pub fn count(&self) -> u32 {
         u32::try_from(self.levels.len()).unwrap_or(1)
@@ -117,8 +117,8 @@ const fn level(n: u8) -> PointKey {
 }
 
 /// The catalogue, in offer order. Adding a type is a row here and its starters.
-pub static TYPES: &[TermType] = &[
-    TermType {
+pub static TYPES: &[BlockType] = &[
+    BlockType {
         key: StarterKey::TerminalBlock,
         level_starters: &[],
         code: "ft",
@@ -130,7 +130,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::TerminalBlockPe,
         level_starters: &[],
         code: "pe",
@@ -142,7 +142,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: Some(1),
     },
-    TermType {
+    BlockType {
         key: StarterKey::Term2,
         level_starters: &[StarterKey::Term2L1, StarterKey::Term2L2],
         code: "x2",
@@ -154,7 +154,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::Term2b,
         level_starters: &[StarterKey::Term2bL1, StarterKey::Term2bL2],
         code: "x2b",
@@ -166,7 +166,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::Term3,
         level_starters: &[StarterKey::Term3L1, StarterKey::Term3L2, StarterKey::Term3L3],
         code: "x3",
@@ -178,7 +178,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::Termlnpe,
         level_starters: &[StarterKey::TermlnpeL1, StarterKey::TermlnpeL2, StarterKey::TermlnpeL3],
         code: "lnpe",
@@ -190,7 +190,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: Some(3),
     },
-    TermType {
+    BlockType {
         key: StarterKey::Termsensor,
         level_starters: &[StarterKey::TermsensorL1, StarterKey::TermsensorL2, StarterKey::TermsensorL3],
         code: "sen",
@@ -202,7 +202,7 @@ pub static TYPES: &[TermType] = &[
         breaks: false,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::Termdisc,
         level_starters: &[],
         code: "dis",
@@ -214,7 +214,7 @@ pub static TYPES: &[TermType] = &[
         breaks: true,
         pe_level: None,
     },
-    TermType {
+    BlockType {
         key: StarterKey::Terminalblockfuse,
         level_starters: &[],
         code: "fuse",
@@ -232,23 +232,23 @@ pub static TYPES: &[TermType] = &[
 pub(crate) const TYPE_COUNT: usize = 9;
 
 /// The feed-through type.
-pub fn feedthrough() -> &'static TermType {
+pub fn feedthrough() -> &'static BlockType {
     &TYPES[0]
 }
 
 /// The type with registry code `code` (case-insensitive).
-pub fn by_code(code: &str) -> Option<&'static TermType> {
+pub fn by_code(code: &str) -> Option<&'static BlockType> {
     TYPES.iter().find(|t| t.code.eq_ignore_ascii_case(code))
 }
 
 /// The type whose offer code is `code` (case-insensitive; empty: feed-through).
-pub(crate) fn by_offer(code: &str) -> Option<&'static TermType> {
+pub(crate) fn by_offer(code: &str) -> Option<&'static BlockType> {
     TYPES.iter().find(|t| t.offer.eq_ignore_ascii_case(code))
 }
 
 /// The type a Place Terminals prompt or JSON names: its offer code, its registry code, its key, or
 /// `Feedthrough`.
-pub fn by_word(word: &str) -> Option<&'static TermType> {
+pub fn by_word(word: &str) -> Option<&'static BlockType> {
     let w = word.trim();
     if ["feedthrough", "feed-through", "ft", ""].iter().any(|x| x.eq_ignore_ascii_case(w)) {
         return Some(feedthrough());
@@ -257,13 +257,13 @@ pub fn by_word(word: &str) -> Option<&'static TermType> {
 }
 
 /// The index of `t` in [`TYPES`].
-pub fn index_of(t: &TermType) -> usize {
+pub fn index_of(t: &BlockType) -> usize {
     TYPES.iter().position(|x| std::ptr::eq(x, t)).unwrap_or(0)
 }
 
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
 /// `None`: the whole terminal); `connection_point`, `terminal_block_pe`, `termdisc`, `terminalblockfuse` → level 1.
-pub fn of_starter(key: StarterKey) -> Option<(&'static TermType, Option<u32>)> {
+pub fn of_starter(key: StarterKey) -> Option<(&'static BlockType, Option<u32>)> {
     TYPES.iter().find_map(|t| {
         if t.key == key {
             return Some((t, if t.multi() { None } else { Some(1) }));
@@ -282,7 +282,7 @@ pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
 
 /// The type a terminal is drawn as: the starter of the first symbol that shows it, else (an old
 /// strip's first symbol, matched by key) the strip's own definition.
-pub(crate) fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static TermType {
+pub(crate) fn type_of_connection_point(doc: &Document, t: ConnectionPointId) -> &'static BlockType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::tags::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
         let c = doc.connection_points().get(&t)?.device()?;
@@ -305,7 +305,7 @@ pub fn separator(doc: &Document, c: DeviceId) -> String {
 }
 
 /// The level names of type `t` on strip `c` (registry `terminal_block.<code>.levels`, else built-in).
-pub fn level_names(doc: &Document, c: DeviceId, t: &TermType) -> Vec<String> {
+pub fn level_names(doc: &Document, c: DeviceId, t: &BlockType) -> Vec<String> {
     if let Some(e) = crate::defaults::terminal_blocks::levels_entry(t.code) {
         let v = ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::component(c)).text();
         let names: Vec<String> = v.split(',').map(|x| x.trim().to_string()).collect();
@@ -317,7 +317,7 @@ pub fn level_names(doc: &Document, c: DeviceId, t: &TermType) -> Vec<String> {
 }
 
 /// The name of level `n` of `t` on strip `c` (`N`).
-pub fn level_name(doc: &Document, c: DeviceId, t: &TermType, n: u32) -> String {
+pub fn level_name(doc: &Document, c: DeviceId, t: &BlockType, n: u32) -> String {
     let i = usize::try_from(n.saturating_sub(1)).unwrap_or(0);
     level_names(doc, c, t).get(i).cloned().unwrap_or_else(|| n.to_string())
 }
@@ -369,7 +369,7 @@ pub(crate) fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>
 }
 
 /// The derived label of level `n` of position `p` of type `t` on strip `c` (no override).
-pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32) -> String {
+pub fn derived_label(doc: &Document, c: DeviceId, t: &BlockType, p: &str, n: u32) -> String {
     if !t.multi() {
         return p.to_string();
     }
@@ -452,7 +452,7 @@ pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[Connectio
 #[derive(Debug, Clone, PartialEq)]
 pub struct Position {
     pub label: String,
-    pub ty: &'static TermType,
+    pub ty: &'static BlockType,
     /// Drawn levels: level → its terminals (one, or in and out; more when drawn twice).
     pub levels: BTreeMap<u32, Vec<ConnectionPointId>>,
     /// Another type's symbols draw some of its levels (`position-mixed`).
@@ -535,7 +535,7 @@ pub struct Chooser {
     /// (position, level) taken by this transaction.
     taken: BTreeSet<(String, u32)>,
     /// Positions this transaction made, with their type.
-    made: BTreeMap<String, &'static TermType>,
+    made: BTreeMap<String, &'static BlockType>,
     next: u64,
 }
 
@@ -551,7 +551,7 @@ impl Chooser {
     /// # Errors
     /// A named position of another type, or whose level is drawn, in words with the way out.
     pub fn choose(
-        &mut self, doc: &Document, c: Option<DeviceId>, t: &'static TermType, n: Option<u32>, named: Option<&str>,
+        &mut self, doc: &Document, c: Option<DeviceId>, t: &'static BlockType, n: Option<u32>, named: Option<&str>,
     ) -> Result<String, CmdError> {
         let ps = c.map(|c| positions(doc, c)).unwrap_or_default();
         let tag = c.map(|c| crate::devices::tags::tag_words(doc, c)).unwrap_or_default();
@@ -578,7 +578,7 @@ impl Chooser {
             }
             return Ok(new(self));
         };
-        let free = |me: &Chooser, label: &str, ty: &TermType, has: bool| std::ptr::eq(ty, t) && !has && !me.taken.contains(&(label.to_string(), n));
+        let free = |me: &Chooser, label: &str, ty: &BlockType, has: bool| std::ptr::eq(ty, t) && !has && !me.taken.contains(&(label.to_string(), n));
         let label = match named.map(str::trim).filter(|x| !x.is_empty()) {
             Some(name) => {
                 if let Some(p) = ps.iter().find(|p| p.label == name) {
@@ -900,7 +900,7 @@ pub fn bridges(key: StarterKey) -> Vec<Vec<PointKey>> {
 
 /// Where each level of a symbol of strip `c` sits, keyed by the definition keys it shows (the
 /// whole terminal: every level).
-pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static TermType, Option<u32>)> {
+pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static BlockType, Option<u32>)> {
     let Subject::Device(_) = r.subject else { return None };
     of_starter(crate::devices::tags::rep_starter(doc, r)?.key)
 }

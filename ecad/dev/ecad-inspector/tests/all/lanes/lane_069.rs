@@ -88,7 +88,7 @@ fn every_op_ledger() -> Ledger {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::ConnectionPointId = ids.fresh();
-    let term_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let point_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) =
         (ids.fresh(), ids.fresh(), ids.fresh());
@@ -141,7 +141,7 @@ fn every_op_ledger() -> Ledger {
                 Op::AddLayer { id: layer, layer: layer_v.clone() },
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
-                Op::AddConnectionPoint { id: term, connection_point: term_v.clone() },
+                Op::AddConnectionPoint { id: term, connection_point: point_v.clone() },
                 Op::AddConnectionPoint { id: term2, connection_point: point("2") },
                 Op::AddConnectionPoint { id: term3, connection_point: point("3") },
                 Op::AddConnectionPoint { id: term4, connection_point: point("4") },
@@ -214,7 +214,7 @@ fn every_op_ledger() -> Ledger {
             id: ids.fresh(),
             connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
         },
-        Op::RemoveConnectionPoint { id: term, connection_point: term_v.clone() },
+        Op::RemoveConnectionPoint { id: term, connection_point: point_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
