@@ -19,6 +19,7 @@ use ecad_model::geometry::units::{Amps, Percent, Watts};
 use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_POWER_WATTS};
 use ecad_model::objects::devices::{Motor, Starting};
 
+use crate::devices::ratings::parse::{number_unit, pieces};
 use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a motor rating.
@@ -63,26 +64,14 @@ fn piece_token(lower: &str) -> Option<Tok> {
         "vfd" | "vsd" => return Some(Tok::Starting(Starting::Vfd)),
         _ => {}
     }
-    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
-    let (num, unit) = lower.split_at(split);
-    unit_token(crate::devices::ratings::parse::decimal(num)?, unit)
+    let (x, unit) = number_unit(lower)?;
+    unit_token(x, unit)
 }
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
 fn tokens(text: &str) -> Option<Vec<Tok>> {
-    // A comma between digits is a decimal comma (`0,37 kW`); any other separates pieces.
-    let chars: Vec<char> = text.chars().collect();
-    let text: String = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let digit = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit);
-            if *c == ',' && digit(i.checked_sub(1)) && digit(Some(i + 1)) { '.' } else { *c }
-        })
-        .collect();
     let mut out: Vec<Tok> = Vec::new();
-    for piece in text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()) {
-        let lower = piece.to_lowercase();
+    for lower in pieces(text) {
         let run_on = match (out.last().copied(), lower.as_str()) {
             // A unit after a bare number: `7.5 kW`, `15 A`, `91 %`.
             (Some(Tok::Bare(x)), u) => unit_token(x, u).filter(|t| !matches!(t, Tok::Bare(_))),

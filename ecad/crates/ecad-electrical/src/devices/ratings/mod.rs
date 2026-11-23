@@ -74,19 +74,8 @@ enum Tok {
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
 fn tokens(text: &str) -> Option<Vec<Tok>> {
-    // A comma between digits is a decimal comma (`6,3 A`); any other separates pieces.
-    let chars: Vec<char> = text.chars().collect();
-    let text: String = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let digit = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit);
-            if *c == ',' && digit(i.checked_sub(1)) && digit(Some(i + 1)) { '.' } else { *c }
-        })
-        .collect();
     let mut out: Vec<Tok> = Vec::new();
-    for piece in text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()) {
-        let lower = piece.to_ascii_lowercase();
+    for lower in parse::pieces(text) {
         // A unit after a bare number: `16 A`, `30 mA`, `6 kA`.
         if let Some(Tok::Bare(x)) = out.last().copied() {
             let unit = match lower.as_str() {
@@ -101,13 +90,13 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
                 continue;
             }
         }
-        out.extend(piece_tokens(piece, &lower)?);
+        out.extend(piece_tokens(&lower)?);
     }
     Some(out)
 }
 
 /// One piece's tokens: a word, a number with its unit, or a curve letter with its current (`C16`).
-fn piece_tokens(piece: &str, lower: &str) -> Option<Vec<Tok>> {
+fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     if lower == "curve" {
         return Some(vec![Tok::CurveWord]);
     }
@@ -121,24 +110,22 @@ fn piece_tokens(piece: &str, lower: &str) -> Option<Vec<Tok>> {
         return Some(vec![Tok::Class(c)]);
     }
     // A curve letter with its current: `C16`, `B6A`.
-    if let Some(rest) = piece.get(1..)
+    if let Some(rest) = lower.get(1..)
         && rest.starts_with(|d: char| d.is_ascii_digit())
-        && let Some(c) = piece.get(..1).and_then(TripCurve::parse)
+        && let Some(c) = lower.get(..1).and_then(TripCurve::parse)
     {
         return match number_token(rest)? {
             Tok::Amps(x) | Tok::Bare(x) => Some(vec![Tok::Curve(c), Tok::Amps(x)]),
             Tok::MilliAmps(_) | Tok::KiloAmps(_) | Tok::Curve(_) | Tok::Class(_) | Tok::Poles(_) | Tok::CurveWord => None,
         };
     }
-    number_token(piece).map(|t| vec![t])
+    number_token(lower).map(|t| vec![t])
 }
 
-/// A number with an optional unit: `16`, `16A`, `30mA`, `6kA`, `6,3A`.
-fn number_token(piece: &str) -> Option<Tok> {
-    let split = piece.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == ',')).unwrap_or(piece.len());
-    let (num, unit) = piece.split_at(split);
-    let x = crate::devices::ratings::parse::decimal(num)?;
-    match unit.to_ascii_lowercase().as_str() {
+/// A lower-case number with an optional unit: `16`, `16a`, `30ma`, `6ka`.
+fn number_token(lower: &str) -> Option<Tok> {
+    let (x, unit) = parse::number_unit(lower)?;
+    match unit {
         "" => Some(Tok::Bare(x)),
         "a" => Some(Tok::Amps(x)),
         "ma" => Some(Tok::MilliAmps(x)),

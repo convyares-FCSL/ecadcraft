@@ -40,6 +40,30 @@ pub(crate) fn decimal(t: &str) -> Option<f64> {
     x.is_finite().then_some(x)
 }
 
+/// `text` split into lower-case pieces at white space, `,` and `;`. A comma between digits is a
+/// decimal comma (`0,5 kW` reads as `0.5 kW`), not a separator. Every rating reader reads these
+/// pieces, so a number reads alike for every kind of device.
+pub(crate) fn pieces(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let text: String = chars
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let digit = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit);
+            if *c == ',' && digit(i.checked_sub(1)) && digit(Some(i + 1)) { '.' } else { *c }
+        })
+        .collect();
+    text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()).map(str::to_lowercase).collect()
+}
+
+/// A lower-case piece read as a number and the unit run on after it (`7.5kw` gives 7.5 and `kw`,
+/// `24` gives 24 and no unit); `None` when it does not start with a [`decimal`] number.
+pub(crate) fn number_unit(lower: &str) -> Option<(f64, &str)> {
+    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
+    let (num, unit) = lower.split_at(split);
+    Some((decimal(num)?, unit))
+}
+
 /// `text` without the unit `unit` at its end (case-insensitive, spaces allowed before it).
 fn strip_unit<'a>(text: &'a str, units: &[&str]) -> &'a str {
     let t = text.trim_end();

@@ -2,6 +2,7 @@
 //!
 //! # Semantics
 //! - `24 V DC`, `24VDC` and `supply 24 V DC` read alike, as the supply.
+//! - `12,5 V DC` reads as `12.5 V DC` (a decimal comma).
 //! - A voltage without AC or DC is asked about; so is a number without a unit.
 //! - A contact or a thermocouple has no supply and no typed rating: whatever is typed on it is
 //!   the note (a contact's switching rating, a thermocouple's type).
@@ -35,9 +36,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
         "dc" => return Some(vec![Tok::Current(Current::Dc)]),
         _ => {}
     }
-    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
-    let (num, unit) = lower.split_at(split);
-    let x = crate::devices::ratings::parse::decimal(num)?;
+    let (x, unit) = crate::devices::ratings::parse::number_unit(lower)?;
     match unit {
         "" => Some(vec![Tok::Bare(x)]),
         "v" => Some(vec![Tok::Volts(x)]),
@@ -50,8 +49,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
 /// The pieces of `text`, or `None` when a piece is no supply word.
 fn tokens(text: &str) -> Option<Vec<Tok>> {
     let mut out: Vec<Tok> = Vec::new();
-    for piece in text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()) {
-        let lower = piece.to_ascii_lowercase();
+    for lower in crate::devices::ratings::parse::pieces(text) {
         // A unit after a bare number: `24 V`, `24 VDC`.
         if let Some(Tok::Bare(x)) = out.last().copied() {
             let run_on = match lower.as_str() {
@@ -151,6 +149,7 @@ mod tests {
             (&pnp, "24V DC", "24 V DC"),
             (&npn, "230 VAC", "230 V AC"),
             (&npn, "12.5 V DC", "12.5 V DC"),
+            (&npn, "12,5 V DC", "12.5 V DC"),
         ] {
             let got = shown(s, text);
             assert_eq!(got, want, "{text}");

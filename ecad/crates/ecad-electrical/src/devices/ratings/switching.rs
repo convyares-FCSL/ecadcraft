@@ -15,6 +15,7 @@ use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
 use ecad_model::objects::devices::switching::{MAX_AC3_AMPS, MAX_AC3_WATTS, MAX_CONTROL_VOLTS, MAX_CONTROL_WATTS};
 use ecad_model::objects::devices::{Control, Operator, OperatorKind, Switching};
 
+use crate::devices::ratings::parse::{number_unit, pieces};
 use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a switching rating.
@@ -52,9 +53,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
         "ac-3" | "ac3" => return Some(vec![Tok::Ac3]),
         _ => {}
     }
-    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
-    let (num, unit) = lower.split_at(split);
-    let x = crate::devices::ratings::parse::decimal(num)?;
+    let (x, unit) = number_unit(lower)?;
     // A voltage with its kind run on: `24vdc`, `230vac`.
     for (suffix, current) in [("vac", Current::Ac), ("vdc", Current::Dc)] {
         if unit == suffix {
@@ -66,19 +65,8 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
 fn tokens(text: &str) -> Option<Vec<Tok>> {
-    // A comma between digits is a decimal comma (`0,37 kW`); any other separates pieces.
-    let chars: Vec<char> = text.chars().collect();
-    let text: String = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let digit = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit);
-            if *c == ',' && digit(i.checked_sub(1)) && digit(Some(i + 1)) { '.' } else { *c }
-        })
-        .collect();
     let mut out: Vec<Tok> = Vec::new();
-    for piece in text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()) {
-        let lower = piece.to_ascii_lowercase();
+    for lower in pieces(text) {
         // A unit after a bare number: `24 V`, `9 A`, `4 kW`, `24 VDC`.
         if let Some(Tok::Bare(x)) = out.last().copied() {
             let run_on = match lower.as_str() {

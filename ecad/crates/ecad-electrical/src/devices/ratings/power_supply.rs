@@ -24,7 +24,7 @@ use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, 
 use ecad_model::objects::devices::power_supply::{MAX_AMPS, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
 use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
 
-use crate::devices::ratings::load::pieces;
+use crate::devices::ratings::parse::{number_unit, pieces};
 use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// Which side of the supply a value is on.
@@ -85,9 +85,8 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     if let Some(w) = word {
         return Some(vec![w]);
     }
-    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
-    let (num, unit) = lower.split_at(split);
-    unit_tokens(crate::devices::ratings::parse::decimal(num)?, unit)
+    let (x, unit) = number_unit(lower)?;
+    unit_tokens(x, unit)
 }
 
 /// The pieces of `text` (a `/` its own piece), or `None` when a piece is no rating word.

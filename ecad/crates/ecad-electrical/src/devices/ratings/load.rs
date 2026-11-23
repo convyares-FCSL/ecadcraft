@@ -14,6 +14,7 @@ use ecad_model::geometry::units::Watts;
 use ecad_model::objects::devices::Load;
 use ecad_model::objects::devices::load::MAX_POWER_WATTS;
 
+use crate::devices::ratings::parse::{number_unit, pieces};
 use crate::devices::ratings::{MAX_CHARS, Read};
 
 /// One read piece of a power rating.
@@ -38,9 +39,8 @@ fn unit_token(x: f64, unit: &str) -> Option<PowerTok> {
 
 /// A number with its unit (`3kW`, `5W`, `24V`), or `None` when the piece is not one.
 pub(super) fn power_piece(lower: &str) -> Option<PowerTok> {
-    let split = lower.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(lower.len());
-    let (num, unit) = lower.split_at(split);
-    unit_token(crate::devices::ratings::parse::decimal(num)?, unit)
+    let (x, unit) = number_unit(lower)?;
+    unit_token(x, unit)
 }
 
 /// A unit after a bare number (`3 kW`): the joined token.
@@ -51,20 +51,6 @@ pub(super) fn power_unit_after(prev: Option<PowerTok>, lower: &str) -> Option<Po
         Some(PowerTok::Other("voltage")) if matches!(lower, "ac" | "dc") => Some(PowerTok::Other("voltage")),
         Some(PowerTok::Watts(_) | PowerTok::Other(_)) | None => None,
     }
-}
-
-/// `text` with a comma between digits made a decimal point (`0,5 kW`), split into lower-case pieces.
-pub(super) fn pieces(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let text: String = chars
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let digit = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(char::is_ascii_digit);
-            if *c == ',' && digit(i.checked_sub(1)) && digit(Some(i + 1)) { '.' } else { *c }
-        })
-        .collect();
-    text.split(|c: char| c.is_whitespace() || c == ',' || c == ';').filter(|p| !p.is_empty()).map(str::to_lowercase).collect()
 }
 
 /// Why the powers a text gives are not one power.
