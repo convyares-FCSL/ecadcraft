@@ -822,8 +822,10 @@ struct Facts {
     project: ProjectId,
     cache: Cache,
     created_ms: Option<u64>,
-    /// `meta.active`: the branch the project was last shown on.
+    /// `meta.active`: the branch the project was last shown on (`None`: not recorded or not read).
     active: Option<BranchId>,
+    /// Why `meta.active` does not read, when it is recorded but unreadable.
+    active_damage: Option<String>,
     /// The `meta` names this build does not read.
     unknown: Vec<ecad_model::document::strict::UnknownWord>,
     /// The file's `schema_version`; not [`SCHEMA_VERSION`] means it opens read-only
@@ -877,9 +879,16 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
         return Err(OpenError::Damaged(FileError::CacheEvery(cache.every)));
     }
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
-    // An unreadable `active` is not damage: the project opens on `main`.
-    let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
-    Ok(Facts { project, cache, created_ms, active, unknown, schema_version: sv })
+    // An `active` that does not read is damage, reported when the project opens (on `main`).
+    let (active, active_damage) = match meta_json(r, "active") {
+        Ok(None) => (None, None),
+        Ok(Some(v)) => match v.as_str().and_then(BranchId::parse) {
+            Some(b) => (Some(b), None),
+            None => (None, Some(format!("`meta.active` is not a branch ID ({v})"))),
+        },
+        Err(e) => (None, Some(format!("`meta.active` does not read ({e})"))),
+    };
+    Ok(Facts { project, cache, created_ms, active, active_damage, unknown, schema_version: sv })
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
@@ -1057,7 +1066,7 @@ impl Project {
     /// Open the project in `store` on the branch it was last shown on
     /// (`meta.active`), or `main` when that is absent, unknown or not open. `seed` seeds IDs
     /// allocated after opening. Damage found while loading opens read-only, at the last state that
-    /// verifies, with a report.
+    /// verifies, with a report; so does a `meta.active` that does not read (on `main`).
     ///
     /// # Errors
     /// [`OpenError`] when the container facts or the branch row are unusable.
@@ -1084,6 +1093,12 @@ impl Project {
             },
         };
         l.report.schema_version = facts.schema_version;
+        if let Some(detail) = facts.active_damage
+            && l.damage.is_none()
+        {
+            l.damage = Some(format!("the file is damaged ({detail})"));
+            l.report.damage = Some(Damage { seq: None, detail });
+        }
         // Unknown `meta` names keep the file exactly as it is: nothing writes to it, not even a
         // branch switch's `meta.active`.
         let unknown_words = facts.unknown;

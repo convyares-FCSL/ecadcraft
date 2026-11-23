@@ -354,10 +354,11 @@ fn a_save_on_main_by_a_build_that_only_knows_main_leaves_the_branch_consistent()
     }
 }
 
-/// `meta.active` naming a branch that is gone, archived, or not a branch ID at all: the file
-/// opens on main, undamaged (an older build or a hand edit may leave any of these).
+/// `meta.active` naming a branch that is gone or archived: the file opens on main, undamaged (a
+/// closed branch stays recorded until the next switch). A value that is not a branch ID at all is
+/// damage: the file opens on main, read-only, and the report names `meta.active`.
 #[test]
-fn a_stale_or_odd_meta_active_opens_on_main() {
+fn a_stale_meta_active_opens_on_main_and_an_unreadable_one_is_damage() {
     let dir = TempDir::new("active");
     let f = fixture();
     let p = dir.path("p.ecad");
@@ -367,18 +368,27 @@ fn a_stale_or_odd_meta_active_opens_on_main() {
     let (b, _) = proj.create_branch("Gone", main, f.ledger.head(), None, None).unwrap();
     proj.set_branch_open(b, false).unwrap();
     drop(proj);
-    for value in [
-        serde_json::json!(b.hex()),
-        serde_json::json!("00112233445566778899aabbccddeeff"),
-        serde_json::json!("not hex"),
-        serde_json::json!(42),
-        serde_json::json!({"branch": b.hex()}),
-    ] {
+    let rows = [
+        (serde_json::json!(b.hex()), false),
+        (serde_json::json!("00112233445566778899aabbccddeeff"), false),
+        (serde_json::json!("not hex"), true),
+        (serde_json::json!("+0112233445566778899aabbccddeeff"), true),
+        (serde_json::json!(42), true),
+        (serde_json::json!({"branch": b.hex()}), true),
+    ];
+    for (value, damaged) in rows {
         meta_put(&p, "active", Some(&serde_json::to_vec(&value).unwrap()));
         let o = Project::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap_or_else(|e| panic!("{value}: {e}"));
         assert_eq!(o.project.branch(), main, "{value}");
-        assert!(o.report.damage.is_none(), "{value}: {:?}", o.report);
         assert_eq!(o.ledger.document(), f.ledger.document());
+        match damaged {
+            false => assert!(o.report.damage.is_none(), "{value}: {:?}", o.report),
+            true => {
+                let d = o.report.damage.as_ref().unwrap_or_else(|| panic!("{value}: no damage reported"));
+                assert!(d.detail.contains("meta.active"), "{value}: {d:?}");
+                assert!(o.project.read_only().is_some(), "{value}: a damaged file opens read-only");
+            }
+        }
     }
 }
 
