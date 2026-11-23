@@ -141,6 +141,26 @@ pub struct Row {
     pub tag_state: Option<ecad_model::naming::tag::TagState>,
     /// What the row is: a plain value, or the visibility of one kind of text.
     pub kind: RowKind,
+    /// Where the Device tab shows it.
+    pub place: DevicePlace,
+}
+
+/// Where the Device tab shows a row of a device. Every row of another object, and every device
+/// row not placed here, is a note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DevicePlace {
+    /// Tag, function, location (with its overrides), description and the symbol's type.
+    Identity,
+    /// Maker and part number.
+    Parts,
+    /// The contacts the device offers, beside where it is drawn.
+    Drawn,
+    /// Read rows the tab shows from its own copy of the device (this symbol, where it is, its coil
+    /// or contacts).
+    Shown,
+    /// Notes and attributes.
+    #[default]
+    Notes,
 }
 
 /// What a Properties row is.
@@ -165,6 +185,7 @@ impl Row {
             proposal: None,
             tag_state: None,
             kind: RowKind::Value,
+            place: DevicePlace::Notes,
         }
     }
     /// An editable row.
@@ -325,6 +346,7 @@ pub fn device_section(
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
         r.varies = varies;
+        r.place = if matches!(key, "maker" | "part_number") { DevicePlace::Parts } else { DevicePlace::Identity };
         if key == "tag" && one {
             r.tag_state = devices.iter().next().and_then(|c| doc.devices().get(c)).and_then(|d| d.tag.state());
         }
@@ -363,9 +385,10 @@ pub fn device_section(
                 this.push(' ');
                 this.push_str(&labels.join("/"));
             }
-            rows.push(Row::ro("symbol", "This symbol", this));
+            rows.push(Row { place: DevicePlace::Shown, ..Row::ro("symbol", "This symbol", this) });
             // The symbol's type, from its definition.
-            rows.push(Row::ro("rep_type", "Symbol", crate::symbols::reps::rep_type(doc, r).word().to_string()));
+            let rep_type = crate::symbols::reps::rep_type(doc, r).word().to_string();
+            rows.push(Row { place: DevicePlace::Identity, ..Row::ro("rep_type", "Symbol", rep_type) });
             let book = Book::of(doc);
             let grid = ecad_model::document::sheet::Grid::of(doc, r.page);
             let at = r
@@ -380,7 +403,7 @@ pub fn device_section(
             let place = at
                 .and_then(|p| ecad_model::connectivity::derive::place_on(&grid, &book.number(doc, r.page), p))
                 .map_or_else(|| "?".into(), |pl| pl.text(doc.settings().reference_style()));
-            rows.push(Row::ro("where", "Where", place));
+            rows.push(Row { place: DevicePlace::Shown, ..Row::ro("where", "Where", place) });
         }
         format!("ECAD · DEVICE {tag}")
     } else {
@@ -440,6 +463,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
             None => Row { inherited: true, ..Row::rw(key, label, format!("{device} (device)")) },
         };
         r.choices = codes(doc, LOCATION_KEY);
+        r.place = DevicePlace::Identity;
         rows.push(r);
     };
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
@@ -458,7 +482,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<Button>) {
     use crate::references::devices;
     let offered = devices::parse::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
-    rows.push(Row::rw(devices::parse::CONTACTS_KEY, "Contacts offered", offered));
+    rows.push(Row { place: DevicePlace::Drawn, ..Row::rw(devices::parse::CONTACTS_KEY, "Contacts offered", offered) });
     let dev = devices::classify::device(doc, c);
     if dev.head.is_some() {
         let project = doc.settings().contact_mirror.word();
@@ -492,7 +516,8 @@ fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model:
                 format!("{} {} {}{state}", r.label_pair(), r.kind.upper(), r.place)
             })
             .collect();
-        rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));
+        let text = if text.is_empty() { "none drawn".into() } else { text.join("; ") };
+        rows.push(Row { place: DevicePlace::Shown, ..Row::ro("contactrows", "Contacts", text) });
         for r in list.iter().filter(|r| r.state != devices::table::State::Spare) {
             if let Some(t) = r.rep {
                 buttons.push(Button::RefGoto { source: sym, target: Some(t), label: format!("Go to {}", r.label_pair()) });
@@ -503,7 +528,7 @@ fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model:
             Some(h) => places.text(h.page, devices::classify::anchor(doc, h)),
             None => "not drawn".into(),
         };
-        rows.push(Row::ro("coil", "Coil", value));
+        rows.push(Row { place: DevicePlace::Shown, ..Row::ro("coil", "Coil", value) });
         if dev.head.is_some() {
             buttons.push(Button::RefGoto { source: sym, target: None, label: "Go to coil".into() });
         }

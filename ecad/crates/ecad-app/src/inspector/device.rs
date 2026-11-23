@@ -4,7 +4,7 @@
 //! cable…) it shows that object's properties in the same folding sections.
 
 use ecad_electrical::properties::Row;
-use ecad_electrical::properties::{Button, Section, SectionKind};
+use ecad_electrical::properties::{Button, DevicePlace, Section, SectionKind};
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
@@ -18,26 +18,6 @@ pub const DRAWN_ROW: &str = "ecad.inspector.drawn.row";
 pub(crate) const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
 /// What a button that has nothing behind it yet says.
 pub const NOT_YET: &str = "Not available yet";
-
-/// The props rows the Device tab places in its own sections; every other row of a device goes to
-/// Notes and attributes (the Layout tab takes the contact table and the texts).
-const PLACED: [&str; 15] = [
-    "tag",
-    "function",
-    "location",
-    "location.socket",
-    "location.plug",
-    "location.terminal_block",
-    "rep_type",
-    "description",
-    "maker",
-    "part_number",
-    "symbol",
-    "where",
-    "contactrows",
-    "coil",
-    ecad_electrical::references::devices::parse::CONTACTS_KEY,
-];
 
 /// A row the Layout tab draws.
 pub(crate) fn on_layout_tab(row: &Row) -> bool {
@@ -247,7 +227,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
         }
     });
     // Notes and attributes: everything else about the device.
-    let rest: Vec<&Row> = s.rows.iter().filter(|r| !PLACED.contains(&r.key.as_str()) && !on_layout_tab(r)).collect();
+    let rest: Vec<&Row> = s.rows.iter().filter(|r| r.place == DevicePlace::Notes && !on_layout_tab(r)).collect();
     let buttons: Vec<Button> = s.buttons.iter().filter(|b| !matches!(b, Button::RefGoto { .. })).cloned().collect();
     let n = rest.len() + insp.connector.len();
     let summary = if n == 0 { "none".to_string() } else { n.to_string() };
