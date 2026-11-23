@@ -1,4 +1,4 @@
-//! The proposal's worked example (§7) as an executable scenario, at the model level.
+//! A worked example as an executable scenario, at the model level.
 
 use ecad_model::connectivity::derive::{mismatches, nets};
 use ecad_model::{

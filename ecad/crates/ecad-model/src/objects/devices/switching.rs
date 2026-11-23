@@ -1,5 +1,4 @@
-//! A switching device's operator and rating (design 072 §2.2, "Ratings", owner decisions
-//! 2026-11-18): typed fields, never a stored display string.
+//! A switching device's operator and rating: typed fields, never a stored display string.
 //!
 //! # Semantics
 //! - [`Operator`] says what operates it: a coil (relays, contactors), a solid-state input (an SSR)
@@ -35,7 +34,7 @@ pub const MAX_AC3_AMPS: f64 = 6300.0;
 /// The largest AC-3 motor power, in watts (4 MW).
 pub const MAX_AC3_WATTS: f64 = 4_000_000.0;
 
-/// A switching device: what operates it and its AC-3 rating (group 3, design 072 §2.2).
+/// A switching device: what operates it and its AC-3 rating.
 ///
 /// # Example
 /// ```
@@ -63,7 +62,7 @@ pub struct Switching {
     /// The AC-3 motor power it switches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ac3_power: Option<Watts>,
-    /// The contacts it offers (design 025 FP1).
+    /// The contacts it offers.
     #[serde(default, skip_serializing_if = "ContactSet::is_empty")]
     pub contacts: ContactSet,
     /// Where its contact table goes; none takes the project's default.

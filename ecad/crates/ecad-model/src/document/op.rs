@@ -1,7 +1,7 @@
-//! Ops: the smallest recorded changes (proposal §6.1).
+//! Ops: the smallest recorded changes.
 //!
-//! Every op records resolved intent and carries the values it replaces (TX-01, TX-02), so its
-//! inverse is computed from the op alone and replay checks its preconditions (TX-04).
+//! Every op records resolved intent and carries the values it replaces, so its
+//! inverse is computed from the op alone and replay checks its preconditions.
 
 use std::collections::BTreeMap;
 
@@ -20,11 +20,11 @@ pub enum ObjectRef {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
-    /// A page's properties (brief 019, decision FP1).
+    /// A page's properties.
     Page(PageId),
-    /// The project's own properties (brief 019, decision FP1).
+    /// The project's own properties.
     Project,
-    /// The standard's registry values (brief 050a, FP3): a value at the Standard level. Refused
+    /// The standard's registry values: a value at the Standard level. Refused
     /// while the project has no standard.
     Standard,
 }
@@ -44,7 +44,7 @@ impl ObjectRef {
     }
 }
 
-/// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
+/// Settle the document's nets after ops applied with [`Op::apply_unsettled`].
 pub(crate) fn settle(doc: &mut Document) {
     let mut conn = std::mem::take(&mut doc.conn);
     conn.settle(doc);
@@ -64,7 +64,7 @@ pub enum Op {
         page: Page,
         index: usize,
     },
-    /// Change a page in place (design 072 §5.1): its title, number, folder, look or display
+    /// Change a page in place: its title, number, folder, look or display
     /// choices. Its place in the page order and its kind stay.
     ModifyPage {
         id: PageId,
@@ -100,14 +100,14 @@ pub enum Op {
         id: DeviceId,
         device: Device,
     },
-    /// Change a device's stored fields, its type among them (design 072 F13): the whole device
+    /// Change a device's stored fields, its type among them: the whole device
     /// before and after, so the inverse swaps them.
     ModifyDevice {
         id: DeviceId,
         before: Device,
         after: Device,
     },
-    /// Change which embedded definition a component's symbols use (brief 048, FP5), keeping
+    /// Change which embedded definition a component's symbols use, keeping
     /// its properties, terminals and representations.
     SetDeviceDefinition {
         id: DeviceId,
@@ -143,15 +143,15 @@ pub enum Op {
         id: WireId,
         wire: Wire,
     },
-    /// A wire's values, net or place in its net's order change, the whole struct recorded (design
-    /// 072 F20). Its ends and conductor id never change: a wire between other points is another
+    /// A wire's values, net or place in its net's order change, the whole struct recorded.
+    /// Its ends and conductor id never change: a wire between other points is another
     /// wire.
     ModifyWire {
         id: WireId,
         before: Wire,
         after: Wire,
     },
-    /// A route drawn (design 072 F31).
+    /// A route drawn.
     AddRoute {
         id: RouteId,
         route: Route,
@@ -166,7 +166,7 @@ pub enum Op {
         before: Route,
         after: Route,
     },
-    /// A drawing aid made (design 072 §6.2).
+    /// A drawing aid made.
     CreateAid {
         id: crate::naming::id::AidId,
         aid: crate::objects::aid::Aid,
@@ -181,7 +181,7 @@ pub enum Op {
         before: crate::objects::aid::Aid,
         after: crate::objects::aid::Aid,
     },
-    /// A loose part added to the BOM (design 072 §6.4).
+    /// A loose part added to the BOM.
     CreateLoosePart {
         id: crate::naming::id::LoosePartId,
         part: crate::objects::loose_part::LoosePart,
@@ -204,13 +204,13 @@ pub enum Op {
         id: CableId,
         cable: Cable,
     },
-    /// A cable's fields or cores changed, the whole struct recorded (design 072 §4.5).
+    /// A cable's fields or cores changed, the whole struct recorded.
     ModifyCable {
         id: CableId,
         before: Cable,
         after: Cable,
     },
-    /// Link two devices (design 072 §2.6, F-ops `AddDeviceLink`/`RemoveDeviceLink`).
+    /// Link two devices (F-ops `AddDeviceLink`/`RemoveDeviceLink`).
     AddDeviceLink {
         id: crate::naming::id::LinkId,
         link: crate::objects::user::DeviceLink,
@@ -237,22 +237,22 @@ pub enum Op {
         before: ProjectSettings,
         after: ProjectSettings,
     },
-    /// Bookmark transaction `at` under `name` (§6.1).
+    /// Bookmark transaction `at` under `name`.
     NameVersion {
         name: crate::PointName,
         at: u64,
-        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        /// A version's description; left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
     UnnameVersion {
         name: crate::PointName,
         at: u64,
-        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        /// A version's description; left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
-    /// A folder of pages at `index` in the folder order (brief 019, decision FP3).
+    /// A folder of pages at `index` in the folder order.
     AddFolder {
         id: FolderId,
         folder: Folder,
@@ -269,13 +269,13 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
-    /// Change the project's own data (design 072 §5.3): its location and function lists and
+    /// Change the project's own data: its location and function lists and
     /// defaults, as one whole value.
     ModifyProject {
         before: crate::document::project::Project,
         after: crate::document::project::Project,
     },
-    /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
+    /// Write one whole style record: `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
     SetStyle {
         layer: StyleLayer,
@@ -284,7 +284,7 @@ pub enum Op {
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
     },
-    /// Set, change or remove the standard's header (brief 050a, FP3). `None → Some` makes an
+    /// Set, change or remove the standard's header. `None → Some` makes an
     /// empty standard; `Some → None` removes one, which must hold no values or styles by then
     /// (the command clears them with ops before it, so undo restores them).
     SetStandard {
@@ -325,7 +325,7 @@ impl Op {
         (before != &after).then(|| Op::ModifyCable { id, before: before.clone(), after })
     }
 
-    /// Edit cable `id` within `ops` (design 072 §4.5: a cable is written whole): `edit` changes the
+    /// Edit cable `id` within `ops` (a cable is written whole): `edit` changes the
     /// `after` of the `ModifyCable` that `ops` already holds for it, or of a new one from `doc`'s
     /// cable. A `ModifyCable` left unchanged is dropped; nothing when the cable is not there.
     pub fn edit_cable(doc: &Document, ops: &mut Vec<Op>, id: CableId, edit: impl FnOnce(&mut Cable)) {
@@ -429,7 +429,7 @@ impl Op {
         r
     }
 
-    /// [`Op::apply`] without settling the nets (brief 022): the ledger settles them once after a
+    /// [`Op::apply`] without settling the nets: the ledger settles them once after a
     /// whole transaction ([`settle`]).
     pub(crate) fn apply_unsettled(&self, doc: &mut Document, checked: bool) -> Result<()> {
         let mut conn = std::mem::take(&mut doc.conn);
@@ -695,7 +695,7 @@ impl Op {
                 if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
-                // Design 072 §4.5: a cable is written whole; only ModifyCable changes it.
+                // A cable is written whole; only ModifyCable changes it.
                 if matches!(object, ObjectRef::Cable(_)) {
                     return Err(pre(format!("property {key} of a cable is written with the cable; ModifyCable changes it")));
                 }
@@ -715,7 +715,7 @@ impl Op {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
-                // A style choice is indexed (brief 050a): the style's explicit users.
+                // A style choice is indexed: the style's explicit users.
                 if crate::objects::styles::is_choice_key(key) {
                     let obj = *object;
                     if !matches!(obj, ObjectRef::Project | ObjectRef::Standard) {

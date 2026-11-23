@@ -1,5 +1,4 @@
-//! The built-in project settings this crate computes with, as data (brief 066c, design 066 §2.2;
-//! overseer ruling 2026-11-16, option D).
+//! The built-in project settings this crate computes with, as data.
 //!
 //! # Semantics
 //! - The values live in `ecad-model/defaults/settings.toml`, embedded at build time ([`SETTINGS`]).
@@ -11,7 +10,7 @@
 //!   tested build) takes its safe value: the low end of its range or its first word; never a crash.
 //!
 //! Excluded: kinds, ranges and labels (the registry's), the standard level (this crate reads the
-//! project's own value or the built-in, as before brief 066), and reading any file from disk.
+//! project's own value or the built-in), and reading any file from disk.
 
 use std::sync::OnceLock;
 
@@ -38,7 +37,7 @@ pub const SHEET: &str = "page.sheet";
 /// Registry key of the reference style.
 pub const REFERENCE_STYLE: &str = "print.reference_style";
 
-/// Every key [`SETTINGS`] holds. These live only here (owner, 2026-11-16: what the lower crate
+/// Every key [`SETTINGS`] holds. These live only here (what the lower crate
 /// needs goes in the lower crate); the registry's entries for them read [`get`].
 pub const KEYS: &[&str] =
     &[TAG_PADDING, crate::naming::tag::DASH_KEY, crate::naming::tag::CASE_KEY, WIRE_DIGITS, COLOUR_STYLE, PAGE_NUMBER_STEP, SHEET, REFERENCE_STYLE];

@@ -1,4 +1,4 @@
-//! Derived results: recomputed from the document, never stored (principle P5).
+//! Derived results: recomputed from the document, never stored.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,8 +14,8 @@ use crate::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representa
 ///
 /// # Semantics
 /// Symbol terminal positions are computed from the stored placement and the embedded
-/// definition's local terminal position (proposal §4.3), or the representation's connection
-/// points in the definition's local frame when it has them (brief 018). A terminal shown by several
+/// definition's local terminal position, or the representation's connection
+/// points in the definition's local frame when it has them. A terminal shown by several
 /// representations on the same page appears once per representation.
 pub fn connection_point_positions(doc: &Document, page: PageId) -> Vec<(ConnectionPointId, RepresentationId, Pt)> {
     let mut out = Vec::new();
@@ -47,7 +47,7 @@ pub fn connection_point_position(doc: &Document, page: PageId, connection_point:
 /// The terminals a component representation shows, with their positions, in the order
 /// [`connection_point_positions`] lists them.
 fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> {
-    // A cable reference shows its cores' named points (design 072 §4.4, F4).
+    // A cable reference shows its cores' named points.
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
@@ -62,8 +62,8 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
             let Some(ItemKind::Symbol(inst)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
                 return Vec::new();
             };
-            // Connection points of a symbol representation are in the definition's local frame
-            // (brief 018): the terminals follow the instance.
+            // Connection points of a symbol representation are in the definition's local frame:
+            // the terminals follow the instance.
             if !r.connection_points.is_empty() {
                 return r.connection_points.iter().map(|(t, p)| (*t, inst.placement.apply(*p))).collect();
             }
@@ -79,7 +79,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(ConnectionPointId, Pt)> 
 }
 
 /// The route of a conductor on a page: the first route there that carries it
-/// ([`crate::connectivity::wire_order::wire_of_route`], design 072 §4: routes draw, wires run between their
+/// ([`crate::connectivity::wire_order::wire_of_route`]: routes draw, wires run between their
 /// connection points), found through the wire's points, and its drawing's first item path.
 pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<(crate::naming::id::ItemId, Primitive)> {
     let wire = doc.wires.get(&conductor)?;
@@ -93,7 +93,7 @@ pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<
 }
 
 /// Where wire `w` starts: the end of a route at its first connection point (at its second when
-/// no route reaches the first), on the earliest page in book order (design 072 §4.3: routes draw,
+/// no route reaches the first), on the earliest page in book order (routes draw,
 /// wires run between their connection points). `None` when no route reaches either point.
 pub fn wire_start(doc: &Document, w: WireId) -> Option<(PageId, Pt)> {
     let wire = doc.wires.get(&w)?;
@@ -133,7 +133,8 @@ pub struct Mismatch {
     pub connection_point_at: Pt,
 }
 
-/// Route ends on a connection point whose drawn end is not where that point is shown (DOC-03 check).
+/// Route ends on a connection point whose drawn end is not where that point is shown. A check only: geometry is
+/// never consulted to join a net.
 ///
 /// # Semantics
 /// Only pages where both the route and the terminal are shown are compared; an attachment to a
@@ -158,14 +159,14 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
     out
 }
 
-/// A connected set of terminals and conductors (derived net; identity not stable, §15).
+/// A connected set of terminals and conductors (derived net; identity not stable).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Net {
     pub connection_points: Vec<ConnectionPointId>,
     pub wires: Vec<WireId>,
 }
 
-/// Nets from stored attachments only (geometry is never consulted, DOC-03).
+/// Nets from stored attachments only (geometry is never consulted).
 pub fn nets(doc: &Document) -> Vec<Net> {
     // Union-find over terminals and conductors.
     let mut nodes: Vec<Node> = Vec::new();
@@ -223,14 +224,14 @@ enum Node {
     Wire(WireId),
 }
 
-// ---------------------------------------------------------------- cable references (brief 010)
+// ---------------------------------------------------------------- cable references
 
-/// Most other ends one reference text lists before `+N` (design 010 §6.2); also the most partner
+/// Most other ends one reference text lists before `+N`; also the most partner
 /// IDs a [`CableReference`] keeps, so a hostile file with many references of one cable costs
 /// linear, not quadratic, memory.
 pub const MAX_LISTED_PARTNERS: usize = 3;
 
-/// Most references one cable may have (design 010, owner question Q2): one continuation. More
+/// Most references one cable may have: one continuation. More
 /// can only come from a file; they are reported, never made by a command.
 pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 
@@ -238,15 +239,15 @@ pub const MAX_REFERENCES_PER_CABLE: usize = 2;
 /// for any real cable, and a bound on the work per reference.
 pub(crate) const MAX_DIRECTION_SAMPLES: usize = 1_000;
 
-/// The text that names a place on a sheet in `style` (owner answer Q1, 2026-11-08; UI round 2
-/// and rev 3): `105/B3`, `105-B-3` or `/105.3`; `?` (`/?`) when the place cannot be located.
+/// The text that names a place on a sheet in `style`: `105/B3`, `105-B-3` or `/105.3`; `?` (`/?`) when the
+/// place cannot be located.
 ///
 /// # Semantics
 /// The zone's **letter comes first**: on the default grid (rows lettered, columns numbered) the
-/// row, then the column; on a grid lettered across the top (a project saved before UI rev 3, or a
-/// sheet spec saying `letters numbers`) the column, then the row, as before (`105-C-4`). The
+/// row, then the column; on a grid lettered across the top (a sheet spec saying `letters numbers`) the column,
+/// then the row (`105-C-4`). The
 /// page-and-column style names the column whatever its label (`/105.3` on the default grid): the
-/// current path it exists to name (review of PR #96, finding 2).
+/// current path it exists to name.
 pub fn place_text(style: ReferenceStyle, page: &str, column: Option<&str>, row: Option<&str>) -> String {
     let lettered = |l: &str| l.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
     // Rows lettered and columns not: the row is the zone's letter.
@@ -275,7 +276,7 @@ pub fn unlocated(style: ReferenceStyle) -> &'static str {
     }
 }
 
-/// Where a point lies on its page's sheet (brief 019): the page's shown number and the frame's
+/// Where a point lies on its page's sheet: the page's shown number and the frame's
 /// column and row, as the frame letters and numbers them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
@@ -300,8 +301,7 @@ pub fn place_on(grid: &Grid, page_label: &str, at: Pt) -> Option<Place> {
     Some(Place { page: page_label.to_string(), column, row, column_label: grid.column_label(column), row_label: grid.row_label(row) })
 }
 
-/// One cable reference end, with everything it says derived from the document (design 010 §6,
-/// design 019 §3.3).
+/// One cable reference end, with everything it says derived from the document.
 ///
 /// # Semantics
 /// Nothing here is stored: the page number is the page's `number` property or its book position
@@ -385,9 +385,9 @@ pub(crate) fn route_ends_on(doc: &Document, conductor: WireId, page: PageId) -> 
     route_on_page(doc, conductor, page).and_then(|(_, p)| p.path_ends())
 }
 
-/// Every cable reference in the document, in page order, then column, then ID (design 010 §6.2,
-/// §7.4). Cost is one pass over the representations plus the referenced cables' members (their
-/// routes are found through the subject index, brief 014); never panics on hostile values (they
+/// Every cable reference in the document, in page order, then column, then ID.
+/// Cost is one pass over the representations plus the referenced cables' members (their
+/// routes are found through the subject index); never panics on hostile values (they
 /// read `/?`).
 pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     let references: Vec<(RepresentationId, &Representation)> = doc
@@ -402,7 +402,7 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
 /// The references of `cables` only, exactly as [`cable_references`] derives them (same values,
 /// same order): everything a reference says depends only on its own cable (its other references,
 /// its members' routes) and on the page order and length unit. Cost is in proportion to those
-/// cables' references and members, not to the document (brief 014).
+/// cables' references and members, not to the document.
 pub fn cable_references_of(doc: &Document, cables: &BTreeSet<CableId>) -> Vec<CableReference> {
     let references: Vec<(RepresentationId, &Representation)> = cables
         .iter()
@@ -435,7 +435,7 @@ fn references_from(doc: &Document, references: Vec<(RepresentationId, &Represent
         let ends: Vec<(Pt, Pt)> = members
             .iter()
             .filter_map(|m| {
-                // The line landing on the core's named point on this page (F4), else its wire's
+                // The line landing on the core's named point on this page, else its wire's
                 // route here, else the loose line it sits on.
                 let through = m.through.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|x| doc.routes.get(&x)).find_map(line);
                 through.or_else(|| match m.position {

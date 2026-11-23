@@ -1,4 +1,4 @@
-//! A3: `keys_are_registered` (design 072 §14): `KEYS`, `FAMILIES` and `RESERVED` are disjoint and
+//! A3: `keys_are_registered`: `KEYS`, `FAMILIES` and `RESERVED` are disjoint and
 //! every key classifies to an area other than `Free`.
 
 use std::collections::BTreeSet;

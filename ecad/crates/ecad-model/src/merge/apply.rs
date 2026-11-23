@@ -77,7 +77,7 @@ pub(super) fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<Pa
 pub(super) fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
     let props = |d: &Document| -> Option<Properties> {
         match obj {
-            // A device's tag and text fields are listed as its keys were (design 072 §2.1).
+            // A device's tag and text fields are listed as its keys were.
             Obj::Device(c) => d.devices.get(&c).map(|x| {
                 let mut p = x.properties.clone();
                 p.extend(text_bag(x));
@@ -118,7 +118,7 @@ pub(super) fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             return format!("· {k} {} → {}", q(name(&vx, k)), q(name(&vy, k)));
         }
     }
-    // Design 072 §3 (FP1): a module moved to another station shows the stations' tags.
+    // A module moved to another station shows the stations' tags.
     if let Obj::Device(c) = obj
         && let (Some(x), Some(y)) = (a.devices.get(&c), s.devices.get(&c))
         && let (crate::DeviceType::PlcModule(mx), crate::DeviceType::PlcModule(my)) = (&x.device_type, &y.device_type)
@@ -142,10 +142,10 @@ pub(super) fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 .filter(|k| pa.get(*k) != ps.get(*k))
                 .filter(|k| crate::naming::keys::NUMBERING_HIGH.parse(k).is_none())
                 .collect();
-            // `numbering.high.<P>` is internal (brief 026): never listed (reviewer 026, nit).
+            // `numbering.high.<P>` is internal: never listed.
             match keys.first() {
                 Some(k) => {
-                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    // A value naming a component shows its tag.
                     let q = |v: Option<&String>| v.map_or_else(|| "(none)".into(), |v| format!("\"{}\"", value_words(&[s, a], v)));
                     let more = if keys.len() > 1 { format!(" (+{} more)", keys.len() - 1) } else { String::new() };
                     format!("· {} {} → {}{more}", key_words(k), q(pa.get(*k)), q(ps.get(*k)))
@@ -332,7 +332,7 @@ pub fn objects_of(ops: &[Op]) -> BTreeSet<Obj> {
     out
 }
 
-/// A conflict kind's word in the merge preview's JSON (design 020 §10).
+/// A conflict kind's word in the merge preview's JSON.
 pub fn kind_word(k: ConflictKind) -> &'static str {
     match k {
         ConflictKind::Value => "value",

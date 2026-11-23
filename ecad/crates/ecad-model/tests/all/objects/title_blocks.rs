@@ -1,4 +1,4 @@
-//! Brief 055 (design 055 §1.3, §2, FP1, FP4): title block bounds, a page's sheet and margins
+//! Title block bounds, a page's sheet and margins
 //! through its frame, and the frame record as one merge unit.
 
 use ecad_model::document::sheet::{self, Margins, SheetSpec};

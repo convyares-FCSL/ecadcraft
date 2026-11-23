@@ -1,6 +1,6 @@
-//! Brief 072 lane E (design 072 §5.1, §14): the typed page. `ModifyPage` (A9: inverse, applied
-//! and checked), `PageKind` and `GenKind` words (A2), the page's old keys reserved (A3), and the
-//! strict page record (A4).
+//! The typed page. `ModifyPage` (inverse, applied
+//! and checked), `PageKind` and `GenKind` words, the page's old keys reserved, and the
+//! strict page record.
 
 use ecad_model::document::book::{Book, PageNo};
 use ecad_model::naming::keys;

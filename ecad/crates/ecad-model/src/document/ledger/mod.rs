@@ -1,4 +1,4 @@
-//! Transactions and the append-only history (proposal §6).
+//! Transactions and the append-only history.
 //!
 //! A transaction applies in place with a rollback journal and is checked only where it touched
 //! the document ([`crate::document::invariant`]), so its cost follows the size of the change: on every
@@ -28,15 +28,14 @@ use types::*;
 /// # Semantics
 /// - [`Ledger::commit`] applies a transaction's ops in place, in order, then checks the
 ///   invariants the transaction could have affected ([`Document::check_touched`]) and only then
-///   appends it (TX-03). If an op or the check fails, the applied ops are undone with their
+///   appends it. If an op or the check fails, the applied ops are undone with their
 ///   inverses in reverse order (the rollback journal), leaving the document exactly as it was.
 /// - States between the ops of one transaction may break invariants; only the end state is
 ///   checked. A later op sees what the earlier ops created, changed or removed.
-/// - [`Ledger::undo`] and [`Ledger::redo`] append transactions holding concrete inverse ops
-///   (UNDO-01). The undo/redo position is derived from the log (UNDO-02): the ledger keeps it in
-///   memory, rebuilt on load and extended on every append, and never stores it in the file.
+/// - [`Ledger::undo`] and [`Ledger::redo`] append transactions holding concrete inverse ops.
+///   The undo/redo position is derived from the log: the ledger keeps it in memory, rebuilt on load and extended on every append, and never stores it in the file.
 /// - The project is unsaved exactly when [`Ledger::head`] differs from
-///   [`Ledger::persisted`] (SAVE-01).
+///   [`Ledger::persisted`].
 /// - **Verify mode** (the `verify-invariants` cargo feature, which every `cargo test`
 ///   turns on; `ECAD_VERIFY_INVARIANTS=1`; [`Ledger::replay_verified`]; or [`Check::Full`]) also runs the full
 ///   [`Document::check`] and the index check after every transaction and treats any
@@ -64,7 +63,7 @@ pub struct Ledger {
     /// The transactions after [`Ledger::base`], oldest first: `log[i].seq == base + i + 1`.
     log: Vec<Transaction>,
     /// The sequence number the in-memory log starts after: 0 for a ledger replayed from the
-    /// project root, a snapshot's `seq` for one opened from a snapshot (brief 021).
+    /// project root, a snapshot's `seq` for one opened from a snapshot.
     base: u64,
     /// Where transactions before `base` are read on demand (`None` when `base` is 0).
     history: Option<Arc<dyn History>>,

@@ -1,4 +1,4 @@
-//! Brief 044 (overseer condition on FP2): invariant I7 refuses a definition whose bridge names a
+//! Invariant I7 refuses a definition whose bridge names a
 //! key it has no terminal for and no placement writes; side keys and level keys are allowed.
 
 use ecad_model::{Author, ConnectionPointDef, Definition, DefinitionId, Ledger, Op, Pt};

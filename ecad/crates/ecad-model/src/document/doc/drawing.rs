@@ -16,7 +16,7 @@ use crate::objects::role::Role;
 use crate::objects::styles::StyleRef;
 use crate::objects::wire::End;
 
-/// A page of the project (design 072 §5.1).
+/// A page of the project.
 ///
 /// What the page is ([`PageKind`]), its place in the book (`number`, `folder`) and its look
 /// (`page_type`, `sheet`, `title_block`) are fields; `display` holds only presentation choices and
@@ -35,14 +35,14 @@ pub struct Page {
     /// What the page is; set when it is made.
     #[serde(default, skip_serializing_if = "PageKind::is_schematic")]
     pub kind: PageKind,
-    /// Its page type (a style of catalogue `page`, brief 054); `None` takes the type its kind
+    /// Its page type (a style of catalogue `page`); `None` takes the type its kind
     /// implies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_type: Option<StyleRef>,
-    /// Its own sheet (brief 019); `None` takes its page type's, else the project's.
+    /// Its own sheet; `None` takes its page type's, else the project's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<SheetSpec>,
-    /// The frame style whose title block it borrows (brief 055); `None` takes its page type's,
+    /// The frame style whose title block it borrows; `None` takes its page type's,
     /// else its frame's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_block: Option<StyleRef>,
@@ -121,7 +121,7 @@ pub struct PageChange<'a> {
     pub display: Vec<&'a str>,
 }
 
-/// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their
+/// A folder of pages: a name and a place in the tree. Pages name their
 /// folder in their `folder` field; sibling order is the relative order in
 /// [`Document::folder_order`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,7 +130,7 @@ pub struct Folder {
     pub name: String,
     /// The folder it is in; `None` at the top level.
     pub parent: Option<FolderId>,
-    /// The number its pages are renumbered from (brief 054, FP7; design 072 §5.2); `None` keeps
+    /// The number its pages are renumbered from; `None` keeps
     /// the run of the folder above. Left out of records while unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start: Option<PageNo>,
@@ -143,7 +143,7 @@ impl Folder {
     }
 }
 
-/// A layer. References use [`LayerId`]; the name is a property (DOC-02).
+/// A layer. References use [`LayerId`]; the name is a property.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Layer {
     pub name: String,
@@ -171,7 +171,7 @@ pub struct Style {
     pub lineweight: i16,
 }
 
-/// A drawn primitive in the ECAD-owned schema (proposal R3). Angles are radians.
+/// A drawn primitive in the ECAD-owned schema. Angles are radians.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Primitive {
     Line {
@@ -194,7 +194,7 @@ pub enum Primitive {
         radius: f64,
     },
     /// Single-line text in the standard style. `at` is its alignment point: the left end of the
-    /// baseline unless `halign`/`valign` say otherwise (brief 031, FP4; both are left out of the
+    /// baseline unless `halign`/`valign` say otherwise (both are left out of the
     /// file at left/baseline, so older files read and save the same).
     Text {
         at: Pt,
@@ -247,7 +247,7 @@ impl Primitive {
     }
 }
 
-/// A text's horizontal alignment (brief 031, FP4).
+/// A text's horizontal alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TextHAlign {
@@ -257,7 +257,7 @@ pub enum TextHAlign {
     Right,
 }
 
-/// A text's vertical alignment (brief 031, FP4).
+/// A text's vertical alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TextVAlign {
@@ -272,7 +272,7 @@ pub(super) fn is_default<T: Default + PartialEq>(t: &T) -> bool {
     *t == T::default()
 }
 
-/// A placed instance of an embedded definition (symbol form, proposal §4.1).
+/// A placed instance of an embedded definition (symbol form).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SymbolInstance {
     pub definition: DefinitionId,
@@ -300,13 +300,13 @@ pub enum Subject {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
-    /// A route's drawing (design 072 F31).
+    /// A route's drawing.
     Route(RouteId),
-    /// A drawing aid's drawing (design 072 §6.2).
+    /// A drawing aid's drawing.
     Aid(crate::naming::id::AidId),
 }
 
-/// The two representation forms (proposal §4.1).
+/// The two representation forms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Form {
     /// Page items in page coordinates; terminal positions stored as connection points.
@@ -321,11 +321,11 @@ pub struct Representation {
     pub subject: Subject,
     pub page: PageId,
     pub form: Form,
-    /// What it is for its subject (design 072 §4.4, F3′): a device symbol's part, or a fixed role.
+    /// What it is for its subject: a device symbol's part, or a fixed role.
     pub role: Role,
     pub items: Vec<ItemId>,
-    /// Drawn form: where each terminal sits on the page. Symbol form (brief 018, decision on
-    /// I14): empty for a symbol of the component's own definition, whose terminals are matched to
+    /// Drawn form: where each connection point sits on the page. Symbol form: empty for a symbol of the
+    /// component's own definition, whose terminals are matched to
     /// the definition by key; otherwise where each terminal sits in the **definition's local
     /// frame**, so the terminals follow the instance's placement.
     pub connection_points: BTreeMap<ConnectionPointId, Pt>,

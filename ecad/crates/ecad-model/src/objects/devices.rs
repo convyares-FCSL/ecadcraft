@@ -1,4 +1,4 @@
-//! What a device is (design 072 §2.2): its [`DeviceType`], one of twelve groups, each with its own
+//! What a device is: its [`DeviceType`], one of twelve groups, each with its own
 //! data.
 //!
 //! # Semantics
@@ -12,7 +12,7 @@
 //! top-level classes.
 //!
 //! This module holds the stored data only. The calculations on it (supply, load, protection,
-//! switching…) are traits in `ecad-electrical`, implemented on these types (design 072 Part I);
+//! switching…) are traits in `ecad-electrical`, implemented on these types;
 //! the PLC groups' data is in [`crate::objects::plc`].
 #![deny(clippy::wildcard_enum_match_arm)]
 
@@ -57,7 +57,7 @@ impl DeviceGroup {
     }
 }
 
-/// What a device is: its group and the data only that group has (design 072 §2.2).
+/// What a device is: its group and the data only that group has.
 ///
 /// # Semantics
 /// Written as the group's word with its data (`{"protection": {…}}`), or the bare word for a group
@@ -92,9 +92,9 @@ pub enum DeviceType {
     TerminalStrip(TerminalStrip),
     /// X: plugs, sockets, bulkheads. (Boxed: a group with much data keeps every op small.)
     Connector(Box<Connector>),
-    /// K: a PLC station, with a CPU or a coupler at its head (lane C).
+    /// K: a PLC station, with a CPU or a coupler at its head.
     PlcRack(PlcRack),
-    /// K: an I/O, power or other module in a station (lane C).
+    /// K: an I/O, power or other module in a station.
     PlcModule(PlcModule),
     /// Everything else: no fields and no methods of its own.
     #[default]
@@ -139,7 +139,7 @@ impl DeviceType {
         }
     }
 
-    /// Whether its group holds a rating in typed fields (design 072 §2.2, "Ratings"): a device of
+    /// Whether its group holds a rating in typed fields: a device of
     /// such a group with none of them set has no rating, whatever its note says.
     pub fn has_rating_fields(&self) -> bool {
         match self {
@@ -288,7 +288,7 @@ pub use indicator::{Indicator, IndicatorColour, SignalType};
 
 pub use terminal_strip::{PositionLabel, TerminalStrip};
 
-/// A connector: its family, pins and the part of each half (group 9, design 072 §2.2, design 044).
+/// A connector: its family, pins and the part of each half.
 ///
 /// # Semantics
 /// - `family` is the one its symbol declares (a pin's symbol declares [`ConnectorFamily::Plain`]);
@@ -298,7 +298,7 @@ pub use terminal_strip::{PositionLabel, TerminalStrip};
 /// - `pin_names` is a typed list of pin names in pin order (each 1 to [`MAX_PIN_NAME`]
 ///   characters, all different ignoring case, at most [`MAX_PINS`]); names not drawn yet are kept.
 /// - `socket` and `plug` are each half's own part (the BOM lists a half with a part number).
-/// - `mating` is whether it has mating halves (a socket and a plug, design 044): set by its
+/// - `mating` is whether it has mating halves (a socket and a plug): set by its
 ///   starter (a half or pin) or the `connector` command, never worked out from its symbol. A
 ///   one-piece connector (a bulkhead, `rj45`) is Connector-typed with `mating` false.
 /// - `ignored` are the Checks rows its person chose to ignore.
@@ -391,7 +391,7 @@ impl Connector {
     }
 }
 
-/// Most pins a connector has (design 044 §2.3).
+/// Most pins a connector has.
 pub const MAX_PINS: u8 = 64;
 /// Most characters of a pin name.
 pub const MAX_PIN_NAME: usize = 8;
@@ -401,7 +401,7 @@ pub type PinName = crate::naming::text::Text<MAX_PIN_NAME>;
 pub type PinCount = std::num::NonZeroU8;
 
 crate::word_enum! {
-    /// A connector family: both halves of one connector have one (design 044 §1).
+    /// A connector family: both halves of one connector have one.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
     pub enum ConnectorFamily {
         #[default]
@@ -462,7 +462,7 @@ crate::word_enum! {
     }
 }
 
-/// One half's own part (design 044 §8): what the BOM lists for it.
+/// One half's own part: what the BOM lists for it.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HalfPart {
@@ -483,7 +483,7 @@ impl HalfPart {
 
 pub use crate::objects::plc::{PlcModule, PlcRack};
 
-/// A device's rating note (design 072 §2.2, "Ratings"): text that does not read as its group's
+/// A device's rating note: text that does not read as its group's
 /// rating ("see datasheet", a vendor code), never a second copy of the rating.
 pub type RatingNote = crate::naming::text::Text<64>;
 
@@ -492,10 +492,10 @@ pub const RATING_KEY: &str = "rating";
 /// A fuse bank's output rating, or a strip's fuse position rating: `rating.<n>`.
 pub const RATING_OF_PREFIX: &str = "rating.";
 
-/// A device's description (design 072 §2.1).
+/// A device's description.
 pub type Description = crate::naming::text::Text<256>;
 
-/// A part's number, maker, article number or type text (design 072 §2.1).
+/// A part's number, maker, article number or type text.
 pub type PartText = crate::naming::text::Text<64>;
 
 /// The `setprop` key of a device's description.
@@ -510,7 +510,6 @@ pub const ARTICLE_KEY: &str = "article_number";
 pub(crate) const TYPE_KEY: &str = "type";
 
 /// One of a device's text fields ([`crate::Device`]), named by the `setprop` key that routes to it
-/// (design 072 §10).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TextField {
     Description,

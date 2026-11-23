@@ -1,4 +1,4 @@
-//! Links (brief 030, design 030 §5, FP5): positions of one component joined electrically by a
+//! Links: positions of one component joined electrically by a
 //! component property `jumper_bar.<n>`, never a conductor.
 //!
 //! # Semantics
@@ -10,7 +10,7 @@
 //!   (code, not format). ECAD's commands write link keys only on terminal strips; this crate does
 //!   not know what a strip is and reads them on any component.
 //! - Unreadable values join nothing; they are never an error here.
-//! - **Levels (brief 036, FP3, FP8b).** An endpoint whose text ends in `.` + digits (+ an optional
+//! - **Levels.** An endpoint whose text ends in `.` + digits (+ an optional
 //!   `i` or `o`) names a level of a position: `4.2` is position 4, level 2; `7.1o` the out point of
 //!   a two-point level. Without a level an endpoint means level 1 (roadmap question 5). A range whose
 //!   two ends have the same position is a **level range** (`1.1-1.3`, a cross-level link); any other
@@ -40,7 +40,7 @@ pub const MAX_TEXT_CHARS: usize = 20_000;
 /// The highest level number a link or a level key may name.
 pub(crate) const MAX_LEVEL: u32 = 99;
 
-/// A terminal's level from its key (brief 036, FP2): `.2` → (2, none), `.1i` → (1, `i`). Any key
+/// A terminal's level from its key: `.2` → (2, none), `.1i` → (1, `i`). Any key
 /// that does not start with `.` is level 1 of a one-level position; a dotted key that does not
 /// read (`.0`, `.-1`, `.x`) is `None`.
 pub fn level_of_key(key: Option<&PointKey>) -> Option<(u32, Option<char>)> {
@@ -71,7 +71,7 @@ fn level_text(k: &str) -> Option<(u32, Option<char>)> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BadLevel;
 
-/// An endpoint split into its position and level (brief 036 §5.1): the last `.digits` (+ `i`/`o`)
+/// An endpoint split into its position and level: the last `.digits` (+ `i`/`o`)
 /// is the level. `Err` when that tail looks like a level but is not one (`1.0`, `1.999`).
 pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), BadLevel> {
     let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
@@ -206,7 +206,7 @@ pub fn parse(text: &str) -> Result<Positions, ParseError> {
     Ok(Positions(items))
 }
 
-/// One item of a link, read for matching (brief 036 §5.1).
+/// One item of a link, read for matching.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Span {
     /// Positions `a` to `b` (natural order; equal for one position) on one level and point.
@@ -270,7 +270,7 @@ impl Positions {
 
     /// The one point every item names (`Some(None)`: none, as a one-point level or the in point;
     /// `Some(Some('o'))`: every item on the out points), or `None` when items differ or a
-    /// cross-level item is present (review 036, 2).
+    /// cross-level item is present.
     pub fn point(&self) -> Option<Option<char>> {
         let mut out: Option<Option<char>> = None;
         for sp in self.spans() {
@@ -361,7 +361,7 @@ pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
 }
 
 /// A link's positions ready for many lookups: single positions hashed, range ends keyed once
-/// (review of PR #57, 2: a lookup costs the link's ranges, never its whole text).
+/// (2: a lookup costs the link's ranges, never its whole text).
 pub struct Matcher {
     /// Single positions: position → (level, point) items.
     ones: std::collections::HashMap<String, Vec<(u32, Option<char>)>>,
@@ -411,8 +411,7 @@ impl Matcher {
         self.ones.contains_key(l) || self.levels.contains_key(l) || self.ranges.iter().any(|(a, b, _, _)| a <= k && k <= b)
     }
 
-    /// Whether the link names the terminal at position `l`, level `level`, point `point` (brief
-    /// 036, FP8b).
+    /// Whether the link names the connection point at position `l`, level `level`, point `point`.
     pub fn matches_level(&self, l: &str, level: u32, point: Option<char>) -> bool {
         if self.ones.get(l).is_some_and(|v| v.iter().any(|(n, p)| *n == level && point_ok(*p, point))) {
             return true;
@@ -444,8 +443,8 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
     v.into_iter().map(|(_, l)| l).collect()
 }
 
-/// The terminals of `component` joined to `t` by its links (not `t` itself), level by level
-/// (brief 036). One pass over the
+/// The terminals of `component` joined to `t` by its links (not `t` itself), level by level.
+/// One pass over the
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
     let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };

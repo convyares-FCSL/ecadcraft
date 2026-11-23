@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::naming::id::{DefinitionId, LibraryId};
 
-/// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.
+/// SHA-256 of a definition's canonical form, as 64 lower-case hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContentHash(pub [u8; 32]);
 
@@ -44,7 +44,7 @@ impl<'de> Deserialize<'de> for ContentHash {
     }
 }
 
-/// Where an embedded definition came from (LIB-01, proposal §20.9).
+/// Where an embedded definition came from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Origin {
     /// The library's stable identity.
@@ -65,47 +65,47 @@ pub enum LengthUnit {
     Inch,
 }
 
-/// Project-wide settings (proposal §3.2, §20.13). Set at creation; changed only by a recorded op.
+/// Project-wide settings. Set at creation; changed only by a recorded op.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
-    /// How many digits automatic tag numbers are padded to (brief 018), when the project chose
-    /// (brief 066, F3: `None` follows the built-in, [`ProjectSettings::tag_padding`]). Values
+    /// How many digits automatic tag numbers are padded to, when the project chose
+    /// (`None` follows the built-in, [`ProjectSettings::tag_padding`]). Values
     /// above [`crate::naming::tag::MAX_PADDING`] count as that maximum.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
     /// The project's own tag prefix per symbol (`starter:coil → KA`, `project:valve-x → YV`),
-    /// overriding a starter's built-in IEC 81346 default or a project symbol's own (design 072 F5).
+    /// overriding a starter's built-in IEC 81346 default or a project symbol's own.
     /// Empty by default.
     pub tag_prefixes: BTreeMap<crate::naming::prefix::PrefixOf, crate::naming::prefix::TagPrefix>,
-    /// The prefix of new cable tags, when the project chose one (brief 026; design 072 F5: no
-    /// longer a `tag_prefixes` entry). `None` follows the built-in `W`.
+    /// The prefix of new cable tags, when the project chose one (not a `tag_prefixes`
+    /// entry). `None` follows the built-in `W`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cable_prefix: Option<crate::naming::prefix::TagPrefix>,
-    /// How wires are numbered and what each potential defaults to (brief 022, FP1). Left out of
+    /// How wires are numbered and what each potential defaults to. Left out of
     /// the file while it holds [`WiringSettings::default`].
     pub wiring: crate::connectivity::wiring::WiringSettings,
-    /// The project's sheet: size and grid of every page's frame unless a page sets its own
-    /// (brief 019, decision FP2), when the project chose one (brief 066, F3: `None` follows the
+    /// The project's sheet: size and grid of every page's frame unless a page sets its own,
+    /// when the project chose one (`None` follows the
     /// built-in, [`ProjectSettings::sheet`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sheet: Option<crate::document::sheet::SheetSpec>,
-    /// What a new page's number adds to the number before it (design 019 §6.1), when the project
-    /// chose (brief 066, F3: [`ProjectSettings::page_number_step`]).
+    /// What a new page's number adds to the number before it, when the project
+    /// chose ([`ProjectSettings::page_number_step`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_number_step: Option<u32>,
-    /// How cross-references name a place (owner answer Q1, 2026-11-08), when the project chose
-    /// (brief 066, F3: [`ProjectSettings::reference_style`]).
+    /// How cross-references name a place, when the project chose
+    /// ([`ProjectSettings::reference_style`]).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference_style: Option<ReferenceStyle>,
-    /// Where a device's contact mirror table goes unless the device says otherwise (brief 025,
-    /// FP3): `auto` by default, and then left out of every file.
+    /// Where a device's contact mirror table goes unless the device says otherwise:
+    /// `auto` by default, and then left out of every file.
     #[serde(skip_serializing_if = "ContactMirror::is_auto")]
     pub contact_mirror: ContactMirror,
 }
 
-/// Where the contact mirror table under a coil goes by default (brief 025, FP3). A device's own
+/// Where the contact mirror table under a coil goes by default. A device's own
 /// `mirror` property overrides it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,8 +145,8 @@ impl ContactMirror {
     }
 }
 
-/// How a cross-reference names a page and a place on it (owner answer Q1, 2026-11-08; UI round 2
-/// and rev 3: `2/B5`). The zone's letter comes first whichever axis is lettered
+/// How a cross-reference names a page and a place on it (`2/B5`). The zone's letter comes first whichever
+/// axis is lettered
 /// ([`crate::connectivity::derive::place_text`]). Other styles (US) come later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ReferenceStyle {
@@ -154,7 +154,7 @@ pub enum ReferenceStyle {
     PageColumnRow,
     /// `/105.3`: page number and column.
     PageColumn,
-    /// `105/B3`: page number, then the zone, letter first (UI round 2 and rev 3; the default of a
+    /// `105/B3`: page number, then the zone, letter first (the default of a
     /// new project).
     #[default]
     PageZone,
@@ -180,12 +180,12 @@ impl ReferenceStyle {
 }
 
 impl ProjectSettings {
-    /// The project's own prefix for starter `word` (design 072 F5).
+    /// The project's own prefix for starter `word`.
     pub fn starter_prefix(&self, word: &str) -> Option<&crate::naming::prefix::TagPrefix> {
         self.tag_prefixes.get(&crate::naming::prefix::PrefixOf::Starter(word.into()))
     }
 
-    /// The project's own prefix for project symbol `key` (design 072 F5).
+    /// The project's own prefix for project symbol `key`.
     pub fn project_prefix(&self, key: &str) -> Option<&crate::naming::prefix::TagPrefix> {
         self.tag_prefixes.get(&crate::naming::prefix::PrefixOf::Project(key.into()))
     }

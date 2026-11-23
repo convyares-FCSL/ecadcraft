@@ -1,4 +1,4 @@
-//! A load's rating (design 072 §2.2 row 6, "Ratings", owner decisions 2026-11-18): its rated power,
+//! A load's rating: its rated power,
 //! a typed field, never a stored display string.
 //!
 //! # Semantics
@@ -20,7 +20,7 @@ use crate::geometry::units::Watts;
 /// The largest rated power of a load, in watts (100 MW).
 pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
 
-/// A consumer with a rated power (group 6, design 072 §2.2).
+/// A consumer with a rated power.
 ///
 /// # Example
 /// ```

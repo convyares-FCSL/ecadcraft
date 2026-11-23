@@ -1,6 +1,6 @@
-//! Device tags (brief 018): what makes two tags the same, and how a typed tag is written.
+//! Device tags: what makes two tags the same, and how a typed tag is written.
 //!
-//! A component's tag is its stored `tag` property. By the concept spec a tag **is** an identity:
+//! A component's tag is its stored `tag` property. A tag **is** an identity:
 //! the same tag anywhere means the same device. Two tags are the same when their [`key`]s are
 //! equal: case is ignored, a leading `-` is optional, and in the usual form (letters, then a
 //! number) leading zeros of the number are ignored, so `-K1`, `k01` and `-K001` are one tag.
@@ -18,7 +18,7 @@ pub const TAG_KEY: &str = "tag";
 /// Most characters in a tag.
 pub const MAX_TAG_CHARS: usize = 40;
 
-/// A device's tag as stored (design 072 §2.1): validated text of 1 to [`MAX_TAG_CHARS`]
+/// A device's tag as stored: validated text of 1 to [`MAX_TAG_CHARS`]
 /// characters.
 pub type Tag = crate::naming::text::Text<MAX_TAG_CHARS>;
 
@@ -32,7 +32,7 @@ pub const MAX_TAG_NUMBER: u64 = 999_999_999;
 pub const MAX_PADDING: u8 = 6;
 
 crate::word_enum! {
-    /// What the tag of a device or cable is (S6, #3): the word of a [`TagSlot`]'s state. A provisional
+    /// What the tag of a device or cable is: the word of a [`TagSlot`]'s state. A provisional
     /// tag is stored bare (`-K3`) and only drawn with its `?` (`-K?3`, [`shown`]); a provisional `-K3`
     /// and a real `-K3` are different tags ([`Key`]).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -40,9 +40,9 @@ crate::word_enum! {
         /// Given by numbering (or a tag no person typed); Renumber may change it.
         #[default]
         Automatic,
-        /// Typed by a person; Renumber and Finalise never change it (brief 026, FP1).
+        /// Typed by a person; Renumber and Finalise never change it.
         Fixed,
-        /// A placeholder number (`-K?3`, brief 026, FP3) that Finalise turns into an automatic tag.
+        /// A placeholder number (`-K?3`) that Finalise turns into an automatic tag.
         Provisional,
     }
 }
@@ -54,7 +54,7 @@ impl TagState {
     }
 }
 
-/// A device's or cable's tag and what it is, as one field (S6, #3): the state carries the tag, so a
+/// A device's or cable's tag and what it is, as one field: the state carries the tag, so a
 /// state without a tag cannot be written. A provisional tag holds the bare text (`-K3`); the `?` is
 /// only drawn ([`shown`]).
 ///
@@ -74,7 +74,7 @@ pub enum TagSlot {
     None,
     /// Given by numbering (or a tag no person typed); Renumber may change it.
     Automatic(Tag),
-    /// Typed by a person; Renumber and Finalise never change it (brief 026, FP1).
+    /// Typed by a person; Renumber and Finalise never change it.
     Fixed(Tag),
     /// A placeholder number (`-K?3`) that Finalise turns into an automatic tag; holds the bare tag.
     Provisional(Tag),
@@ -125,7 +125,7 @@ impl TagSlot {
         matches!(self, TagSlot::None)
     }
 
-    /// Whether the tag is fixed (FP1).
+    /// Whether the tag is fixed.
     pub fn is_fixed(&self) -> bool {
         matches!(self, TagSlot::Fixed(_))
     }
@@ -147,7 +147,7 @@ impl TagSlot {
 }
 
 /// The identity a tag has in the tag indexes: its [`key`] and whether it is provisional. A
-/// provisional `-K3` and a real `-K3` are different tags (S6, #3).
+/// provisional `-K3` and a real `-K3` are different tags.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Key {
     /// Whether the tag is provisional (so it sorts after every real key).
@@ -194,7 +194,7 @@ impl Given {
     }
 
     /// As a new object takes it (Place, a new cable): a typed real tag is automatic, not fixed
-    /// (brief 026: only `setprop tag` fixes), a provisional one stays provisional.
+    /// (only `setprop tag` fixes), a provisional one stays provisional.
     pub fn placed(self) -> Given {
         let state = if self.state.is_provisional() { TagState::Provisional } else { TagState::Automatic };
         Given { state, ..self }
@@ -211,7 +211,7 @@ impl Given {
     }
 }
 
-/// A tag as typed, read once where the text comes in (S6, #3): the bare text and its state, or
+/// A tag as typed, read once where the text comes in: the bare text and its state, or
 /// the request for the next provisional number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
@@ -236,7 +236,7 @@ pub fn enter(text: &str, style: impl Into<Style>) -> Result<Entry, crate::ParseE
     })
 }
 
-/// Read a stored tag slot given as a value of the `tag` key (S6, #3): its bare tag and its own
+/// Read a stored tag slot given as a value of the `tag` key: its bare tag and its own
 /// state. The tag is written as [`enter`] writes a typed one; a `?` is refused (a provisional tag is
 /// given bare, the `?` is only drawn).
 ///
@@ -261,12 +261,12 @@ pub fn enter_slot(slot: &TagSlot, style: impl Into<Style>) -> Result<Entry, crat
     Ok(Entry::Tag(Given::new(bare, state)))
 }
 
-/// The project property turning provisional tags on (brief 026, FP2): `"yes"`, absent = off.
+/// The project property turning provisional tags on: `"yes"`, absent = off.
 pub const PROVISIONAL_SETTING: &str = "numbering.provisional";
 
 /// The stored value of a high-water reset: `"<n>;<was>;<generation>"`, where `n` is the new mark,
-/// `was` the mark it replaced and `generation` one more than the reset it overwrites (tester 026:
-/// the generation tells a reset, which raises it, from its undo, which lowers it, so an undone
+/// `was` the mark it replaced and `generation` one more than the reset it overwrites (the
+/// generation tells a reset, which raises it, from its undo, which lowers it, so an undone
 /// reset never counts as a new one; it also makes every reset a change, even to the same `n`).
 pub(crate) fn reset_value(n: u64, was: u64, generation: u64) -> String {
     format!("{n};{was};{generation}")
@@ -315,7 +315,7 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
     Some((letters.to_ascii_uppercase(), n))
 }
 
-/// The provisional form of a tag (brief 026, FP3): its prefix (upper case, without `-`) and its
+/// The provisional form of a tag: its prefix (upper case, without `-`) and its
 /// provisional number, for `-K?3`; `None` for anything else. `-K?` (no number) is `Some(("K", 0))`:
 /// the request for the next provisional number, never a stored tag.
 ///
@@ -344,9 +344,9 @@ pub fn prefix_of(tag: &str) -> Option<String> {
     parse(tag).map(|(p, _)| p)
 }
 
-/// The highest number each tag prefix has had in a history (brief 018: the next automatic number
+/// The highest number each tag prefix has had in a history (the next automatic number
 /// is the highest + 1, so a deleted tag is never given again). Version 2 snapshots carry it
-/// (brief 021, the `model:meta` chunk), so a project opened from a snapshot keeps it.
+/// (the `model:meta` chunk), so a project opened from a snapshot keeps it.
 pub type HighWater = std::collections::BTreeMap<String, u64>;
 
 /// Count tag `t` in `high`.
@@ -364,24 +364,24 @@ fn note_held(high: &mut HighWater, slot: &TagSlot) {
     }
 }
 
-/// The version of the rule [`note_ops`] counts by (brief 029, FP1): 1 counted device tags only
-/// (before brief 026); 2 also counts cable tags and `numbering.high.<P>` resets. Rule 2 also skips provisional
-/// tags (S6, #3): no file written before the typed tag state exists to be read, so the rule keeps its number. A file records the
+/// The version of the rule [`note_ops`] counts by: 1 counted device tags only; 2 also counts cable tags and
+/// `numbering.high.<P>` resets. Rule 2 also skips provisional
+/// tags: no file written before the typed tag state exists to be read, so the rule keeps its number. A file records the
 /// rule its cached marks were computed with, and marks of an older rule are recomputed on open.
 pub const TAG_RULE: u32 = 2;
 
 /// Count every tag `ops` write or remove (undone ones included), in order.
 ///
 /// # Semantics
-/// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateDevice`,
+/// Device and cable tags share one mark per prefix: `CreateDevice`,
 /// `DeleteDevice`, `ModifyDevice`, `CreateCable`, `DeleteCable`, `ModifyCable` and any `SetProperty`
-/// of `tag` count (FP7). A
+/// of `tag` count. A
 /// `SetProperty` of project property `numbering.high.<P>` to a newer generation (a renumber, or
-/// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
+/// its redo) sets the mark of `P` to its number (overwrite, not max), so new tags follow a
 /// renumbered set; a later tag write raises it again as usual. One back to an older generation or
 /// to nothing (the renumber's undo) is not a reset: the mark becomes at least the one the undone
-/// reset replaced, so every number held before or since it stays used (tester 026, 3-6). A
-/// provisional tag is never counted (S6, #3): its number is a placeholder, not a number used.
+/// reset replaced, so every number held before or since it stays used. A
+/// provisional tag is never counted: its number is a placeholder, not a number used.
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
@@ -454,20 +454,20 @@ pub fn key(tag: &str) -> String {
     }
 }
 
-/// The project property of the tag style's leading `-` (brief 033, FP1): `yes` or `no`.
+/// The project property of the tag style's leading `-`: `yes` or `no`.
 pub const DASH_KEY: &str = "tags.dash";
-/// The project property of the tag style's case (brief 033, FP1): `upper` or `typed`.
+/// The project property of the tag style's case: `upper` or `typed`.
 pub const CASE_KEY: &str = "tags.case";
-/// The values of [`DASH_KEY`]; its built-in is data ([`crate::naming::builtins`], brief 066).
+/// The values of [`DASH_KEY`]; its built-in is data ([`crate::naming::builtins`]).
 pub const DASH_WORDS: &[&str] = &["yes", "no"];
 /// The values of [`CASE_KEY`]; its built-in is data.
 pub const CASE_WORDS: &[&str] = <Case as crate::naming::words::Word>::WORDS;
 
 crate::word_enum! {
-    /// The case tags are written in (brief 033, project property `tags.case`).
+    /// The case tags are written in (project property `tags.case`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum Case {
-        /// Upper case (the default, and every tag before brief 033).
+        /// Upper case (the default, and how tags were written before the case was a setting).
         #[default]
         Upper,
         /// As typed.
@@ -475,10 +475,10 @@ crate::word_enum! {
     }
 }
 
-/// How a project writes tags (brief 033, design 033 §8): number padding, the leading `-`
+/// How a project writes tags: number padding, the leading `-`
 /// (`tags.dash`) and the case (`tags.case`). It is a writing rule: [`key`] ignores the `-` and
 /// the case, so it never changes which tags are the same. A bare padding is the style of every
-/// project before brief 033 (`-`, upper case).
+/// project that sets neither (`-`, upper case).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Style {
     pub padding: u8,
@@ -544,7 +544,7 @@ pub fn format(prefix: &str, n: u64, style: impl Into<Style>) -> String {
 }
 
 /// The letters of a tag in the usual form as they were typed (`k05` → `k`), for renumbering a
-/// tag under [`Case::Typed`] (design 033 §8.3); `None` for any other tag.
+/// tag under [`Case::Typed`]; `None` for any other tag.
 pub(crate) fn typed_prefix(tag: &str) -> Option<&str> {
     parse(tag)?;
     let t = tag.trim();
@@ -553,7 +553,7 @@ pub(crate) fn typed_prefix(tag: &str) -> Option<&str> {
     t.get(..split)
 }
 
-/// A stored tag rewritten in `style` (design 033 §8.4): the leading `-` added or dropped, and
+/// A stored tag rewritten in `style`: the leading `-` added or dropped, and
 /// upper-cased under [`Case::Upper`]. The padding and the letters' typed case are not restored.
 /// A function or location (`=…`, `+…`) is never touched.
 pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
@@ -570,7 +570,7 @@ pub fn restyle(tag: &str, style: impl Into<Style>) -> String {
 /// Refusal of `-K?` where a tag that exists is named.
 pub const NEXT_HERE: &str = "-K? asks for the next provisional number; type the tag of a device that exists.";
 
-/// A typed tag that names one (S6, #3): [`enter`], refusing the request for the next provisional
+/// A typed tag that names one: [`enter`], refusing the request for the next provisional
 /// number, which names nothing.
 ///
 /// # Errors
@@ -732,7 +732,7 @@ mod tests {
         assert_eq!(high.get("K"), Some(&41));
     }
 
-    /// Tester 026, 3-6: a reset's undo restores the mark it replaced and is not a new reset; a
+    /// A reset's undo restores the mark it replaced and is not a new reset; a
     /// redo resets again; a reset to the same number is still a change.
     #[test]
     fn an_undone_reset_restores_the_mark_it_replaced() {

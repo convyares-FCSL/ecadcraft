@@ -255,7 +255,7 @@ pub(super) fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check:
             };
             let chosen = ctx.ask(c);
             // Bringing something back that needs `y` while `y`'s answer removes what uses it
-            // contradicts itself (tester 020b, defect 3): say so, before Merge.
+            // contradicts itself: say so, before Merge.
             if matches!(chosen, Some(Choice::Drop))
                 && let Some((x, _)) = users.iter().find(|(x, _)| brought.contains(x))
             {
@@ -395,10 +395,10 @@ pub(super) fn top_provisional(m: &Document, prefix: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// Two holders with one tag (018: one tag, one device; 026: devices and cables share it) after the
-/// merge: a **tag** conflict per tag, renumbering the source's (the default suggestion, owner
-/// answer 12) or the target's, or making them one (brief 026). Provisional tags added on both
-/// sides are renumbered silently (design 026 §8).
+/// Two holders with one tag (one tag, one device; devices and cables share the namespace) after the
+/// merge: a **tag** conflict per tag, renumbering the source's (the default suggestion)
+/// or the target's, or making them one. Provisional tags added on both
+/// sides are renumbered silently.
 pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let t = ctx.inp.target;
     let mut high = ctx.inp.high.clone();
@@ -413,7 +413,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
     for x in &present {
         tag::note(&mut high, x);
     }
-    // Brief 033: the merged project's tag style (padding, dash, case).
+    // The merged project's tag style (padding, dash, case).
     let style = tag::Style::of(m);
     let mut out = BTreeSet::new();
     let mut done: BTreeSet<tag::Key> = BTreeSet::new();
@@ -425,7 +425,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
             _ => None,
         })
         .collect();
-    // The merged state with a current index, built once, for the join (brief 026).
+    // The merged state with a current index, built once, for the join.
     let mut indexed: Option<Document> = None;
     for h in ours.iter().copied() {
         let Some(tag_text) = h.tag(m).map(str::to_string) else { continue };
@@ -451,7 +451,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
         done.insert(key.clone());
         // The source's holder and the target's: `h`'s tag came from the source (the loop skips
         // every holder whose tag the target already had), also when the target has `h` itself
-        // under an older tag (reviewer 026, 1).
+        // under an older tag.
         let (src, tgt) = (h, other);
         // Provisional duplicates were never issued: the source's takes the next one, silently.
         if key.provisional
@@ -459,7 +459,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
         {
             let n = top_provisional(m, &p).saturating_add(1);
             src.set_tag(m, style.provisional(&p, n), tag::TagState::Provisional);
-            // The indexed copy is stale now (reviewer 026, 5): rebuilt when next needed.
+            // The indexed copy is stale now: rebuilt when next needed.
             indexed = None;
             out.insert(src.obj());
             ctx.provisional += 1;
@@ -564,7 +564,7 @@ pub(super) fn next_number(n: &str, taken: &BTreeSet<String>, step: u32) -> Strin
     (2..10_000).map(|i| format!("{n}.{i}")).find(|c| !taken.contains(c)).unwrap_or_else(|| format!("{n}.x"))
 }
 
-/// Two pages with one number after the merge (019): a **page number** conflict, renumbering
+/// Two pages with one number after the merge: a **page number** conflict, renumbering
 /// the source's page or the target's to the next free number with the project's step.
 pub(super) fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTreeSet<Obj>) -> BTreeSet<Obj> {
     let (t, s) = (ctx.inp.target, ctx.inp.source);

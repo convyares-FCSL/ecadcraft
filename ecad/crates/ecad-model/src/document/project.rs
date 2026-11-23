@@ -1,4 +1,4 @@
-//! The project's own data (design 072 §5.3): the location and function lists and the project's
+//! The project's own data: the location and function lists and the project's
 //! default location and function.
 //!
 //! # Semantics
@@ -6,9 +6,9 @@
 //!   a stable id, allocated when it is made and recorded in the op, a **code** unique (ignoring
 //!   case) within its list and starting with its list's sign, an optional **tag** and any number
 //!   of **descriptions** (description 1, description 2, …).
-//! - Pages, the project and (lane B) devices refer to an entry by its id, so renaming a code is one
+//! - Pages, the project and devices refer to an entry by its id, so renaming a code is one
 //!   edit of the list. An id with no entry (an entry a merge removed) shows `?`.
-//! - The revision rows (design 019 §7.2) are [`Revision`]s in issue order, numbered from 1; every
+//! - The revision rows are [`Revision`]s in issue order, numbered from 1; every
 //!   row but the last is issued, and the last is the pending one while it is not. The revision
 //!   table's columns and marker stay registry values (they have a standard level).
 //! - The whole project changes through one op, [`crate::Op::ModifyProject`].
@@ -68,7 +68,7 @@ pub type Location = ListEntry<LocationId>;
 /// A function (`=F1`).
 pub type Function = ListEntry<FunctionId>;
 
-/// The project's own data (design 072 §5.3). Every field is left out of records while empty.
+/// The project's own data. Every field is left out of records while empty.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Project {
@@ -90,10 +90,10 @@ pub struct Project {
     /// The revision rows, in issue order (row `n` is at `n - 1`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revisions: Vec<Revision>,
-    /// The project-defined user fields (design 072 §2.8), in the order they were made.
+    /// The project-defined user fields, in the order they were made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub user_fields: Vec<crate::objects::user::UserFieldDef>,
-    /// Which revs the project has and what follows each (S4, #37). Fixed once anything is issued.
+    /// Which revs the project has and what follows each. Fixed once anything is issued.
     #[serde(default, skip_serializing_if = "RevScheme::is_default")]
     pub rev_scheme: RevScheme,
 }
@@ -175,7 +175,7 @@ fn list_problem<I: Copy + Ord + std::fmt::Display>(list: &[ListEntry<I>], sign: 
     None
 }
 
-// ---------------------------------------------------------------- revisions (design 072 §5.3)
+// ---------------------------------------------------------------- revisions
 
 /// Most characters of a revision field's value.
 pub(crate) const MAX_REV_VALUE: usize = 200;
@@ -190,7 +190,7 @@ pub const MAX_REVISIONS: usize = 10_000;
 pub type RevValue = Text<MAX_REV_VALUE>;
 
 crate::word_enum! {
-    /// A built-in revision field, in table order (design 019 §7.2).
+    /// A built-in revision field, in table order.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum RevField {
         Rev,
@@ -233,7 +233,7 @@ impl<'de> Deserialize<'de> for CustomField {
     }
 }
 
-/// One revision row (design 019 §7.2, 033 §7.2; typed in S4). Rows are numbered by their place in
+/// One revision row. Rows are numbered by their place in
 /// [`Project::revisions`], from 1; the last row is the pending one while it is not issued.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -255,13 +255,13 @@ pub struct Revision {
     /// The engineering change request it answers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ecr: Option<RevValue>,
-    /// The project's own extra columns (brief 033), by name.
+    /// The project's own extra columns, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub custom: BTreeMap<CustomField, RevValue>,
-    /// Whether it was issued; the issue is the revision point `Revision(rev)` in the document's versions.
+    /// Whether it was issued; the issue is the revision point `Revision` in the document's versions.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub issued: bool,
-    /// The release folder, when a release issued it (brief 027), relative to the project file's
+    /// The release folder, when a release issued it, relative to the project file's
     /// folder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub released: Option<Text<MAX_RELEASED>>,
@@ -316,7 +316,7 @@ impl Revision {
     }
 }
 
-// ---------------------------------------------------------------- project info (design 072 §5.3)
+// ---------------------------------------------------------------- project info
 
 /// Most characters of a one-line project info field.
 pub(crate) const MAX_INFO: usize = 200;
@@ -344,7 +344,7 @@ crate::word_enum! {
     }
 }
 
-/// What the project is (design 072 §5.3): what the title block and the cover show. Every field is
+/// What the project is: what the title block and the cover show. Every field is
 /// left out of records while unset.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,4 +1,4 @@
-//! A representation's role (design 072 §4.4, F3′): a device symbol's part in its device, or one
+//! A representation's role: a device symbol's part in its device, or one
 //! of the fixed roles of the other representations.
 //!
 //! # Semantics
@@ -48,7 +48,7 @@ impl PartRole {
         matches!(self, PartRole::Contact | PartRole::Pole | PartRole::Channel)
     }
 
-    /// The numbering rank (design 052 §4, Q5): head 0, everything else 1. A device is numbered
+    /// The numbering rank: head 0, everything else 1. A device is numbered
     /// by its head's position, else by its first symbol in drawing order.
     pub fn numbering_rank(self) -> u8 {
         match self {
@@ -58,7 +58,7 @@ impl PartRole {
     }
 }
 
-/// What a representation is for its subject (design 072 §4.4).
+/// What a representation is for its subject.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Role {
     /// A device's symbol: its part in the device.

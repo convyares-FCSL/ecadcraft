@@ -1,5 +1,4 @@
-//! A sensor's kind and rating (design 072 §2.2 row 4, "Ratings", owner decisions 2026-11-18):
-//! typed fields, never a stored display string.
+//! A sensor's kind and rating: typed fields, never a stored display string.
 //!
 //! # Semantics
 //! - [`Sensing`] says what it senses (proximity, float level, position, a guard, temperature) and
@@ -24,7 +23,7 @@ use crate::naming::words::Word;
 /// The largest supply voltage of a sensor, in volts.
 pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
 
-/// A sensor: what it senses, what it outputs and its supply (group 4, design 072 §2.2).
+/// A sensor: what it senses, what it outputs and its supply.
 ///
 /// # Example
 /// ```

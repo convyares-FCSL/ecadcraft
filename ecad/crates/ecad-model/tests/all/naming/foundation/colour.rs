@@ -1,4 +1,4 @@
-//! Design 072 §4.6: every conductor colour has exactly one table of forms, the codes are unique,
+//! Every conductor colour has exactly one table of forms, the codes are unique,
 //! the project stores the 2-letter code and any form reads back.
 
 use std::collections::BTreeSet;

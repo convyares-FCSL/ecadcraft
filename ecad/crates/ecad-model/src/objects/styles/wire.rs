@@ -1,4 +1,4 @@
-//! Wire types (design 072 §4.6, §8, F36): the `wire` catalogue's typed record.
+//! Wire types: the `wire` catalogue's typed record.
 //!
 //! A wire type is a library entry a wire refers to: the potential it is the default for, its size,
 //! colours and insulation, its BOM part, its allowance, its datasheet rating and its drawn line.
@@ -6,7 +6,7 @@
 //! built-in type, the catalogue's defaults).
 //!
 //! What the fields mean (how a wire's look and rating are worked out) is `ecad-electrical`'s
-//! (`styles::wire`, `rating`). Excluded: a wire's own overrides (lane D, `Wire`).
+//! (`styles::wire`, `rating`). Excluded: a wire's own overrides (`Wire`).
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
@@ -74,7 +74,7 @@ impl ConductorClass {
 }
 
 crate::word_enum! {
-    /// A conductor's insulation compound (design 072 F36).
+    /// A conductor's insulation compound.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Insulation {
         /// Polyvinyl chloride.
@@ -149,7 +149,7 @@ pub(crate) const MAX_POTENTIAL: usize = 24;
 /// The longest part number, maker or description.
 pub(crate) const MAX_PART_TEXT: usize = 64;
 
-/// A conductor's datasheet rating (brief 057, design 057 §4.4): shared by wire types and cable
+/// A conductor's datasheet rating: shared by wire types and cable
 /// types.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -176,7 +176,7 @@ impl ConductorRating {
     }
 }
 
-/// A wire type (design 072 §4.6): what a standard, a project or the built-in data says about one
+/// A wire type: what a standard, a project or the built-in data says about one
 /// wire type. `None` inherits.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,4 +1,4 @@
-//! Brief 013 acceptance (tester): `ECAD_VERIFY_INVARIANTS=1` turns on the full check in a
+//! `ECAD_VERIFY_INVARIANTS=1` turns on the full check in a
 //! release build, and the private indexes stay consistent after rollback.
 //!
 //! The switch is read once per process, so the outer test re-runs this test binary with and

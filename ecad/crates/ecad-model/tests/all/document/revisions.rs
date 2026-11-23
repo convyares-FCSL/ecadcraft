@@ -1,4 +1,4 @@
-//! Revisions as data (S4, #37): the typed `Rev` and its project scheme, named points keyed by kind
+//! Revisions as data: the typed `Rev` and its project scheme, named points keyed by kind
 //! and name, and the typed revision record.
 
 use std::collections::BTreeMap;

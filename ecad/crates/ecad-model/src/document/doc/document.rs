@@ -36,45 +36,45 @@ pub struct Document {
     pub(crate) representations: BTreeMap<RepresentationId, Representation>,
     pub(crate) wires: BTreeMap<WireId, Wire>,
     pub(crate) cables: BTreeMap<CableId, Cable>,
-    /// The lines drawn on pages (design 072 F31).
+    /// The lines drawn on pages.
     pub(crate) routes: BTreeMap<RouteId, crate::objects::route::Route>,
-    /// The drawing aids: continuations and location boxes (design 072 §6.2).
+    /// The drawing aids: continuations and location boxes.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
-    /// The loose parts: panel-only material on the BOM (design 072 §6.4).
+    /// The loose parts: panel-only material on the BOM.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
-    /// The typed links between devices (design 072 §2.6).
+    /// The typed links between devices.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
     pub(crate) definitions: BTreeMap<DefinitionId, Definition>,
     pub(crate) settings: ProjectSettings,
-    /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
+    /// Named versions (bookmarks): name → the `seq` it names. History, never pruned.
     #[serde(with = "crate::document::rev::as_points")]
     pub(crate) versions: BTreeMap<crate::PointName, u64>,
-    /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
+    /// The project's own display bag: title, drawing number, customer,
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) display: Properties,
-    /// The project's own data: the location and function lists (design 072 §5.3).
+    /// The project's own data: the location and function lists.
     #[serde(skip_serializing_if = "crate::document::project::Project::is_empty")]
     pub(crate) project: crate::document::project::Project,
-    /// Folders of pages (brief 019, decision FP3).
+    /// Folders of pages.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) folders: BTreeMap<FolderId, Folder>,
     /// Every folder once; siblings are ordered as they appear here.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) folder_order: Vec<FolderId>,
-    /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
+    /// The project's standard; `None` is IEC (built in).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) standard: Option<crate::objects::styles::Standard>,
-    /// The project layer of style records (brief 050a, FP2).
+    /// The project layer of style records.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) styles: crate::objects::styles::StyleCatalogues,
     /// Derived reverse indexes; never serialised.
     #[serde(skip)]
     pub(crate) index: Index,
-    /// Derived nets (brief 022), kept by [`crate::Op::apply`]; never serialised.
+    /// Derived nets, kept by [`crate::Op::apply`]; never serialised.
     #[serde(skip)]
     pub(crate) conn: crate::connectivity::Connectivity,
 }
@@ -241,30 +241,30 @@ pub struct DocumentParts {
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
-    /// The lines drawn on pages (design 072 F31).
+    /// The lines drawn on pages.
     pub routes: BTreeMap<RouteId, crate::objects::route::Route>,
-    /// The drawing aids: continuations and location boxes (design 072 §6.2).
+    /// The drawing aids: continuations and location boxes.
     pub aids: BTreeMap<crate::naming::id::AidId, crate::objects::aid::Aid>,
-    /// The loose parts: panel-only material on the BOM (design 072 §6.4).
+    /// The loose parts: panel-only material on the BOM.
     pub loose_parts: BTreeMap<crate::naming::id::LoosePartId, crate::objects::loose_part::LoosePart>,
-    /// The typed links between devices (design 072 §2.6).
+    /// The typed links between devices.
     pub device_links: BTreeMap<crate::naming::id::LinkId, crate::objects::user::DeviceLink>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
-    /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
+    /// Named versions (bookmarks): name → the `seq` it names. History, never pruned.
     pub versions: BTreeMap<crate::PointName, u64>,
-    /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
+    /// The project's own display bag: title, drawing number, customer,
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     pub display: Properties,
-    /// The project's own data: the location and function lists (design 072 §5.3).
+    /// The project's own data: the location and function lists.
     pub project: crate::document::project::Project,
-    /// Folders of pages (brief 019, decision FP3).
+    /// Folders of pages.
     pub folders: BTreeMap<FolderId, Folder>,
     /// Every folder once; siblings are ordered as they appear here.
     pub folder_order: Vec<FolderId>,
-    /// The project's standard (brief 050a, FP1); `None` is IEC (built in).
+    /// The project's standard; `None` is IEC (built in).
     pub standard: Option<crate::objects::styles::Standard>,
-    /// The project layer of style records (brief 050a, FP2).
+    /// The project layer of style records.
     pub styles: crate::objects::styles::StyleCatalogues,
 }
 
@@ -558,14 +558,14 @@ impl Document {
         if self.index != Index::build(self) {
             return Err(ModelError::Invariant("the reverse indexes differ from the stored objects".into()));
         }
-        // The kept nets (brief 022) are derived the same way: they must equal a fresh build.
+        // The kept nets are derived the same way: they must equal a fresh build.
         if let Some(diff) = self.conn.differs_from(&crate::connectivity::Connectivity::build(self)) {
             return Err(ModelError::Invariant(format!("the kept nets differ from a fresh build: {diff}")));
         }
         Ok(())
     }
 
-    /// The nets, kept up to date by every op (brief 022).
+    /// The nets, kept up to date by every op.
     pub fn connectivity(&self) -> &crate::connectivity::Connectivity {
         &self.conn
     }
@@ -586,12 +586,12 @@ impl Document {
         referrers(&self.index.definition_components, &definition).collect()
     }
 
-    /// Symbol items placing `definition`, in ID order (brief 048: a definition's placed copies).
+    /// Symbol items placing `definition`, in ID order (a definition's placed copies).
     pub fn items_using(&self, definition: DefinitionId) -> Vec<ItemId> {
         referrers(&self.index.definition_items, &definition).collect()
     }
 
-    /// The representation an item belongs to, if any (DOC-05 allows at most one).
+    /// The representation an item belongs to, if any (an item belongs to at most one).
     pub fn representation_of_item(&self, item: ItemId) -> Option<(RepresentationId, &Representation)> {
         referrers(&self.index.item_reps, &item).find_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
@@ -614,7 +614,7 @@ impl Document {
     }
 
     /// Representations that show `connection_point` through an explicit connection point, in ID order
-    /// (brief 036: a level terminal is always shown that way).
+    /// (a level terminal is always shown that way).
     pub fn representations_showing(&self, connection_point: ConnectionPointId) -> impl Iterator<Item = (RepresentationId, &Representation)> {
         referrers(&self.index.connection_point_reps, &connection_point).filter_map(|id| self.representations.get(&id).map(|r| (id, r)))
     }
@@ -674,13 +674,13 @@ impl Document {
         referrers(&self.index.tags, key).collect()
     }
 
-    /// Every tagged device through the tag index (brief 018), by tag key, then ID: no scan of the
+    /// Every tagged device through the tag index, by tag key, then ID: no scan of the
     /// devices.
     pub fn tagged(&self) -> impl Iterator<Item = (&crate::naming::tag::Key, DeviceId)> {
         self.index.tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k, *c)))
     }
 
-    /// Cables whose real tag is the same tag as `tag` (brief 026), in ID order, through the tag index.
+    /// Cables whose real tag is the same tag as `tag`, in ID order, through the tag index.
     pub fn cables_tagged(&self, tag: &str) -> Vec<CableId> {
         self.cables_with(&crate::naming::tag::Key::real(tag))
     }
@@ -690,14 +690,14 @@ impl Document {
         referrers(&self.index.cable_tags, key).collect()
     }
 
-    /// Every tagged cable through the tag index (brief 026), by tag key, then ID.
+    /// Every tagged cable through the tag index, by tag key, then ID.
     pub fn tagged_cables(&self) -> impl Iterator<Item = (&crate::naming::tag::Key, CableId)> {
         self.index.cable_tags.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k, *c)))
     }
 
-    /// Real tag keys starting with `start` held by devices or cables (brief 026), through a range of
+    /// Real tag keys starting with `start` held by devices or cables, through a range of
     /// the tag indexes: the cost follows the keys with that start, not the project. Provisional tags
-    /// are not among them (S6, #3).
+    /// are not among them.
     pub(crate) fn tag_keys_starting(&self, start: &str) -> impl Iterator<Item = &str> {
         let from = crate::naming::tag::Key { provisional: false, text: start.to_string() };
         let a = self.index.tags.range(from.clone()..).map(|(k, _)| k);
@@ -720,7 +720,7 @@ impl Document {
             .map(|k| k.text.as_str())
     }
 
-    /// Whether a device or a cable holds the real tag `tag` (brief 026: one namespace).
+    /// Whether a device or a cable holds the real tag `tag` (one namespace).
     pub fn tag_taken(&self, tag: &str) -> bool {
         let k = crate::naming::tag::Key::real(tag);
         self.index.tags.get(&k).is_some_and(|m| !m.is_empty()) || self.index.cable_tags.get(&k).is_some_and(|m| !m.is_empty())
@@ -736,20 +736,20 @@ impl Document {
         referrers(&self.index.folder_children, &folder).collect()
     }
 
-    /// Objects whose own style choice `key` names the stored style ID `value` (brief 050a, the
+    /// Objects whose own style choice `key` names the stored style ID `value` (the
     /// style's explicit users), in order, through the index: no scan of the project.
     pub fn style_users(&self, key: &str, value: &str) -> impl Iterator<Item = crate::document::op::ObjectRef> + '_ {
         referrers(&self.index.style_users, &(value.trim().to_string(), key.to_string()))
     }
 
-    /// Every style choice an object holds, through the index (brief 050a): (stored style ID,
+    /// Every style choice an object holds, through the index: (stored style ID,
     /// choice key, object), by ID then key.
     pub fn style_choices(&self) -> impl Iterator<Item = (&str, &str, crate::document::op::ObjectRef)> + '_ {
         self.index.style_users.iter().flat_map(|((v, k), objs)| objs.keys().map(move |o| (v.as_str(), k.as_str(), *o)))
     }
 
     /// Every (stored style ID, choice key) with at least one explicit user, and its users, from
-    /// `value` on (brief 050a), through the index.
+    /// `value` on, through the index.
     pub fn style_users_of(&self, value: &str) -> impl Iterator<Item = (&str, crate::document::op::ObjectRef)> + '_ {
         let v = value.trim().to_string();
         self.index
@@ -769,8 +769,7 @@ impl Document {
         referrers(&self.index.route_cables, &r).collect()
     }
 
-    /// The cable and core index whose named point `t` is (a point of a cable reference, design 072
-    /// §4.4, F4), through the index.
+    /// The cable and core index whose named point `t` is (a point of a cable reference), through the index.
     pub fn cable_point(&self, t: ConnectionPointId) -> Option<(CableId, usize)> {
         let cable = referrers(&self.index.cable_points, &t).next()?;
         let index = self.cables.get(&cable)?.cores.iter().position(|c| c.through.contains(&t))?;
@@ -782,7 +781,7 @@ impl Document {
         self.connection_points.contains_key(&t) || self.cable_point(t).is_some()
     }
 
-    /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4, F5): a
+    /// The named points joined to `t` (`t` included), when `t` is one: a
     /// cable reference's point joins the core's points on the cable's other references; a
     /// continuation's point joins the points of every continuation with the same name (an unnamed
     /// continuation's, its own). `None` for a device's own point. Named points are aids: a wire

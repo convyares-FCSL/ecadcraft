@@ -1,4 +1,4 @@
-//! Cable types (brief 057, brief 059, design 072 §4.6, §8, F37): the `cable` catalogue's typed
+//! Cable types: the `cable` catalogue's typed
 //! record, and the named core colour schemes a type may take its core colours from.
 //!
 //! The schemes' colours are built-in data (`ecad-electrical`'s `defaults/core_schemes.toml`);
@@ -28,7 +28,7 @@ crate::word_enum! {
 }
 
 crate::word_enum! {
-    /// A named core colour scheme (design 072 F37): how a cable type's cores are coloured, by
+    /// A named core colour scheme: how a cable type's cores are coloured, by
     /// core count. The colours are built-in data.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub enum CoreScheme {

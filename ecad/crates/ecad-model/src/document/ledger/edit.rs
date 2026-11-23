@@ -65,7 +65,7 @@ impl Ledger {
         self.commit_extended(author, label, ops, time_ms, |_, _| Vec::new())
     }
 
-    /// [`Ledger::commit_at`] with a pass that extends the transaction (brief 022's numbering
+    /// [`Ledger::commit_at`] with a pass that extends the transaction (the numbering
     /// pass): after `ops` are applied, the wire rewrite ([`crate::connectivity::wire_order::rewrite`], every
     /// edit) and then `extend` see the document as they left it (no copy) and return more ops,
     /// recorded in the same transaction after `ops`, so one undo undoes all.
@@ -98,7 +98,7 @@ impl Ledger {
         Ok(id)
     }
 
-    /// Commit a merge (brief 020b, FQ1): `ops` as one transaction of kind [`TxKind::Merge`],
+    /// Commit a merge: `ops` as one transaction of kind [`TxKind::Merge`],
     /// checked like any edit. A merge may have no ops (the target's side kept for every
     /// conflict): it is still recorded, so the next merge compares against it.
     ///
@@ -146,13 +146,13 @@ impl Ledger {
         stack.last().and_then(|(seq, _)| self.tx(*seq))
     }
 
-    /// The step [`Ledger::undo`] would undo, when held in memory (brief 020b: undoing a merge
+    /// The step [`Ledger::undo`] would undo, when held in memory (undoing a merge
     /// asks first).
     pub fn undo_top(&self) -> Option<&Transaction> {
         self.top(&self.stacks.undo)
     }
 
-    /// The undo held by the step [`Ledger::redo`] would redo, when held in memory (brief 035: an
+    /// The undo held by the step [`Ledger::redo`] would redo, when held in memory (an
     /// agent redoes only its own undos).
     pub fn redo_top(&self) -> Option<&Transaction> {
         self.top(&self.stacks.redo)
@@ -160,7 +160,7 @@ impl Ledger {
 
     /// The steps [`Ledger::undo`] would take back, oldest first (`(seq, id)`; the last is the next
     /// one). Only the entries known in memory: a snapshot's older entries may not be read yet
-    /// (brief 035: Undo session looks only at an agent session's recent steps).
+    /// (Undo session looks only at an agent session's recent steps).
     pub fn undo_stack(&self) -> &[(u64, TxId)] {
         &self.stacks.undo
     }
@@ -253,7 +253,7 @@ impl Ledger {
             return Err(ModelError::Precondition(format!("sequence {seq} is past the head {}", self.head())));
         }
         // From the root only when nothing precedes the log: a branch's ledger based at its `seq` 0
-        // starts from its parent's state, which its history gives (brief 020).
+        // starts from its parent's state, which its history gives.
         if self.base == 0 && self.history.is_none() {
             let mut doc = Document::default();
             for tx in self.log.iter().take(usize::try_from(seq).unwrap_or(usize::MAX)) {

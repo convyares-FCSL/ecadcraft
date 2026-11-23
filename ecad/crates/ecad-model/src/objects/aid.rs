@@ -1,4 +1,4 @@
-//! Drawing aids: continuations and location boxes (design 072 §6.2, lane F).
+//! Drawing aids: continuations and location boxes.
 //!
 //! # Semantics
 //! - An [`Aid`] is drawn but is not a device: it has no tag, no part and no rating. A
@@ -7,7 +7,7 @@
 //!   continuation with one name is one net. An unnamed one joins nothing. Its caption is the text
 //!   beside a run of arrows.
 //! - A [`Aid::Box`] marks a location (and function) on a page; the devices inside it take its
-//!   values unless their own are fixed (§6.3). No box id is stored on a device.
+//!   values unless their own are fixed. No box id is stored on a device.
 //!
 //! This module excludes how aids are drawn and edited (ecad-electrical, ecad-engine) and the
 //! nets continuations join (connectivity).
@@ -54,7 +54,7 @@ pub enum Aid {
     Box(LocationBox),
 }
 
-/// A location box's values (design 072 §6.2).
+/// A location box's values.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocationBox {
@@ -67,7 +67,7 @@ pub struct LocationBox {
     /// The temperature inside the panel it marks, for ratings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_temperature: Option<Celsius>,
-    /// Its own location style (brief 050a); `None`: the project's.
+    /// Its own location style; `None`: the project's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub style: Option<StyleRef>,
 }

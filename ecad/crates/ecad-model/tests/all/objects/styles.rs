@@ -1,4 +1,4 @@
-//! Brief 050a (FP1–FP3, overseer ruling: full arms with round-trip and merge tests): the standard,
+//! The standard,
 //! style records and their ops through apply, inverse, undo and redo, replay, diff, merge, the
 //! invariants and the style-choice index.
 

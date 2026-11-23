@@ -1,4 +1,4 @@
-//! What a transaction changed, classified once (design 064 §3): [`Effects::of`].
+//! What a transaction changed, classified once: [`Effects::of`].
 //!
 //! Every derived view (checks, reports, references, the change log's feeds) states its update map
 //! against [`Effect`], never against [`Op`]. This module holds the **only** `match` on `Op` those
@@ -20,7 +20,7 @@ use crate::objects::route::Route;
 use crate::objects::styles::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 use crate::{Cable, ConnectionPoint, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 
-/// A property key with its area, classified once ([`area_of`], design 064 §3.3).
+/// A property key with its area, classified once ([`area_of`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Key<'a> {
     pub raw: &'a str,
@@ -60,7 +60,7 @@ pub enum Effect<'a> {
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
-    /// A connection point added, removed, or both (brief 028's relabel).
+    /// A connection point added, removed, or both (a relabel).
     ConnectionPoint {
         id: ConnectionPointId,
         before: Option<&'a ConnectionPoint>,
@@ -76,7 +76,7 @@ pub enum Effect<'a> {
         before: Option<&'a Wire>,
         after: Option<&'a Wire>,
     },
-    /// A route drawn, removed or changed (design 072 F31).
+    /// A route drawn, removed or changed.
     Route {
         id: RouteId,
         before: Option<&'a Route>,
@@ -130,24 +130,24 @@ pub enum Effect<'a> {
         before: Option<&'a StandardHeader>,
         after: Option<&'a StandardHeader>,
     },
-    /// The project's own data changed (`ModifyProject`, design 072 §5.3).
+    /// The project's own data changed (`ModifyProject`).
     Project {
         before: &'a Project,
         after: &'a Project,
     },
-    /// A drawing aid made, removed or changed (design 072 §6.2).
+    /// A drawing aid made, removed or changed.
     Aid {
         id: crate::naming::id::AidId,
         before: Option<&'a crate::objects::aid::Aid>,
         after: Option<&'a crate::objects::aid::Aid>,
     },
-    /// A loose part made, removed or changed (design 072 §6.4).
+    /// A loose part made, removed or changed.
     LoosePart {
         id: crate::naming::id::LoosePartId,
         before: Option<&'a crate::objects::loose_part::LoosePart>,
         after: Option<&'a crate::objects::loose_part::LoosePart>,
     },
-    /// A device link made or removed (design 072 §2.6).
+    /// A device link made or removed.
     DeviceLink {
         id: crate::naming::id::LinkId,
         before: Option<&'a crate::objects::user::DeviceLink>,
@@ -234,7 +234,7 @@ impl EffectKindSet {
     }
 }
 
-/// A set of property [`Area`]s, buildable in a `const` (a view's `AREAS`, design 064 §3.3).
+/// A set of property [`Area`]s, buildable in a `const` (a view's `AREAS`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AreaSet(u64);
 

@@ -1,4 +1,4 @@
-//! Lane 072 G (design 072 §8, §4.6, F30, F36; acceptance A2, A4, A9): style records hold a typed
+//! Style records hold a typed
 //! body of their own catalogue. A wire type reads and writes its typed fields, refuses an unknown
 //! field or a value in a form it does not store, and cannot be filed under another catalogue.
 

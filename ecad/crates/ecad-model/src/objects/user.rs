@@ -1,4 +1,4 @@
-//! Project-defined user fields (design 072 §2.8) and typed links between devices (§2.6).
+//! Project-defined user fields and typed links between devices.
 //!
 //! # Semantics
 //! - The project lists its user fields ([`UserFieldDef`]: an id, a name unique ignoring case, and a
@@ -69,7 +69,7 @@ impl UserFieldKind {
     }
 }
 
-/// One project-defined field (design 072 §2.8).
+/// One project-defined field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UserFieldDef {
@@ -184,7 +184,7 @@ pub fn fields_problem(fields: &[UserFieldDef]) -> Option<String> {
 }
 
 crate::word_enum! {
-    /// What joins two devices (design 072 §2.6).
+    /// What joins two devices.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum LinkKind {
         /// Two contactors that must not close together (a reversing pair).
@@ -194,7 +194,7 @@ crate::word_enum! {
     }
 }
 
-/// A typed link between two different devices (design 072 §2.6).
+/// A typed link between two different devices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceLink {

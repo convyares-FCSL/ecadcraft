@@ -1,5 +1,4 @@
-//! A net's wire order: which pairs of its connection points the wires join, in order (design 072
-//! §4.4, F32, lane D).
+//! A net's wire order: which pairs of its connection points the wires join, in order.
 //!
 //! # Semantics
 //! - A net with points P1…Pn has n−1 wires, each between two connection points, in a stored order
@@ -11,8 +10,8 @@
 //!   follow ([`Join::Next`]) continues the chain from the last point added. A point takes at most
 //!   as many wires as it accepts (2 normally, more on PE bars and earth studs), so the order chains
 //!   by default and fans out (a star) only at points that accept more than two.
-//! - **When the point is full** (overseer, 2026-11-17: predictable, never a point the person did
-//!   not draw at). A T: the nearer end of the hit wire; if it is full, the far end of that wire; if
+//! - **When the point is full** (predictable: never a point the person did not draw at).
+//!   A T: the nearer end of the hit wire; if it is full, the far end of that wire; if
 //!   both are full, the nearer end takes it anyway. A route from a point: that point, full or not.
 //!   A point taking more wires than it accepts is an error the over-count check reports, so the
 //!   person fixes it where they can see it ([`Order::over`]).
@@ -156,13 +155,13 @@ impl Order {
     }
 }
 
-/// How many conductors connection point `t` accepts (design 072 §4.4, F38): its stored
+/// How many conductors connection point `t` accepts: its stored
 /// [`crate::Accepts`]; two for a point that does not exist.
 pub fn accepts(doc: &Document, t: ConnectionPointId) -> usize {
     doc.connection_points.get(&t).map_or(2, |x| x.accepts.get())
 }
 
-/// The rewrite pass (design 072 §4.4): the ops that bring the wires of every net whose points
+/// The rewrite pass: the ops that bring the wires of every net whose points
 /// `ops` changed in line with the routes, on `doc` as `ops` left it. Run in the same transaction
 /// (the ledger runs it on every edit). Empty when no net's points changed.
 ///
@@ -191,11 +190,11 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
             Op::RemoveConnectionPoint { id, .. } => {
                 seeds.points.insert(*id);
             }
-            // A point added to a continuation joins its name group (F5).
+            // A point added to a continuation joins its name group.
             Op::AddConnectionPoint { id, .. } if doc.named_points(*id).is_some() => {
                 seeds.points.insert(*id);
             }
-            // A continuation joining or leaving a name group (F5): the lines at its partners, old
+            // A continuation joining or leaving a name group: the lines at its partners, old
             // and new, may now run on through it or no longer.
             Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => seeds.continuation(doc, *id, aid),
             Op::ModifyAid { id, before, after } => {
@@ -214,7 +213,7 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
 /// A loose route (one with a free end) that has landed at one of `ends`, with the point it landed
 /// at: the line that carried a wire whose other end came away.
 fn loose_route_at(doc: &Document, ends: [ConnectionPointId; 2]) -> Option<(RouteId, ConnectionPointId)> {
-    // A line ending at a named point (F4) is loose too once the wire through it went.
+    // A line ending at a named point is loose too once the wire through it went.
     let open = |e: &RouteEnd| *e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
     ends.into_iter().find_map(|e| doc.routes_at(e).find(|r| doc.routes.get(r).is_some_and(|x| x.ends.iter().any(open))).map(|r| (r, e)))
 }
@@ -242,7 +241,7 @@ pub fn wire_of_route(doc: &Document, r: RouteId) -> Option<WireId> {
         .map(|(_, w)| w)
 }
 
-/// Where a core on route `r` belongs (owner ruling, 2026-11-18): on the wire the route carries
+/// Where a core on route `r` belongs: on the wire the route carries
 /// once both ends have landed, else on the route with the one end that has landed.
 /// [`CorePosition::Unplaced`] when the route is gone.
 pub fn core_position(doc: &Document, r: RouteId) -> CorePosition {
@@ -259,7 +258,7 @@ pub fn core_position(doc: &Document, r: RouteId) -> CorePosition {
 /// that has landed on a device point ([`CorePosition::Unplaced`] when the route is gone).
 fn line_position(doc: &Document, r: RouteId) -> CorePosition {
     let Some(route) = doc.routes.get(&r) else { return CorePosition::Unplaced };
-    // A named point (a cable reference's, a continuation's) is an aid, not a landing (F4).
+    // A named point (a cable reference's, a continuation's) is an aid, not a landing.
     let open = |e: RouteEnd| e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
     let landed = match route.ends {
         [RouteEnd::Point(t), o] | [o, RouteEnd::Point(t)] if open(o) && doc.named_points(t).is_none() => Some(t),
@@ -268,7 +267,7 @@ fn line_position(doc: &Document, r: RouteId) -> CorePosition {
     CorePosition::Route { route: r, landed }
 }
 
-/// The cores pass, run in the same transaction after [`rewrite`] (owner ruling, 2026-11-18): every
+/// The cores pass, run in the same transaction after [`rewrite`]: every
 /// core on a route that `ops` added, changed or removed moves to where it now belongs: onto the
 /// wire the route carries once both its ends have landed, or kept on the route with its landed end
 /// brought up to date. A core whose route is gone stays unplaced or goes ([`Core::off_line`]). The
@@ -280,7 +279,7 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
             routes.insert(*id);
         }
     }
-    // A line joined through a named point (F4) may now carry a wire: the lines at its partners too.
+    // A line joined through a named point may now carry a wire: the lines at its partners too.
     let partners: Vec<RouteId> = routes
         .iter()
         .filter_map(|r| doc.routes.get(r))
@@ -365,7 +364,7 @@ impl Seeds {
 struct Component {
     points: BTreeSet<ConnectionPointId>,
     routes: BTreeSet<RouteId>,
-    /// The named points it runs through (F4).
+    /// The named points it runs through.
     named: BTreeSet<ConnectionPointId>,
 }
 
@@ -475,7 +474,7 @@ impl<'a> Rewrite<'a> {
         while let Some(n) = todo.pop() {
             match n {
                 Start::Point(t) => {
-                    // A named point is an aid (design 072 §4.4, F4): the net runs on through its
+                    // A named point is an aid: the net runs on through its
                     // partners, on any page, and no wire ends there.
                     if let Some(group) = doc.named_points(t) {
                         for g in group {
@@ -830,7 +829,7 @@ impl<'a> Rewrite<'a> {
         })?;
         match core_position(doc, r) {
             p @ CorePosition::Route { .. } => Some(p),
-            // The wire this pass deletes still shows here (F5: a renamed continuation broke it).
+            // The wire this pass deletes still shows here (a renamed continuation broke it).
             CorePosition::Wire(w) if w == gone => match line_position(doc, r) {
                 p @ CorePosition::Route { .. } => Some(p),
                 CorePosition::Wire(_) | CorePosition::Unplaced => None,
@@ -852,7 +851,7 @@ impl<'a> Rewrite<'a> {
             let Some(route) = doc.routes.get(&r) else { continue };
             for e in route.ends {
                 match e {
-                    // Through a named point to the lines at its partners (F4).
+                    // Through a named point to the lines at its partners.
                     RouteEnd::Point(q) if c.named.contains(&q) => {
                         for g in doc.named_points(q).unwrap_or_default() {
                             todo.extend(doc.routes_at(g).filter(|x| c.routes.contains(x)));
@@ -879,8 +878,8 @@ impl<'a> Rewrite<'a> {
             let Some(here) = route.ends.iter().position(|e| *e == RouteEnd::Point(p)) else { continue };
             match route.ends.get(1 - here).copied() {
                 Some(RouteEnd::Point(q)) if o.has(q) => return Some(Join::From(q)),
-                // Through a named point: from a point beyond it already in the order (F4), the
-                // first with room for another wire, else the first (F5: a continuation's partner
+                // Through a named point: from a point beyond it already in the order, the
+                // first with room for another wire, else the first (a continuation's partner
                 // may sit on a T whose point is already full).
                 Some(RouteEnd::Point(q)) if c.named.contains(&q) => {
                     let beyond = self.neighbours(c, p);
@@ -927,8 +926,8 @@ impl<'a> Rewrite<'a> {
     }
 }
 
-/// The ops clearing every `protected_by` that names a device `ops` deleted (design 072 §4.5,
-/// overseer ruling 2026-11-18), on `doc` as `ops` left it: the same transaction, so one undo
+/// The ops clearing every `protected_by` that names a device `ops` deleted, on `doc` as `ops`
+/// left it: the same transaction, so one undo
 /// brings them back. Nothing unless `ops` delete a device.
 pub(crate) fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
     let gone: BTreeSet<crate::naming::id::DeviceId> = ops

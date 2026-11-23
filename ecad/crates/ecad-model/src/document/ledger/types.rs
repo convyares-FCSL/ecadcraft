@@ -11,7 +11,7 @@ use crate::naming::id::TxId;
 
 use super::*;
 
-/// Who made a transaction (FILE-07).
+/// Who made a transaction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Author {
     User,
@@ -30,7 +30,7 @@ pub enum TxKind {
     Redo {
         of: TxId,
     },
-    /// A merge of another branch into this one (brief 020b, FQ1): ordinary ops, and where they
+    /// A merge of another branch into this one: ordinary ops, and where they
     /// came from. On the undo stack it is an edit; replay applies its ops and reads nothing else.
     Merge {
         /// The source branch (the file's 128-bit branch ID).
@@ -49,7 +49,7 @@ impl TxKind {
     }
 }
 
-/// A step of a branch: its `seq` and chain value (the file's hash chain, brief 021).
+/// A step of a branch: its `seq` and chain value (the file's hash chain).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StepPoint {
     pub seq: u64,
@@ -78,7 +78,7 @@ pub struct Transaction {
     pub ops: Vec<Op>,
 }
 
-/// Where a ledger opened from a snapshot reads the history before its base (brief 021): a
+/// Where a ledger opened from a snapshot reads the history before its base: a
 /// project file's store. Reads only; never changes the file.
 pub trait History: std::fmt::Debug + Send + Sync {
     /// Transaction `seq` (before the ledger's base).
@@ -127,7 +127,7 @@ pub trait History: std::fmt::Debug + Send + Sync {
     }
 }
 
-/// A snapshot a ledger starts from instead of the project root (brief 021): the state after
+/// A snapshot a ledger starts from instead of the project root: the state after
 /// transaction `seq`, the undo and redo stacks there (as `(seq, id)` pairs, oldest first), and
 /// where the history before it is read.
 #[derive(Debug, Clone)]
@@ -153,7 +153,7 @@ pub enum Check {
     /// Exactly what [`Ledger::commit`] checks outside verify mode: the objects the transaction
     /// touched. The cost follows the size of each transaction. The file's **Verify** uses this.
     Commit,
-    /// The full [`Document::check`] and the index check as well, after every transaction (brief
-    /// 013's verify mode): the cost follows the size of the document, per transaction.
+    /// The full [`Document::check`] and the index check as well, after every transaction (verify
+    /// mode): the cost follows the size of the document, per transaction.
     Full,
 }

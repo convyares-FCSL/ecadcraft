@@ -1,4 +1,4 @@
-//! Loose parts: panel-only material on the bill of materials (design 072 §6.4, lane F).
+//! Loose parts: panel-only material on the bill of materials.
 //!
 //! # Semantics
 //! - A [`LoosePart`] is a part that belongs to no device and is not drawn: trunking, DIN rail,
@@ -11,7 +11,7 @@
 //!   and removed by `CreateLoosePart`, `ModifyLoosePart` and `DeleteLoosePart` (the whole part
 //!   recorded), as drawing aids are.
 //!
-//! - [`Bom`] (design 072 §2.4) is what goes on the bill of materials: a loose part gives one
+//! - [`Bom`] is what goes on the bill of materials: a loose part gives one
 //!   [`BomLine`], a device its main part.
 //!
 //! This module excludes the BOM itself (ecad-electrical's outputs: grouping, locations, part lines
@@ -26,7 +26,7 @@ use crate::Device;
 use crate::naming::id::{FunctionId, LocationId};
 use crate::objects::devices::PartText;
 
-/// The most characters a loose part's description has (design 072 §6.4).
+/// The most characters a loose part's description has.
 pub const MAX_DESCRIPTION: usize = 200;
 
 /// A loose part's description: one line, 1 to [`MAX_DESCRIPTION`] characters. Longer text is
@@ -130,7 +130,7 @@ impl<'de> Deserialize<'de> for Qty {
     }
 }
 
-/// A part on the BOM that is no device (stored intent, design 072 §6.4).
+/// A part on the BOM that is no device (stored intent).
 ///
 /// # Example
 /// ```
@@ -194,7 +194,7 @@ impl LoosePart {
     }
 }
 
-/// One line on the bill of materials: what the part is and how many (design 072 §2.4).
+/// One line on the bill of materials: what the part is and how many.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BomLine {
     /// What it is, in words.
@@ -211,7 +211,7 @@ pub struct BomLine {
     pub unit: ItemUnit,
 }
 
-/// What an object puts on the bill of materials (design 072 §2.4).
+/// What an object puts on the bill of materials.
 ///
 /// # Semantics
 /// - A loose part gives one line: its description, part, quantity and unit.

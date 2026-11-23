@@ -1,4 +1,4 @@
-//! Finding conflicts: per object and per property, the three-way pick of design §5.1.
+//! Finding conflicts: per object and per property, the three-way pick.
 
 use std::collections::BTreeSet;
 
@@ -10,7 +10,7 @@ use crate::{Cable, ConnectionPoint, Core, CorePosition, Device, Document, Folder
 
 use super::state::*;
 
-/// Merge property maps: per key (design §5.1).
+/// Merge property maps: per key.
 pub(super) fn merge_props(
     ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, a: &Properties, t: &Properties, s: &Properties, keep: &dyn Fn(&str) -> bool,
 ) -> Properties {
@@ -28,7 +28,7 @@ pub(super) fn merge_props(
                     kind: ConflictKind::Value,
                     object: obj,
                     what: format!("{what} · {}", key_words(k)),
-                    // Brief 045 (FP1): a value naming a component shows its tag.
+                    // A value naming a component shows its tag.
                     target: shown(t.get(k).map(|v| value_words(&[ctx.inp.target, ctx.inp.source, ctx.inp.ancestor], v)).as_ref()),
                     source: shown(s.get(k).map(|v| value_words(&[ctx.inp.source, ctx.inp.target, ctx.inp.ancestor], v)).as_ref()),
                     choices: vec![Choice::Target, Choice::Source, Choice::Value(String::new())],
@@ -96,7 +96,7 @@ pub(super) fn field<T: PartialEq + Clone>(
 }
 
 /// Merge a device's type: a PLC station's and module's fields one by one when all three keep the
-/// same group (design 072 §3, FP1: a station is shown by its tag); otherwise the type whole.
+/// same group (a station is shown by its tag); otherwise the type whole.
 pub(super) fn merge_device_type(
     ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, docs: &[&Document], a: &crate::DeviceType, t: &crate::DeviceType, s: &crate::DeviceType,
 ) -> crate::DeviceType {
@@ -481,7 +481,7 @@ pub(super) fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[
     }
 }
 
-/// The revisions both sides issued since the ancestor under one name (S4, #37): the same rev with a
+/// The revisions both sides issued since the ancestor under one name: the same rev with a
 /// different `at`. Asked as one conflict that names them, never picked; `Some(true)` when the
 /// answer takes the source's revision rows, `Some(false)` for the target's, `None` when there is
 /// no clash. Version names are branch-local history and never come across a merge, so two
@@ -514,7 +514,7 @@ pub(super) fn revision_clash(ctx: &mut Ctx<'_, '_>, obj: Obj) -> Option<bool> {
     Some(matches!(ctx.ask(c), Some(Choice::Source)))
 }
 
-/// The project's own data (design 072 §5.3): each list merges entry by entry (an entry changed on
+/// The project's own data: each list merges entry by entry (an entry changed on
 /// both sides differently is a conflict), the defaults field by field, the revision rows whole.
 pub(super) fn merge_project(
     ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate::Project, s: &crate::Project, clash: Option<bool>,
@@ -573,7 +573,7 @@ pub(super) fn merge_list<I: Copy + Ord + std::fmt::Display>(
     out
 }
 
-/// The standard and the style records (brief 050a, design 050 §3.5): the standard's header is
+/// The standard and the style records: the standard's header is
 /// one unit, its values merge per key like project properties, and each style record
 /// `(layer, catalogue, id)` is one unit. A standard removed on one side and changed in any part
 /// on the other is one removed conflict; removed on one side and untouched on the other, it goes.
@@ -714,8 +714,8 @@ pub(super) fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
     })
 }
 
-/// What a device kept from the source brings back with it (design §5.2: "re-adds it with the
-/// branch's values and whatever it needs"): its connection points and its symbols (with their
+/// What a device kept from the source brings back with it (it is re-added with the
+/// branch's values and whatever it needs): its connection points and its symbols (with their
 /// drawing items) that the source has and the result lacks.
 pub(super) fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> {
     let mut out: Vec<Obj> = s
@@ -734,7 +734,7 @@ pub(super) fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> 
 }
 
 /// Devices kept from the source by a removed conflict's answer bring back what they need, listed
-/// in the conflict's row (reviewer 020b, finding 4). A connection point or symbol another answer
+/// in the conflict's row. A connection point or symbol another answer
 /// removes is a problem with a choice, never a device merged silently without it. Returns what
 /// was brought back.
 pub(super) fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
@@ -804,7 +804,7 @@ pub(super) fn off_line(cores: &mut Vec<Core>, gone: impl Fn(&Core) -> bool) {
     *cores = out;
 }
 
-/// Cable cores: adds and removes from both sides combine (design §5.1). A core is the same core
+/// Cable cores: adds and removes from both sides combine. A core is the same core
 /// on both sides when it is on the same line, or, unplaced, has the same label. Each of its fields
 /// is the side that changed it (the target's when both did).
 pub(super) fn merge_members(a: &[Core], t: &[Core], s: &[Core]) -> Vec<Core> {

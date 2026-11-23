@@ -1,4 +1,4 @@
-//! Design 072 §9.3: the unit types store as bare numbers, convert angles in one place and add up
+//! The unit types store as bare numbers, convert angles in one place and add up
 //! only where it means something.
 
 use ecad_model::LengthUnit;

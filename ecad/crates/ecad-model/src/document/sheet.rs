@@ -1,17 +1,17 @@
-//! Sheets (brief 019, design 019 §3): the size and grid of a page's frame, and where a point lies
+//! Sheets: the size and grid of a page's frame, and where a point lies
 //! on that grid.
 //!
 //! # Semantics
 //! - A [`SheetSpec`] is stored in whole millimetres whatever the project's length unit; drawing
 //!   geometry divides by 25.4 in an inch project ([`unit_scale`]).
-//! - The model origin is the **page's bottom-left corner**, the paper edge (owner, 2026-11-08, fix
-//!   round): the paper runs from (0, 0) to (W, H); the frame from (10, 10) to (W − 10, H − 7).
+//! - The model origin is the **page's bottom-left corner**, the paper edge: the paper runs from (0, 0) to
+//!   (W, H); the frame from (10, 10) to (W − 10, H − 7).
 //!   Nothing assumes a title block or a bottom margin of any width.
 //! - The grid's zones span the **whole frame**, title-block area included: columns run left to
 //!   right from the frame's left edge, **row 1 is the top row**, counted down from the frame's top
 //!   edge. A point outside the frame is clamped to the nearest column and row.
 //! - By default the columns are **numbered** across the top and the rows **lettered** down the
-//!   sides (owner, UI round 2: "zones A–F × 1–8"; UI rev 3 boards). A spec may say otherwise.
+//!   sides ("zones A–F × 1–8"). A spec may say otherwise.
 //! - The project's sheet is [`crate::ProjectSettings::sheet`]; a page may override it with its
 //!   `sheet` property ([`SHEET_KEY`]), a text spec ([`SheetSpec::parse`]).
 //!
@@ -27,14 +27,14 @@ use crate::{Document, LengthUnit};
 /// The page property holding a page's own sheet spec (text, [`SheetSpec::parse`]).
 pub const SHEET_KEY: &str = "sheet";
 
-/// Margins in millimetres: left, right and bottom (design 019 §3.1).
+/// Margins in millimetres: left, right and bottom.
 pub const MARGIN_MM: f64 = 10.0;
 /// The top margin, in millimetres, where the column labels sit.
 pub(crate) const TOP_MARGIN_MM: f64 = 7.0;
 /// Height of the title block under the drawing area, in millimetres.
 pub const TITLE_BLOCK_MM: f64 = 40.0;
 
-/// Smallest and largest custom sheet (design 019 §3.1, owner answer Q10): smaller sheets cannot
+/// Smallest and largest custom sheet: smaller sheets cannot
 /// hold the title block.
 pub const MIN_WIDTH_MM: u32 = 420;
 pub const MAX_WIDTH_MM: u32 = 2400;
@@ -97,14 +97,13 @@ pub const PRESETS: [(&str, u32, u32, u32, u32); 4] =
     [("A3", 420, 297, 8, 6), ("A2", 594, 420, 12, 8), ("A1", 841, 594, 16, 12), ("A0", 1189, 841, 24, 16)];
 
 impl Default for SheetSpec {
-    /// A3 landscape, columns `1`–`8` across the top, rows `A`–`F` down the sides (design 019 §3.1,
-    /// with the labels the owner chose in UI round 2: "zones A–F × 1–8").
+    /// A3 landscape, columns `1`–`8` across the top, rows `A`–`F` down the sides ("zones A–F × 1–8").
     fn default() -> Self {
         SheetSpec { width: 420, height: 297, columns: 8, rows: 6, column_labels: GridLabels::Numbers, row_labels: GridLabels::Letters }
     }
 }
 
-/// The refusal for a spec that cannot be read (design 019 §6.1).
+/// The refusal for a spec that cannot be read.
 pub fn unknown_sheet(text: &str) -> String {
     format!("Sheet \"{text}\" is not known. Use A3, A2, A1, A0 or WxH, then columns x rows.")
 }
@@ -126,7 +125,7 @@ impl SheetSpec {
         PRESETS.iter().find(|p| p.1 == self.width && p.2 == self.height).map(|p| p.0)
     }
 
-    /// Whether the size and grid are within the limits of design 019 §3.1.
+    /// Whether the size and grid are within the limits of a sheet (`MIN_WIDTH_MM` to `MAX_HEIGHT_MM`).
     ///
     /// # Errors
     /// The limit broken, in words.
@@ -231,7 +230,7 @@ pub fn unit_scale(unit: LengthUnit) -> f64 {
     }
 }
 
-/// The sheet `page` is drawn on (brief 055, design 055 §2, FP4): its frame's sheet when the frame
+/// The sheet `page` is drawn on: its frame's sheet when the frame
 /// sets one, else its own `sheet` property when that reads, else the project's.
 ///
 /// The one place a page's sheet is decided, so the frame, the references, the Devices tab and the
@@ -242,13 +241,13 @@ pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
     frame_sheet(doc, page).unwrap_or_else(|| own_sheet(doc, page))
 }
 
-/// Brief 055: the choice key of a page's frame style (`ecad-engine`'s `print.frame.style`).
+/// The choice key of a page's frame style (`ecad-engine`'s `print.frame.style`).
 pub const FRAME_STYLE_KEY: &str = "print.frame.style";
 /// The frame style catalogue.
 pub const FRAME_CATALOGUE: StyleCatalogue = StyleCatalogue::Frame;
 /// The built-in frame style's word.
 pub(crate) const BUILTIN_FRAME: &str = "sheet";
-/// The frame field holding the sheet a frame is drawn for (design 055 §1.4).
+/// The frame field holding the sheet a frame is drawn for.
 pub const FRAME_SHEET_FIELD: &str = "sheet";
 /// The frame field holding its margins, `l,r,b,t` in millimetres.
 pub const FRAME_MARGINS_FIELD: &str = "margins";
@@ -263,11 +262,11 @@ pub(crate) fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
         || crate::objects::styles::bounded_record(doc, StyleLayer::Standard, FRAME_CATALOGUE, id).is_some()
 }
 
-// --- Page-type steps (brief 054, overseer ruling 2026-11-14): the page type's sheet, frame,
+// --- Page-type steps: the page type's sheet, frame,
 // title block and zones, read from stored records only ([`page_type_of`]); every resolver below
 // asks them.
 
-/// `page`'s page type (design 054 §2.3), when the page exists.
+/// `page`'s page type, when the page exists.
 fn type_of_page(doc: &Document, page: PageId) -> Option<StyleRef> {
     doc.pages.get(&page).map(|p| page_type_of(doc, p))
 }
@@ -277,12 +276,12 @@ fn type_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::objects::st
     [StyleLayer::Project, StyleLayer::Standard].into_iter().find_map(|l| type_record(doc, l, id).and_then(|r| r.body.page()).and_then(&get))
 }
 
-/// The sheet `page`'s page type sets (054, FP3): [`type_sheet`].
+/// The sheet `page`'s page type sets: [`type_sheet`].
 pub fn page_type_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
     type_sheet(doc, &type_of_page(doc, page)?)
 }
 
-/// The frame style `page`'s page type names (054's `frame`), when it names an existing one.
+/// The frame style `page`'s page type names (its `frame` field), when it names an existing one.
 pub fn page_type_frame(doc: &Document, page: PageId) -> Option<StyleRef> {
     let id = type_of_page(doc, page)?;
     match type_value(doc, &id, |t| t.frame.clone())? {
@@ -291,7 +290,7 @@ pub fn page_type_frame(doc: &Document, page: PageId) -> Option<StyleRef> {
     }
 }
 
-/// The frame style whose title block `page`'s page type borrows (054's `title_block`, a frame
+/// The frame style whose title block `page`'s page type borrows (its `title_block` field, a frame
 /// style ID), when it names an existing one.
 pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
     let id = type_of_page(doc, page)?;
@@ -301,12 +300,12 @@ pub fn page_type_title_block(doc: &Document, page: PageId) -> Option<StyleRef> {
     }
 }
 
-/// The built-in page types that draw no zones (design 054 §2.2).
+/// The built-in page types that draw no zones.
 const ZONELESS_TYPES: [&str; 4] = ["front", "panel", "report", "plain"];
-/// The built-in page type with checks and references off (design 054 §3.4).
+/// The built-in page type with checks and references off.
 pub(crate) const PLAIN_TYPE: &str = "plain";
 
-/// Whether page type `id` has **Checks and references** on (design 054 §3.4): its record's
+/// Whether page type `id` has **Checks and references** on: its record's
 /// `checks` field, else the built-in's (Plain off, the others on).
 pub fn type_checks(doc: &Document, id: &StyleRef) -> bool {
     type_value(doc, id, |t| t.checks).unwrap_or_else(|| !matches!(id, StyleRef::Builtin(w) if w == PLAIN_TYPE))
@@ -335,7 +334,7 @@ pub fn checks_pages_touched(ops: &[crate::document::op::Op]) -> bool {
     })
 }
 
-/// Whether `page`'s page type shows zones (054's `zones`, FP6): its record's `on`/`off`, else the
+/// Whether `page`'s page type shows zones (its `zones` field): its record's `on`/`off`, else the
 /// built-in's (Front sheet, Panel layout and Report off; the others on). `None` only for a page
 /// that does not exist.
 pub fn page_type_zones(doc: &Document, page: PageId) -> Option<bool> {
@@ -343,11 +342,11 @@ pub fn page_type_zones(doc: &Document, page: PageId) -> Option<bool> {
     Some(type_value(doc, &id, |t| t.zones).unwrap_or_else(|| !matches!(&id, StyleRef::Builtin(w) if ZONELESS_TYPES.contains(&w.as_str()))))
 }
 
-/// Brief 055 (overseer ruling 2026-11-14): the page property naming a frame style whose title
+/// The page property naming a frame style whose title
 /// block the page borrows (the border stays its frame's).
 pub(crate) const TITLE_BLOCK_KEY: &str = "title_block";
 
-/// The frame style `page` uses (design 050 §2.4): the page's own `print.frame.style`, else its
+/// The frame style `page` uses: the page's own `print.frame.style`, else its
 /// page type's frame, else the project's, else the standard's, else the built-in, each only when
 /// it names a frame style that exists. The one frame resolver: `ecad-engine` asks it too.
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
@@ -359,7 +358,7 @@ pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
         .unwrap_or_else(|| StyleRef::Builtin(BUILTIN_FRAME.to_string()))
 }
 
-/// The frame style whose title block `page` draws (overseer ruling 2026-11-14, no new catalogue):
+/// The frame style whose title block `page` draws (no new catalogue):
 /// the page's own `title_block`, else its page type's, else its frame ([`frame_style`]), each only
 /// when it names a frame style that exists. Its body is the block ([`frame_block`]); none (the
 /// built-in, or a frame without one) draws the house block.
@@ -430,13 +429,13 @@ pub fn frame_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
     frame_spec(doc, &id)
 }
 
-/// The margins of `page`'s frame: its `margins` field when it reads, else 019's.
+/// The margins of `page`'s frame: its `margins` field when it reads, else the default margins.
 pub fn margins_of(doc: &Document, page: PageId) -> Margins {
     let id = frame_style(doc, page);
     frame_margins(doc, &id).unwrap_or_default()
 }
 
-/// The keep-out strip at the bottom of `page`'s frame, in millimetres (design 055 §2): its own
+/// The keep-out strip at the bottom of `page`'s frame, in millimetres: its own
 /// block's height, else the built-in's [`TITLE_BLOCK_MM`]; never more than the frame's height.
 pub fn keep_out(doc: &Document, page: PageId) -> f64 {
     let id = title_block_style(doc, page);
@@ -447,7 +446,7 @@ pub fn keep_out(doc: &Document, page: PageId) -> f64 {
 }
 
 /// The sheet `page` would have without its frame: its own `sheet` property, else its page type's
-/// ([`page_type_sheet`]), else the project's, else A3 (design 019 §3).
+/// ([`page_type_sheet`]), else the project's, else A3.
 pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
@@ -457,21 +456,21 @@ pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
         .unwrap_or_else(|| doc.settings.sheet())
 }
 
-// ---------------------------------------------------------------- page types (brief 054, FP3)
+// ---------------------------------------------------------------- page types
 
-/// The style-choice key a page's type is indexed under (brief 054, FP2; the field is
+/// The style-choice key a page's type is indexed under (the field is
 /// [`crate::Page::page_type`]), and the registry entry's key.
 pub const PAGE_TYPE_KEY: &str = "page.type";
-/// The style catalogue of page types (brief 054, FP1).
+/// The style catalogue of page types.
 pub(crate) const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
 /// The old page property of a generated page's kind; now [`crate::Page::kind`] (a reserved key).
 pub(crate) const GENERATED_KEY: &str = "generated";
-/// The six built-in page types (design 054 §2.2), in table order.
+/// The six built-in page types, in table order.
 pub(crate) const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
 /// The value a type's `sheet` field holds to take the project's sheet.
 pub const PROJECT_SHEET: &str = "project";
 
-/// The type a page with no (usable) page type has (design 054 §2.3, rules 2 and 3): a front
+/// The type a page with no (usable) page type has (rules 2 and 3): a front
 /// kind is `front`, any other generated kind `report`, a drawn page `schematic`.
 pub fn derived_page_type(kind: crate::PageKind) -> &'static str {
     match kind.generated_kind() {
@@ -481,7 +480,7 @@ pub fn derived_page_type(kind: crate::PageKind) -> &'static str {
     }
 }
 
-/// The page type of `page` (design 054 §2.3): its own page type when that names a type that
+/// The page type of `page`: its own page type when that names a type that
 /// exists (a built-in one, or a record in the project or the standard), else
 /// [`derived_page_type`]. Reads stored records only.
 pub fn page_type_of(doc: &Document, page: &crate::Page) -> crate::StyleRef {
@@ -512,7 +511,7 @@ fn type_record<'a>(
     Some(r)
 }
 
-/// The sheet page type `id` stores (design 054 §3.1): the project record's `sheet` field, then
+/// The sheet page type `id` stores: the project record's `sheet` field, then
 /// the standard record's, when it reads as a sheet within the limits. `None` when neither does or
 /// the type takes the project's sheet (`project`, every built-in's value).
 pub fn type_sheet(doc: &Document, id: &crate::StyleRef) -> Option<SheetSpec> {
@@ -532,14 +531,13 @@ pub struct Margins {
 }
 
 impl Default for Margins {
-    /// 10 mm left, right and bottom, 7 mm at the top (design 019 §3.1).
+    /// 10 mm left, right and bottom, 7 mm at the top.
     fn default() -> Self {
         Margins { left: MARGIN_MM, right: MARGIN_MM, bottom: MARGIN_MM, top: TOP_MARGIN_MM }
     }
 }
 
-/// The corner the zones are counted from (owner note of 2026-11-08: a project setting later;
-/// today always [`Corner::TopLeft`]).
+/// The corner the zones are counted from (a project setting later; today always [`Corner::TopLeft`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Corner {
     #[default]
@@ -553,7 +551,7 @@ pub enum Corner {
 ///
 /// The zone counts and label styles come from the [`SheetSpec`]; the margins and the corner the
 /// counting starts from are parameters too ([`Grid::with_layout`]), so a later project setting
-/// for them needs no change here (owner note of 2026-11-08).
+/// for them needs no change here.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Grid {
     pub spec: SheetSpec,
@@ -594,7 +592,7 @@ impl Grid {
         }
     }
 
-    /// The grid of `page` in `doc`: its sheet and its frame's margins (brief 055, FP4).
+    /// The grid of `page` in `doc`: its sheet and its frame's margins.
     pub fn of(doc: &Document, page: PageId) -> Grid {
         Grid::with_layout(sheet_of(doc, page), doc.settings.length_unit, margins_of(doc, page), Corner::TopLeft)
     }
@@ -715,7 +713,7 @@ mod tests {
     }
 }
 
-// ---------------------------------------------------------------- page places (design 072 §9.3)
+// ---------------------------------------------------------------- page places
 
 /// A column of a page's grid, numbered as the frame numbers it (1 is the first column counted from
 /// the grid's start corner, [`Grid::column_number`]).

@@ -1,4 +1,4 @@
-//! Text styles (design 050 §4.1, design 072 §8): the `text` catalogue's typed record, and the
+//! Text styles: the `text` catalogue's typed record, and the
 //! colour a style field takes ([`StyleColour`], shared by text, location and frame styles).
 //!
 //! What a text style means (cap heights, the project font, how a colour draws) is
@@ -121,7 +121,7 @@ impl<'de> Deserialize<'de> for Font {
     }
 }
 
-/// A text style (design 050 §4.1): what a standard or a project says about one. `None` inherits.
+/// A text style: what a standard or a project says about one. `None` inherits.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextStyle {

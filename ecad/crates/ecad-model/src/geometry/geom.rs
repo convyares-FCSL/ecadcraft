@@ -1,4 +1,4 @@
-//! Small geometry value types owned by the model (no CADCraft types, principle P10), and geometry
+//! Small geometry value types owned by the model (no CADCraft types), and geometry
 //! over primitives: the nearest point on one, their extents, and moving or scaling one.
 
 use crate::Primitive;
@@ -32,7 +32,7 @@ impl Pt {
     }
 }
 
-/// Where a symbol instance sits on its page (proposal §4.2).
+/// Where a symbol instance sits on its page.
 ///
 /// # Semantics
 /// `page = origin + R(rotation) · M(mirror) · scale · local`, where `M` negates x when mirrored.

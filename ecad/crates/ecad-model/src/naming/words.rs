@@ -1,4 +1,4 @@
-//! The readers of the few word shapes every stored text uses (design 072 §9.1): a yes/no value and
+//! The readers of the few word shapes every stored text uses: a yes/no value and
 //! a whole number, and the characters no typed text may hold. Every copy of these rules goes through here, so a file reads the same in every
 //! crate.
 //!
@@ -19,7 +19,7 @@ pub const FLAG_WORDS: &[&str] = &[YES_WORDS[0], NO_WORDS[0]];
 /// The most digits [`uint`] and [`uint_canonical`] read: enough for any `u32`.
 pub const MAX_UINT_DIGITS: usize = 10;
 
-/// A yes/no value: the one boolean rule (design 072 Part I).
+/// A yes/no value: the one boolean rule.
 ///
 /// # Semantics
 /// Surrounding whitespace is ignored and case does not matter. `yes`, `true`, `1`, `on` are yes;
@@ -57,7 +57,7 @@ pub fn is_digits(text: &str) -> bool {
 ///
 /// # Semantics
 /// Surrounding whitespace is ignored; the rest must be 1–[`MAX_UINT_DIGITS`] ASCII digits
-/// (leading zeros allowed: `007` is 7). No sign, no separators. `None` past `max`.
+/// (leading zeros allowed: `0007` is 7). No sign, no separators. `None` past `max`.
 ///
 /// # Example
 /// ```
@@ -79,7 +79,7 @@ pub fn uint(text: &str, max: u32) -> Option<u32> {
 /// use ecad_model::naming::words::uint_canonical;
 /// assert_eq!(uint_canonical("12", 99), Some(12));
 /// assert_eq!(uint_canonical("0", 99), Some(0));
-/// assert_eq!(uint_canonical("012", 99), None);
+/// assert_eq!(uint_canonical("0012", 99), None);
 /// assert_eq!(uint_canonical(" 12", 99), None);
 /// ```
 pub fn uint_canonical(text: &str, max: u32) -> Option<u32> {
@@ -96,8 +96,8 @@ fn digits_value(t: &str) -> Option<u32> {
     t.parse::<u32>().ok()
 }
 
-/// The invisible format characters a typed text never holds besides control characters (design 072
-/// §9.4): soft hyphen, the Arabic letter mark, the Mongolian vowel separator, zero-width and joiner
+/// The invisible format characters a typed text never holds besides control characters:
+/// soft hyphen, the Arabic letter mark, the Mongolian vowel separator, zero-width and joiner
 /// characters and the directional marks, the bidi embeddings and overrides, word joiners and
 /// invisible operators, the bidi isolates and deprecated format characters, the byte-order mark and
 /// the interlinear annotation marks. Inclusive ranges of code points.
@@ -114,13 +114,13 @@ pub const HIDDEN_RANGES: &[(u32, u32)] = &[
 ];
 
 /// Whether `c` is a character no text a person typed may hold: a control character or one of
-/// [`HIDDEN_RANGES`]. The one hidden-character rule (G14: no other copy).
+/// [`HIDDEN_RANGES`]. The one hidden-character rule (no other copy).
 pub fn is_hidden(c: char) -> bool {
     c.is_control() || HIDDEN_RANGES.iter().any(|(lo, hi)| (*lo..=*hi).contains(&u32::from(c)))
 }
 
 crate::word_enum! {
-    /// A connector half (brief 044, design 072 §2.2, §2.6): the socket (female contacts) or the
+    /// A connector half: the socket (female contacts) or the
     /// plug (male contacts).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Side {
@@ -139,7 +139,7 @@ impl Side {
     }
 }
 
-/// An enum whose values are stored as words (design 072 §9.1): `word()` writes one, `parse()`
+/// An enum whose values are stored as words: `word()` writes one, `parse()`
 /// reads one or fails. Declared with [`crate::word_enum!`], never by hand, so a variant's word is
 /// written in exactly one place (its strum attribute, or its name in snake case).
 ///

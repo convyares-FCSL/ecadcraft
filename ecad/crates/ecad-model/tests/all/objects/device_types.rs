@@ -1,4 +1,4 @@
-//! Lane 072 B (design 072 §2, §7, §14): the device and its type.
+//! The device and its type.
 
 use ecad_model::objects::devices::{DeviceGroup, DeviceType};
 use ecad_model::{Author, Definition, Device, DeviceId, IdAllocator, Ledger, ModelError, Op, Word};

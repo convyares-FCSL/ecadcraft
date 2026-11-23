@@ -1,4 +1,4 @@
-//! A1: `one_boolean_rule`, `whole_numbers` (design 072 §14): the word readers on tables.
+//! A1: `one_boolean_rule`, `whole_numbers`: the word readers on tables.
 
 use ecad_model::naming::words::{flag, flag_word, is_digits, uint, uint_canonical};
 

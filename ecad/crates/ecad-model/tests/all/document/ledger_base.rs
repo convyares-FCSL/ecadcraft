@@ -1,4 +1,4 @@
-//! A ledger opened from a snapshot (brief 021): it behaves exactly like one replayed from the root,
+//! A ledger opened from a snapshot: it behaves exactly like one replayed from the root,
 //! and reads transactions before its base only when undo, redo or `state_at` reach them.
 
 use std::sync::atomic::{AtomicUsize, Ordering};

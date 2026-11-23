@@ -1,4 +1,4 @@
-//! Title block layouts (brief 055, design 055 §1.2–§1.3, FP1): the typed body a `frame` style
+//! Title block layouts: the typed body a `frame` style
 //! record carries.
 //!
 //! # Semantics
@@ -6,10 +6,10 @@
 //!   texts, fields (a box showing one bound value), a revision table and vector logos. Coordinates
 //!   are millimetres from the block's bottom-left corner, whatever the project's length unit.
 //! - A [`Binding`] names what a field shows (`project:drawing_number`, `page:number`,
-//!   `revision:ecr`, `print:sheet`). It is written as that text. Strict (design 072 §5.4): an
+//!   `revision:ecr`, `print:sheet`). It is written as that text. Strict: an
 //!   unknown source word, a binding without its `source:`, a revision binding naming no revision
 //!   field, or an unknown item kind is a read error.
-//! - The frame style holding a title block is typed (design 072 §8, `crate::objects::styles::FrameStyle`):
+//! - The frame style holding a title block is typed (`crate::objects::styles::FrameStyle`):
 //!   an unknown body field is a read error too.
 //! - Bounds (house rule 12): [`TitleBlockLayout::check`] refuses a breach in words (commands);
 //!   [`TitleBlockLayout::usable`] is what drawing uses: items past [`MAX_ITEMS`] or breaking a
@@ -41,9 +41,9 @@ pub const MIN_BOX_MM: f64 = 0.5;
 pub const MAX_BLOCK_HEIGHT_MM: f64 = 400.0;
 /// Most rows of a revision table.
 pub const MAX_TABLE_ROWS: u8 = 20;
-/// Longest "If empty" text, in characters (design 055 §4.4).
+/// Longest "If empty" text, in characters.
 pub const MAX_IF_EMPTY_TEXT: usize = 32;
-/// Text sizes the editor offers (cap height, mm; design 055 §4.4, Q10).
+/// Text sizes the editor offers (cap height, mm).
 pub const SIZES: [f64; 5] = [1.8, 2.5, 3.5, 5.0, 7.0];
 /// Smallest and largest text size a block accepts, in millimetres.
 pub const MIN_TEXT_MM: f64 = 1.0;
@@ -110,7 +110,7 @@ pub enum Align {
     Right,
 }
 
-/// A text's colour: ink, or red (house style: the status; Q8).
+/// A text's colour: ink, or red (house style: the status).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ink {
@@ -153,7 +153,7 @@ pub enum IfEmpty {
     #[default]
     Blank,
     Dash,
-    /// 033's missing mark (`?`).
+    /// The missing mark (`?`).
     Missing,
     /// A short text (at most [`MAX_IF_EMPTY_TEXT`] characters).
     Text(String),
@@ -179,7 +179,7 @@ crate::word_enum! {
     }
 }
 
-/// A revision field a binding or a revision table column names (design 072 §5.4): a built-in
+/// A revision field a binding or a revision table column names: a built-in
 /// field or a custom one.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RevisionColumn {
@@ -205,7 +205,7 @@ impl RevisionColumn {
     }
 }
 
-/// Why a binding does not read (design 072 §5.4).
+/// Why a binding does not read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum BindingError {
     #[error("\"{0}\" is not source:key")]
@@ -217,7 +217,7 @@ pub enum BindingError {
 }
 
 crate::word_enum! {
-    /// A page value a field shows (design 055 §7).
+    /// A page value a field shows.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum PageField {
         Title,
@@ -237,7 +237,7 @@ crate::word_enum! {
     }
 }
 
-/// Longest project key a field may name, in characters (design 055 §4.3).
+/// Longest project key a field may name, in characters.
 pub const MAX_PROJECT_KEY: usize = 32;
 
 /// A project key a field shows (`title`, `drawing_number`, `company`, any project property):
@@ -263,7 +263,7 @@ impl ProjectKey {
     }
 }
 
-/// What a field shows (design 072 §5.4): each source with its own typed key, written
+/// What a field shows: each source with its own typed key, written
 /// `source:key`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Binding {
@@ -419,7 +419,7 @@ impl BlockItem {
         }
     }
 
-    /// Why this item breaks a bound (design 055 §1.3), in words; `None` when it keeps them.
+    /// Why this item breaks a bound, in words; `None` when it keeps them.
     pub fn fault(&self) -> Option<String> {
         let coord = |v: f64| v.is_finite() && (0.0..=MAX_COORD_MM).contains(&v);
         let draw_ok = |l: &TextDraw| l.size.is_finite() && (MIN_TEXT_MM..=MAX_TEXT_MM).contains(&l.size);
@@ -478,7 +478,7 @@ impl BlockItem {
     }
 }
 
-/// The refusal for a logo with too many shapes (design 055 §6).
+/// The refusal for a logo with too many shapes.
 pub fn logo_words(n: usize) -> String {
     format!("The logo has {} shapes; {} at most. Simplify it first.", group(n), group(MAX_LOGO_PRIMS))
 }
@@ -541,7 +541,7 @@ impl TitleBlockLayout {
         self.size_ok().then_some(self.size.1)
     }
 
-    /// Whether the block keeps every bound of design 055 §1.3.
+    /// Whether the block keeps every bound of a title block (size, text sizes, row counts).
     ///
     /// # Errors
     /// The first bound broken, in words (commands refuse with it; nothing is written).

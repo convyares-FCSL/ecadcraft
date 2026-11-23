@@ -11,18 +11,18 @@ use crate::naming::id::{DefinitionId, DeviceId};
 use super::{Properties, definition::*, drawing::*};
 use crate::objects::devices::DeviceType;
 
-/// A device (design 072 §2.1): a real part with its symbols, its connection points and its type.
+/// A device: a real part with its symbols, its connection points and its type.
 ///
 /// # Semantics
 /// What the device is lives in [`Device::device_type`], copied from its symbol's
 /// [`Definition::device_type`] when the symbol is placed as a new device; it is never worked out
-/// from the symbol, the tag or a property. The fields not yet typed (design 072 lane B steps 2–5)
+/// from the symbol, the tag or a property. The fields not yet typed
 /// are still in [`Device::properties`].
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
-    /// Its tag (`-K01`) and what it is (design 026; the identity of the device): automatic, fixed
-    /// (typed, kept by renumbering, FP1) or provisional, or none. One field: the state holds the tag (S6, #3).
+    /// Its tag (`-K01`) and what it is (the identity of the device): automatic, fixed
+    /// (typed, kept by renumbering) or provisional, or none. One field: the state holds the tag.
     pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
@@ -34,20 +34,20 @@ pub struct Device {
     pub article_number: Option<crate::objects::devices::PartText>,
     /// Its type text (`type`): a terminal strip's type notation reads it.
     pub type_text: Option<crate::objects::devices::PartText>,
-    /// Its location (an entry of the project's list, design 072 §6.3) and how it came to be: manual
+    /// Its location (an entry of the project's list) and how it came to be: manual
     /// (typed, or a box drawn around it: kept when a box around it changes), proposed (from its
-    /// page or a box), or unset. One field: the state holds the entry (S6, #3).
+    /// page or a box), or unset. One field: the state holds the entry.
     pub location: crate::document::book::Place<crate::naming::id::LocationId>,
     /// Its function (an entry of the project's list), as [`Device::location`].
     pub function: crate::document::book::Place<crate::naming::id::FunctionId>,
-    /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
+    /// Its rating note: text that did not read as its group's typed rating.
     pub rating_note: Option<crate::objects::devices::RatingNote>,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
     /// What the device is.
     pub device_type: DeviceType,
-    /// Its values of the project's user fields, by field (design 072 §2.8); left out while empty.
+    /// Its values of the project's user fields, by field; left out while empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub user: BTreeMap<crate::naming::id::UserFieldId, crate::objects::user::UserValue>,
 }
@@ -58,7 +58,7 @@ impl Device {
         Device { properties, definition: Some(id), device_type: definition.device_type.clone(), ..Device::default() }
     }
 
-    /// Whether its tag is fixed (FP1).
+    /// Whether its tag is fixed.
     pub fn is_fixed(&self) -> bool {
         self.tag.is_fixed()
     }
@@ -108,7 +108,7 @@ impl Device {
         bare(self) == bare(other)
     }
 
-    /// The value `setprop`'s key `key` names on this device (design 072 §10: the key stays a
+    /// The value `setprop`'s key `key` names on this device (the key stays a
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
@@ -130,7 +130,7 @@ impl Device {
         }
     }
 
-    /// Its rating as shown (design 072 §2.2): its typed rating fields when one is set, else its
+    /// Its rating as shown: its typed rating fields when one is set, else its
     /// note. Nothing stores this text.
     pub fn rating_shown(&self) -> Option<String> {
         self.device_type.rating().or_else(|| self.rating_note.as_ref().map(ToString::to_string))
@@ -240,7 +240,7 @@ impl Device {
     }
 }
 
-/// How many conductors a connection point accepts (design 072 §2.7, §4.4, F38): 1 to
+/// How many conductors a connection point accepts: 1 to
 /// [`Accepts::MAX`]; two unless its symbol says more (PE bars, earth studs). The wire order chains
 /// through a point that accepts two and fans out (a star) from one that accepts more; a point
 /// with more wires than it accepts is a Checks error. Any other number is a read error.
@@ -291,8 +291,8 @@ impl<'de> Deserialize<'de> for Accepts {
     }
 }
 
-/// What a connection point belongs to (design 072 §3): a device, or a drawing aid (a
-/// continuation's point, §6.2).
+/// What a connection point belongs to: a device, or a drawing aid (a
+/// continuation's point).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionPointOwner {
@@ -349,10 +349,10 @@ impl ConnectionPointOwner {
 /// A connection point of a device or a drawing aid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConnectionPoint {
-    /// What it belongs to (design 072 §3).
+    /// What it belongs to.
     pub owner: ConnectionPointOwner,
     pub label: Option<String>,
-    /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
+    /// The definition terminal this one was created from.
     pub key: Option<PointKey>,
     /// How many conductors it accepts, copied from its definition terminal when it is made.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
@@ -372,7 +372,7 @@ pub struct ConnectionPointDef {
     pub key: PointKey,
     pub label: Option<String>,
     pub at: Pt,
-    /// How many conductors the point accepts (design 072 F38); copied to each [`ConnectionPoint`] made
+    /// How many conductors the point accepts; copied to each [`ConnectionPoint`] made
     /// from it.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
     pub accepts: Accepts,

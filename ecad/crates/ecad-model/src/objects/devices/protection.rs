@@ -1,5 +1,4 @@
-//! A protective device's rating (design 072 §2.2, "Ratings", owner decisions 2026-11-18): typed
-//! fields per kind, never a stored display string.
+//! A protective device's rating: typed fields per kind, never a stored display string.
 //!
 //! # Semantics
 //! Each kind holds only the fields it has: a fuse its rated current, class and breaking capacity;
@@ -29,7 +28,7 @@ pub const MAX_BREAKING_KA: f64 = 200.0;
 /// The highest fuse output number of a fuse bank.
 pub(crate) const MAX_OUTPUT: u8 = 99;
 
-/// A protective device and its rating, by kind (group 2, design 072 §2.2).
+/// A protective device and its rating, by kind.
 ///
 /// # Example
 /// ```
@@ -100,7 +99,7 @@ impl ProtectionKind {
 }
 
 impl Protection {
-    /// A fuse terminal's fuse, when it is a fuse terminal (brief 034's `fuseterminalblock`).
+    /// A fuse terminal's fuse, when it is a fuse terminal (the `fuseterminalblock` starter).
     pub fn as_fuse_terminal_block(&self) -> Option<&Fuse> {
         match self {
             Protection::FuseTerminalBlock(f) => Some(f),
@@ -249,7 +248,7 @@ pub struct Breaker {
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
-    /// Its auxiliary contacts (design 025 FP1).
+    /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
 }
@@ -270,7 +269,7 @@ pub struct Rcd {
     pub residual: Option<MilliAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
-    /// Its auxiliary contacts (design 025 FP1).
+    /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
 }
@@ -295,7 +294,7 @@ pub struct Rcbo {
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
-    /// Its auxiliary contacts (design 025 FP1).
+    /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
 }

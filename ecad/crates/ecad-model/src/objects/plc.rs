@@ -1,4 +1,4 @@
-//! PLC stations, modules and channels (design 072 §3): the data of the device groups
+//! PLC stations, modules and channels: the data of the device groups
 //! [`crate::DeviceType::PlcRack`] and [`crate::DeviceType::PlcModule`].
 //!
 //! # Semantics
@@ -47,8 +47,8 @@ pub type PlcTag = Text<128>;
 
 // ------------------------------------------------------------------------------------- station
 
-/// A PLC station (device group 10): on a network, with an address there, and a CPU or a coupler
-/// at its head (design 072 §3, F19′).
+/// A PLC station: on a network, with an address there, and a CPU or a coupler
+/// at its head.
 ///
 /// # Example
 /// ```
@@ -202,7 +202,7 @@ impl Protocol {
 pub type Fieldbus = Protocol;
 
 crate::word_enum! {
-    /// How a station's channels are addressed (design 045 §5.2): `I0.0` (`byte.bit`), `%IX0.0`
+    /// How a station's channels are addressed: `I0.0` (`byte.bit`), `%IX0.0`
     /// (`iec`), `%I0.0` (`percent`), by slot (`slot`), or not at all (`none`).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum AddressStyle {
@@ -217,7 +217,7 @@ crate::word_enum! {
 
 // -------------------------------------------------------------------------------------- module
 
-/// A module in a PLC station (device group 11).
+/// A module in a PLC station.
 ///
 /// # Example
 /// ```
@@ -297,7 +297,7 @@ impl AddressPin {
     }
 }
 
-/// Properties of a module or its channels, never functions (owner, 2026-11-17).
+/// Properties of a module or its channels, never functions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModuleAttributes {
@@ -317,7 +317,7 @@ impl ModuleAttributes {
     }
 }
 
-/// What a module does (owner, 2026-11-17): generic names, never a vendor's (design 072 §3, F41).
+/// What a module does: generic names, never a vendor's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleFunction {
@@ -376,7 +376,7 @@ crate::word_enum! {
     }
 }
 
-/// A communication module's data (deviation from design 072 §3, overseer 2026-11-17): what kind
+/// A communication module's data: what kind
 /// of link it is decides whether it has channels, so a wrong combination cannot be built. An
 /// IO-Link master always has its channels (its ports, signal [`Signal::IoLink`]); any other
 /// communication module has a protocol and ports and never channels.
@@ -442,8 +442,8 @@ crate::word_enum! {
     }
 }
 
-/// A safety logic module's data: its own safe inputs and outputs, when it has any (design 072
-/// §3). Unlike a communication module's, both cases are one kind of module, so the option is the
+/// A safety logic module's data: its own safe inputs and outputs, when it has any.
+/// Unlike a communication module's, both cases are one kind of module, so the option is the
 /// data, not a combination to rule out.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -525,7 +525,7 @@ impl Signal {
     }
 }
 
-/// One channel's own data (design 045 §4.6, 056 §4).
+/// One channel's own data.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Channel {

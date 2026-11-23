@@ -1,4 +1,4 @@
-//! The protocol every derived view follows (design 064 §4): [`DerivedView`].
+//! The protocol every derived view follows: [`DerivedView`].
 //!
 //! A derived view keeps state worked out from the document (a reference index, the checks list,
 //! the report models) or names what the change log records (pages, devices, properties). Its
@@ -39,7 +39,7 @@ pub trait ViewScope: Default + Send {
     /// Whether there is nothing to redo.
     fn is_empty(&self) -> bool;
     /// Whether the scope asks for a whole rebuild (allowed only for the ops on the update-map
-    /// allowlist, design 064 §7).
+    /// allowlist).
     fn is_all(&self) -> bool;
 }
 
@@ -131,7 +131,7 @@ pub trait DerivedView<Cx: ?Sized>: Send {
     type Scope: ViewScope;
     /// Its name in the update-map matrix, counters and the debugger.
     const NAME: &'static str;
-    /// The property areas it reads (design 064 §3.3): a property effect outside them never
+    /// The property areas it reads: a property effect outside them never
     /// reaches [`DerivedView::note`].
     const AREAS: AreaSet;
     /// Whether it is kept now. A view built on first show returns false until then, and the
@@ -148,7 +148,7 @@ pub trait DerivedView<Cx: ?Sized>: Send {
     fn verify(&self, doc: &Document, cx: &Cx) -> Option<String>;
 }
 
-// The commit pipeline may run views' notes and updates in parallel (design 064 §5.1).
+// The commit pipeline may run views' notes and updates in parallel.
 const _: fn() = || {
     fn is_sync<T: Sync>() {}
     is_sync::<Document>();

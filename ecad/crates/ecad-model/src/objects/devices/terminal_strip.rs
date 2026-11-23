@@ -1,4 +1,4 @@
-//! A terminal strip's typed data (design 072 §2.5): the rating of each of its fuse positions.
+//! A terminal strip's typed data: the rating of each of its fuse positions.
 //!
 //! # Semantics
 //! `fuses` holds a fuse's typed rating by position label (`ConnectionPoint.label`); a position not listed
@@ -23,7 +23,7 @@ pub(crate) const MAX_POSITION: usize = 16;
 /// A strip position's label (`1`, `PE1`).
 pub type PositionLabel = crate::naming::text::Text<MAX_POSITION>;
 
-/// A strip of DIN-rail terminals (group 8, design 072 §2.5).
+/// A strip of DIN-rail terminal blocks.
 ///
 /// # Example
 /// ```

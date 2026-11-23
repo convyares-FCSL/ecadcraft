@@ -1,4 +1,4 @@
-//! Quantities with their unit in the type (design 072 §9.3), so a length is never added to a
+//! Quantities with their unit in the type, so a length is never added to a
 //! current and an angle is never stored in the wrong unit.
 //!
 //! Each is a transparent newtype over `f64`: stored and written exactly as the bare number. Only
@@ -54,12 +54,12 @@ unit!(
     "m"
 );
 unit!(
-    /// An angle in radians: how stored angles are kept (F7).
+    /// An angle in radians: how stored angles are kept.
     Radians,
     "rad"
 );
 unit!(
-    /// An angle in degrees: how commands and symbol content take angles (F6).
+    /// An angle in degrees: how commands and symbol content take angles.
     Degrees,
     "°"
 );
@@ -173,14 +173,14 @@ impl Radians {
     }
 }
 
-/// The one degrees-to-radians conversion (G7: no `to_radians` elsewhere).
+/// The one degrees-to-radians conversion (no `to_radians` elsewhere).
 impl From<Degrees> for Radians {
     fn from(d: Degrees) -> Radians {
         Radians(d.0.to_radians())
     }
 }
 
-/// The one radians-to-degrees conversion (G7: no `to_degrees` elsewhere).
+/// The one radians-to-degrees conversion (no `to_degrees` elsewhere).
 impl From<Radians> for Degrees {
     fn from(r: Radians) -> Degrees {
         Degrees(r.0.to_degrees())

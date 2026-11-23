@@ -1,4 +1,4 @@
-//! Frame styles (brief 050a, brief 055, design 072 §8): the `frame` catalogue's typed record, with
+//! Frame styles: the `frame` catalogue's typed record, with
 //! its title block.
 //!
 //! How a frame is drawn is `ecad-electrical`'s (`styles::frame`); which frame a page uses, its
@@ -14,7 +14,7 @@ use crate::objects::styles::text::StyleColour;
 use crate::objects::title_block::TitleBlockLayout;
 
 crate::word_enum! {
-    /// Where a frame's block sits (design 055 §1.4).
+    /// Where a frame's block sits.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum BlockAt {
         /// The block's left part stretches to the frame's left edge (built-ins).
@@ -105,7 +105,7 @@ pub struct FrameStyle {
     pub centre_marks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block: Option<BlockAt>,
-    /// Brief 055 (FP1): the frame's own title block.
+    /// The frame's own title block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_block: Option<TitleBlockLayout>,
 }

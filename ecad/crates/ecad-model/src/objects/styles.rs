@@ -1,4 +1,4 @@
-//! Standards and style records (brief 050a, design 050 §2–§3, FP1–FP3).
+//! Standards and style records.
 //!
 //! A **standard** is a named, shareable house style that a project holds a copy of: a header,
 //! registry values at the Standard level, and standard-layer style records. A **style record** is
@@ -48,7 +48,7 @@ pub const MAX_FIELD_CHARS: usize = 256;
 /// The longest catalogue word or built-in style word, in characters.
 pub(crate) const MAX_WORD_CHARS: usize = 32;
 
-/// Where a style record lives (design 050 §1).
+/// Where a style record lives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StyleLayer {
@@ -69,7 +69,7 @@ impl StyleLayer {
 }
 
 crate::word_enum! {
-    /// A style catalogue (design 050 §2, design 072 F1, F2): which kind of style a record or a
+    /// A style catalogue: which kind of style a record or a
     /// reference is. One variant per catalogue; a later catalogue adds one.
     ///
     /// The variants are in their words' order, so a map keyed by catalogue ([`StyleCatalogues`])
@@ -100,8 +100,8 @@ pub fn is_word(w: &str) -> bool {
     !w.is_empty() && w.len() <= MAX_WORD_CHARS && w.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
 }
 
-/// Whether a property `key` is a style choice (design 050 §2.5, FP5): `text.<kind>.style`,
-/// `location.style`, `print.frame.style`, `wire.category` or `page.type` (brief 054, FP2). Objects
+/// Whether a property `key` is a style choice: `text.<kind>.style`,
+/// `location.style`, `print.frame.style`, `wire.category` or `page.type`. Objects
 /// holding one are the style's explicit users, kept in the document's index
 /// ([`crate::Document::style_users`]).
 pub fn is_choice_key(key: &str) -> bool {
@@ -115,7 +115,7 @@ pub fn is_name(name: &str) -> bool {
     !name.trim().is_empty() && name.chars().count() <= MAX_NAME_CHARS && !name.chars().any(char::is_control)
 }
 
-/// A stable reference to a style of one catalogue (design 050 §2.2). A name is only a label.
+/// A stable reference to a style of one catalogue. A name is only a label.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StyleRef {
     /// A built-in style's word, unique in its catalogue; never renamed or reused.
@@ -187,7 +187,7 @@ impl<'de> Deserialize<'de> for StyleRef {
     }
 }
 
-/// What a standard or a project stores about one style (design 050 §2.3, design 072 §8): its name
+/// What a standard or a project stores about one style: its name
 /// and its typed body. For a built-in style the name is empty and the body holds only the fields
 /// it overrides.
 ///
@@ -202,7 +202,7 @@ pub struct StyleRecord {
     pub body: StyleBody,
 }
 
-/// A style or standard name: 1–64 characters, one line, no hidden character (design 072 §9.4).
+/// A style or standard name: 1–64 characters, one line, no hidden character.
 pub type StyleName = crate::naming::text::Text<MAX_NAME_CHARS>;
 
 impl StyleRecord {
@@ -240,7 +240,7 @@ impl StyleRecord {
     }
 }
 
-/// A style record's typed body (design 072 §8): one variant per catalogue, so a record can only
+/// A style record's typed body: one variant per catalogue, so a record can only
 /// hold its own catalogue's fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -382,14 +382,14 @@ impl StyleBody {
 /// A layer's style records: catalogue → style → record.
 pub type StyleCatalogues = BTreeMap<StyleCatalogue, BTreeMap<StyleRef, StyleRecord>>;
 
-/// Where a standard came from (reserved for 2.1, `.ecadlib`; always `None` in 050).
+/// Where a standard came from (reserved for a later release, `.ecadlib`; always `None` today).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StandardOrigin {
     pub library: LibraryId,
 }
 
-/// A standard's header (design 050 §2.3): changed as one unit by [`crate::Op::SetStandard`].
+/// A standard's header: changed as one unit by [`crate::Op::SetStandard`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StandardHeader {
@@ -404,7 +404,7 @@ pub struct StandardHeader {
 }
 
 crate::word_enum! {
-    /// The built-in base a standard starts from (only IEC in 050).
+    /// The built-in base a standard starts from (only IEC today).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum BasedOn {
         #[default]
@@ -412,7 +412,7 @@ crate::word_enum! {
     }
 }
 
-/// A project's copy of a standard (design 050 §2.3, FP1).
+/// A project's copy of a standard.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Standard {
     pub header: StandardHeader,

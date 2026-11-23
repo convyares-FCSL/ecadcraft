@@ -1,5 +1,5 @@
-//! Contract tests for brief 022: nets kept incrementally (design 022 §2, §4) and the numbering
-//! pass (§5). Table-driven where the design gives a table.
+//! Contract tests for nets kept incrementally and the numbering
+//! pass. Table-driven where a table states the rule.
 
 use std::collections::{BTreeMap, BTreeSet};
 

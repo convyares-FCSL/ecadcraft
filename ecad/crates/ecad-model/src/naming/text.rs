@@ -1,9 +1,9 @@
-//! Validated text (design 072 §9.4): every text a person types is stored as [`Text<N>`] (one line)
+//! Validated text: every text a person types is stored as [`Text<N>`] (one line)
 //! or [`LongText<N>`] (line breaks allowed), never as a raw `String`.
 //!
 //! A value is trimmed, 1 to `N` characters, and holds no control, hidden or bidi character
 //! ([`crate::naming::words::is_hidden`]). Deserialisation is strict: a file value that is not already in
-//! that form is a read error, so the project opens read-only (design 072 §9.5). Commands build
+//! that form is a read error, so the project opens read-only. Commands build
 //! values with `new`, which trims and refuses with [`TextError`]'s words.
 //!
 //! This module excludes what a text means (a tag's rule, a code's alphabet): those are checked by

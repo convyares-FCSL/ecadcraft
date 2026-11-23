@@ -1,4 +1,4 @@
-//! A1 (design 072 §14): `Text<N>` and `LongText<N>` refuse every hidden and bidi character, and
+//! A1: `Text<N>` and `LongText<N>` refuse every hidden and bidi character, and
 //! keep to their length and line rules.
 
 use ecad_model::naming::text::{LongText, Text, TextError};

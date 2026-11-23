@@ -1,14 +1,14 @@
-//! The property keys a project may store, in one list (design 072 §9.2).
+//! The property keys a project may store, in one list.
 //!
-//! After lanes B–F the property bags hold only presentation choices, the defaults registry's values
+//! The property bags hold only presentation choices, the defaults registry's values
 //! stored per object, and keys a person adds by hand. Every key the program itself reads or writes is
 //! named here once:
 //! - [`KEYS`]: a fixed key (`tag`, `number`), with its [`Area`], the objects that may hold it and the
-//!   shape of its value. While lanes B–F move keys into struct fields, it also holds each key not yet
-//!   moved; each lane takes its keys out and adds them to [`RESERVED`].
+//!   shape of its value. It also holds each key not yet moved into a struct field; a key that moves is
+//!   taken out and added to [`RESERVED`].
 //! - [`FAMILIES`]: keys built from a pattern (`text.<kind>.style`, `jumper_bar.<n>`), one
 //!   [`Family::build`] / [`Family::parse`] pair for all of them.
-//! - [`RESERVED`]: keys that became struct fields. A bag holding one is a read error (§9.4).
+//! - [`RESERVED`]: keys that became struct fields. A bag holding one is a read error.
 //!
 //! The defaults registry's own entries (`text.tag.height`) are listed by the registry in
 //! ecad-electrical, not here; [`area_of`] still classifies them by their first word.
@@ -41,12 +41,12 @@ impl fmt::Display for PropKey {
 }
 
 crate::word_enum! {
-    /// What part of the project a key belongs to: the one place a key's prefix is read (design 064
-    /// §3.3). Views route property writes by it.
+    /// What part of the project a key belongs to: the one place a key's prefix is read.
+    /// Views route property writes by it.
     ///
     /// The first seventeen are the defaults registry's areas, in its order and with its words (a
     /// registry key starts with `<word>.`); the rest classify the stored keys outside the registry.
-    /// Lanes B–F remove the transitional areas as their keys become struct fields, leaving the registry
+    /// The transitional areas go as their keys become struct fields, leaving the registry
     /// areas and [`Area::Free`].
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Area {
@@ -82,7 +82,7 @@ crate::word_enum! {
 }
 
 impl Area {
-    /// The defaults registry's areas, in its order (design 064 §3.3).
+    /// The defaults registry's areas, in its order.
     pub const REGISTRY: [Area; 17] = [
         Area::Text,
         Area::Wiring,
@@ -207,7 +207,7 @@ impl Family {
     }
 }
 
-/// A device's description (a cable's until lane D).
+/// A device's description.
 pub const DESCRIPTION: PropKey = PropKey(crate::objects::devices::DESCRIPTION_KEY);
 /// A device's part number.
 pub const PART_NUMBER: PropKey = PropKey(crate::objects::devices::PART_NUMBER_KEY);
@@ -215,7 +215,7 @@ pub const PART_NUMBER: PropKey = PropKey(crate::objects::devices::PART_NUMBER_KE
 pub const MAKER: PropKey = PropKey(crate::objects::devices::MAKER_KEY);
 /// A device's article number.
 pub(crate) const ARTICLE_NUMBER: PropKey = PropKey(crate::objects::devices::ARTICLE_KEY);
-/// A device's type text (a cable's until lane D).
+/// A device's type text.
 pub(crate) const TYPE_TEXT: PropKey = PropKey(crate::objects::devices::TYPE_KEY);
 /// A device's or cable's tag.
 pub const TAG: PropKey = PropKey(crate::naming::tag::TAG_KEY);
@@ -230,8 +230,8 @@ pub const FUNCTION: PropKey = PropKey(crate::document::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
 pub const LOCATION: PropKey = PropKey(crate::document::book::LOCATION_KEY);
 
-/// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
-/// remove lines.
+/// The fixed keys the program stores outside the defaults registry. One key per line, so a change adds or
+/// removes lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
     KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Ruled },
@@ -253,11 +253,11 @@ pub const FAMILIES: &[Family] = &[
     NUMBERING_HIGH,
 ];
 
-/// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
-/// Lanes B–F move keys here from [`KEYS`]. One key per line.
+/// Keys that became struct fields: a property bag holding one is a read error.
+/// Keys move here from [`KEYS`] when they become fields. One key per line.
 #[rustfmt::skip]
 pub const RESERVED: &[PropKey] = &[
-    // Lane 072 E: a page's fields (design 072 §5.1).
+    // A page's fields.
     PropKey(crate::document::book::NUMBER_KEY),
     PropKey(crate::document::book::FOLDER_KEY),
     PropKey(crate::document::sheet::SHEET_KEY),
@@ -265,13 +265,13 @@ pub const RESERVED: &[PropKey] = &[
     PropKey(crate::document::sheet::GENERATED_KEY),
     PropKey(crate::document::page::STRIP_KEY),
     PropKey(crate::document::sheet::PAGE_TYPE_KEY),
-    // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
+    // A wire's number and its fixed flag are `Wire.number`.
     WIRE_NUMBER,
     WIRE_NUMBER_FIXED,
-    // Lane 072 B: the contacts a part offers and where its table goes (design 072 §2.2).
+    // The contacts a part offers and where its table goes.
     PropKey("contacts"),
     PropKey("mirror"),
-    // Lane C (design 072 §3): a PLC module's and station's fields.
+    // A PLC module's and station's fields.
     PropKey("plc.rack"),
     PropKey("plc.slot"),
     PropKey("plc.channels"),
@@ -280,7 +280,7 @@ pub const RESERVED: &[PropKey] = &[
     PropKey("plc.kind"),
 ];
 
-/// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
+/// Keys that became struct fields on one holder only: a page's and the
 /// project's location and function are ids now. A device's own fields are [`DEVICE_FIELDS`].
 #[rustfmt::skip]
 pub const RESERVED_ON: &[(Holder, PropKey)] = &[
@@ -288,43 +288,43 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Page, FUNCTION),
     (Holder::Project, LOCATION),
     (Holder::Project, FUNCTION),
-    // Design 072 §5.3: the project's info.
+    // The project's info.
     (Holder::Project, PropKey("title")),
     (Holder::Project, PropKey("drawing_number")),
     (Holder::Project, PropKey("customer")),
     (Holder::Project, PropKey("site")),
     (Holder::Project, PropKey("status")),
     (Holder::Project, PropKey("cover.notes")),
-    // Lane 072 D: a wire's own type is `Wire.wire_type` (design 072 §4.6, F36).
+    // A wire's own type is `Wire.wire_type`.
     (Holder::Wire, PropKey(crate::connectivity::wiring::WIRE_CATEGORY)),
-    // Lane 072 D: a cable's type is `Cable.cable_type` (design 072 §4.5).
+    // A cable's type is `Cable.cable_type`.
     (Holder::Cable, PropKey(crate::document::doc::cable::CABLE_TYPE_KEY)),
-    // Lane 072 D: a cable's own shield (design 072 §4.5).
+    // A cable's own shield.
     (Holder::Cable, PropKey("shield")),
-    // Lane 072 D: a cable's design current is its field (design 072 §4.5).
+    // A cable's design current is its field.
     (Holder::Cable, PropKey("load")),
-    // S1 (#2): a cable's tag (with its state) and its description are `Cable.tag` and
+    // A cable's tag (with its state) and its description are `Cable.tag` and
     // `Cable.description`, as a device's are.
     (Holder::Cable, TAG),
     (Holder::Cable, PropKey(crate::objects::devices::DESCRIPTION_KEY)),
 ];
 
 /// Key prefixes that became struct fields on one holder: the project's location and function
-/// lists (`designation.l.<id>.code`), revision rows (`rev.<n>.<field>`) and folders, design 072 §5.3.
+/// lists (`designation.l.<id>.code`), revision rows (`rev.<n>.<field>`) and folders
 pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     (Holder::Project, "designation."),
     (Holder::Project, crate::document::project::REVISIONS_KEY),
     (Holder::Project, "folder."),
-    // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
+    // A connector's halves and ignored rows are fields of its type.
     (Holder::Device, "half."),
     (Holder::Device, "ignore."),
-    // Lane 072 B: a device's user field values are its `user` map (design 072 §2.8).
+    // A device's user field values are its `user` map.
     (Holder::Device, "user."),
-    // Lane 072 C: a PLC channel's own data (`plc.ch.<i>.<field>`, design 072 §3).
+    // A PLC channel's own data (`plc.ch.<i>.<field>`).
     (Holder::Device, "plc.ch."),
-    // Lane 072 D: a core's Not used is its purpose (design 072 §4.5).
+    // A core's Not used is its purpose.
     (Holder::Cable, "unused."),
-    // Lane 072 D: a cable's rating inputs are its fields (design 072 §4.5).
+    // A cable's rating inputs are its fields.
     (Holder::Cable, "rating."),
 ];
 
@@ -352,15 +352,15 @@ pub fn is_reserved(key: &str) -> bool {
     RESERVED.iter().any(|k| k.0 == key)
 }
 
-/// A connector's pin count (lane 072 B: a field of its type).
+/// A connector's pin count (a field of its type).
 pub const PINS: PropKey = PropKey("pins");
 /// A connector's typed pin names.
 pub(crate) const PIN_NAMES: PropKey = PropKey("pin_names");
-/// A device's rating (lane 072 B: its group's typed fields, or its note; design 072 §2.2).
+/// A device's rating (its group's typed fields, or its note).
 pub const RATING: PropKey = PropKey(crate::objects::devices::RATING_KEY);
 
-/// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
-/// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
+/// Keys that became fields of [`crate::Device`] while other holders still keep
+/// them in their bags (a cable's `tag`): a device's bag holding one is a read error,
 /// and `SetProperty` refuses them on a device.
 pub const DEVICE_FIELDS: &[PropKey] = &[TAG, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT, LOCATION, FUNCTION, PINS, PIN_NAMES, RATING];
 

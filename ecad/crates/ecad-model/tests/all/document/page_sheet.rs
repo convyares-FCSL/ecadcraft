@@ -1,4 +1,4 @@
-//! Brief 054 (FP3, design 054 §3.1): a page's sheet reads its page type's stored sheet, between
+//! A page's sheet reads its page type's stored sheet, between
 //! its own sheet and the project's; old files with no type record resolve exactly as before.
 
 use ecad_model::document::sheet::{SheetSpec, derived_page_type, page_type_of, sheet_of};

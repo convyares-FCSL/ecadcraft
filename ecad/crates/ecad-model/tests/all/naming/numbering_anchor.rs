@@ -1,4 +1,4 @@
-//! Brief 052a (design 052 §4, FP6): numbering anchors a device at its representation of the
+//! Numbering anchors a device at its representation of the
 //! lowest rank the adapter supplies, and no representation's role is read.
 
 use std::collections::{BTreeMap, BTreeSet};

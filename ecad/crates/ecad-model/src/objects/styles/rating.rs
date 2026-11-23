@@ -1,4 +1,4 @@
-//! Rating tables (brief 057, design 057 FP8, design 072 §8): the `ratingtable` catalogue's typed
+//! Rating tables: the `ratingtable` catalogue's typed
 //! record. What the rows mean (a CSV data set of current ratings) is `ecad-electrical`'s
 //! (`rating::dataset`).
 

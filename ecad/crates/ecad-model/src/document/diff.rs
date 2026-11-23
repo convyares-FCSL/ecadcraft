@@ -1,4 +1,4 @@
-//! The ops that turn one document into another (brief 020a, Restore): computed from the two
+//! The ops that turn one document into another (Restore): computed from the two
 //! states, so their number follows what differs, not the history between them.
 //!
 //! # Semantics
@@ -77,7 +77,7 @@ fn ids<K: Ord + Copy, A, B>(a: &BTreeMap<K, A>, b: &BTreeMap<K, B>, scope: Optio
     }
 }
 
-/// [`ops_between`] over the objects `scope` names only (brief 020b, merge: its cost follows
+/// [`ops_between`] over the objects `scope` names only (used by merge: its cost follows
 /// the touched set, not the project). Objects outside it are assumed equal in both states. The
 /// page and folder orders are compared whole when the scope says they changed; the project's
 /// own properties and settings only with `project`.
@@ -87,7 +87,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     let mut adds = Vec::new();
     let mut changes = Vec::new();
 
-    // Cables: compared whole (design 072 §4.5); a changed cable is one ModifyCable.
+    // Cables: compared whole; a changed cable is one ModifyCable.
     for id in ids(&from.cables, &to.cables, scope.map(|s| &s.cables)) {
         match (from.cables.get(&id), to.cables.get(&id)) {
             (Some(a), Some(b)) => changes.extend(Op::modify_cable(id, a, b.clone())),
@@ -115,7 +115,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, None) => {}
         }
     }
-    // Routes change in place (design 072 F31).
+    // Routes change in place.
     for id in ids(&from.routes, &to.routes, scope.map(|s| &s.routes)) {
         match (from.routes.get(&id), to.routes.get(&id)) {
             (Some(a), Some(b)) if a != b => changes.push(Op::ModifyRoute { id, before: a.clone(), after: b.clone() }),
@@ -124,7 +124,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, Some(b)) => adds.push(Op::AddRoute { id, route: b.clone() }),
         }
     }
-    // Drawing aids change in place (design 072 §6.2).
+    // Drawing aids change in place.
     for id in ids(&from.aids, &to.aids, scope.map(|s| &s.aids)) {
         match (from.aids.get(&id), to.aids.get(&id)) {
             (Some(a), Some(b)) if a != b => changes.push(Op::ModifyAid { id, before: a.clone(), after: b.clone() }),
@@ -133,7 +133,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, Some(b)) => adds.push(Op::CreateAid { id, aid: b.clone() }),
         }
     }
-    // Loose parts change in place (design 072 §6.4).
+    // Loose parts change in place.
     for id in ids(&from.loose_parts, &to.loose_parts, scope.map(|s| &s.loose_parts)) {
         match (from.loose_parts.get(&id), to.loose_parts.get(&id)) {
             (Some(a), Some(b)) if a != b => changes.push(Op::ModifyLoosePart { id, before: a.clone(), after: b.clone() }),
@@ -163,9 +163,8 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             }
         }
     }
-    // Devices: properties in place; another definition is `SetDeviceDefinition` (brief 048,
-    // FP5), after the definitions are embedded; another type makes it one `ModifyDevice` (design
-    // 072 F13).
+    // Devices: properties in place; another definition is `SetDeviceDefinition`, after the
+    // definitions are embedded; another type makes it one `ModifyDevice`.
     for id in ids(&from.devices, &to.devices, scope.map(|s| &s.devices)) {
         match (from.devices.get(&id), to.devices.get(&id)) {
             (Some(a), Some(b)) if a.fields_differ(b) => {
@@ -275,7 +274,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
 
-    // Device links (design 072 §2.6): removed before any device goes, added after every device
+    // Device links: removed before any device goes, added after every device
     // is made.
     let (mut link_removes, mut link_adds) = (Vec::new(), Vec::new());
     if project {
@@ -336,7 +335,7 @@ fn style_records(layer: StyleLayer, a: &StyleCatalogues, b: &StyleCatalogues, ou
     }
 }
 
-/// The standard and the style records (brief 050a), in an order each op's precondition holds:
+/// The standard and the style records, in an order each op's precondition holds:
 /// a new standard's header before its contents, a removed one's contents before its header.
 fn styles(from: &Document, to: &Document, out: &mut Vec<Op>) {
     let all = |_: &str| true;

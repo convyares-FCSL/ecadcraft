@@ -29,7 +29,7 @@ fn run(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &BTreeM
     let all = |_: &str| true;
     let high = HighWater::new();
     let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
-    // Two devices described "coil" cannot be one (a stand-in for 018's rules).
+    // Two devices described "coil" cannot be one (a stand-in for the engine's rules).
     let join = |d: &Document, from: DeviceId, into: DeviceId| -> Result<Vec<Op>, String> {
         let coil = |c: DeviceId| d.devices.get(&c).and_then(|x| x.description.as_ref()).is_some_and(|v| v.as_str() == "coil");
         if coil(from) && coil(into) {
@@ -186,7 +186,7 @@ fn removed_on_one_side_and_changed_on_the_other_offers_both() {
     assert!(doc.devices.contains_key(&DeviceId(1)));
 }
 
-// ---- each conflict kind with each of its answers (reviewer 020b, finding 10)
+// ---- each conflict kind with each of its answers
 
 fn applied(t: &Document, p: &Plan) -> Document {
     assert!(p.problem.is_none() && p.unanswered.is_empty(), "{:?} {:?}", p.problem, p.unanswered);

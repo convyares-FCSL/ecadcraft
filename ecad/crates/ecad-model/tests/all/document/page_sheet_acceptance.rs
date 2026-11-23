@@ -1,10 +1,10 @@
-//! Tester 054 in the model (FP3, design 054 §3.1 and §11): `ecad_model::document::sheet::sheet_of` reads the
+//! The sheet of a page in the model: `ecad_model::document::sheet::sheet_of` reads the
 //! page type's stored `sheet`: the page's own `sheet` → the type's project record → the type's
 //! standard record (each only when it parses and is within limits) → `settings.sheet()` → A3. The
 //! type is the page's `page.type`, else derived from `generated` by the fixed six-word table
 //! (`cover`, `revisions`, `contents` → `front`; every other kind → `report`), else `schematic`.
 //! Old documents (no record) resolve exactly as before. Replay and the inverse of every op give the
-//! same sheets. Written from brief and design 054 before the implementation.
+//! same sheets.
 
 use ecad_model::document::sheet::{SheetSpec, sheet_of};
 use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};

@@ -1,4 +1,4 @@
-//! The document's objects and their relationships (proposal §3 and §4).
+//! The document's objects and their relationships.
 //!
 //! Stored intent (components, terminals, conductors, cables, definitions) and drawing content
 //! (pages, layers, items, representations) live here. Derived results do not (see [`crate::connectivity::derive`]).
@@ -12,6 +12,6 @@ pub(crate) mod settings;
 
 use std::collections::BTreeMap;
 
-/// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
+/// Optional, free-form properties. A missing key is `Unset`; an empty string is a
 /// confirmed empty value.
 pub type Properties = BTreeMap<String, String>;

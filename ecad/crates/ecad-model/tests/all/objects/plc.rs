@@ -1,4 +1,4 @@
-//! Lane 072 C (design 072 §3; acceptance A2, A3, A4): PLC stations and modules round-trip, read
+//! PLC stations and modules round-trip, read
 //! strictly, and the keys they replaced are reserved.
 
 use ecad_model::Word;

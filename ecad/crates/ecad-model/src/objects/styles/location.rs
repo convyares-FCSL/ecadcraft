@@ -1,4 +1,4 @@
-//! Location box styles (design 050 §4.2, design 072 §8): the `location` catalogue's typed record.
+//! Location box styles: the `location` catalogue's typed record.
 //!
 //! How a box is drawn from it is `ecad-electrical`'s (`styles::location`).
 

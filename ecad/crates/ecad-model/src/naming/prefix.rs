@@ -1,4 +1,4 @@
-//! Tag prefixes as a project stores them (design 072 F5): the prefix itself ([`TagPrefix`]) and
+//! Tag prefixes as a project stores them: the prefix itself ([`TagPrefix`]) and
 //! the symbol it is for ([`PrefixOf`]), a built-in starter or a project symbol, said in the data
 //! rather than worked out by looking the name up.
 //!
@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// Most letters in a tag prefix.
 pub const MAX_PREFIX_LETTERS: usize = 10;
 
-/// Most characters of a symbol's key (a starter's word or a project symbol's key, design 048 §2.4).
+/// Most characters of a symbol's key (a starter's word or a project symbol's key).
 pub const MAX_SYMBOL_KEY: usize = 16;
 
 /// A tag prefix (IEC 81346): 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, upper case, without `-`.
@@ -75,7 +75,7 @@ impl<'de> Deserialize<'de> for TagPrefix {
 ///
 /// # Semantics
 /// A starter's word is 1 to [`MAX_SYMBOL_KEY`] of `a-z`, `0-9` and `.` (`coil`, `term2.1`); a
-/// project symbol's key follows design 048 §2.4: 1 to [`MAX_SYMBOL_KEY`] ASCII letters, digits,
+/// project symbol's key is 1 to [`MAX_SYMBOL_KEY`] ASCII letters, digits,
 /// `-` and `_`, starting with a letter or digit.
 ///
 /// # Example
@@ -103,7 +103,7 @@ impl PrefixOf {
         (1..=MAX_SYMBOL_KEY).contains(&word.len()) && word.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'.'))
     }
 
-    /// Whether `key` has a project symbol key's form (design 048 §2.4).
+    /// Whether `key` has a project symbol key's form.
     pub fn project_form(key: &str) -> bool {
         (1..=MAX_SYMBOL_KEY).contains(&key.len())
             && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')

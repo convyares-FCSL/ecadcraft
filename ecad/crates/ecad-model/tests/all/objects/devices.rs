@@ -1,5 +1,5 @@
-//! Brief 018 at the model level: one device drawn by several symbols of different definitions
-//! (I14 as relaxed, owner decision 2026-11-08) and the tag index.
+//! At the model level: one device drawn by several symbols of different definitions
+//! and the tag index.
 
 use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{

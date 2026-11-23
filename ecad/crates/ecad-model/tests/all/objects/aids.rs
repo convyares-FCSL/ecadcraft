@@ -1,4 +1,4 @@
-//! Lane 072 F (design 072 §6.2; acceptance A2, A4, A9): drawing aids are their own objects.
+//! Drawing aids are their own objects.
 //! `CreateAid`, `ModifyAid` and `DeleteAid` change them, undo inverts them, a representation may
 //! draw one, and a stored aid in any other form is a read error.
 

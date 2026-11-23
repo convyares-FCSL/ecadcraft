@@ -1,4 +1,4 @@
-//! Lane 072 D (design 072 §4.2–§4.4, §4.6; acceptance A2, A4, A9, A12): the wire's typed values
+//! The wire's typed values
 //! round-trip in their stored form, a stored value in any other form is a read error, `ModifyWire`
 //! changes a wire's values, is its own inverse and never moves its ends, and every edit of the
 //! routes rewrites the wires of the nets whose points changed, in the same transaction.

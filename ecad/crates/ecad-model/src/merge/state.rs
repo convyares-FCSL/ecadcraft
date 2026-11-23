@@ -22,11 +22,11 @@ pub enum Obj {
     Item(ItemId),
     Wire(WireId),
     Cable(CableId),
-    /// A route (design 072 F31).
+    /// A route.
     Route(RouteId),
-    /// A drawing aid (design 072 §6.2).
+    /// A drawing aid.
     Aid(crate::naming::id::AidId),
-    /// A loose part (design 072 §6.4).
+    /// A loose part.
     LoosePart(crate::naming::id::LoosePartId),
     Project,
 }
@@ -145,7 +145,7 @@ pub enum Choice {
     RenumberSource,
     /// Renumber (rename) the target's object.
     RenumberTarget,
-    /// Make the two devices (or cables) with one tag one (brief 026, FP5): the source's joins the
+    /// Make the two devices (or cables) with one tag one: the source's joins the
     /// target's.
     MakeOne,
 }
@@ -176,7 +176,7 @@ pub enum ConflictKind {
     Order,
 }
 
-/// One conflict and its choices (design §5.2–§5.3).
+/// One conflict and its choices.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Conflict {
     /// Stable: `<object hex>/<property>` (`…/prop.rating`, `…/end.b`, `…/removed`,
@@ -230,11 +230,11 @@ pub struct Plan {
     /// change before Merge (never a refusal after the preview said yes).
     pub problem: Option<String>,
     /// Answers given for conflicts the merge does not raise (any more), in words: they have no
-    /// effect (reviewer 020b, finding 3).
+    /// effect.
     pub ignored: Vec<String>,
-    /// Why Make them one is not offered, per tag conflict ID (brief 026).
+    /// Why Make them one is not offered, per tag conflict ID.
     pub unavailable: BTreeMap<String, String>,
-    /// Provisional tags of the source given the next provisional number (brief 026).
+    /// Provisional tags of the source given the next provisional number.
     pub provisional_renumbered: usize,
 }
 
@@ -251,11 +251,11 @@ pub struct Inputs<'a> {
     pub keep_project_key: &'a dyn Fn(&str) -> bool,
     /// The larger of both sides' tag high-water marks (renumbering takes the next free number).
     pub high: &'a HighWater,
-    /// Checks a value typed in an Edit field as an ordinary edit of that object's property would
-    /// (design §5.2): the value as stored, or why it is refused.
+    /// Checks a value typed in an Edit field as an ordinary edit of that object's property would:
+    /// the value as stored, or why it is refused.
     pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, String>,
-    /// The ops making device `from` part of device `into` in a state (018's device merge), or why
-    /// they cannot be one (brief 026, Make them one). The state's index is current.
+    /// The ops making device `from` part of device `into` in a state (the device merge), or why
+    /// they cannot be one (Make them one). The state's index is current.
     pub join: &'a dyn Fn(&Document, DeviceId, DeviceId) -> Result<Vec<Op>, String>,
 }
 
@@ -332,7 +332,7 @@ pub(super) fn shown_value<T: std::fmt::Display>(x: Option<&T>) -> String {
     x.map_or_else(|| "(none)".to_string(), |v| format!("\"{v}\""))
 }
 
-/// A property value as a person reads it (brief 045, FP1 condition 1): a value that is a
+/// A property value as a person reads it: a value that is a
 /// component's ID (32 hex digits, a component of one of `docs`) is shown as that component's tag,
 /// never as the ID; any other value as stored.
 pub fn value_words(docs: &[&Document], v: &str) -> String {

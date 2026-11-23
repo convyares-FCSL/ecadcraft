@@ -1,31 +1,31 @@
-//! Numbering (brief 026, design 026 §2): one planner for device tags, cable tags and wire numbers.
+//! Numbering: one planner for device tags, cable tags and wire numbers.
 //!
 //! # Semantics
 //! - [`plan`] reads a document and a [`Request`] and returns a [`Plan`]: one row per item in scope
 //!   (old → new, or why it is kept), and the ops that write it. Nothing is written here; Renumber,
 //!   Finalise, Swap's next free number and the merge's renumber choices commit the ops as one
 //!   transaction.
-//! - **Drawing order** (§2.2): page in book order, then the column and row of that page's frame
+//! - **Drawing order**: page in book order, then the column and row of that page's frame
 //!   grid, then top to bottom and left to right, then ID. Each item has one anchor: a device's
 //!   `main` representation (else its first in drawing order), a cable's first representation, a
 //!   net's first conductor's route start. An item with no anchor sorts last.
-//! - **Numbers** (§2.3): per tag prefix (devices and cables share one namespace, design §6) or per
+//! - **Numbers**: per tag prefix (devices and cables share one namespace) or per
 //!   wire-number scope, `start`, `start + 1`, … in drawing order, skipping every number taken by an
 //!   item not being renumbered (fixed, out of scope, the kind not chosen). A plan never produces a
-//!   duplicate: the duplicate rule holds on the transaction's end state (FP6), so exchanges such as
+//!   duplicate: the duplicate rule holds on the transaction's end state, so exchanges such as
 //!   `-K01 ↔ -K02` are plain `SetProperty` ops.
-//! - **High-water reset** (FP4): last, one `SetProperty(Project, "numbering.high.<P>")` per prefix
+//! - **High-water reset**: last, one `SetProperty(Project, "numbering.high.<P>")` per prefix
 //!   whose tags changed, set to the highest number of `P` in use after the plan.
-//! - **Terminals** (brief 028, design 028 §9.5): the caller names the strips in scope
+//! - **Terminals**: the caller names the strips in scope
 //!   ([`Request::strips`]; this crate does not know the starter catalogue). Per strip, its drawn
 //!   terminals are labelled `start`, `start + 1`, … in drawing order, feed-through and PE in one
 //!   sequence; a strip's fixed tag does not stop it. A changed terminal is relabelled by
 //!   `RemoveConnectionPoint` + `AddConnectionPoint` of the same ID with the same key; its wires stay attached
-//!   (the transaction's end state holds every invariant, decision FP5 of 2026-11-12).
+//!   (the transaction's end state holds every invariant).
 //! - The plan is built on request only (a preview, an Apply); it reads each item once, sorts, and
-//!   writes one op per changed item (§11).
+//!   writes one op per changed item.
 //!
-//! This module holds no UI and commits nothing; words for people stay short (design §10).
+//! This module holds no UI and commits nothing; words for people stay short.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -45,12 +45,12 @@ pub enum Kind {
     Devices,
     Cables,
     Wires,
-    /// Brief 028: terminal labels per strip.
+    /// Terminal labels per strip.
     TerminalBlocks,
 }
 
 impl Kind {
-    /// The short word (design §10): `Dev`, `Cbl`, `Wire`.
+    /// The short word: `Dev`, `Cbl`, `Wire`.
     pub fn short(self) -> &'static str {
         match self {
             Kind::Devices => "Dev",
@@ -71,7 +71,7 @@ impl Kind {
     }
 }
 
-/// Which items a run numbers (design §2.1).
+/// Which items a run numbers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
     /// Every tagged item in the usual form (provisional included); every net with an automatic
@@ -98,16 +98,16 @@ pub struct Request {
     pub start: Option<u64>,
     /// Digits for this run (default: the project's tag padding, or the wire digits).
     pub digits: Option<u8>,
-    /// Brief 028: the strips whose terminals [`Kind::TerminalBlocks`] numbers, chosen by the caller.
+    /// The strips whose terminals [`Kind::TerminalBlocks`] numbers, chosen by the caller.
     pub strips: BTreeSet<DeviceId>,
-    /// Brief 036 (FP8c): per strip, the caller's position groups (the terminals of one position).
+    /// Per strip, the caller's position groups (the terminals of one position).
     /// The planner numbers groups, each anchored at its earliest symbol in drawing order, and gives
-    /// every terminal of a group the group's new label. A strip with no groups is numbered one
-    /// terminal per group, as brief 028 did.
+    /// every connection point of a group the group's new label. A strip with no groups is numbered one
+    /// connection point per group.
     pub positions: BTreeMap<DeviceId, Vec<Vec<ConnectionPointId>>>,
 }
 
-/// What a row does (design §3, row marks).
+/// What a row does (row marks).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mark {
     /// `→`: the tag or number changes.
@@ -173,7 +173,7 @@ pub struct Row {
     /// The anchor point, for going to it.
     pub point: Option<Pt>,
     pub mark: Mark,
-    /// Brief 028: the terminal a [`Kind::TerminalBlocks`] row relabels.
+    /// The terminal a [`Kind::TerminalBlocks`] row relabels.
     pub connection_point: Option<ConnectionPointId>,
     order: Order,
 }
@@ -214,7 +214,7 @@ impl Plan {
 }
 
 /// The drawing-order key: (has no anchor, book position, zone column, zone row, −y, x). The one
-/// "first in drawing order" of numbering, go-to and a device's head (design 052 §3.4).
+/// "first in drawing order" of numbering, go-to and a device's head.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Order {
     none: bool,
@@ -335,7 +335,7 @@ impl<'a> Places<'a> {
     }
 
     /// The anchor of `subject`: its representation of the lowest `rank`, the first in drawing
-    /// order among those (design 052 §4, FP6: the adapter supplies the rank, so this crate knows
+    /// order among those (the adapter supplies the rank, so this crate knows
     /// nothing of symbol types).
     ///
     /// The book is read only when the representations lie on more than one page.
@@ -390,7 +390,7 @@ impl<'a> Places<'a> {
 
 /// Where `subject` is shown, cheaply (for Checks rows): its first representation in drawing order
 /// (book position, then top-left), and that representation's anchor point. A representation's
-/// role is not read (design 052 §4).
+/// role is not read.
 ///
 /// The book is built only when the subject is shown on more than one page; a pass over many
 /// subjects shares one [`Places`] through [`rep_anchor_in`], so it is built at most once.
@@ -403,7 +403,7 @@ pub fn rep_anchor_in(places: &mut Places<'_>, subject: Subject) -> Option<(PageI
     places.pick(subject, &|_| 0)
 }
 
-/// Whether a project has provisional tags on (FP2).
+/// Whether a project has provisional tags on.
 pub fn provisional_on(doc: &Document) -> bool {
     use crate::naming::keys::PropsExt;
     doc.display.flag(crate::naming::keys::NUMBERING_PROVISIONAL) == Some(true)
@@ -452,12 +452,12 @@ pub fn plan(doc: &Document, req: &Request, high: &HighWater) -> Result<Plan, cra
     plan_ranked(doc, req, high, &|_| 0)
 }
 
-/// How a device's representations rank as its numbering anchor: lowest first, then drawing order
-/// (design 052 §4, FP6). The adapter knows the symbol types; this crate does not.
+/// How a device's representations rank as its numbering anchor: lowest first, then drawing order.
+/// The adapter knows the symbol types; this crate does not.
 pub type Rank<'a> = &'a dyn Fn(&Representation) -> u8;
 
-/// As [`plan`], with devices anchored at their representation of the lowest `rank` (design 052
-/// §4): the adapter ranks a device's head first, so a device is numbered by its coil wherever its
+/// As [`plan`], with devices anchored at their representation of the lowest `rank`:
+/// the adapter ranks a device's head first, so a device is numbered by its coil wherever its
 /// contacts are.
 ///
 /// # Errors
@@ -495,7 +495,7 @@ pub fn plan_ranked(doc: &Document, req: &Request, high: &HighWater, rank: Rank<'
     if req.kinds.contains(&Kind::TerminalBlocks) {
         plan_terminal_blocks(doc, req, &mut places, pages.as_ref(), &mut rows, &mut ops);
     }
-    // Brief 054 (design 054 §3.4): what is anchored on a page with checks and references off is
+    // What is anchored on a page with checks and references off is
     // not numbered.
     let off = crate::document::sheet::checks_off_pages(doc);
     if !off.is_empty() {
@@ -668,7 +668,7 @@ fn plan_tags(
                 rows.push(row_of(places, it, old.clone(), old, Mark::Skipped("no number left")));
                 continue;
             }
-            // Brief 033 (design 033 §8.3): the project's dash; under `typed` a tag keeps its own
+            // The project's dash; under `typed` a tag keeps its own
             // letters (`k05` → `k03`).
             let letters = match style.case {
                 tag::Case::Typed => it.tag.as_deref().and_then(tag::typed_prefix).unwrap_or(p.as_str()),
@@ -699,14 +699,14 @@ fn plan_tags(
         }
         in_use_after.insert(p.clone(), top);
     }
-    // FP4: the mark of each prefix whose tags changed is the highest number now in use.
+    // The mark of each prefix whose tags changed is the highest number now in use.
     for p in changed_prefixes {
         let n = in_use_after.get(&p).copied().unwrap_or(0);
         let Some(key) = crate::naming::keys::NUMBERING_HIGH.build(&[p.as_str()]) else {
             continue;
         };
         let before = doc.display.get(&key).cloned();
-        // Always written, also when the number is the stored one (tester 026, 6): the reset
+        // Always written, also when the number is the stored one: the reset
         // carries the mark it replaces and a newer generation (`tag::reset_value`).
         let generation = before.as_deref().and_then(tag::parse_reset).map_or(0, |r| r.2).saturating_add(1);
         let was = high.get(&p).copied().unwrap_or(0);
@@ -715,7 +715,7 @@ fn plan_tags(
     }
 }
 
-/// Brief 028: number each strip's terminals in drawing order (module docs).
+/// Number each strip's terminals in drawing order (module docs).
 fn plan_terminal_blocks(
     doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>,
 ) {
@@ -736,9 +736,9 @@ fn plan_terminal_blocks(
                         }
                         _ => BTreeSet::new(),
                     };
-                // One terminal per definition key, as the symbol shows it (brief 036 §10.3): a
+                // One terminal per definition key, as the symbol shows it: a
                 // terminal no other symbol shows first (a joined terminal's key can equal the
-                // definition key, review M1 2.1), else the first.
+                // definition key), else the first.
                 let mut shown = Vec::new();
                 for k in keys {
                     let mut with_key = doc.connection_points_of(*strip).filter(|(_, t)| t.key.as_ref() == Some(k)).map(|(t, _)| t);
@@ -766,7 +766,7 @@ fn plan_terminal_blocks(
             continue;
         }
         list.sort_by(|a, b| a.3.cmp(&b.3).then(a.0.cmp(&b.0)));
-        // Brief 036: the caller's position groups; a terminal in none is a group of its own.
+        // The caller's position groups; a terminal in none is a group of its own.
         let groups: Vec<Vec<ConnectionPointId>> = req.positions.get(strip).cloned().unwrap_or_default();
         let group_of: BTreeMap<ConnectionPointId, usize> = groups.iter().enumerate().flat_map(|(i, g)| g.iter().map(move |t| (*t, i))).collect();
         let mut done: BTreeSet<usize> = BTreeSet::new();
@@ -1100,7 +1100,7 @@ mod tests {
         assert_eq!(next_provisional(&d, "W"), "-W1");
     }
 
-    /// S6 (#3): Finalise gives a provisional tag a real number and the state automatic; a fixed one
+    /// Finalise gives a provisional tag a real number and the state automatic; a fixed one
     /// is left as it is.
     #[test]
     fn finalise_turns_a_provisional_tag_into_an_automatic_one() {

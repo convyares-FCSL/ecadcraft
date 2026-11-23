@@ -27,7 +27,7 @@ impl Ledger {
         }
     }
 
-    /// Rebuild from a log by applying every transaction to an empty document (FILE-02).
+    /// Rebuild from a log by applying every transaction to an empty document.
     ///
     /// # Errors
     /// [`ModelError::CorruptLog`] when a transaction's preconditions or the invariants fail, or
@@ -62,7 +62,7 @@ impl Ledger {
 
     /// Replay as much of `log` as is valid: the ledger of the longest valid prefix and, when a
     /// transaction fails, its position in `log` (0-based) and the error. Used by file readers to
-    /// open a damaged history read-only at its last good transaction (proposal §20.6).
+    /// open a damaged history read-only at its last good transaction.
     ///
     /// # Semantics
     /// Every transaction is checked as it is applied, exactly as when it was committed; a failed
@@ -75,7 +75,7 @@ impl Ledger {
         (me, failure)
     }
 
-    /// Start from a snapshot instead of the project root (brief 021, EEP-0005 §5): the document,
+    /// Start from a snapshot instead of the project root: the document,
     /// undo and redo stacks after transaction `base.seq`, then `tail` (the transactions after it,
     /// `seq` `base.seq + 1` on) replayed with every check. Transactions before the base are read
     /// from `base.history` only when undo, redo or [`Ledger::state_at`] reach them.
@@ -254,7 +254,7 @@ impl Ledger {
     }
 
     /// Rebuild from a checkpoint holding the state after the first `at` transactions, applying
-    /// the rest of `log`. A checkpoint is only a cache (FILE-04): the full log is still required.
+    /// the rest of `log`. A checkpoint is only a cache: the full log is still required.
     ///
     /// # Errors
     /// As [`Ledger::replay`].

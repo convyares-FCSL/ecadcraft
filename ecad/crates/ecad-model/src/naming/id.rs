@@ -1,7 +1,7 @@
-//! Typed identities (principle P2).
+//! Typed identities.
 //!
 //! Every object kind has its own ID type so the compiler keeps them apart. IDs are 128-bit values
-//! allocated when an edit is made and recorded in the op; replay never allocates (FILE-02).
+//! allocated when an edit is made and recorded in the op; replay never allocates.
 
 use std::fmt;
 
@@ -29,7 +29,7 @@ macro_rules! typed_id {
             }
         }
 
-        /// A hex string in a command's parameters (brief 070).
+        /// A hex string in a command's parameters.
         impl schemars::JsonSchema for $name {
             fn inline_schema() -> bool {
                 true
@@ -85,7 +85,7 @@ macro_rules! typed_id {
 
 typed_id!(/// A page of the project.
     PageId, "pg");
-typed_id!(/// A folder of pages (brief 019).
+typed_id!(/// A folder of pages.
     FolderId, "fld");
 typed_id!(/// A layer.
     LayerId, "lyr");
@@ -101,35 +101,34 @@ typed_id!(/// A conductor.
     WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
-typed_id!(/// A route: a line drawn on a page (design 072 F31).
+typed_id!(/// A route: a line drawn on a page.
     RouteId, "rte");
-typed_id!(/// A drawing aid: a continuation or a location box (design 072 §6.2).
+typed_id!(/// A drawing aid: a continuation or a location box.
     AidId, "aid");
-typed_id!(/// A loose part: panel-only material on the BOM (design 072 §6.4).
+typed_id!(/// A loose part: panel-only material on the BOM.
     LoosePartId, "lpt");
 typed_id!(/// A net, stored on each of its wires: given when the net first appears and kept through
-    /// edits (design 072 §4.2, F39).
+    /// edits.
     NetId, "net");
 typed_id!(/// A conductor's own identity in the project: given when its wire is made, never reused
-    /// (design 072 §4.2, F39).
     ConductorId, "cdr");
 typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.
     TxId, "tx");
-typed_id!(/// An entry of the project's location list (design 072 §5.3).
+typed_id!(/// An entry of the project's location list.
     LocationId, "loc");
-typed_id!(/// An entry of the project's function list (design 072 §5.3).
+typed_id!(/// An entry of the project's function list.
     FunctionId, "fn");
-typed_id!(/// A link between two devices (design 072 §2.6).
+typed_id!(/// A link between two devices.
     LinkId, "lnk");
-typed_id!(/// A project-defined user field (design 072 §2.8).
+typed_id!(/// A project-defined user field.
     UserFieldId, "ufd");
 typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
     LibraryId, "lib");
 typed_id!(/// A project, stable across renaming or moving its file (the file header records it).
     ProjectId, "prj");
-typed_id!(/// A standard (brief 050a, FP1): kept when a project copies it.
+typed_id!(/// A standard: kept when a project copies it.
     StandardId, "std");
 
 /// Allocates fresh IDs.

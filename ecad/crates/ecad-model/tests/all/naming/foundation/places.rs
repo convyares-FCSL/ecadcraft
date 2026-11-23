@@ -1,4 +1,4 @@
-//! Design 072 §9.3: page places are typed: a page number is well formed or refused.
+//! Page places are typed: a page number is well formed or refused.
 
 use ecad_model::{PageColumn, PageNo, PageRow};
 

@@ -67,7 +67,7 @@ pub(super) fn restore(history: Committed<'_>) -> Option<Document> {
 /// possible either, `health.broken` is set. Nothing here panics, as it may run during unwinding.
 pub(super) struct Journal<'a> {
     pub(super) doc: &'a mut Document,
-    /// Borrowed, unless a numbering pass extended the transaction (brief 022).
+    /// Borrowed, unless a numbering pass extended the transaction.
     pub(super) ops: std::borrow::Cow<'a, [Op]>,
     pub(super) applied: usize,
     /// The committed transactions whose replay gives the state before this one; `None` when the
@@ -89,7 +89,7 @@ impl<'a> Journal<'a> {
         Ok(touched)
     }
 
-    /// Append `more` ops to the transaction (the numbering pass, brief 022) and apply them.
+    /// Append `more` ops to the transaction (the numbering pass) and apply them.
     pub(super) fn extend(&mut self, more: Vec<Op>, touched: &mut Touched) -> Result<()> {
         if more.is_empty() {
             return Ok(());
@@ -99,7 +99,7 @@ impl<'a> Journal<'a> {
     }
 
     /// Apply the ops not applied yet, in order, adding what they touch to `touched`; the nets are
-    /// settled once at the end (brief 022).
+    /// settled once at the end.
     pub(super) fn apply_rest(&mut self, touched: &mut Touched) -> Result<()> {
         // Disjoint borrows: the ops stay in place, so a panic part-way still rolls them back.
         let Journal { doc, ops, applied, .. } = self;
@@ -229,7 +229,7 @@ pub(super) fn apply_tx_at(
     result
 }
 
-/// [`apply_tx`] with a numbering pass (brief 022): after `ops`, `extend` sees the document and
+/// [`apply_tx`] with a numbering pass: after `ops`, `extend` sees the document and
 /// returns more ops for the same transaction, applied before the end state is checked. Returns
 /// those extra ops.
 pub(super) fn apply_tx_extended(
@@ -240,18 +240,18 @@ pub(super) fn apply_tx_extended(
     let mut touched = Touched::default();
     let mut more = Vec::new();
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
-        // Design 072 §4.4: the wires of every net whose points changed, in the same transaction.
+        // The wires of every net whose points changed, in the same transaction.
         let mut wires = crate::connectivity::wire_order::rewrite(journal.doc, ops);
         if !wires.is_empty() {
             journal.extend(wires.clone(), &mut touched)?;
         }
-        // The cores on the routes changed move with them (owner ruling, 2026-11-18).
+        // The cores on the routes changed move with them.
         let cores = crate::connectivity::wire_order::cores(journal.doc, ops);
         if !cores.is_empty() {
             journal.extend(cores.clone(), &mut touched)?;
             wires.extend(cores);
         }
-        // A deleted device's `protected_by`s are cleared (overseer ruling, 2026-11-18).
+        // A deleted device's `protected_by`s are cleared.
         let unprotected = crate::connectivity::wire_order::unprotect(journal.doc, ops);
         if !unprotected.is_empty() {
             journal.extend(unprotected.clone(), &mut touched)?;
@@ -293,7 +293,7 @@ pub(super) fn applied_then_reverted<R>(
 ) -> (Result<R>, Option<String>) {
     let mut journal = Journal::new(doc, ops, history, health);
     let mut touched = Touched::default();
-    // As a commit does (design 072 §4.4): the wires of the nets whose points changed follow.
+    // As a commit does: the wires of the nets whose points changed follow.
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
         let wires = crate::connectivity::wire_order::rewrite(journal.doc, ops);
         journal.extend(wires, &mut touched)?;

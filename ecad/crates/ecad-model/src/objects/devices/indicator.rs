@@ -1,12 +1,11 @@
-//! An indicator's signal, colour and power (design 072 §2.2 row 7, "Ratings", owner decisions
-//! 2026-11-18): typed fields, never a stored display string.
+//! An indicator's signal, colour and power: typed fields, never a stored display string.
 //!
 //! # Semantics
 //! - [`SignalType`] says how it signals (a steady or flashing lamp, a rotating beacon, a buzzer, a
 //!   meter). It is a starter default stored when the device is created (a lamp: steady), and the
 //!   rating text may change it (`flashing`); it is not a rating field.
 //! - Its rating is its colour ([`IndicatorColour`], IEC 60073: red, yellow, green, blue, white;
-//!   design 072 §4.6 keeps it apart from a wire's colour), its rated voltage with AC or DC (a lamp
+//!   kept apart from a wire's colour), its rated voltage with AC or DC (a lamp
 //!   is bought by voltage: `24 V DC`) and its power, kept in watts and shown like a load's (`2 W`).
 //! - Every rating field may be empty (not typed yet); [`Indicator::is_unrated`] says when all are.
 //!   [`fmt::Display`] writes the set fields in a fixed order, the signal when it is not steady
@@ -28,8 +27,7 @@ pub const MAX_POWER_WATTS: f64 = 10_000.0;
 /// The largest rated voltage of an indicator, in volts.
 pub const MAX_VOLTS: f64 = 1000.0;
 
-/// An indicator: how it signals, its colour, its rated voltage and its power (group 7, design 072
-/// §2.2).
+/// An indicator: how it signals, its colour, its rated voltage and its power.
 ///
 /// # Example
 /// ```

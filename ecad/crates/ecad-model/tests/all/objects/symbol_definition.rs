@@ -1,5 +1,5 @@
-//! Brief 048 (symbol builder): the new op `SetDeviceDefinition` (FP5) through apply, inverse,
-//! diff and merge, and invariant I7 for text slots, defaults and `derived_from` (FP1, FP2, FP4).
+//! The new op `SetDeviceDefinition` through apply, inverse,
+//! diff and merge, and invariant I7 for text slots, defaults and `derived_from`.
 
 use std::collections::BTreeMap;
 

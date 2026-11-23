@@ -1,4 +1,4 @@
-//! A wire: one physical conductor, and the typed values it carries (design 072 §4.2, §4.6, lane D).
+//! A wire: one physical conductor, and the typed values it carries.
 //!
 //! # Semantics
 //! - [`Wire`] holds what a wire is in fields: its two ends, its size, its colours (an ordered list
@@ -8,7 +8,7 @@
 //! - Every value is checked when it is made ([`WireSize::parse`], [`Colours::parse`],
 //!   [`CircuitInputs`]'s bounds) and again when it is read from a file: a stored value out of its
 //!   bounds, in another form than the stored one, or an unknown word is a read error.
-//! - The rating inputs are shared with cables (lane D step 2): one struct, one set of bounds.
+//! - The rating inputs are shared with cables: one struct, one set of bounds.
 //!
 //! This module excludes what the values mean for the drawing (labels, line looks) and for the
 //! rating checks; ecad-electrical owns those.
@@ -48,23 +48,23 @@ impl End {
     }
 }
 
-/// A wire (stored intent): one conductor between two connection points of one net (design 072
-/// §4.2). A loose end is a route's, never a wire's.
+/// A wire (stored intent): one conductor between two connection points of one net.
+/// A loose end is a route's, never a wire's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wire {
-    /// The net it belongs to: stable through edits (F39).
+    /// The net it belongs to: stable through edits.
     pub net: NetId,
     /// This conductor's own identity in the project: given when the wire is made, never reused.
     pub conductor: ConductorId,
-    /// Its place in its net's order, 1-based (design 072 §4.4).
+    /// Its place in its net's order, 1-based.
     pub net_order: u16,
     /// Its two connection points.
     pub ends: [ConnectionPointId; 2],
     /// The person reordered this net by hand: the rewrite keeps its order.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub order_fixed: bool,
-    /// Its own wire type (a style of catalogue `wire`, design 072 §4.6), over the one its net's
+    /// Its own wire type (a style of catalogue `wire`), over the one its net's
     /// potential or the registry gives.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wire_type: Option<StyleRef>,
@@ -80,7 +80,7 @@ pub struct Wire {
     /// The potential its net carries (`24V`), as the person chose it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub potential: Option<Text<MAX_VALUE_CHARS>>,
-    /// Its rating inputs (brief 057).
+    /// Its rating inputs.
     #[serde(default, skip_serializing_if = "CircuitInputs::is_empty")]
     pub rating: CircuitInputs,
     /// The current it carries, as typed (Ib).
@@ -89,7 +89,7 @@ pub struct Wire {
     /// The device named as its protection (`rating {protected_by}`), over the trace's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protected_by: Option<ProtectedBy>,
-    /// Display choices and defaults-registry values only (design 072 §9.2).
+    /// Display choices and defaults-registry values only.
     #[serde(default, skip_serializing_if = "Properties::is_empty")]
     pub display: Properties,
 }
@@ -184,7 +184,7 @@ impl Wire {
     }
 }
 
-/// A wire number and whether a person fixed it (design 022 §5).
+/// A wire number and whether a person fixed it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WireNumber {
@@ -317,7 +317,7 @@ impl fmt::Display for Awg {
 }
 
 /// A wire's or a core's colours: an ordered list of base colours (green/yellow is
-/// `[Green, Yellow]`), written `GN/YE` (design 072 §4.6, F35).
+/// `[Green, Yellow]`), written `GN/YE`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Colours(Vec<ConductorColour>);
 
@@ -422,7 +422,7 @@ impl schemars::JsonSchema for Colours {
 }
 
 crate::word_enum! {
-    /// How a wire's or cable's current capacity Iz is found (design 057 §3).
+    /// How a wire's or cable's current capacity Iz is found.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Basis {
         /// The wire type's or cable type's rated current, derated.
@@ -484,7 +484,7 @@ impl SupplySystem {
     }
 }
 
-/// A wire's bundling or a cable's grouping (design 057 §2.1): a factor, or a circuit count the
+/// A wire's bundling or a cable's grouping: a factor, or a circuit count the
 /// rating table turns into one.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -493,7 +493,7 @@ pub enum Bundling {
     Circuits(u8),
 }
 
-/// The bounds of every rating input (design 057 §2).
+/// The bounds of every rating input.
 pub mod bounds {
     use std::ops::RangeInclusive;
 
@@ -526,7 +526,7 @@ impl Bundling {
     }
 }
 
-/// The protective device a wire or a cable names (design 072 §4.5): a device, and the fuse or
+/// The protective device a wire or a cable names: a device, and the fuse or
 /// pole of a multi-way device (`-F01:3` is position 3). Deleting the device clears every
 /// `protected_by` that names it in the same transaction; one read from a file that names nothing
 /// is a check row.
@@ -538,7 +538,7 @@ pub struct ProtectedBy {
     pub position: Option<u8>,
 }
 
-/// The rating inputs a wire or a cable holds of its own (design 057 §2, design 072 §4.2, §4.5):
+/// The rating inputs a wire or a cable holds of its own:
 /// each overrides the project default.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "RawInputs")]

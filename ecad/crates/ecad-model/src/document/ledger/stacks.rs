@@ -11,7 +11,7 @@ use super::*;
 pub(super) struct Stacks {
     pub(super) undo: Vec<(u64, TxId)>,
     pub(super) redo: Vec<(u64, TxId)>,
-    /// Entries below the visible ones that a snapshot did not record (brief 021: a snapshot
+    /// Entries below the visible ones that a snapshot did not record (a snapshot
     /// keeps the top of each stack and its depth). They are read once, from the history, when
     /// undo or redo first reaches them ([`Ledger::rebuild_stacks`]).
     pub(super) undo_hidden: u64,
@@ -22,7 +22,7 @@ pub(super) struct Stacks {
 }
 
 /// How many stack entries are read from the history at a time, when undo or redo reaches below
-/// what is held (the cap a snapshot records, brief 021).
+/// what is held (the cap a snapshot records).
 pub(super) const STACK_READ: u64 = 1_024;
 
 impl Stacks {

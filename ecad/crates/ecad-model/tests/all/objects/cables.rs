@@ -1,4 +1,4 @@
-//! Lane 072 D, part c2 (design 072 §4.5): `ModifyCable` records a cable whole, before and after.
+//! `ModifyCable` records a cable whole, before and after.
 //! It changes the cable's fields and cores in one op, is its own inverse, and the indexes (its
 //! wires, routes and tag) follow it. A core's purpose is kept apart from its position. A key that
 //! became a cable field (its shield, a core's Not used) and the offer key `cores` are never

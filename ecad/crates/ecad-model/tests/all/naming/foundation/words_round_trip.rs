@@ -1,4 +1,4 @@
-//! A2: `words_round_trip` (design 072 §14): every `Word` enum reads back what it writes, serde
+//! A2: `words_round_trip`: every `Word` enum reads back what it writes, serde
 //! writes the word and refuses any other, and its schema lists exactly its words.
 
 use std::collections::BTreeSet;

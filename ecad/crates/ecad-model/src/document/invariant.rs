@@ -15,30 +15,30 @@
 //! | # | Invariant | Objects it relates | Re-checked for |
 //! |---|-----------|--------------------|----------------|
 //! | I1 | The page order lists each page exactly once | pages, page order | any page added or removed (whole order, which is short) |
-//! | I2 | An item's page exists (DOC-02, DOC-07) | item → page | touched items; items on a touched page |
-//! | I3 | An item's layer exists (DOC-02, DOC-07) | item → layer | touched items; items on a touched layer |
+//! | I2 | An item's page exists | item → page | touched items; items on a touched page |
+//! | I3 | An item's layer exists | item → layer | touched items; items on a touched layer |
 //! | I4 | A primitive item's geometry is finite | item | touched items |
-//! | I5 | A symbol item's definition exists (DOC-07) | item → definition | touched items; items placing a touched definition |
+//! | I5 | A symbol item's definition exists | item → definition | touched items; items placing a touched definition |
 //! | I6 | A symbol item's placement is valid | item | touched items |
-//! | I7 | A definition's geometry is finite, its terminal keys are unique, and each bridge key is one of them or a placement key (`.s`, `.p`, a level key; brief 044); its text slots are finite, for known device texts, one per text; its defaults use the known keys; it is not derived from its own origin (brief 048) | definition | touched definitions |
-//! | I8 | A terminal's component exists (DOC-07) | terminal → component | touched terminals; terminals of a touched component |
-//! | I9 | A component's definition exists (DOC-07) | component → definition | touched components; components using a touched definition |
-//! | I10 | A representation's subject exists (DOC-07) | representation → component, conductor or cable | touched representations; representations of a touched subject |
+//! | I7 | A definition's geometry is finite, its terminal keys are unique, and each bridge key is one of them or a placement key (`.s`, `.p`, a level key); its text slots are finite, for known device texts, one per text; its defaults use the known keys; it is not derived from its own origin | definition | touched definitions |
+//! | I8 | A terminal's component exists | terminal → component | touched terminals; terminals of a touched component |
+//! | I9 | A component's definition exists | component → definition | touched components; components using a touched definition |
+//! | I10 | A representation's subject exists | representation → component, conductor or cable | touched representations; representations of a touched subject |
 //! | I11 | A representation's page exists | representation → page | touched representations; representations on a touched page |
 //! | I12 | A representation's items exist and lie on its page | representation → items | touched representations; representations listing a touched item |
-//! | I13 | An item is listed once, by at most one representation (DOC-05) | representation ↔ representation, through an item | touched representations (all listings of each of their items are counted); representations listing a touched item |
-//! | I14 | A symbol representation holds exactly one symbol instance and depicts a component; without connection points it shows that component's own definition (with them, any embedded definition: decision 2026-11-08, brief 018) | representation → item, representation → component → definition | touched representations; representations listing a touched item; representations of a touched component |
+//! | I13 | An item is listed once, by at most one representation | representation ↔ representation, through an item | touched representations (all listings of each of their items are counted); representations listing a touched item |
+//! | I14 | A symbol representation holds exactly one symbol instance and depicts a component; without connection points it shows that component's own definition (with them, any embedded definition) | representation → item, representation → component → definition | touched representations; representations listing a touched item; representations of a touched component |
 //! | I15 | A drawn representation holds no symbol instance | representation → items | touched representations; representations listing a touched item |
 //! | I16 | Connection points belong to a component representation, name that component's terminals and are finite | representation → terminals → component | touched representations; representations placing a touched terminal; representations of a touched component |
-//! | I17 | Wire ends attach to existing terminals (DOC-03, DOC-07) | conductor → terminal | touched conductors; conductors attached to a touched terminal |
-//! | I18 | Cable members exist and are listed once (DOC-04, DOC-07) | cable → conductors | touched cables; cables listing a touched conductor |
-//! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
+//! | I17 | Wire ends attach to existing terminals | conductor → terminal | touched conductors; conductors attached to a touched terminal |
+//! | I18 | Cable members exist and are listed once | cable → conductors | touched cables; cables listing a touched conductor |
+//! | I19 | The folder order lists each folder exactly once | folders, folder order | any folder added or removed (whole order, which is short) |
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
-//! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
-//! | I25 | A drawing aid is well formed: a box's panel temperature is a number (design 072 §6.2) | aid | touched aids |
-//! | I26 | A loose part is well formed: a description, a quantity more than 0 and at most 9 999, whole for pieces (design 072 §6.4) | loose part | touched loose parts |
+//! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
+//! | I25 | A drawing aid is well formed: a box's panel temperature is a number | aid | touched aids |
+//! | I26 | A loose part is well formed: a description, a quantity more than 0 and at most 9 999, whole for pieces | loose part | touched loose parts |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -79,11 +79,11 @@ pub struct Touched {
     pub representations: BTreeSet<RepresentationId>,
     pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
-    /// Routes drawn, removed or changed (design 072 F31).
+    /// Routes drawn, removed or changed.
     pub routes: BTreeSet<RouteId>,
-    /// Drawing aids made, removed or changed (design 072 §6.2).
+    /// Drawing aids made, removed or changed.
     pub aids: BTreeSet<crate::naming::id::AidId>,
-    /// Loose parts made, removed or changed (design 072 §6.4).
+    /// Loose parts made, removed or changed.
     pub loose_parts: BTreeSet<crate::naming::id::LoosePartId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
@@ -91,9 +91,9 @@ pub struct Touched {
     pub folders: BTreeSet<FolderId>,
     /// Pages whose properties changed (only I21 depends on them).
     pub page_properties: BTreeSet<PageId>,
-    /// The standard or a style record changed (brief 050a): the style invariants are checked.
+    /// The standard or a style record changed: the style invariants are checked.
     pub styles: bool,
-    /// The project's own data changed (design 072 §5.3): I22 is checked.
+    /// The project's own data changed: I22 is checked.
     pub project: bool,
 }
 
@@ -114,7 +114,7 @@ impl Touched {
         }
     }
 
-    /// Add what `effect` touches (design 064 §3.1: the invariant check and the derived views share
+    /// Add what `effect` touches (the invariant check and the derived views share
     /// one classifier).
     pub(crate) fn add_effect(&mut self, effect: &Effect<'_>) {
         match effect {
@@ -136,7 +136,7 @@ impl Touched {
             }
             Effect::Rep { id, before, after } => {
                 self.representations.insert(*id);
-                // A cable reference places named points (design 072 §4.4, F4): the routes landing
+                // A cable reference places named points: the routes landing
                 // on the points it placed or places are re-checked (I23).
                 for r in [before, after].into_iter().flatten().filter(|r| matches!(r.subject, Subject::Cable(_))) {
                     self.connection_points.extend(r.connection_points.keys().copied());
@@ -147,7 +147,7 @@ impl Touched {
             }
             Effect::Cable { id, before, after } => {
                 self.cables.insert(*id);
-                // Its cores' named points (F4): the routes landing on them are re-checked (I23).
+                // Its cores' named points: the routes landing on them are re-checked (I23).
                 for c in [before, after].into_iter().flatten() {
                     self.connection_points.extend(c.cores.iter().flat_map(|m| m.through.iter().copied()));
                 }
@@ -255,7 +255,7 @@ impl Document {
         Ok(())
     }
 
-    /// I22 (design 072 §5.3): the location and function lists are well formed
+    /// I22: the location and function lists are well formed
     /// ([`crate::document::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
     ///
@@ -267,7 +267,7 @@ impl Document {
         }
     }
 
-    /// I26: a loose part is well formed (design 072 §6.4).
+    /// I26: a loose part is well formed.
     fn check_loose_part(&self, id: crate::naming::id::LoosePartId, p: &crate::objects::loose_part::LoosePart) -> Result<()> {
         match p.problem() {
             Some(e) => bad(format!("loose part {id}: {e}")),
@@ -275,7 +275,7 @@ impl Document {
         }
     }
 
-    /// I24 (design 072 §2.8, §2.6): every device's user values name a field the project defines
+    /// I24: every device's user values name a field the project defines
     /// and are of its kind; every device link joins two different devices that exist, once.
     fn check_project(&self) -> Result<()> {
         if let Some(p) = self.project.problem() {
@@ -313,7 +313,7 @@ impl Document {
         Ok(())
     }
 
-    /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
+    /// I-styles: every catalogue word is well formed, and no
     /// standard-layer record exists without a standard (the op refuses that, so this holds by
     /// construction). A dangling style reference is not a breach: it falls through.
     fn check_styles(&self) -> Result<()> {
@@ -573,7 +573,7 @@ impl Document {
         let Some(c) = self.devices.get(&device) else {
             return bad(format!("terminal {id} belongs to a missing component"));
         };
-        // Design 072 §3: a PLC module's point is a channel's (`.3.in`) or one of its own symbol's
+        // A PLC module's point is a channel's (`.3.in`) or one of its own symbol's
         // (`L+`). Any other definition key (an old `I1.3`) is unknown: nothing reads a channel
         // out of its text.
         if let crate::objects::devices::DeviceType::PlcModule(_) = &c.device_type
@@ -592,7 +592,7 @@ impl Document {
         {
             return bad(format!("device {id} uses a missing definition"));
         }
-        // Design 072 §2.1: a key that became a device field is never in the device's bag.
+        // A key that became a device field is never in the device's bag.
         if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
@@ -600,7 +600,7 @@ impl Document {
         if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
         }
-        // Design 072 §2.2 and §2.5: a protective device's ratings (a fuse bank's per output) and a
+        // A protective device's ratings (a fuse bank's per output) and a
         // strip's fuse position ratings are fields.
         if let crate::objects::devices::DeviceType::Protection(_) | crate::objects::devices::DeviceType::TerminalStrip(_) = &c.device_type
             && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::objects::devices::RATING_OF_PREFIX))
@@ -672,14 +672,14 @@ impl Document {
                 match r.subject {
                     // Without connection points its terminals are matched to the definition by key,
                     // so the symbol shown must be the component's own definition. With them (one
-                    // device drawn as a coil and its contacts, brief 018), any embedded definition
+                    // device drawn as a coil and its contacts), any embedded definition
                     // (I5).
                     Subject::Device(c) => {
                         if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
                             return bad(format!("symbol representation {id} shows a definition its component does not use"));
                         }
                     }
-                    // A continuation's arrow (design 072 §6.2): an aid has no definition of its own.
+                    // A continuation's arrow: an aid has no definition of its own.
                     Subject::Aid(a) if matches!(self.aids.get(&a), Some(crate::objects::aid::Aid::Continuation { .. })) => {}
                     _ => return bad(format!("symbol representation {id} must depict a component or a continuation")),
                 }
@@ -691,7 +691,7 @@ impl Document {
             }
         }
         for (t, p) in &r.connection_points {
-            // A cable reference places the named points of its cable's cores (design 072 §4.4, F4).
+            // A cable reference places the named points of its cable's cores.
             if let Subject::Cable(k) = r.subject {
                 if r.role != crate::Role::Reference || self.cable_point(*t).map(|(c, _)| c) != Some(k) {
                     return bad(format!("representation {id} places point {t}, which is not a point of its cable's cores"));
@@ -732,14 +732,14 @@ impl Document {
 
     /// I18.
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
-        // Design 072 §4.5: a key that became a cable field is never in the cable's bag.
+        // A key that became a cable field is never in the cable's bag.
         if let Some(k) = c.properties.keys().find(|k| crate::naming::keys::is_reserved_on(crate::naming::keys::Holder::Cable, k)) {
             return bad(format!("cable {id} holds {k} in its properties; it is a field"));
         }
         let mut seen = BTreeSet::new();
         let mut points = BTreeSet::new();
         for m in &c.cores {
-            // Design 072 §4.4 (F4): each named point is one core's, placed by one reference of the cable.
+            // Each named point is one core's, placed by one reference of the cable.
             for t in &m.through {
                 if !points.insert(*t) || self.connection_points.contains_key(t) {
                     return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
@@ -780,11 +780,10 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     if keys.len() != d.connection_points.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
-    // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
+    // A bridge names keys a placement can write.
     if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k) && !is_placement_key(k)) {
         return bad(format!("definition {id} bridges key {k}, which it has no terminal for and no placement writes"));
     }
-    // Brief 048 (FP1, FP2, FP4).
     let mut texts = BTreeSet::new();
     for slot in &d.texts {
         if !slot.at.is_finite() || !slot.rotation.is_finite() {
@@ -804,9 +803,9 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     Ok(())
 }
 
-/// A terminal key a placement writes that need not be one of the definition's own keys (brief
-/// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
-/// 036). A bridge may name these; any other key it names must be one of the definition's own.
+/// A connection point key a placement writes that need not be one of the definition's own keys: a connector
+/// side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`). A bridge may name these; any other key
+/// it names must be one of the definition's own.
 pub fn is_placement_key(k: &PointKey) -> bool {
     matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::connectivity::jumper_bars::level_of_key(Some(k)).is_some())
 }

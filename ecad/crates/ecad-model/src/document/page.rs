@@ -1,4 +1,4 @@
-//! What a page is (design 072 §5.1): its kind and its title.
+//! What a page is: its kind and its title.
 //!
 //! # Semantics
 //! - [`PageKind`] says what a page is: a drawn page, or a page whose content ECAD generates from the
@@ -28,7 +28,7 @@ pub const MAX_PAGE_TITLE: usize = 200;
 pub type PageTitle = Text<MAX_PAGE_TITLE>;
 
 crate::word_enum! {
-    /// What a generated page shows (briefs 024, 028, 045, 051).
+    /// What a generated page shows.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum GenKind {
         Cover,
@@ -72,7 +72,7 @@ impl GenKind {
         match self {
             GenKind::Cover => "Cover",
             GenKind::Contents => "Contents",
-            // Brief 054 (design 054 §7): a new revisions page is the Revision history.
+            // A new revisions page is the Revision history.
             GenKind::Revisions => "Revision history",
             GenKind::BomLocation => "BOM by location",
             GenKind::TerminalBlocks => "Terminal plan",
@@ -83,7 +83,7 @@ impl GenKind {
     }
 }
 
-/// What a page is (design 072 §5.1).
+/// What a page is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum PageKind {
@@ -92,9 +92,9 @@ pub enum PageKind {
     Schematic,
     /// A page whose content ECAD draws from the project; nothing drawn on it is stored.
     /// `Generated(GenKind::Terminals)` is a real page: the terminal plan of every strip in the
-    /// project, one after another (brief 028); a plan of one strip is [`PageKind::TerminalStrip`].
+    /// project, one after another; a plan of one strip is [`PageKind::TerminalStrip`].
     Generated(GenKind),
-    /// The terminal plan of one terminal strip (brief 028, FP3): a generated
+    /// The terminal plan of one terminal strip: a generated
     /// [`GenKind::TerminalBlocks`] page that shows only `strip`.
     TerminalStrip { strip: DeviceId },
 }

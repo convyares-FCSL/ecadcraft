@@ -1,4 +1,4 @@
-//! Lane 064 (design 064 §10): the one classifier of ops, `Effects::of`.
+//! The one classifier of ops, `Effects::of`.
 
 use ecad_model::document::effect::{Effect, EffectKind, Effects};
 use ecad_model::{ObjectRef, Op};

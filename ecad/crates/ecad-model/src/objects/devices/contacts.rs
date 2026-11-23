@@ -1,5 +1,5 @@
-//! The contacts a part offers and where its contact table goes (design 072 §2.2, design 025 FP1
-//! and FP2): typed fields of the groups that physically have contacts.
+//! The contacts a part offers and where its contact table goes: typed fields of the groups that
+//! physically have contacts.
 //!
 //! # Semantics
 //! - A [`ContactSet`] is the offer as its person wrote it, one [`ContactEntry`] per entry: a count
@@ -100,7 +100,7 @@ impl fmt::Display for ContactEntry {
     }
 }
 
-/// The contacts a part offers (design 025 FP1), in written order; empty offers nothing.
+/// The contacts a part offers, in written order; empty offers nothing.
 ///
 /// # Example
 /// ```
@@ -167,7 +167,7 @@ impl fmt::Display for ContactSet {
     }
 }
 
-/// Where a switching device's contact table goes (design 025 FP2).
+/// Where a switching device's contact table goes.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContactTable {

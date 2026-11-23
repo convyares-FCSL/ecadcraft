@@ -7,7 +7,7 @@ use crate::naming::id::{CableId, ConnectionPointId, RouteId, WireId};
 use super::{Properties, document::*, drawing::*};
 use crate::document::op::Op;
 
-/// Where a cable core is (owner ruling, 2026-11-18): stored, never worked out from the
+/// Where a cable core is: stored, never worked out from the
 /// connections on read.
 ///
 /// # Semantics
@@ -42,7 +42,7 @@ impl CorePosition {
     }
 }
 
-/// What a cable core is for (owner ruling, 2026-11-18): stored apart from where it is, never
+/// What a cable core is for: stored apart from where it is, never
 /// worked out from its position.
 ///
 /// # Semantics
@@ -63,7 +63,7 @@ pub const MAX_CORE_LABEL: usize = 32;
 /// A core's label: `1`, `BN`, `GNYE`.
 pub type CoreLabel = crate::naming::text::Text<MAX_CORE_LABEL>;
 
-/// One core of a cable (design 072 §4.5): the cable's cores are its whole core set, so a core the
+/// One core of a cable: the cable's cores are its whole core set, so a core the
 /// cable offers but no line carries yet is stored, [`CorePosition::Unplaced`].
 ///
 /// # Semantics
@@ -76,7 +76,7 @@ pub struct Core {
     pub colours: Option<crate::objects::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
-    /// The core's named points on the cable's references (design 072 §4.4, F4): one connection
+    /// The core's named points on the cable's references: one connection
     /// point per reference end, positioned by that reference's representation. Every point listed
     /// here joins the others, so a line landing on one page's point and a line landing on the other
     /// page's are one net, and the wire runs from device point to device point across the pages.
@@ -110,7 +110,7 @@ impl Core {
     /// of the cable's core set and stays, unplaced; an unlabelled in-use core was only that line's
     /// membership and goes. `None` too when `others` already hold an unplaced core of that label.
     pub fn off_line(&self, others: &[Core]) -> Option<Core> {
-        // A core with named points on the cable's references stays (F4): they are placed there.
+        // A core with named points on the cable's references stays: they are placed there.
         if self.label.is_none() && !self.is_spare() && self.through.is_empty() {
             return None;
         }
@@ -132,24 +132,24 @@ impl Core {
 /// The style-choice index key of a cable's cable type ([`Cable::cable_type`]); never a property.
 pub const CABLE_TYPE_KEY: &str = "cable_type";
 
-/// A cable groups existing conductors (DOC-04).
+/// A cable groups existing conductors.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
-    /// Its tag (`-W01`) and what it is (design 026; the identity of the cable), as [`Device::tag`].
+    /// Its tag (`-W01`) and what it is (the identity of the cable), as [`Device::tag`].
     pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,
     pub properties: Properties,
-    /// The whole core set, in core order (design 072 §4.5).
+    /// The whole core set, in core order.
     pub cores: Vec<Core>,
-    /// Its cable type (a style of catalogue `cable`, design 072 §4.5): what its size, colours and
+    /// Its cable type (a style of catalogue `cable`): what its size, colours and
     /// shield come from when it has none of its own. A reference to no type is kept (a check row).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cable_type: Option<crate::objects::styles::StyleRef>,
     /// The cable's own shield; `None` takes its cable type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<crate::objects::styles::cable::Shield>,
-    /// The cable's own rating inputs (design 057 §6.1, 072 §4.5); each overrides the project's.
+    /// The cable's own rating inputs; each overrides the project's.
     #[serde(default, skip_serializing_if = "crate::objects::wire::CircuitInputs::is_empty")]
     pub rating: crate::objects::wire::CircuitInputs,
     /// The design current typed for the cable (`load`).
@@ -171,7 +171,7 @@ impl Cable {
         self.description.as_ref().map(|t| t.as_str())
     }
 
-    /// Whether its tag is fixed (FP1).
+    /// Whether its tag is fixed.
     pub fn is_fixed(&self) -> bool {
         self.tag.is_fixed()
     }
@@ -234,7 +234,7 @@ impl Cable {
     }
 }
 
-/// The ops making cable `from` part of cable `into` (brief 026, Make them one): its members join
+/// The ops making cable `from` part of cable `into` (Make them one): its members join
 /// (after `into`'s own; a wire in both stays once), its drawings show `into`, and it is deleted.
 /// `doc` needs a current index (its drawings are found through it). Used by the merge and by
 /// `setprop`'s merge choice alike.

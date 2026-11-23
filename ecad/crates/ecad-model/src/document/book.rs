@@ -1,13 +1,13 @@
-//! Book order and page numbers (brief 019, design 019 §5.1, §6.1).
+//! Book order and page numbers.
 //!
 //! # Semantics
 //! - A page's folder is its [`crate::Page::folder`]; `None` means the top level. Folders nest through [`crate::Folder::parent`].
 //! - **Book order**: within the top level and within each folder, pages come first (in
-//!   `page_order` order), then sub-folders (in `folder_order` order), read depth-first (owner
-//!   answer Q6). With no folders it is `page_order`. A page whose folder cannot be reached (only
+//!   `page_order` order), then sub-folders (in `folder_order` order), read depth-first.
+//!   With no folders it is `page_order`. A page whose folder cannot be reached (only
 //!   from a hostile document) comes last, in `page_order` order, so every page has a place.
 //! - A page's **shown number** is its [`crate::Page::number`], else its 1-based
-//!   position in book order (old files, brief AC6).
+//!   position in book order (old files AC6).
 //!
 //! Building a [`Book`] costs one pass over the pages and folders, never over their items.
 
@@ -24,12 +24,12 @@ use crate::naming::text::Text;
 pub(crate) const FOLDER_KEY: &str = "folder";
 /// The old page property of the page number; now [`crate::Page::number`] (a reserved key).
 pub const NUMBER_KEY: &str = "number";
-/// Page and project property: the `=` function (design 019 §6.1, 018 value rules).
+/// Page and project property: the `=` function.
 pub const FUNCTION_KEY: &str = "function";
 /// Page and project property: the `+` location.
 pub const LOCATION_KEY: &str = "location";
 
-/// A device's location or function and how it came to be, as one value (S6, #3): the state holds
+/// A device's location or function and how it came to be, as one value: the state holds
 /// the entry, so a state without an entry cannot be written. `I` is [`crate::naming::id::LocationId`]
 /// or [`crate::naming::id::FunctionId`].
 ///
@@ -300,7 +300,7 @@ pub fn folder_depth(doc: &Document, folder: FolderId) -> Option<usize> {
 pub const MAX_PAGE_NO_CHARS: usize = 12;
 
 /// The number a page is shown with (`100`, `105a`, `A_01`): 1 to [`MAX_PAGE_NO_CHARS`] ASCII
-/// letters, digits or `_` (design 072 §9.3).
+/// letters, digits or `_`.
 ///
 /// # Semantics
 /// Built only through [`PageNo::parse`] or deserialisation, which refuse any other text, so a

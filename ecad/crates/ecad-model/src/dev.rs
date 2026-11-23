@@ -1,10 +1,10 @@
-//! Developer and test hooks of `ecad-model` (design 029 §12): **verify mode** (brief 013).
+//! Developer and test hooks of `ecad-model`: **verify mode**.
 //!
 //! Verify mode runs the full invariant and index check after every transaction, beside the scoped
 //! check, and treats a disagreement as a bug. It is on in every `cargo test` (the
 //! `verify-invariants` feature, which dependent crates enable through their dev-dependencies),
 //! with `ECAD_VERIFY_INVARIANTS=1` at run time (read by each program at start-up, which passes it
-//! in through [`set_verify_invariants`]: Core reads no environment, design 065 §3.1), and in
+//! in through [`set_verify_invariants`]: Core reads no environment), and in
 //! [`Ledger::replay_verified`] (the
 //! debugger's **Verify replay**). App builds, debug or release, take the fast path. The file's
 //! Verify never uses it: it replays with [`crate::Check::Commit`].
@@ -22,7 +22,7 @@ use crate::{Ledger, Transaction};
 static SWITCH: AtomicBool = AtomicBool::new(false);
 
 /// Turn verify mode on or off for this process. A program calls it once at start-up with
-/// [`switch_on`] of its `ECAD_VERIFY_INVARIANTS` environment variable (design 065 §3.1: the model
+/// [`switch_on`] of its `ECAD_VERIFY_INVARIANTS` environment variable (the model
 /// reads no environment).
 pub fn set_verify_invariants(on: bool) {
     SWITCH.store(on, Ordering::Relaxed);
@@ -42,7 +42,7 @@ pub fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
 
 /// Whether verify mode is on for this build or process (the `verify-invariants` feature, which
 /// every `cargo test` turns on, or `ECAD_VERIFY_INVARIANTS=1`): derived indexes kept outside the
-/// model (brief 025's reference index) compare themselves with a rebuild after every change.
+/// model (the reference index) compare themselves with a rebuild after every change.
 pub fn verify_mode() -> bool {
     verifying(false)
 }
@@ -65,7 +65,7 @@ impl Ledger {
     }
 
     /// [`Ledger::replay_verified`] from `doc` instead of the empty project: a branch's history
-    /// replayed on its parent's state at the fork point (brief 020).
+    /// replayed on its parent's state at the fork point.
     ///
     /// # Errors
     /// As [`Ledger::replay`].

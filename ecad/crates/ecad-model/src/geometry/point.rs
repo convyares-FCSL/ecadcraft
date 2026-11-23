@@ -1,4 +1,4 @@
-//! What a connection point is called on its device: [`PointKey`] (design 072 §2.7, I3).
+//! What a connection point is called on its device: [`PointKey`].
 //!
 //! A point's key says what kind of point it is as data: a definition key (`A1`), a connector side,
 //! a strip level, a PLC channel point or a channel cell's role. The file stores its text form
@@ -20,7 +20,7 @@ pub const MAX_DEF_KEY: usize = 32;
 pub(crate) const MAX_CHANNEL_INDEX: u16 = 9999;
 
 crate::word_enum! {
-    /// A PLC channel point's role (design 045 §4.1), in the order a channel lists its points.
+    /// A PLC channel point's role, in the order a channel lists its points.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum ChannelRole {
         In,
@@ -54,7 +54,7 @@ impl ChannelRole {
 }
 
 crate::word_enum! {
-    /// Which side of a breaking strip level a point is (design 036): in or out.
+    /// Which side of a breaking strip level a point is: in or out.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum LevelIo {
         In,
@@ -71,7 +71,7 @@ impl LevelIo {
     }
 }
 
-/// What a connection point is called on its device (design 072 §2.7).
+/// What a connection point is called on its device.
 ///
 /// # Semantics
 /// - `Def`: a symbol's own key (`A1`, `13`, `1U1`); never empty, never starts with `.`.

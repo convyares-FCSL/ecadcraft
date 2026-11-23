@@ -1,4 +1,4 @@
-//! Revisions and versions as data (S4, #37): the typed [`Rev`], the project's [`RevScheme`] that
+//! Revisions and versions as data: the typed [`Rev`], the project's [`RevScheme`] that
 //! says which revs exist and what comes next, and [`PointName`], the key of a named point.
 //!
 //! # Semantics

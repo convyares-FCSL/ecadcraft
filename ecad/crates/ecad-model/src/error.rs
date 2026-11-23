@@ -11,10 +11,10 @@ pub type Result<T> = std::result::Result<T, ModelError>;
 /// Every variant leaves the document unchanged: transactions apply all or nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ModelError {
-    /// An op's recorded `before` value does not match the document (TX-04).
+    /// An op's recorded `before` value does not match the document.
     #[error("precondition failed: {0}")]
     Precondition(String),
-    /// The document would break an invariant (dangling reference, DOC-05, DOC-07, …).
+    /// The document would break an invariant (dangling reference, …).
     #[error("invalid document: {0}")]
     Invariant(String),
     /// A transaction with no ops.
@@ -111,8 +111,8 @@ pub enum Parsed {
 /// Why one of the model's public readers refused its input.
 ///
 /// # Semantics
-/// `Display` is the sentence a person reads, word for word as before this type existed (brief
-/// 070); callers that only show it convert with `to_string()` (or `?` into a `String` error).
+/// `Display` is the sentence a person reads, word for word as before this
+/// type existed; callers that only show it convert with `to_string()` (or `?` into a `String` error).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ParseError {
     /// The input names something the document does not have.

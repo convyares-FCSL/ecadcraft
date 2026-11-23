@@ -1,4 +1,4 @@
-//! Wire colours (design 072 §4.6): the one primitive wires, cable cores, wire types and cable
+//! Wire colours: the one primitive wires, cable cores, wire types and cable
 //! types share.
 //!
 //! A [`ConductorColour`] is an IEC 60757 base colour. The variant is the identity; its forms (name,

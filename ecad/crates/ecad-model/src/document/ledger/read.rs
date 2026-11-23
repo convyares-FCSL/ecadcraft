@@ -88,13 +88,13 @@ impl Ledger {
         self.persisted
     }
 
-    /// Whether the project has transactions that are not yet saved (SAVE-01).
+    /// Whether the project has transactions that are not yet saved.
     pub fn is_unsaved(&self) -> bool {
         self.head() != self.persisted
     }
 
     /// Record that transactions up to `seq` are durably saved. Called by a store only after its
-    /// flush succeeded (SAVE-04).
+    /// flush succeeded.
     ///
     /// # Errors
     /// [`ModelError::Precondition`] when `seq` is past the head.

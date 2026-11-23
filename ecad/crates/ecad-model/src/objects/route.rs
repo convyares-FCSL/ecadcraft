@@ -1,11 +1,11 @@
-//! A route: a line a person draws on a page (design 072 §4.3, F31, lane D).
+//! A route: a line a person draws on a page.
 //!
 //! # Semantics
 //! - A [`Route`] is drawing: a polyline on one page, from its first point to its last. Its two
 //!   [`RouteEnd`]s say what each end lands on: a connection point, another route (a T), or
 //!   nothing.
 //! - Routes decide which connection points are on one net, nothing more. The physical wires run
-//!   between connection points and are kept apart from the routes that draw them (§4.1).
+//!   between connection points and are kept apart from the routes that draw them.
 //! - A route has at least two points, every coordinate finite. An end on another route names a
 //!   route other than itself.
 //!

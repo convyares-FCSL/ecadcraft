@@ -1,5 +1,5 @@
-//! Brief 019: page and project properties (FP1), sheet settings (FP2), folders and their
-//! invariants I19–I21 (FP3), book order and page numbers, and references on the frame's grid.
+//! Page and project properties, sheet settings, folders and their
+//! invariants I19–I21, book order and page numbers, and references on the frame's grid.
 //! Table-driven where the cases share a shape.
 
 use ecad_model::document::book::Book;

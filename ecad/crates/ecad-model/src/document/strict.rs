@@ -1,4 +1,4 @@
-//! Strict reading (design 072 §9.4, F11): what makes a project open read-only because of a word.
+//! Strict reading: what makes a project open read-only because of a word.
 //!
 //! A typed field with an unknown word fails its record's decode and is reported as damage. A word
 //! inside a value that stays text (a defaults choice, a `tag_prefixes` key) and a property that

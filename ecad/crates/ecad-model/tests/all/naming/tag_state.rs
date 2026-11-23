@@ -1,4 +1,4 @@
-//! S6 (#3): a tag's state is stored, never read off its spelling. A provisional `-K3` and a real
+//! A tag's state is stored, never read off its spelling. A provisional `-K3` and a real
 //! `-K3` are different tags; a provisional tag is not counted in the high-water mark; a record
 //! without the state does not read.
 

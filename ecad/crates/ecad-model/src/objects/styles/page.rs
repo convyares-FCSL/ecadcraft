@@ -1,4 +1,4 @@
-//! Page types (brief 054, design 054 §2, design 072 §8): the `page` catalogue's typed record.
+//! Page types: the `page` catalogue's typed record.
 //!
 //! What a type brings to its pages is resolved in `crate::document::sheet` (sheet, frame, zones, checks)
 //! and `ecad-electrical` (`styles::page`).
@@ -134,7 +134,7 @@ pub struct PageType {
     pub title_block: Option<TypeBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zones: Option<bool>,
-    /// Checks and references (design 054 §3.4).
+    /// Checks and references.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

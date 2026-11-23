@@ -11,7 +11,7 @@ use super::{device::*, drawing::*, settings::*};
 use crate::objects::devices::DeviceType;
 use crate::objects::role::PartRole;
 
-/// The device text a symbol slot places (design 048 §2.3, design 072 §7): one of the device's own
+/// The device text a symbol slot places: one of the device's own
 /// texts, or the rating of one of its connection points (`rating.A1`).
 ///
 /// # Semantics
@@ -107,8 +107,8 @@ impl From<SlotText> for String {
     }
 }
 
-/// Where a device text of a placed copy goes, in the symbol's frame (brief 048, FP1; proposal
-/// §4.2's text slots). An anchor only: size and style come from the text styles.
+/// Where a device text of a placed copy goes, in the symbol's frame (a definition's text slots). An anchor
+/// only: size and style come from the text styles.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextSlot {
     /// The device text it places.
@@ -123,7 +123,7 @@ pub struct TextSlot {
     pub rotation: Radians,
 }
 
-/// How a placed copy of a symbol joins a device (brief 048, FP2).
+/// How a placed copy of a symbol joins a device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Join {
@@ -160,7 +160,7 @@ pub enum SymbolDefaultError {
     Text { which: &'static str, error: crate::naming::text::TextError },
 }
 
-/// One of a symbol's own default values (design 072 §7), by name.
+/// One of a symbol's own default values, by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SymbolDefault {
     Key,
@@ -203,7 +203,7 @@ impl SymbolDefault {
     }
 }
 
-/// A symbol's own default values (brief 048, FP2; design 072 §7): typed fields, each left out of
+/// A symbol's own default values: typed fields, each left out of
 /// the file when not set. The starters have none.
 ///
 /// # Semantics
@@ -212,7 +212,7 @@ impl SymbolDefault {
 ///   the symbol is saved); `join` says whether a placed copy is a device of its own or a part of a
 ///   named one; `aliases` are search words; `family` groups symbols in the library.
 /// - Text values are kept trimmed and never empty: [`SymbolDefaults::set`] clears a value given as
-///   blank. Lengths and shapes are the symbol command's rules (design 048 §3.5).
+///   blank. Lengths and shapes are the symbol command's rules.
 ///
 /// # Example
 /// ```
@@ -304,37 +304,37 @@ impl SymbolDefaults {
     }
 }
 
-/// A project-local copy of a library definition (§4.2).
+/// A project-local copy of a library definition.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub connection_points: Vec<ConnectionPointDef>,
-    /// Groups of terminal keys joined inside the device (brief 022, FP5): every terminal of one
+    /// Groups of terminal keys joined inside the device: every terminal of one
     /// group is on one net. Empty for almost every definition, and then left out of the file so
     /// existing content hashes do not change. A bridge may name a key the placement writes rather
-    /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
+    /// than one of the definition's own (a connector half bridges the side keys
     /// `.s` and `.p`; [`crate::document::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<PointKey>>,
-    /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
+    /// Where the device texts of a placed copy go. Empty for the starters, whose
     /// anchors are catalogue code; left out of the file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
-    /// The symbol's own default values (brief 048, FP2; design 072 §7). Empty for the starters;
+    /// The symbol's own default values. Empty for the starters;
     /// left out of the file when empty.
     #[serde(default, skip_serializing_if = "SymbolDefaults::is_empty")]
     pub defaults: SymbolDefaults,
-    /// The origin of the definition an edited copy came from (brief 048, FP4). Never followed by
+    /// The origin of the definition an edited copy came from. Never followed by
     /// the reader, so a cycle cannot loop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
-    /// What a device this symbol starts is (design 072 §2.3, F15): placing the symbol as a new
+    /// What a device this symbol starts is: placing the symbol as a new
     /// device copies it. Left out of the file for [`DeviceType::General`].
     #[serde(default, skip_serializing_if = "DeviceType::is_general")]
     pub device_type: DeviceType,
-    /// A placed copy's part in its device (design 072 §4.4, F3′): copied into the
+    /// A placed copy's part in its device: copied into the
     /// representation's [`Role::Part`] when the symbol is placed. Left out of the file for
     /// [`PartRole::Other`].
     #[serde(default, skip_serializing_if = "PartRole::is_other")]

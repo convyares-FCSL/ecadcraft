@@ -72,11 +72,11 @@ pub(crate) struct Index {
     pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Route → the cables with a core on it (a line with no wire yet).
     pub(crate) route_cables: Multi<RouteId, CableId>,
-    /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
+    /// A cable reference's named point → the cable whose core lists it.
     pub(crate) cable_points: Multi<ConnectionPointId, CableId>,
     /// Device → its terminals.
     pub(crate) component_connection_points: Multi<crate::ConnectionPointOwner, ConnectionPointId>,
-    /// PLC station → the modules naming it (design 072 §3).
+    /// PLC station → the modules naming it.
     pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
     pub(crate) subject_reps: Multi<Subject, RepresentationId>,
@@ -95,29 +95,29 @@ pub(crate) struct Index {
     /// Definition → components using it.
     pub(crate) definition_components: Multi<DefinitionId, DeviceId>,
     /// Tag key ([`crate::naming::tag::Key`]: the tag's key and whether it is provisional) → components
-    /// holding it (brief 018, S6 #3).
+    /// holding it.
     pub(crate) tags: Multi<crate::naming::tag::Key, DeviceId>,
-    /// Tag key → cables whose `tag` property has it (brief 026: devices and cables share one tag
+    /// Tag key → cables whose `tag` property has it (devices and cables share one tag
     /// namespace).
     pub(crate) cable_tags: Multi<crate::naming::tag::Key, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
-    /// that name (brief 022).
+    /// that name.
     pub(crate) continuations: Multi<String, crate::naming::id::AidId>,
-    /// Folder → pages whose `folder` property names it (brief 019).
+    /// Folder → pages whose `folder` property names it.
     pub(crate) folder_pages: Multi<FolderId, PageId>,
-    /// Folder → folders whose parent it is (brief 019).
+    /// Folder → folders whose parent it is.
     pub(crate) folder_children: Multi<FolderId, FolderId>,
-    /// (stored style ID, choice key) → objects whose own property chooses it (brief 050a, design
-    /// 050 §2.5: the explicit users of a style), for the keys [`crate::objects::styles::is_choice_key`]
+    /// (stored style ID, choice key) → objects whose own property chooses it (the explicit users
+    /// of a style), for the keys [`crate::objects::styles::is_choice_key`]
     /// names.
     pub(crate) style_users: Multi<(String, String), ObjectRef>,
-    /// Page → routes drawn on it (design 072 F31).
+    /// Page → routes drawn on it.
     pub(crate) page_routes: Multi<PageId, RouteId>,
     /// Terminal → routes landing on it.
     pub(crate) connection_point_routes: Multi<ConnectionPointId, RouteId>,
     /// Route → routes landing on its middle (a T).
     pub(crate) route_tees: Multi<RouteId, RouteId>,
-    /// Net → its wires (design 072 §4.2).
+    /// Net → its wires.
     pub(crate) net_wires: Multi<NetId, WireId>,
 }
 
@@ -126,7 +126,7 @@ impl Index {
     pub(crate) fn build(doc: &Document) -> Self {
         // Items and representations are most of a large project, and fill maps of their own: they
         // are indexed side by side with the rest (rayon; opening a version 2 snapshot builds the
-        // whole index, brief 021).
+        // whole index).
         let items = || {
             let mut ix = Index::default();
             for (id, item) in &doc.items {
@@ -221,14 +221,14 @@ impl Index {
         self.style_choices(ObjectRef::Page(id), &p.display, delta);
     }
 
-    /// Every style choice among `props` (brief 050a).
+    /// Every style choice among `props`.
     fn style_choices(&mut self, object: ObjectRef, props: &crate::Properties, delta: Delta) {
         for (k, v) in props.iter().filter(|(k, _)| crate::objects::styles::is_choice_key(k)) {
             self.style_choice(object, k, v, delta);
         }
     }
 
-    /// `object`'s style choice `key` = `value` is added or removed (brief 050a).
+    /// `object`'s style choice `key` = `value` is added or removed.
     pub(crate) fn style_choice(&mut self, object: ObjectRef, key: &str, value: &str, delta: Delta) {
         if crate::objects::styles::is_choice_key(key) {
             bump(&mut self.style_users, (value.trim().to_string(), key.to_string()), object, delta);
@@ -264,7 +264,7 @@ impl Index {
         self.style_choices(ObjectRef::Device(id), &c.properties, delta);
     }
 
-    /// A drawing aid is added or removed: a continuation's name key (design 072 §6.2).
+    /// A drawing aid is added or removed: a continuation's name key.
     pub(crate) fn aid(&mut self, id: crate::naming::id::AidId, aid: &crate::objects::aid::Aid, delta: Delta) {
         if let Some(k) = crate::connectivity::continuation_key(aid) {
             bump(&mut self.continuations, k, id, delta);
@@ -304,7 +304,7 @@ impl Index {
         if let Some(k) = c.tag_key() {
             bump(&mut self.cable_tags, k, id, delta);
         }
-        // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
+        // A cable's type is a style user, though no registry level chooses one.
         if let Some(t) = &c.cable_type {
             bump(&mut self.style_users, (t.text(), crate::document::doc::cable::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
         }
@@ -323,7 +323,7 @@ impl Index {
         }
     }
 
-    /// How many times representations list `item`, in total (DOC-05 allows one).
+    /// How many times representations list `item`, in total (an item may be listed once).
     pub(crate) fn item_listings(&self, item: ItemId) -> u32 {
         self.item_reps.get(&item).map_or(0, |inner| inner.values().fold(0u32, |a, n| a.saturating_add(*n)))
     }

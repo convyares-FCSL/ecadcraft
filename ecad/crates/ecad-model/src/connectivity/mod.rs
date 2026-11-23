@@ -1,15 +1,15 @@
-//! Nets, kept up to date with every op (brief 022, design 022 §2 and §4).
+//! Nets, kept up to date with every op.
 //!
 //! A **net** is a connected set of connection points (terminals), conductors and continuation
-//! name groups, joined only by stored references (DOC-03: geometry is never consulted):
+//! name groups, joined only by stored references (geometry is never consulted):
 //! 1. a conductor end attached to a terminal;
 //! 2. a continuation (a component with `kind = continuation` and a `name`) joins its terminals to
 //!    every other continuation with the same name key ([`name_key`]): the name group is a node;
 //! 3. a definition's bridges ([`crate::Definition::bridges`]) join a component's terminals whose
 //!    keys are in one group;
-//! 4. a component's links (`jumper_bar.<n>` properties, [`crate::connectivity::jumper_bars`], brief 030) join its terminals
+//! 4. a component's links (`jumper_bar.<n>` properties, [`crate::connectivity::jumper_bars`]) join its terminals
 //!    whose labels the link names;
-//! 5. a route (design 072 F31) joins the connection points its ends land on and the routes it
+//! 5. a route joins the connection points its ends land on and the routes it
 //!    lands on (a T): the route is a node.
 //!
 //! Nothing else joins: crossings and loose ends lying on another route are separate nets.
@@ -32,7 +32,7 @@
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
 //!   and the highest sequence used per number prefix ([`Connectivity::next_in`]).
 //! - Net keys ([`NetKey`]) are not stable across a rebuild: compare nets by their members. A
-//!   wire stores its net's stable [`crate::naming::id::NetId`] (design 072 F39).
+//!   wire stores its net's stable [`crate::naming::id::NetId`].
 //!
 //! This module reads the document and its indexes; it holds no I/O.
 
@@ -47,7 +47,7 @@ use crate::geometry::point::PointKey;
 use crate::naming::id::{ConnectionPointId, RouteId, WireId};
 use crate::{Document, Wire};
 
-/// Wire property: the wire number its net carries (design 022 §5.1).
+/// Wire property: the wire number its net carries.
 pub const WIRE_NUMBER: &str = "wire_number";
 /// Wire property: `yes` when the wire number was fixed by hand.
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
@@ -59,7 +59,7 @@ pub fn name_key(name: &str) -> String {
     name.trim().to_uppercase()
 }
 
-/// The name key of a drawing aid, when it is a named continuation (design 072 §6.2).
+/// The name key of a drawing aid, when it is a named continuation.
 pub fn continuation_key(aid: &crate::objects::aid::Aid) -> Option<String> {
     let k = name_key(aid.continuation_name()?.as_str());
     (!k.is_empty()).then_some(k)
@@ -84,7 +84,7 @@ pub enum Node {
     Wire(WireId),
     /// A continuation name group, by [`name_key`].
     Name(String),
-    /// A route (design 072 F31).
+    /// A route.
     Route(RouteId),
 }
 
@@ -114,7 +114,7 @@ pub struct NetData {
     pub wires: BTreeSet<WireId>,
     /// Continuation name keys joined into it.
     pub names: BTreeSet<String>,
-    /// Routes drawing it (design 072 F31).
+    /// Routes drawing it.
     pub routes: BTreeSet<RouteId>,
     /// Wire number → how many of its conductors carry it.
     pub numbers: BTreeMap<String, u32>,
@@ -214,12 +214,12 @@ fn name_of_connection_point(doc: &Document, t: ConnectionPointId) -> Option<Stri
 
 /// The terminals bridged to `t` inside its device.
 ///
-/// Brief 036 (FP8a): for a level terminal (key `.n`) the groups are those of the definitions of
+/// For a level terminal (key `.n`) the groups are those of the definitions of
 /// the symbols that show it, and only terminals of the same component with the **same label**
-/// (one position) are joined; any other terminal keeps the rule of brief 022 (the component's own
+/// (one position) are joined; any other connection point keeps the plain rule (the component's own
 /// definition, the whole device).
 ///
-/// Brief 044 (FP2): a connector pin (key `.s` or `.p`) uses the same rule: its half's definition
+/// A connector pin (key `.s` or `.p`) uses the same rule: its half's definition
 /// bridges `.s` with `.p`, so pin `n` of the socket half joins pin `n` of the plug half, and only
 /// that.
 fn bridged(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
@@ -276,8 +276,8 @@ fn neighbors(doc: &Document, node: &Node) -> Vec<Node> {
     out
 }
 
-/// [`neighbors`] without the links (brief 030): what [`Connectivity::build`] adds link edges to
-/// from one pass per component (review of PR #57, 2).
+/// [`neighbors`] without the links: what [`Connectivity::build`] adds link edges to
+/// from one pass per component.
 fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
     let mut out = Vec::new();
     match node {
@@ -589,10 +589,10 @@ impl Connectivity {
         }
     }
 
-    /// The level terminals a symbol representation shows when its definition has bridges (brief
-    /// 036): the nodes whose bridge edges depend on it.
+    /// The level connection points a symbol representation shows when its definition has bridges: the nodes
+    /// whose bridge edges depend on it.
     ///
-    /// Brief 044 (tester D1): when the definition cannot be read (the symbol's item was removed
+    /// When the definition cannot be read (the symbol's item was removed
     /// earlier in the transaction, before its representation is unlinked), every `.`-key point
     /// counts: a wider cut is only extra search, a missed one leaves mated pins joined.
     pub(crate) fn bridged_shown(doc: &Document, r: &crate::Representation) -> Vec<ConnectionPointId> {
@@ -613,20 +613,20 @@ impl Connectivity {
 
     /// Before `op` is applied to `doc`: what it is about to cut.
     ///
-    /// # Update map (design 022 §11)
+    /// # Update map
     /// | Op | Here |
     /// | --- | --- |
     /// | `CreateWire` / `DeleteWire` | node added and joined to its ends / node removed, its net suspect |
-    /// | `AddRoute` / `RemoveRoute` (design 072 F31) | node added and joined to the points and routes it lands on and the routes landing on it / node removed, its net suspect |
+    /// | `AddRoute` / `RemoveRoute` | node added and joined to the points and routes it lands on and the routes landing on it / node removed, its net suspect |
     /// | `ModifyRoute` | its ends changed: the route and its old neighbours cut (net suspect), then joined to the new |
     /// | `AddConnectionPoint` / `RemoveConnectionPoint` | node added and joined (ends, name group, bridges) / removed |
-    /// | `CreateAid` / `DeleteAid` of a continuation (design 072 §6.2) | its name group added / its points cut from it |
+    /// | `CreateAid` / `DeleteAid` of a continuation | its name group added / its points cut from it |
     /// | `ModifyAid` changing a continuation's name key | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
-    /// | `SetDeviceDefinition` (brief 048) | its terminals cut, then joined under the new definition |
-    /// | `SetProperty` component `jumper_bar.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
-    /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
+    /// | `SetDeviceDefinition` | its terminals cut, then joined under the new definition |
+    /// | `SetProperty` component `jumper_bar.<n>` | the terminals of the old value cut, of the new joined |
+    /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
     pub(crate) fn before_op(&mut self, doc: &Document, op: &Op) {
         match op {
@@ -635,7 +635,7 @@ impl Connectivity {
                 self.remove(doc, wire.as_ref(), &Node::Wire(*id));
             }
             Op::RemoveConnectionPoint { id, .. } => self.remove(doc, None, &Node::ConnectionPoint(*id)),
-            // Design 072 F31: a route removed, or redrawn so that its ends land elsewhere.
+            // A route removed, or redrawn so that its ends land elsewhere.
             Op::RemoveRoute { id, .. } => self.remove(doc, None, &Node::Route(*id)),
             Op::ModifyRoute { id, before, after } if before.ends != after.ends => {
                 let node = Node::Route(*id);
@@ -644,7 +644,7 @@ impl Connectivity {
                     self.cut(&m);
                 }
             }
-            // Brief 048 (FP5): another definition may bridge other points.
+            // Another definition may bridge other points.
             Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::connection_points_of(doc, *id) {
                     self.cut_around(doc, &t);
@@ -674,7 +674,7 @@ impl Connectivity {
                     }
                 }
             }
-            // Brief 036: a bridged level symbol going (or changing) cuts its position's levels apart.
+            // A bridged level symbol going (or changing) cuts its position's levels apart.
             Op::UnlinkRepresentation { id, .. } => {
                 if let Some(r) = doc.representations.get(id) {
                     for t in Self::bridged_shown(doc, r) {
@@ -682,7 +682,7 @@ impl Connectivity {
                     }
                 }
             }
-            // Brief 044 (tester D1): removing a bridged symbol's item cuts too (its definition is
+            // Removing a bridged symbol's item cuts too (its definition is
             // still readable here; the unlink that follows may not see it).
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
@@ -691,7 +691,7 @@ impl Connectivity {
                     }
                 }
             }
-            // Brief 030: the terminals a link joined are on the sides of a cut.
+            // The terminals a link joined are on the sides of a cut.
             Op::SetProperty { object: ObjectRef::Device(id), key, before, .. }
                 if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
             {
@@ -766,13 +766,13 @@ impl Connectivity {
                     self.ensure(doc, Node::ConnectionPoint(t));
                 }
             }
-            // Brief 036: a bridged level symbol joins its position's levels.
+            // A bridged level symbol joins its position's levels.
             Op::LinkRepresentation { rep, .. } => {
                 for t in Self::bridged_shown(doc, rep) {
                     self.ensure(doc, Node::ConnectionPoint(t));
                 }
             }
-            // Brief 044 (tester D1): an item added after its representation was linked joins too.
+            // An item added after its representation was linked joins too.
             Op::ModifyItem { id, .. } | Op::AddItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     for t in Self::bridged_shown(doc, r) {
@@ -1037,7 +1037,7 @@ impl Connectivity {
     }
 
     /// The next free sequence number after prefix `prefix`: the highest used plus one (gaps are
-    /// never filled, design 022 §5.3).
+    /// never filled).
     pub fn next_in(&self, prefix: &str) -> u64 {
         self.seqs.get(prefix).and_then(|m| m.keys().next_back()).map_or(1, |n| n.saturating_add(1))
     }

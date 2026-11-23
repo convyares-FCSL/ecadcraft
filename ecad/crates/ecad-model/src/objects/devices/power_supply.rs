@@ -1,5 +1,4 @@
-//! A power supply's or a transformer's rating (design 072 §2.2 row 1, "Ratings", overseer rulings
-//! 2026-11-18): typed fields per kind, never a stored display string.
+//! A power supply's or a transformer's rating: typed fields per kind, never a stored display string.
 //!
 //! # Semantics
 //! - Which kind it is ([`PowerSupply::Psu`] or [`PowerSupply::Transformer`]) is its starter's,
@@ -34,7 +33,7 @@ pub const MAX_POWER_WATTS: f64 = 100_000.0;
 /// The largest rated power of a transformer, in volt-amperes.
 pub const MAX_VOLT_AMPS: f64 = 10_000_000.0;
 
-/// A power supply or a transformer, each with its own fields (group 1, design 072 §2.2). Batteries
+/// A power supply or a transformer, each with its own fields. Batteries
 /// come later.
 ///
 /// # Example

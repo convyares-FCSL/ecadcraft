@@ -1,5 +1,4 @@
-//! A motor's phases and rating (design 072 §2.2 row 5, "Ratings", owner decisions 2026-11-18):
-//! typed fields, never a stored display string.
+//! A motor's phases and rating: typed fields, never a stored display string.
 //!
 //! # Semantics
 //! - [`Phases`] says whether it is a single-phase or a three-phase motor. The symbol declares it.
@@ -27,7 +26,7 @@ pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
 /// The largest rated current of a motor, in amperes.
 pub const MAX_CURRENT_AMPS: f64 = 10_000.0;
 
-/// A motor: its phases and its nameplate rating (group 5, design 072 §2.2).
+/// A motor: its phases and its nameplate rating.
 ///
 /// # Example
 /// ```

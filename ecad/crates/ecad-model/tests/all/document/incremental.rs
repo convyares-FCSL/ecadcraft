@@ -1,4 +1,4 @@
-//! Contract tests for brief 013: atomic ops, in-place transactions with rollback, and the scoped
+//! Contract tests for atomic ops, in-place transactions with rollback, and the scoped
 //! invariant check against the full one.
 
 use std::collections::BTreeSet;
