@@ -33,7 +33,7 @@ at the top. See [`crates/README.md`](crates/README.md) for the layers, the rules
 cd ecad
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 cargo xtask test-changed       # fast tests of the crates you changed and have not pushed
-cargo xtask layers             # the layer rules and the crate READMEs
+cargo xtask layers             # the layer rules, the crate READMEs and the comment rules
 cargo xtask ci                 # everything, slow tests included (the QA gate)
 cargo xtask bench              # the load benchmark (release build)
 cargo xtask clean-builds --root C:\dev\ecad-features   # delete build folders
@@ -46,6 +46,8 @@ How and when each check runs is in [`CLAUDE.md`](CLAUDE.md).
 - [`docs/quick-start.md`](docs/quick-start.md): run and try the app.
 - [`docs/roadmap.md`](docs/roadmap.md) and [`docs/features.md`](docs/features.md): what is planned and which branch holds each feature.
 - [`docs/glossary.md`](docs/glossary.md): the words used in everything a person sees.
+- [`docs/design/decisions.md`](docs/design/decisions.md): the binding structure decisions (names, crates, layers,
+  source layout, docs); the target tree is [`docs/design/layout.md`](docs/design/layout.md).
 - [`docs/deferred-work.md`](docs/deferred-work.md): postponed work.
 - [`../docs/document-architecture-proposal.md`](../docs/document-architecture-proposal.md): the architecture.
 - [`docs/experiment-report.md`](docs/experiment-report.md): the report of the first integration experiment (October 2026), kept as history.

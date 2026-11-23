@@ -16,6 +16,13 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   strip**. Code, ops, file keys and command names use the same words (`ConnectionPoint`,
   `AddConnectionPoint`, `addconnectionpoint`, `TerminalBlock`, `JumperBar`); "terminal" alone never
   appears in code.
+- **Structure decisions (binding):** read `docs/design/decisions.md` before changing names, crates, layers or the
+  source layout; the target tree is `docs/design/layout.md`. A change that would bend a decision goes to the owner
+  first.
+- **Docs are part of done (owner, 2026-11-22):** every commit updates the README, crate and module docs and
+  comments it touches so they describe the code as it now is, in domain words. Same commit, no "docs later".
+  Comments in `src/` carry no history (brief, design, lane, finding or question numbers, section marks, rulings,
+  dates); history lives in git and `docs/`, and only READMEs link to `docs/`. `cargo xtask layers` enforces it.
 - **`docs/quick-start.md` is the single maintained guide** for running and manually testing the
   app. Update it in the same PR as any change that affects its instructions, examples, expected
   results, limitations or the revision and environment it records. Keep automated checks,

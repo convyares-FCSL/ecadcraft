@@ -52,8 +52,8 @@ classification (`commands.md`). Source findings: end-gate review #25, #26, #35, 
 | ecad-app | App | the ECAD user interface: screens, panels, lists, editors, UI state; turns user actions into commands and shows results. **No rules, no disk, no OS, no parsing of domain values** |
 | ecad-desktop | Program | process, window, OS integration, wiring the app to the engine |
 | ecad-cli, ecad-mcp | Programs | unchanged |
-| dev/ecad-bench, dev/ecad-inspector, dev/xtask | Dev | ecad-inspector gains the snapshot from ecad-inspect |
-| ~~ecad-inspect~~ | | **deleted** (#24): the event log goes to ecad-engine `history/`, the snapshot to dev/ecad-inspector |
+| dev/ecad-bench, dev/ecad-inspector, dev/xtask | Dev | ecad-inspector reads and shows snapshots; it does not make them |
+| ~~ecad-inspect~~ | | **deleted** (#24): the event log goes to ecad-engine `history/`, the snapshot to ecad-engine `dev/snapshot.rs` (the engine's developer module: it reads the live project, which only the engine holds; #122) |
 
 The layers guard also checks dev-dependencies: no crate depends on a layer above it, not even in tests
 (#53: the App tests that use ecad-mcp or ecad-desktop move into those programs' own suites).

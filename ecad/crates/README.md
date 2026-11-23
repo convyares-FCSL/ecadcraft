@@ -2,7 +2,8 @@
 
 ECAD is a Cargo workspace in `ecad/` (`crates/`, `apps/`, `dev/`). Every crate belongs to
 one of six **layers**, and a crate may use only crates in the layers above it. The full reasoning
-is in [`docs/design/crates.md`](../docs/design/crates.md). ECAD is desktop-only: there is no web
+is in [`docs/design/crates.md`](../docs/design/crates.md); the binding decisions on names, crates, layers and
+source layout are in [`docs/design/decisions.md`](../docs/design/decisions.md). ECAD is desktop-only: there is no web
 build.
 
 ## The layers
@@ -64,7 +65,10 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 - **`anyhow` only in Programs, `xtask` and `ecad-bench`'s binary**; libraries use their own error type.
 - **No `tokio`** in any ECAD crate.
 - **UI code uses `ecad-widgets` components**: no new raw `egui::TextEdit` or `ComboBox`.
-- **Every crate has a README** with the six headings and the right `Layer:` line.
+- **Every crate has a README** with the six headings and the right `Layer:` line, and every file or folder its
+  Contents names exists.
+- **Comments carry no history**: no brief, design, lane, finding or pull request numbers, section marks, rulings or
+  dates in the comments of any `src/`. History lives in git and `docs/`.
 
 To change a rule, edit the table in `dev/xtask/src/main.rs` and the matching section of
 [`docs/design/crates.md`](../docs/design/crates.md) (§4), and tell the owner: layers are a recorded
