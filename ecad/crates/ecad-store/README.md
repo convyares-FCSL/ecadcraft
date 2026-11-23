@@ -9,7 +9,7 @@ randomness). It does not know what the bytes mean; that is `ecad-file`.
 
 ## Contents
 - `db`: `Database`, a redb database as generic storage: open (new, existing, read-only, over a backend, from bytes), read and write transactions, and reopening once after an I/O error. It knows no tables.
-- `Medium` (trait) and `MemoryMedium`: append, flush, truncate and read over bytes. The version 1 writer used them; no format does since brief 069.
+- `Medium` (trait) and `MemoryMedium`: append, flush, truncate and read over bytes, with injectable failures. No file format uses them.
 - `disk`: `FileMedium` (a file as a medium), `WriterLock` (makes one session the writer), atomic replacement (temporary file, rename, folder flush), and the disk and clock reads that `ecad-file` needs.
 - `random_u128`: the system's randomness, for new ids.
 - `MemoryBackend`: a redb storage backend in memory, shared by its clones, that can be made to fail once (tests keep a real project file without a disk).

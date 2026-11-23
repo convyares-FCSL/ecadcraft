@@ -1,5 +1,5 @@
 //! Files on disk (native only): the file medium, the writer lock and the steps of an atomic
-//! replacement (proposal §20.5). What is written, and in which order, is decided by `ecad-file`;
+//! replacement. What is written, and in which order, is decided by `ecad-file`;
 //! this module only performs each step and reports its result.
 //!
 //! Guarantees are those of the operating system and file system: they are relied on, and tested,
@@ -173,7 +173,7 @@ impl FileIdentity {
         {
             // Open for attributes only: a handle with read access to a file just written makes
             // Windows' malware scanner read the whole file when it closes (measured 24 ms on a
-            // 16 MB project, more on larger ones, on every save; brief 021).
+            // 16 MB project, more on larger ones, on every save).
             use std::os::windows::fs::OpenOptionsExt;
             const FILE_READ_ATTRIBUTES: u32 = 0x80;
             const FILE_SHARE_ALL: u32 = 0x1 | 0x2 | 0x4;
@@ -223,7 +223,7 @@ pub enum LockAttempt {
 
 /// Whether a refused writer is told what the lock's holder recorded about itself. Not on
 /// Windows: there the lock (`LockFileEx`) is mandatory and stops every other handle reading the
-/// lock file, and no unlocked copy of the record is kept beside it (owner decision, brief 002).
+/// lock file, and no unlocked copy of the record is kept beside it.
 pub const HOLDER_SHOWN: bool = cfg!(not(windows));
 
 /// An exclusive writer lock: an operating-system lock (`flock` on Unix, `LockFileEx` on Windows,
@@ -409,14 +409,14 @@ pub fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 impl FileMedium {
     /// The open file, giving up the medium (for a caller that hands the handle to another
-    /// storage engine, such as redb's `FileBackend`; design 065 §3.1).
+    /// storage engine, such as redb's `FileBackend`).
     pub fn into_file(self) -> File {
         self.file
     }
 }
 
 /// Seconds since 1970 by this computer's clock (0 if the clock is before 1970). The one clock
-/// read of ECAD's file layer: `ecad-file` stamps lock records with it (design 065 §3.1).
+/// read of ECAD's file layer: `ecad-file` stamps lock records with it.
 pub fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }

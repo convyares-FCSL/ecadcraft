@@ -1,4 +1,4 @@
-//! Files on disk (proposal §20.5): the file medium, the writer lock and the replacement steps.
+//! Files on disk: the file medium, the writer lock and the replacement steps.
 
 use std::path::{Path, PathBuf};
 

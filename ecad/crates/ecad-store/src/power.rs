@@ -1,5 +1,5 @@
-//! A storage backend for the version 2 container (a redb database) that simulates power loss
-//! (EEP-0005 §12.1): what a process kill cannot reproduce.
+//! A storage backend for the version 2 container (a redb database) that simulates power loss:
+//! what a process kill cannot reproduce.
 //!
 //! Every write and length change is applied to the current image and remembered as pending until
 //! the next `sync_data`, which makes the image durable. [`PowerLoss::crash`] then returns what a

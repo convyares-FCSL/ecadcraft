@@ -1,29 +1,25 @@
-//! ecad-store
+//! ecad-store: the storage project files live in, and nothing else.
 //!
-//! The **storage layer** of ECAD persistence (proposal §20.1, layer 3): the storage project
-//! files live in, and nothing else. What is stored, which tables exist and how records are checked
-//! belong to `ecad-file`.
+//! What is stored, which tables exist and how records are checked belong to `ecad-file`.
 //!
-//! - [`db`]: [`db::Database`], a redb database as generic storage: open (new, existing, read-only,
-//!   over any backend, or from bytes), a read view, a write transaction with quick-repair, and
-//!   reopening once after an I/O error.
-//! - [`Medium`] and [`MemoryMedium`]: append, flush, truncate and read over bytes, with injectable
-//!   failures. The version 1 writer was built on them; no file format uses them since brief 069.
-//!
-//! - [`disk`] (native only): [`FileMedium`], a file on disk as a medium; [`WriterLock`], the
-//!   operating-system lock that makes one session the writer; and the steps of an atomic
-//!   replacement (temporary file, rename, folder flush). It is also where `ecad-file` reaches the
-//!   disk and the clock for everything else (design 065 §3.1: only ecad-store touches the OS):
-//!   whole and partial reads, file lengths, path comparison, the lock holder record.
+//! - [`db`]: [`db::Database`], a redb database as generic storage: open (new, existing, read-only, over any
+//!   backend, or from bytes), a read view, a write transaction with quick-repair, and reopening once after an
+//!   I/O error.
+//! - [`Medium`] and [`MemoryMedium`]: append, flush, truncate and read over bytes, with injectable failures.
+//!   No file format uses them.
+//! - [`disk`] (native only): [`FileMedium`], a file on disk as a medium; [`WriterLock`], the operating-system
+//!   lock that makes one session the writer; and the steps of an atomic replacement (temporary file, rename,
+//!   folder flush). It is also where `ecad-file` reaches the disk and the clock for everything else, because
+//!   only this crate touches the OS: whole and partial reads, file lengths, path comparison, the lock holder
+//!   record.
 //! - [`random_u128`]: the operating system's randomness, for new IDs.
+//! - [`backend`]: [`MemoryBackend`], a redb storage backend in memory, shared by its clones, with an injectable
+//!   write failure (tests keep a real project file without a disk).
+//! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes since the last
+//!   flush), for the project file's crash tests.
 //!
-//! - [`MemoryBackend`]: a redb storage backend in memory, shared by its clones, with an
-//!   injectable write failure (tests keep a real project file without a disk).
-//! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes
-//!   since the last flush), for the project file's crash tests.
-//!
-//! Excluded: what is written and in which order (`ecad-file`), and any file format: no table,
-//! record or `.ecad` type is known here.
+//! Excluded: what is written and in which order (`ecad-file`), and any file format: no table, record or `.ecad`
+//! type is known here.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io;
@@ -157,8 +153,8 @@ impl Medium for MemoryMedium {
 }
 
 /// A random 128-bit value from the operating system's randomness (through the standard library's
-/// hasher keys) and the clock: the entropy for new IDs such as `ecad-file`'s branch IDs (design
-/// 065 §3.1). Built on every target, as the branch IDs were before.
+/// hasher keys) and the clock: the entropy for new IDs such as `ecad-file`'s branch IDs, here because
+/// only this crate touches the OS. Built on every target.
 pub fn random_u128() -> u128 {
     use std::hash::{BuildHasher, Hasher};
     let mut id = [0u8; 16];
