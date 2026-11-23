@@ -1,4 +1,4 @@
-//! The shell's icons (design §3.4), drawn in code from lines, arcs and circles on a 16 px grid
+//! The shell's icons, drawn in code from lines, arcs and circles on a 16 px grid
 //! with a 1.5 px stroke (`crate::tokens::line::ICON_STROKE_PX`). One function per icon, in
 //! [`tools`], [`workspaces`] and [`shell`]. Each icon is original and drawn here; none is traced
 //! from any product, and CADCraft's icon set is not reused (the two evolve apart).
@@ -6,7 +6,6 @@
 //! egui strokes have no cap style; ends are butt-ended at 1.5 px, which reads the same as round
 //! at this size.
 
-pub mod rev3;
 pub mod shell;
 pub mod tools;
 pub mod workspaces;
@@ -47,7 +46,6 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::ChevronRight => shell::chevron(&mut pen, (6.0, 3.0), (11.0, 8.0), (6.0, 13.0)),
         Icon::ChevronUp => shell::chevron(&mut pen, (3.0, 10.0), (8.0, 5.0), (13.0, 10.0)),
         Icon::ChevronDown => shell::chevron(&mut pen, (3.0, 6.0), (8.0, 11.0), (13.0, 6.0)),
-        // 041
         Icon::Delete => tools::delete(&mut pen),
         Icon::GoTo => tools::goto(&mut pen),
         Icon::ShowRow => tools::show_row(&mut pen),
@@ -71,36 +69,33 @@ pub fn shapes(rect: Rect, icon: Icon, ink: Color32) -> Vec<Shape> {
         Icon::Junction => tools::junction(&mut pen),
         Icon::Cloud => tools::cloud(&mut pen),
         Icon::Eye => tools::eye(&mut pen),
-        // 044
         Icon::Connector => tools::connector(&mut pen),
-        // 048
         Icon::NewSymbol => tools::new_symbol(&mut pen),
         Icon::ConnectionPoint => tools::connection_point(&mut pen),
         Icon::TextSlot => tools::text_slot(&mut pen),
         Icon::Origin => tools::origin(&mut pen),
-        // UI rev 3
-        Icon::Book => rev3::book(&mut pen),
-        Icon::Plc => rev3::plc(&mut pen),
-        Icon::Snap => rev3::snap(&mut pen),
-        Icon::Grid => rev3::grid(&mut pen),
-        Icon::Ortho => rev3::ortho(&mut pen),
-        Icon::Moon => rev3::moon(&mut pen),
-        Icon::Sun => rev3::sun(&mut pen),
-        Icon::Help => rev3::help(&mut pen),
-        Icon::Folder => rev3::folder(&mut pen),
-        Icon::ChevronsLeft => rev3::chevrons_left(&mut pen),
-        Icon::ChevronsRight => rev3::chevrons_right(&mut pen),
-        Icon::Fit => rev3::fit(&mut pen),
-        Icon::Minus => rev3::minus(&mut pen),
-        Icon::Plus => rev3::plus(&mut pen),
-        Icon::Pencil => rev3::pencil(&mut pen),
-        Icon::Pin => rev3::pin(&mut pen),
-        Icon::TerminalBlockPin => rev3::terminal_block_pin(&mut pen),
-        Icon::WireBend => rev3::wire_bend(&mut pen),
-        Icon::CableBundle => rev3::cable_bundle(&mut pen),
-        Icon::LocationBox => rev3::location_box(&mut pen),
-        Icon::DeviceGrid => rev3::device_grid(&mut pen),
-        Icon::Share => rev3::share(&mut pen),
+        Icon::Book => shell::book(&mut pen),
+        Icon::Plc => shell::plc(&mut pen),
+        Icon::Snap => shell::snap(&mut pen),
+        Icon::Grid => shell::grid(&mut pen),
+        Icon::Ortho => shell::ortho(&mut pen),
+        Icon::Moon => shell::moon(&mut pen),
+        Icon::Sun => shell::sun(&mut pen),
+        Icon::Help => shell::help(&mut pen),
+        Icon::Folder => shell::folder(&mut pen),
+        Icon::ChevronsLeft => shell::chevrons_left(&mut pen),
+        Icon::ChevronsRight => shell::chevrons_right(&mut pen),
+        Icon::Fit => shell::fit(&mut pen),
+        Icon::Minus => shell::minus(&mut pen),
+        Icon::Plus => shell::plus(&mut pen),
+        Icon::Pencil => tools::pencil(&mut pen),
+        Icon::Pin => tools::pin(&mut pen),
+        Icon::TerminalBlockPin => tools::terminal_block_pin(&mut pen),
+        Icon::WireBend => tools::wire_bend(&mut pen),
+        Icon::CableBundle => tools::cable_bundle(&mut pen),
+        Icon::LocationBox => tools::location_box(&mut pen),
+        Icon::DeviceGrid => shell::device_grid(&mut pen),
+        Icon::Share => shell::share(&mut pen),
     }
     pen.out
 }

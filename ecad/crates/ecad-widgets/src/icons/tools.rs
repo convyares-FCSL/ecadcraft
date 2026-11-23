@@ -1,4 +1,4 @@
-//! The seven tool groups of the Draw workspace (spec §2). Tool icons echo the schematic.
+//! The tool groups of the Draw workspace and their icons in the tool strip. Tool icons echo the schematic.
 
 use crate::icons::Pen;
 
@@ -51,7 +51,7 @@ pub fn text(p: &mut Pen) {
     p.line((6.0, 13.0), (10.0, 13.0));
 }
 
-// 041 (brief 041, U4b): the actions' icons, drawn here, none traced from any product.
+// The actions' icons, drawn here, none traced from any product.
 
 /// Delete: a bin with a lid.
 pub fn delete(p: &mut Pen) {
@@ -192,7 +192,7 @@ pub fn terminal_block(p: &mut Pen) {
     p.line((11.0, 8.0), (14.5, 8.0));
 }
 
-/// Connector (brief 044): a socket's cup, open downwards, over a plug's pin, each on its lead.
+/// Connector: a socket's cup, open downwards, over a plug's pin, each on its lead.
 pub fn connector(p: &mut Pen) {
     p.line((8.0, 1.5), (8.0, 3.0));
     p.arc(8.0, 6.0, 3.0, 180.0, 360.0);
@@ -226,7 +226,7 @@ pub fn eye(p: &mut Pen) {
     p.circle(8.0, 8.0, 2.0);
 }
 
-/// New symbol (brief 048): a symbol box on two leads, a plus at its top right.
+/// New symbol: a symbol box on two leads, a plus at its top right.
 pub fn new_symbol(p: &mut Pen) {
     p.rect(3.0, 5.0, 10.0, 12.0);
     p.line((6.5, 1.5), (6.5, 5.0));
@@ -235,13 +235,13 @@ pub fn new_symbol(p: &mut Pen) {
     p.line((10.5, 3.75), (15.0, 3.75));
 }
 
-/// Connection point (brief 048, the builder's C tool): a hollow ring at a lead's end.
+/// Connection point (the builder's C tool): a hollow ring at a lead's end.
 pub fn connection_point(p: &mut Pen) {
     p.line((8.0, 14.5), (8.0, 8.5));
     p.circle(8.0, 5.5, 3.0);
 }
 
-/// Text slot (brief 048, the builder's S tool): a dashed box with an anchor dot at its left.
+/// Text slot (the builder's S tool): a dashed box with an anchor dot at its left.
 pub fn text_slot(p: &mut Pen) {
     p.dashed((2.0, 5.0), (14.0, 5.0), 2.0, 1.5);
     p.dashed((2.0, 11.0), (14.0, 11.0), 2.0, 1.5);
@@ -251,9 +251,57 @@ pub fn text_slot(p: &mut Pen) {
     p.line((5.0, 9.0), (11.0, 9.0));
 }
 
-/// Origin (brief 048, the builder's O tool): a cross with a ring at its centre.
+/// Origin (the builder's O tool): a cross with a ring at its centre.
 pub fn origin(p: &mut Pen) {
     p.line((8.0, 1.5), (8.0, 14.5));
     p.line((1.5, 8.0), (14.5, 8.0));
     p.circle(8.0, 8.0, 3.0);
+}
+
+/// Draw tools: a pencil.
+pub fn pencil(p: &mut Pen) {
+    p.poly(&[(3.0, 13.0), (3.5, 10.0), (11.0, 2.5), (13.5, 5.0), (6.0, 12.5)], true);
+    p.line((9.25, 4.25), (11.75, 6.75));
+}
+
+/// Device tools: a body on a lead.
+pub fn pin(p: &mut Pen) {
+    p.line((8.0, 1.0), (8.0, 4.5));
+    p.rect(5.0, 4.5, 11.0, 11.5);
+    p.line((8.0, 11.5), (8.0, 15.0));
+}
+
+/// Terminal block tools: a lead through a ring with a slash.
+pub fn terminal_block_pin(p: &mut Pen) {
+    p.line((8.0, 1.0), (8.0, 5.0));
+    p.circle(8.0, 8.0, 3.0);
+    p.line((6.25, 9.75), (9.75, 6.25));
+    p.line((8.0, 11.0), (8.0, 15.0));
+}
+
+/// Wire tools: a wire bending up from one end ring to another.
+pub fn wire_bend(p: &mut Pen) {
+    p.circle(3.5, 12.5, 1.5);
+    p.circle(12.5, 3.5, 1.5);
+    p.poly(&[(3.5, 11.0), (3.5, 7.0)], false);
+    p.arc(7.5, 7.0, 4.0, 180.0, 270.0);
+    p.line((7.5, 3.0), (11.0, 3.5));
+}
+
+/// Cable tools: three leads tied by two strokes.
+pub fn cable_bundle(p: &mut Pen) {
+    for x in [4.0, 8.0, 12.0] {
+        p.line((x, 1.5), (x, 14.5));
+    }
+    p.line((2.0, 7.0), (14.0, 5.0));
+    p.line((2.0, 11.0), (14.0, 9.0));
+}
+
+/// Location tools: a dashed box with a marked corner.
+pub fn location_box(p: &mut Pen) {
+    p.dashed((1.5, 3.0), (14.5, 3.0), 2.0, 1.5);
+    p.dashed((14.5, 3.0), (14.5, 13.0), 2.0, 1.5);
+    p.dashed((14.5, 13.0), (1.5, 13.0), 2.0, 1.5);
+    p.dashed((1.5, 13.0), (1.5, 3.0), 2.0, 1.5);
+    p.dot(4.5, 6.0, 1.0);
 }

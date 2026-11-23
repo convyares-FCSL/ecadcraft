@@ -1,4 +1,4 @@
-//! The four workspaces (spec §2).
+//! The four workspaces.
 
 use crate::icons::Pen;
 
