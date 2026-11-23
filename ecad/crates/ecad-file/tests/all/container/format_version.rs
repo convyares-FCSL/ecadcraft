@@ -68,3 +68,18 @@ fn a_file_without_a_schema_version_is_refused() {
     with_version(&p, 0);
     assert!(DiskProject::open(&p, SEED ^ 1, WRITER).is_err());
 }
+
+/// A real file of format version 1 (`tests/golden/v1-cable-tag-in-bag.ecad`, written by a version 1
+/// build): one of its cables keeps its tag in the property bag, which this build reads as a typed
+/// field only. It opens read-only as an older format, in those words, never as damaged.
+#[test]
+fn a_version_1_file_with_a_cable_tag_in_the_bag_opens_read_only_as_an_older_format() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/v1-cable-tag-in-bag.ecad");
+    let bytes = std::fs::read(path).expect("the version 1 fixture");
+    let o = ecad_file::Project::open(ecad_file::Store::from_bytes(bytes).unwrap(), SEED, WRITER)
+        .unwrap_or_else(|e| panic!("a version 1 file opens (read-only): {e}"));
+    let want = format!("older format version (file 1, this build {SCHEMA_VERSION})");
+    assert_eq!(o.project.read_only().map(|s| s.contains(&want)), Some(true), "{:?}", o.project.read_only());
+    let said = o.report.describe();
+    assert!(said.contains(&want) && !said.contains("damaged"), "{said}");
+}
