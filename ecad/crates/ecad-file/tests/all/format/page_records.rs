@@ -1,4 +1,4 @@
-//! Brief 072 lane E (design 072 §5.1, §14 A4, A14): the page ops round-trip through the file's
+//! The page ops round-trip through the file's
 //! records with every page field, and a page record holding a field it does not know is refused.
 
 use ecad_model::{GenKind, Op, Page, PageId, PageKind, StyleRef};

@@ -1,4 +1,4 @@
-//! Lane 072 F (design 072 §6.2, §6.4): drawing aids and loose parts are kept in their own
+//! Drawing aids and loose parts are kept in their own
 //! `model:aid:` and `model:loose_part:` chunks and come back the same when the project is opened,
 //! from the snapshot and from the log.
 

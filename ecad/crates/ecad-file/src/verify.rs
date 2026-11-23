@@ -1,4 +1,4 @@
-//! **Verify** (EEP-0005 §5.8, brief 029): check a whole file, in three parts.
+//! **Verify**: check a whole file, in three parts.
 //!
 //! - **(a) Chain** ([`verify_chain`]): decode every row of every branch, check each chain value
 //!   against the previous one, each head against its last row, each version's and merge row's
@@ -8,14 +8,14 @@
 //!   at the fork point, with **only the commit-time check** per transaction
 //!   ([`ecad_model::Check::Commit`]: the objects it touched, exactly as [`ecad_model::Ledger::commit`]
 //!   checks them). A broken invariant can only come from a transaction, and that transaction
-//!   touches the broken object (brief 013's contract, which every `cargo test` asserts), so the
+//!   touches the broken object (a contract every `cargo test` asserts), so the
 //!   failure names it.
 //! - **(c) Full check** ([`Document::check`] and the index check) only at each stored snapshot
 //!   point and at each branch's end. At a snapshot the replayed state is also compared with the
 //!   stored snapshot, its tag numbers and its undo stacks, which is what catches a row rewritten
 //!   with valid but different ops.
 //!
-//! Brief 013's verify mode (the full check after every transaction) is never used here, whatever
+//! The verify mode of the model (the full check after every transaction) is never used here, whatever
 //! the build, so Verify costs and decides the same in tests and in release.
 //!
 //! It reads everything, so it runs only on request (the debugger's Verify file, `ecadinspect
@@ -142,7 +142,7 @@ fn chain_part(store: &Store, rep: &mut VerifyReport, stop: &dyn Fn() -> bool) ->
         }
     };
     rep.lines.push(format!("{} branch(es)", listed.len()));
-    // The check opening applies to main's row (tester 020b: Verify must refuse what open refuses).
+    // The check opening applies to main's row (Verify must refuse what open refuses).
     if let Err(e) = super::project::main_branch_pub(&r, project) {
         rep.fail(format!("main: {e}"));
     }
@@ -434,7 +434,7 @@ fn replay_branch(
     if let Err(e) = full_check(ledger.document()) {
         rep.fail(format!("{name}: the state at the end ({n}) fails the full check: {e}"));
     }
-    // The merge index (FQ2, reviewer 020b finding 6): its rows decide the next merge's ancestor,
+    // The merge index: its rows decide the next merge's ancestor,
     // so they must be exactly the live merges of the replay, with their facts.
     let live = live_merges(ledger.log());
     let mut seen = BTreeSet::new();
@@ -495,7 +495,7 @@ fn check_point(
                 *snapshots += 1;
                 // `model:meta` is a cache: it must equal what the history gives, under the rule it
                 // was computed with. Marks of an older rule are not compared: opening recomputes
-                // them (brief 029, FP1), which Verify reports as information.
+                // them, which Verify reports as information.
                 if !v.tag_marks_current() {
                     info.push(format!(
                         "{branch}: the tag numbers of {:?} were written under tag rule {}; recomputed on open (rule {} → {})",

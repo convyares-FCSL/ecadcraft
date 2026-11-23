@@ -1,5 +1,5 @@
-//! CRC-32C (Castagnoli), proposal §20.10. Nothing in the redb format uses it now; it is kept
-//! (brief 069), with its known-value test.
+//! CRC-32C (Castagnoli) Nothing in the redb format uses it now; it is kept,
+//! with its known-value test.
 
 const POLY: u32 = 0x82F6_3B78; // reflected 0x1EDC6F41
 

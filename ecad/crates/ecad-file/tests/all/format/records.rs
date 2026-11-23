@@ -1,5 +1,5 @@
 //! Records, the hash chain seeds, embedded definitions and what is left out while it holds its
-//! defaults (proposal §20.2-§20.3, §20.10-§20.11).
+//! defaults.
 
 use crate::common;
 

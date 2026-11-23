@@ -1,4 +1,4 @@
-//! Compression of stored rows and chunks (EEP-0005 §4): Zstandard when it makes them smaller, with
+//! Compression of stored rows and chunks: Zstandard when it makes them smaller, with
 //! a flag byte saying which. Hashes and chain values are always over the uncompressed bytes.
 //!
 //! Rows compress and decompress with the `zstd` crate (libzstd, level 1): standard Zstandard
@@ -14,7 +14,7 @@ pub const RAW: u8 = 0;
 /// Flag byte: the body is a Zstandard frame.
 pub const ZSTD: u8 = 1;
 
-/// Largest uncompressed body read (64 MiB, as E3 §18 caps a payload).
+/// Largest uncompressed body read (64 MiB: the file format's cap on a payload).
 pub const MAX_BODY: usize = 64 << 20;
 
 /// The Zstandard level native builds write.

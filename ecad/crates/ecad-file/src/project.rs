@@ -1,9 +1,8 @@
-//! A project in a version 2 file: opening from the latest snapshot and its tail, and saving
-//! (EEP-0005 §5–§6).
+//! A project in a version 2 file: opening from the latest snapshot and its tail, and saving.
 //!
 //! - **Open** reads `meta`, the branch row and its head transaction, the latest snapshot's chunks
-//!   (phase 1: the whole active snapshot, overseer 2026-11-08) and the transactions after it,
-//!   each checked against its chain value and replayed with every check. It never reads other
+//!   (the whole active snapshot) and the transactions after it, each checked against its chain value and
+//!   replayed with every check. It never reads other
 //!   branches, older versions, transactions before the snapshot, or assets. Older transactions are
 //!   read on demand through [`StoreHistory`] (undo past the snapshot, `state_at`).
 //! - **Save** writes the pending transactions, the snapshots of any versions they name and of an
@@ -72,10 +71,10 @@ pub enum BranchError {
     Store(#[from] StoreError),
 }
 
-/// Longest branch name, in characters (design 020 §3.1).
+/// Longest branch name, in characters.
 pub(crate) const MAX_BRANCH_NAME: usize = 60;
 
-/// A branch name checked (design 020 §3.1): trimmed, 1–60 characters, no control characters,
+/// A branch name checked: trimmed, 1–60 characters, no control characters,
 /// not `main`.
 ///
 /// # Errors
@@ -107,7 +106,7 @@ pub struct Saved {
     pub snapshots: usize,
 }
 
-/// What a check found wrong while opening (EEP-0005 §5.8): the project opens read-only.
+/// What a check found wrong while opening: the project opens read-only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Damage {
     /// The transaction (or snapshot point) that failed, when known.
@@ -198,7 +197,7 @@ fn encode_tx(tx: &Transaction, prev: &Hash) -> Result<(Vec<u8>, Hash), FileError
 }
 
 /// The undo and redo stacks at a point: their tops, and how many entries lie below what is held
-/// (a snapshot records only the top [`STACK_CAP`] of each, brief 021).
+/// (a snapshot records only the top [`STACK_CAP`] of each).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct StackState {
     undo: Vec<(u64, TxId)>,
@@ -277,7 +276,7 @@ fn stacks_from_record(s: &[(u64, String)]) -> Result<Vec<(u64, TxId)>, FileError
 
 /// One branch of a lineage: the branch, its chain seed (its chain value at `seq` 0) and, for a
 /// branch other than `main`, the index of its parent in the lineage and the parent's `seq` it
-/// forks after (EEP-0005 §3.3 items 3–5).
+/// forks after.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
     pub branch: BranchId,
@@ -357,7 +356,7 @@ pub fn line_state(r: &Reader, lineage: &[Line], i: usize, seq: u64) -> Result<(D
     let (mut doc, mut high, from, prev) = match nearest_snapshot(r, line.branch, seq)? {
         Some(v) => {
             let (doc, meta) = load_snapshot(r, &v)?;
-            // Cached marks of an older rule are recomputed from the history (brief 029, FP1).
+            // Cached marks of an older rule are recomputed from the history.
             let high = match meta {
                 Some(m) if v.tag_marks_current() => m.tag_high,
                 _ => line_high(r, lineage, i, v.point.seq)?,
@@ -754,15 +753,15 @@ pub struct Project {
     last_save: Option<Saved>,
     /// `meta.writer` names this build already (written by the first save of a session).
     wrote_writer: bool,
-    /// Merges committed this session that close their source branch when saved (design 020
-    /// §4.2, owner answer 9): the merge's ID and the source.
+    /// Merges committed this session that close their source branch when saved: the merge's ID and
+    /// the source.
     closing: BTreeMap<TxId, BranchId>,
     /// Sources reopened by an undo of a merge, by the branch and the undo's `seq`: a redo of
-    /// that undo closes them again (design 020 §4.3). Kept for the session.
+    /// that undo closes them again. Kept for the session.
     reopened: BTreeMap<(BranchId, u64), BranchId>,
 }
 
-/// A live merge into a branch (the merge index, FQ2): its step and what it recorded.
+/// A live merge into a branch (the merge index): its step and what it recorded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeIndex {
     /// The step that made it live: the merge, or the redo of its undo.
@@ -818,12 +817,12 @@ fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenError>
     }
 }
 
-/// The container facts, checked as E2 §5 checks a header.
+/// The container facts, checked as a container header is checked.
 struct Facts {
     project: ProjectId,
     cache: Cache,
     created_ms: Option<u64>,
-    /// `meta.active`: the branch the project was last shown on (FQ4).
+    /// `meta.active`: the branch the project was last shown on.
     active: Option<BranchId>,
     /// The `meta` names this build does not read.
     unknown: Vec<ecad_model::document::strict::UnknownWord>,
@@ -844,7 +843,7 @@ pub(crate) fn format_note(file: u64) -> Option<String> {
 }
 
 fn read_facts(r: &Reader) -> Result<Facts, OpenError> {
-    // Pre-v1 there is no forward compatibility (owner, 0.2.3): a `meta` name this build does not
+    // Pre-v1 there is no forward compatibility: a `meta` name this build does not
     // read is an unknown word, so the project opens read-only and names it. Every name this build
     // needs is checked below.
     let unknown = r
@@ -911,7 +910,7 @@ struct Loaded {
     damage: Option<String>,
 }
 
-/// Load `branch` (EEP-0005 §5 items 1–2): its latest snapshot and the transactions after it; a
+/// Load `branch`: its latest snapshot and the transactions after it; a
 /// branch with no snapshot of its own starts from its parent's state at the fork point. Damage
 /// found loads the last state that verifies, with a report.
 fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: BranchId, rec: &BranchRecord, seed: u64) -> Result<Loaded, OpenError> {
@@ -959,7 +958,7 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
     }
     // Start from the snapshot; if anything about it fails (its point row, its stack record,
     // the rows under it), open from the branch's start instead (the project root, or the
-    // parent's state at the fork point), read-only with the damage reported (EEP-0005 §5.8).
+    // parent's state at the fork point), read-only with the damage reported.
     let to = head.min(last);
     let (ledger, failure, snap_seq, snap_chain, stacks, set, base_tag_high, tail_len, verified_chain, row_damage) = loop {
         let using = loaded.take();
@@ -977,8 +976,8 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
                     // The tag high-water mark at the snapshot: carried by `model:meta`; a
                     // snapshot written without it is scanned once (a cache, rebuilt from the
                     // history).
-                    // Marks of an older rule (written before brief 026 counted cable tags) are
-                    // recomputed once, the same way (brief 029, FP1).
+                    // Marks of an older rule (written before cable tags were counted) are
+                    // recomputed once, the same way.
                     let high = match meta {
                         Some(m) if v.tag_marks_current() => m.tag_high,
                         _ => line_high(&r, &lineage, 0, v.point.seq)?,
@@ -1055,8 +1054,8 @@ fn load_branch(store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: Br
 }
 
 impl Project {
-    /// Open the project in `store` (EEP-0005 §5) on the branch it was last shown on
-    /// (`meta.active`, FQ4), or `main` when that is absent, unknown or not open. `seed` seeds IDs
+    /// Open the project in `store` on the branch it was last shown on
+    /// (`meta.active`), or `main` when that is absent, unknown or not open. `seed` seeds IDs
     /// allocated after opening. Damage found while loading opens read-only, at the last state that
     /// verifies, with a report.
     ///
@@ -1253,7 +1252,7 @@ impl Project {
         Ok((me, saved))
     }
 
-    /// Save the transactions after the file's head (EEP-0005 §6), with the snapshots of any
+    /// Save the transactions after the file's head, with the snapshots of any
     /// versions they name and an automatic snapshot when due, in one write transaction. On
     /// success the ledger is marked persisted.
     ///
@@ -1319,8 +1318,7 @@ impl Project {
                 }
             }
         }
-        // The merge index and the sources' statuses follow merges, their undos and redos (FQ2,
-        // FQ3; design 020 §4.3).
+        // The merge index and the sources' statuses follow merges, their undos and redos.
         let follow = self.follow_merges(ledger, &pending, Some(&w))?;
         for (seq, row) in &follow.rows {
             match row {
@@ -1346,7 +1344,7 @@ impl Project {
             }
         }
         let end = ledger.head();
-        // A branch's first save writes its first snapshot (020b): until then it opens from its
+        // A branch's first save writes its first snapshot: until then it opens from its
         // parent's state at the fork, which costs more than an open.
         if end.saturating_sub(snap.seq) >= cache.every || (snap.set.is_none() && end > snap.seq) {
             let chain = prev;
@@ -1405,7 +1403,7 @@ impl Project {
         }
         let Some(first) = steps.first() else { return Ok(out) };
         let mut stacks = self.stacks_at_ro(ledger, first.seq.saturating_sub(1))?;
-        // The live merges that closed their source (tester 020b, defect 1): only those reopen it
+        // The live merges that closed their source: only those reopen it
         // when undone, and only a redo of such an undo closes it again. A stored merge closed its
         // source when the source's row says it was merged into this branch at that step.
         let mut closed: BTreeMap<u64, BranchId> = BTreeMap::new();
@@ -1505,7 +1503,7 @@ impl Project {
         None
     }
 
-    /// The live merges into the branch shown (the merge index, FQ2), its unsaved steps
+    /// The live merges into the branch shown (the merge index), its unsaved steps
     /// included, oldest first.
     ///
     /// # Errors
@@ -1527,7 +1525,7 @@ impl Project {
         rows.iter().map(|(seq, r)| MergeIndex::of(*seq, r)).collect()
     }
 
-    /// The live merges into `branch` as saved (the merge index, FQ2), oldest first.
+    /// The live merges into `branch` as saved (the merge index), oldest first.
     ///
     /// # Errors
     /// The file could not be read.
@@ -1544,8 +1542,8 @@ impl Project {
         Ok(out)
     }
 
-    /// Close `source` when the merge `tx` is saved (the merge dialog's Close branch, design 020
-    /// §4.2). Forgotten if the merge is never saved.
+    /// Close `source` when the merge `tx` is saved (the merge dialog's Close branch
+    /// option). Forgotten if the merge is never saved.
     pub fn close_on_save(&mut self, tx: TxId, source: BranchId) {
         self.closing.insert(tx, source);
     }
@@ -1564,7 +1562,7 @@ impl Project {
     }
 
     /// Mark `source` merged into `into` at its step `seq`, written at once (a merge with nothing
-    /// to merge, closed from the merge dialog: design 020 §4.2).
+    /// to merge, closed from the merge dialog).
     ///
     /// # Errors
     /// As [`Project::create_branch`].
@@ -1760,8 +1758,8 @@ impl Project {
         }
     }
 
-    /// Create a branch named `name` forking from `from` at its transaction `seq` (FQ7: a random
-    /// ID; FQ8: written at once, in a write transaction of its own; FQ9: no snapshot is written).
+    /// Create a branch named `name` forking from `from` at its transaction `seq` (a random
+    /// ID; written at once, in a write transaction of its own; no snapshot is written).
     /// A fork at a branch's `seq` 0 is its parent's fork point, so the new branch's parent is the
     /// branch that holds the transaction. The caller saves pending transactions first.
     ///
@@ -1870,7 +1868,7 @@ impl Project {
         })
     }
 
-    /// Reopen `branch` under `name` in one write (brief 020a: a reopen whose name another open
+    /// Reopen `branch` under `name` in one write (a reopen whose name another open
     /// branch took is never a dead end).
     ///
     /// # Errors
@@ -1906,15 +1904,15 @@ impl Project {
         Ok(rec)
     }
 
-    /// Show `branch` instead (design 020 §3.3): load it as opening does (its latest snapshot and
+    /// Show `branch` instead: load it as opening does (its latest snapshot and
     /// tail, or its parent's state at the fork) and, when the file is writable, write
-    /// `meta.active` (FQ4) at once. The caller saves the branch shown first: switching with
+    /// `meta.active` at once. The caller saves the branch shown first: switching with
     /// unsaved transactions is refused. A read-only file switches and writes nothing.
     ///
     /// # Errors
     /// [`BranchError`]; on an error the project still shows the previous branch.
     pub fn switch_to(&mut self, ledger: &Ledger, branch: BranchId, seed: u64) -> Result<(Ledger, Report), BranchError> {
-        // Unsaved transactions are never switched away from, read-only or not (design 020 §3.3).
+        // Unsaved transactions are never switched away from, read-only or not.
         if ledger.head() != self.head.0 {
             return Err(BranchError::Refused("Save first: the branch shown has unsaved changes.".into()));
         }
@@ -1943,7 +1941,7 @@ impl Project {
     }
 
     /// Transactions `from..=to` of `branch` as stored, for display (the History tab's times,
-    /// authors and labels, design 020 §2.4): each row is decoded and checked against its own
+    /// authors and labels): each row is decoded and checked against its own
     /// chain value, not linked to its neighbours (Verify does that).
     ///
     /// # Errors
@@ -1989,7 +1987,7 @@ impl Project {
     }
 
     /// The document at `seq` of `branch` (any branch of the file): from its nearest snapshot, or
-    /// its ancestry's, and at most the transactions after it (design 020 §2.4, on a copy).
+    /// its ancestry's, and at most the transactions after it (on a copy).
     ///
     /// # Errors
     /// The branch or point does not exist, or the file cannot be read.
@@ -2000,7 +1998,7 @@ impl Project {
         Ok(doc)
     }
 
-    /// The tag high-water mark at the snapshot this project was opened from (brief 018: the next
+    /// The tag high-water mark at the snapshot this project was opened from (the next
     /// automatic number is the highest + 1); the transactions after it add to it.
     pub fn base_tag_high(&self) -> &HighWater {
         &self.base_tag_high
@@ -2116,7 +2114,7 @@ fn stacks_from(history: &dyn History, base: &mut StackState, base_seq: u64, ledg
     Ok(StackState { undo, redo, undo_hidden: 0, redo_hidden: 0, cap: 0 })
 }
 
-/// A merge index row (FQ2) for the step at `seq` with chain value `chain`.
+/// A merge index row for the step at `seq` with chain value `chain`.
 fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
     VersionRecord {
         kind: RowKind::Merge,

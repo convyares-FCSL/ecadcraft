@@ -1,4 +1,4 @@
-//! Lane D2 (owner, 2026-11-22): a file of another format version is read-only and says so in
+//! A file of another format version is read-only and says so in
 //! those words, whatever replay finds; "damaged" is only real corruption at this build's version.
 //! The version is pinned with the golden head hash, so a changed format keeping its number fails.
 

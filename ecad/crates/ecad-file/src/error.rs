@@ -1,5 +1,5 @@
 //! [`FileError`]: what is wrong with a stored row, chunk or record, or with a value that cannot be
-//! stored (brief 070).
+//! stored.
 //!
 //! Each variant's `Display` is the sentence the crate wrote as text before, word for word. The
 //! errors of whole operations ([`crate::OpenError`], [`crate::SaveError`],

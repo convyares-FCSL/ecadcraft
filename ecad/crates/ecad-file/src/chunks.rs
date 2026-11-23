@@ -1,10 +1,10 @@
-//! Snapshot chunks (EEP-0005 §3.5; overseer, 2026-11-08): the document split by key, each chunk
+//! Snapshot chunks: the document split by key, each chunk
 //! the JSON of its objects, content-addressed by [`super::schema::chunk_hash`].
 //!
 //! - `page:<PageId>`: the page, the items on it and the representations on it.
 //! - `model:project`: page order, settings, named versions, the display bag, folders and
-//!   folder order, and (brief 050a, left out while empty) the standard and the project's style
-//!   records, and (design 072 §2.6, left out while empty) the device links.
+//!   folder order, and (left out while empty) the standard and the project's style
+//!   records, and (left out while empty) the device links.
 //! - `model:<kind>:<b>`: the layers, devices, terminals, conductors, cables or definitions
 //!   whose ID falls in bucket `b` of that kind. A kind with `n` objects has `B` buckets, the
 //!   smallest power of two with `B × 1 024 ≥ n` (at least 1), and an object's bucket is a mix of
@@ -29,12 +29,12 @@ use super::schema::chunk_hash;
 use crate::FileError;
 use crate::chain::{self, Hash};
 
-/// Objects per model chunk, before bucketing (overseer, 2026-11-08).
+/// Objects per model chunk, before bucketing.
 pub(crate) const CHUNK: usize = 1_024;
 /// The chunk holding project-wide state.
 pub const PROJECT_KEY: &str = "model:project";
-/// The chunk holding state derived from the history that a snapshot must carry (overseer answer
-/// C, 2026-11-08): a cache, rebuilt by Verify from the history.
+/// The chunk holding state derived from the history that a snapshot must carry: a cache,
+/// rebuilt by Verify from the history.
 pub const META_KEY: &str = "model:meta";
 
 /// What `model:meta` holds.
@@ -42,7 +42,7 @@ pub const META_KEY: &str = "model:meta";
 #[serde(deny_unknown_fields)]
 pub struct ModelMeta {
     /// The highest number each tag prefix has had up to the snapshot's point, deleted and
-    /// undone tags included (brief 018).
+    /// undone tags included.
     pub tag_high: ecad_model::naming::tag::HighWater,
 }
 /// Most buckets a kind may have (a bound on hostile files).
@@ -129,7 +129,7 @@ pub(crate) fn bucket_count(n: usize) -> u32 {
     u32::try_from(chunks.next_power_of_two()).unwrap_or(MAX_BUCKETS).min(MAX_BUCKETS)
 }
 
-/// `mix(id)`, part of the file format (EEP-0005 §3.5, overseer answer A): never changes with a
+/// `mix(id)`, part of the file format: never changes with a
 /// crate version. The 128-bit ID's two 64-bit halves XORed, then the SplitMix64 finaliser
 /// (add `0x9E3779B97F4A7C15`; `z ^= z >> 30; z *= 0xBF58476D1CE4E5B9; z ^= z >> 27;
 /// z *= 0x94D049BB133111EB; z ^= z >> 31`, all wrapping, 64-bit).
@@ -263,7 +263,7 @@ struct PageChunkRef<'a> {
     page: &'a Page,
     items: BTreeMap<&'a ItemId, &'a Item>,
     representations: BTreeMap<&'a RepresentationId, &'a Representation>,
-    /// Design 072 F31: the page's routes; left out while empty.
+    /// The page's routes; left out while empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     routes: BTreeMap<&'a RouteId, &'a Route>,
 }
@@ -285,15 +285,15 @@ struct ProjectChunkRef<'a> {
     #[serde(with = "ecad_model::document::rev::as_points")]
     versions: &'a BTreeMap<PointName, u64>,
     display: &'a BTreeMap<String, String>,
-    /// Design 072 §5.3: left out while empty.
+    /// Left out while empty.
     #[serde(skip_serializing_if = "Project::is_empty")]
     project: &'a Project,
-    /// Design 072 §2.6: left out while empty.
+    /// Left out while empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     device_links: &'a BTreeMap<ecad_model::LinkId, ecad_model::DeviceLink>,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a [FolderId],
-    /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
+    /// Left out while empty, so older chunks keep their hashes.
     #[serde(skip_serializing_if = "Option::is_none")]
     standard: Option<&'a Standard>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -498,9 +498,9 @@ fn check_bucket<K: RawId, V>(map: &BTreeMap<K, V>, key: &str, b: u32, count: u32
 /// One chunk, parsed and checked on its own (every object in the chunk its key names).
 enum Parsed {
     Meta(ModelMeta),
-    // Boxed: the project chunk holds the standard and the style records (brief 050a).
+    // Boxed: the project chunk holds the standard and the style records.
     Project(Box<ProjectChunk>),
-    // Boxed: a page carries its typed fields (design 072 §5.1).
+    // Boxed: a page carries its typed fields.
     Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
@@ -521,7 +521,7 @@ fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>
     Ok(m)
 }
 
-/// The devices a `model:device:<b>` chunk of `set` holds (brief 020b: naming the devices a
+/// The devices a `model:device:<b>` chunk of `set` holds (naming the devices a
 /// version changed without building the document).
 ///
 /// # Errors
@@ -561,7 +561,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
         "device" => {
             let m: BTreeMap<DeviceId, Device> = typed(body, key, b, count)?;
-            // Design 072 §6.2 and §6.4: continuations and location boxes are drawing aids, BOM
+            // Continuations and location boxes are drawing aids, BOM
             // items loose parts; their old device form is not read.
             if let Some(e) = m.values().find_map(crate::records::not_device_error) {
                 return Err(FileError::ChunkJson { key: key.to_string(), error: e.to_string() });

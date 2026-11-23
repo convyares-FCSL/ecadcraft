@@ -1,4 +1,4 @@
-//! Verify (brief 029, design §3, §8): the chain, then the replay with the commit-time check only,
+//! Verify: the chain, then the replay with the commit-time check only,
 //! then the full check at every snapshot and branch end. It catches everything the old Verify
 //! caught (the full check after every transaction, kept here as [`reference`]), and a history
 //! rewritten with valid ops between two snapshots is caught at the next snapshot.

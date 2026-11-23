@@ -1,7 +1,7 @@
-//! Tester contracts for brief 020a's store work (EEP-0005 rev 8, design 020 §3, §7, §17):
+//! The store work behind branches:
 //!
 //! - **Power loss across branch actions:** a sequence of saves, branch creates, switches
-//!   (`meta.active`), renames, a merge saved with Close branch (brief 020b: the merge index row
+//!   (`meta.active`), renames, a merge saved with Close branch (the merge index row
 //!   and the source's `merged` status in the same write) and archives is cut at any disk
 //!   operation and the disk image
 //!   crashed; the file reopens undamaged on a consistent branch, with every acknowledged step and

@@ -1,4 +1,4 @@
-//! Brief 050a (FP1–FP3, overseer ruling: the file arms with a round-trip test): `SetStyle`,
+//! `SetStyle`,
 //! `SetStandard` and `SetProperty` on the standard through the op records, a project file's log
 //! and its snapshot chunks; hostile records are refused in words, never by a panic.
 

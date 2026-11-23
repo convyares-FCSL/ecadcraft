@@ -1,4 +1,4 @@
-//! Brief 043 (U4d): History's session groups ([`history::sessions`]), a read helper over the
+//! History's session groups ([`history::sessions`]), a read helper over the
 //! log: consecutive transactions by one agent form one group; the person's are one row each.
 
 use ecad_file::history::{self, SessionGroup};

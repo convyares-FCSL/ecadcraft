@@ -1,4 +1,4 @@
-//! Branches in a version 2 file (brief 020a, EEP-0005 §3.3, §5): a branch forks from a point of
+//! Branches in a version 2 file: a branch forks from a point of
 //! its parent, owns its log, opens from its parent's state at the fork or its own snapshot, and
 //! the project reopens on the branch last shown (`meta.active`). Branch actions write at once;
 //! readers refuse unknown fields in rows (pre-v1, no forward compatibility).

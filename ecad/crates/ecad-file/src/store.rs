@@ -1,4 +1,4 @@
-//! The project database behind ECAD's append-only API (EEP-0005 §3). Opening, transactions and
+//! The project database behind ECAD's append-only API. Opening, transactions and
 //! reopening after an I/O error are ecad-store's generic redb handle ([`ecad_store::db`]); this
 //! module adds the project tables and the rules about what may be written.
 //!
@@ -6,7 +6,7 @@
 //! branch's last one, insert a chunk or asset that is not stored yet, and put or remove
 //! `branches`, `versions` and `meta` rows (only the names `meta` allows). No code path updates or
 //! deletes a `transactions` row. Every write of one save happens in one redb write transaction
-//! with quick-repair on (EEP-0005 §5.7), committed durably before [`Writer::commit`] returns.
+//! with quick-repair on, committed durably before [`Writer::commit`] returns.
 
 use std::ops::RangeInclusive;
 
@@ -112,7 +112,7 @@ impl Store {
         Ok(me)
     }
 
-    /// Open a project database from its bytes, held in memory (EEP-0005 §11); see
+    /// Open a project database from its bytes, held in memory; see
     /// [`Database::from_bytes`].
     ///
     /// # Errors
@@ -164,7 +164,7 @@ impl Store {
         Ok(Writer { txn: self.db.write()? })
     }
 
-    /// Engine compaction (EEP-0005 §9.1): returns free pages; drops nothing ECAD stored.
+    /// Engine compaction: returns free pages; drops nothing ECAD stored.
     ///
     /// # Errors
     /// [`StoreError::ReadOnly`], or the engine failed.
@@ -465,7 +465,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    /// Put a `meta` row. Only the names EEP-0005 §3.1 lists are accepted.
+    /// Put a `meta` row. Only the names the container format defines are accepted.
     ///
     /// # Errors
     /// [`StoreError::Refused`] for another name; the engine failed.
@@ -544,7 +544,7 @@ impl Writer {
         Ok(value.len() as u64)
     }
 
-    /// Insert an asset unless it is stored (EEP-0005 §3.6: stored as it is). Returns its hash.
+    /// Insert an asset unless it is stored (assets are stored as they are). Returns its hash.
     ///
     /// # Errors
     /// A media type over 255 bytes; the engine failed.
@@ -586,7 +586,7 @@ impl Writer {
         Ok(out)
     }
 
-    /// Set the description of a `versions` row this write transaction holds (FQ5).
+    /// Set the description of a `versions` row this write transaction holds.
     ///
     /// # Errors
     /// No such row; the engine failed.

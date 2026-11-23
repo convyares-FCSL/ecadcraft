@@ -1,4 +1,4 @@
-//! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
+//! A project's file on disk (container version 2): the
 //! binding between a project (ecad-engine's `Project`) and its `.ecad` file, through
 //! [`crate::disk::DiskProject`], and the checks on a path typed for one.
 //!
@@ -105,7 +105,7 @@ pub struct Opened {
     pub project: ProjectId,
     /// A lock file left by a session that ended without releasing it, reclaimed: its record.
     pub reclaimed_lock: Option<String>,
-    /// The tag high-water mark at the snapshot the ledger starts from (brief 021).
+    /// The tag high-water mark at the snapshot the ledger starts from.
     pub tag_high: ecad_model::naming::tag::HighWater,
 }
 
@@ -347,12 +347,12 @@ impl Binding {
         self.disk.as_ref().map(|d| d.project().store().clone())
     }
 
-    /// The project in the bound file (brief 020: its branches and history).
+    /// The project in the bound file (its branches and history).
     pub fn project(&self) -> Option<&crate::Project> {
         self.disk.as_deref().map(|d| d.project())
     }
 
-    /// The project in the bound file, for branch actions (brief 020).
+    /// The project in the bound file, for branch actions.
     pub fn project_mut(&mut self) -> Option<&mut crate::Project> {
         self.disk.as_deref_mut().map(|d| d.project_mut())
     }

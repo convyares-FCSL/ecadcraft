@@ -1,4 +1,4 @@
-//! Canonical form (RFC 8785), checksum and known-hash contracts (proposal §20.3, §20.10, §20.11).
+//! Canonical form (RFC 8785), checksum and known-hash contracts.
 
 use ecad_file::canonical::{CanonicalError, MAX_SAFE_INTEGER, canonical, es_number};
 use serde_json::{Value, json};

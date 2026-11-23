@@ -1,4 +1,4 @@
-//! Strict `meta` names (owner, 0.2.3): a `meta` name this build does not read is an unknown word,
+//! Strict `meta` names: a `meta` name this build does not read is an unknown word,
 //! like every other. The project opens read-only, the reason names it, nothing writes to the file,
 //! and the words check's own findings join it.
 

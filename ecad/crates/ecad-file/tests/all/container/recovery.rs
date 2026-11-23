@@ -1,4 +1,4 @@
-//! Tester, brief 021 (container v2 on redb): recovery and integrity gaps the crash suite
+//! Container v2 on redb: recovery and integrity gaps the crash suite
 //! (`container_crash`) does not reach.
 //!
 //! - Every cut point of one save that writes rows, a named version's snapshot, an automatic
@@ -10,7 +10,7 @@
 //! - Undo and redo across the 1 024-entry stack cap after a crash and reopen, both stacks over it.
 //! - Damage at rest (bytes changed inside the stored file) in a transaction row, a chunk, the
 //!   row a snapshot stands on, and a snapshot's recorded stacks: detected, never loaded silently;
-//!   EEP-0005 §5.8 says the project then opens read-only with a report.
+//!   the project then opens read-only with a report.
 
 use std::io;
 use std::ops::Bound;

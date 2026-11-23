@@ -1,4 +1,4 @@
-//! Container version 2 (brief 021, EEP-0005): a project written to a redb file opens from its
+//! Container version 2: a project written to a redb file opens from its
 //! latest snapshot and tail exactly as the replayed project; saves append only; damage opens
 //! read-only; the append-only API refuses rewrites.
 

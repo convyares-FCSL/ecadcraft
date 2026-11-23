@@ -1,4 +1,4 @@
-//! Tester contract for brief 020b (FQ2, forward compatibility): a merge index row (`versions`
+//! Forward compatibility of merges: a merge index row (`versions`
 //! kind 4) carrying a field a newer build added keeps it through this build's saves, and a
 //! version row of a kind this build does not know (5) is ignored on open and kept on save.
 

@@ -1,4 +1,4 @@
-//! Project files on disk (native only; EEP-0005 §6.4, §7).
+//! Project files on disk (native only).
 //!
 //! - **Open** takes the writer lock (`<file>.lock`); redb's own lock is taken too.
 //!   If another session holds the lock, the file opens read-only and follows nothing: a second
@@ -41,8 +41,8 @@ pub enum ReadOnly {
     /// The file itself cannot be opened for writing (a read-only file, or one this user may not
     /// change).
     NotWritable(String),
-    /// The file holds words this build does not know in values that stay text (design 072 §9.5,
-    /// F11), or `meta` names it does not read: each names the word, the setting or name, and where
+    /// The file holds words this build does not know in values that stay text,
+    /// or `meta` names it does not read: each names the word, the setting or name, and where
     /// it is. The file is kept as it is.
     UnknownWords(Vec<ecad_model::document::strict::UnknownWord>),
 }
@@ -268,7 +268,7 @@ impl DiskProject {
                     if rescue {
                         src.write_rescue(&mut w, &r).map_err(|e| before("copying the history", e.to_string()))?;
                     }
-                    // The new file opens on the branch shown (FQ4): a read-only session's switch
+                    // The new file opens on the branch shown: a read-only session's switch
                     // wrote no `meta.active`, and the pending transactions are that branch's.
                     w.set_meta("active", &serde_json::json!(src.branch().hex())).map_err(|e| before("writing the temporary file", e.to_string()))?;
                     w.commit().map_err(|e| before("writing the temporary file", e.to_string()))?;
@@ -381,8 +381,8 @@ impl DiskProject {
         self.read_only.as_ref()
     }
 
-    /// Open the project read-only for the unknown words the words check found on open (design 072
-    /// §9.5), unless it is already read-only for another reason; when it is read-only for unknown
+    /// Open the project read-only for the unknown words the words check found on open,
+    /// unless it is already read-only for another reason; when it is read-only for unknown
     /// `meta` names already, these words are added to them. Nothing when `words` is empty.
     pub fn refuse_unknown_words(&mut self, mut words: Vec<ecad_model::document::strict::UnknownWord>) {
         if words.is_empty() {

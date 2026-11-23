@@ -1,4 +1,4 @@
-//! Lane 073: the document's project-level bag is stored under the key `display` in the project
+//! The document's project-level bag is stored under the key `display` in the project
 //! chunk, and read back from it.
 
 use ecad_file::chunks::{ModelMeta, PROJECT_KEY, assemble, build_full};

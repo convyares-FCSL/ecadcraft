@@ -1,12 +1,11 @@
-//! Tester contracts for brief 029 (Verify, design §3 and §8; FP1, design §10), written from the
-//! brief and the design only. They add what `verify_contracts` and `tag_rule_contracts` do not
+//! Verify on branches. They add what `verify_contracts` and `tag_rule_contracts` do not
 //! cover: every damage case on a **branch** as well as on main, the stored chain column changed on
 //! its own, a rewrite at a snapshot's own transaction, a rewrite between two snapshots of a
 //! branch, damage after the last snapshot, a rewrite before a fork, and hostile truncations.
 //!
-//! The reference (the Verify before 029: the full check after every transaction) is an
+//! The reference (a Verify that runs the full check after every transaction) is an
 //! independent copy here. With `ECAD_TESTER029_EXPORT=<folder>` the damaged files are also kept
-//! there, so a build of `dev` from before 029 can verify the same bytes (tester report).
+//! there, so another build can verify the same bytes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

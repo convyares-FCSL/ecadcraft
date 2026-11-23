@@ -1,4 +1,4 @@
-//! Lane 072 D, part c2 (design 072 §4.5): a cable's shield and a `ModifyCable` come back the same
+//! A cable's shield and a `ModifyCable` come back the same
 //! from the snapshot and from the log, and a hostile record is a read error.
 
 use crate::common::*;

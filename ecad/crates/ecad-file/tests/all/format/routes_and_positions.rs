@@ -1,4 +1,4 @@
-//! Lane 072 D (design 072 F31): routes are kept in their page's chunk and come back the same when
+//! Routes are kept in their page's chunk and come back the same when
 //! the project is opened, from the snapshot and from the log.
 
 use crate::common::*;

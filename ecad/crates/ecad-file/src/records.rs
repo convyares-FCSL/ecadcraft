@@ -1,7 +1,7 @@
-//! Schema version 1 records (proposal §20.2-§20.3): the file format's own types.
+//! Schema version 1 records: the file format's own types.
 //!
 //! These mirror `ecad-model` deliberately: the model may change shape freely, while these types
-//! change only with a schema version and an upcast. Every struct refuses unknown fields (E5).
+//! change only with a schema version and an upcast. Every struct refuses unknown fields.
 //! IDs use the model's ID types, whose serialised form (32 hex digits) is itself part of this
 //! schema and fixed by the golden-file test.
 
@@ -27,7 +27,7 @@ fn mpt(p: Pt) -> m::Pt {
 #[serde(deny_unknown_fields)]
 pub struct Page {
     pub title: m::PageTitle,
-    /// Design 072 §5.1: every optional field is left out while unset.
+    /// Every optional field is left out while unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<m::PageNo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -48,13 +48,13 @@ pub struct Page {
     pub display: BTreeMap<String, String>,
 }
 
-/// A folder of pages (brief 019, decision FP3).
+/// A folder of pages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Folder {
     pub name: String,
     pub parent: Option<FolderId>,
-    /// Design 072 §5.2: left out while unset.
+    /// Left out while unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start: Option<m::PageNo>,
 }
@@ -66,7 +66,7 @@ pub enum GridLabels {
     Numbers,
 }
 
-/// A sheet (brief 019, decision FP2), in whole millimetres.
+/// A sheet, in whole millimetres.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SheetSpec {
@@ -83,7 +83,7 @@ pub struct SheetSpec {
 pub enum ReferenceStyle {
     PageColumnRow,
     PageColumn,
-    /// UI rev 3: `2/B5`.
+    /// Page, then zone: `2/B5`.
     PageZone,
 }
 
@@ -190,25 +190,25 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
-    /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
+    /// Validated on read (1 to 40 characters, no hidden character).
     pub tag: m::naming::tag::TagSlot,
-    /// Design 072 §2.1: the text fields, validated on read.
+    /// The text fields, validated on read.
     pub description: Option<m::objects::devices::Description>,
     pub part_number: Option<m::objects::devices::PartText>,
     pub manufacturer: Option<m::objects::devices::PartText>,
     pub article_number: Option<m::objects::devices::PartText>,
     pub type_text: Option<m::objects::devices::PartText>,
-    /// Design 072 §6.3: ids of the project's lists, each with how it came to be.
+    /// Ids of the project's lists, each with how it came to be.
     pub location: m::document::book::Place<m::LocationId>,
     pub function: m::document::book::Place<m::FunctionId>,
-    /// Design 072 §2.2: text that did not read as the group's typed rating.
+    /// Text that did not read as the group's typed rating.
     pub rating_note: Option<m::objects::devices::RatingNote>,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
-    /// What the device is (design 072 F15): the model's own type, whose words and fields are
+    /// What the device is: the model's own type, whose words and fields are
     /// strict.
     pub device_type: m::DeviceType,
-    /// Design 072 §2.8: its values of the project's user fields; left out while empty.
+    /// Its values of the project's user fields; left out while empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub user: BTreeMap<m::UserFieldId, m::UserValue>,
 }
@@ -219,7 +219,7 @@ pub struct ConnectionPoint {
     pub owner: m::ConnectionPointOwner,
     pub label: Option<String>,
     pub key: Option<m::PointKey>,
-    /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
+    /// How many conductors it accepts, 1 to 64; left out at two.
     #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
     pub accepts: m::Accepts,
 }
@@ -234,7 +234,7 @@ pub enum Subject {
     Aid(m::AidId),
 }
 
-/// A route (design 072 F31): a line drawn on a page and what its ends land on.
+/// A route: a line drawn on a page and what its ends land on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Route {
@@ -270,7 +270,7 @@ pub struct Representation {
     pub connection_points: BTreeMap<ConnectionPointId, Pt>,
 }
 
-/// A wire (design 072 §4.2): its net, its conductor id, its place in the net's order, its two
+/// A wire: its net, its conductor id, its place in the net's order, its two
 /// connection points, its typed values (the model's own strict types) and its display choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -310,7 +310,7 @@ pub struct Core {
     pub colours: Option<m::objects::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
-    /// The core's named points on the cable's references (design 072 §4.4, F4).
+    /// The core's named points on the cable's references.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub through: Vec<m::ConnectionPointId>,
 }
@@ -341,7 +341,7 @@ impl From<Purpose> for m::Purpose {
     }
 }
 
-/// Where a cable core is (owner ruling, 2026-11-18): stored as written.
+/// Where a cable core is: stored as written.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum CorePosition {
@@ -377,7 +377,7 @@ impl From<CorePosition> for m::CorePosition {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
-    /// Design 026: validated on read; a cable's tag, as a device's.
+    /// Validated on read; a cable's tag, as a device's.
     pub tag: m::naming::tag::TagSlot,
     pub description: Option<m::objects::devices::Description>,
     pub properties: BTreeMap<String, String>,
@@ -409,7 +409,7 @@ pub struct ConnectionPointDef {
     pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
-    /// Design 072 F38: how many conductors the point accepts, 1 to 64; left out at two, so a
+    /// How many conductors the point accepts, 1 to 64; left out at two, so a
     /// definition without it is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
     pub accepts: m::Accepts,
@@ -422,28 +422,28 @@ pub struct Definition {
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
     pub connection_points: Vec<ConnectionPointDef>,
-    /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
+    /// Groups of terminal keys joined inside the device. Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<Vec<m::PointKey>>,
-    /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
+    /// Text slots. Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
-    /// The symbol's own defaults (brief 048, FP2; design 072 §7). Left out when empty.
+    /// The symbol's own defaults. Left out when empty.
     #[serde(default, skip_serializing_if = "m::SymbolDefaults::is_empty")]
     pub defaults: m::SymbolDefaults,
-    /// The origin an edited copy came from (brief 048, FP4). Left out when none.
+    /// The origin an edited copy came from. Left out when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
-    /// What a device this symbol starts is (design 072 F15). Left out for `general`.
+    /// What a device this symbol starts is. Left out for `general`.
     #[serde(default, skip_serializing_if = "m::DeviceType::is_general")]
     pub device_type: m::DeviceType,
-    /// A placed copy's part in its device (design 072 F3′). Left out for `other`.
+    /// A placed copy's part in its device. Left out for `other`.
     #[serde(default, skip_serializing_if = "m::PartRole::is_other")]
     pub part_role: m::PartRole,
 }
 
-/// A text slot of a definition (brief 048, FP1).
+/// A text slot of a definition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextSlot {
@@ -478,43 +478,43 @@ pub enum LengthUnit {
     Inch,
 }
 
-/// Project settings. `tag_padding` and `tag_prefixes` (brief 018, owner decision 2026-11-08) are
+/// Project settings. `tag_padding` and `tag_prefixes` are
 /// left out while they hold their defaults, so a project that never changes them is written
 /// exactly as before; a file that sets them is refused by older builds.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectSettings {
     pub length_unit: LengthUnit,
-    /// Brief 066 (F3): written only when the project chose a padding, even one equal to the
+    /// Written only when the project chose a padding, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
-    /// Design 072 F5: keyed by the symbol, `starter:<word>` or `project:<key>`; read strictly.
+    /// Keyed by the symbol, `starter:<word>` or `project:<key>`; read strictly.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tag_prefixes: BTreeMap<m::naming::prefix::PrefixOf, m::naming::prefix::TagPrefix>,
-    /// Design 072 F5: the cable tag prefix, written only when the project chose one.
+    /// The cable tag prefix, written only when the project chose one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cable_prefix: Option<m::naming::prefix::TagPrefix>,
-    /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
+    /// Wire numbering and potential defaults: left out at its default, so a
     /// project that never changes them is written exactly as before.
     #[serde(default, skip_serializing_if = "is_default_wiring")]
     pub wiring: WiringSettings,
-    /// Brief 019 (decision FP2); brief 066 (F3): written only when the project chose a sheet.
+    /// Written only when the project chose a sheet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sheet: Option<SheetSpec>,
-    /// Brief 019 (decision FP2); brief 066 (F3): written only when the project chose a step.
+    /// Written only when the project chose a step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_number_step: Option<u32>,
-    /// Brief 019 (owner answer Q1); brief 066 (F3): written only when the project chose a style,
+    /// Written only when the project chose a style,
     /// `page_zone` included; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_style: Option<ReferenceStyle>,
-    /// Brief 025 (FP3): left out at the default `auto`.
+    /// Left out at the default `auto`.
     #[serde(default, skip_serializing_if = "ContactMirror::is_auto")]
     pub contact_mirror: ContactMirror,
 }
 
-/// Where contact mirror tables go by default (brief 025, FP3).
+/// Where contact mirror tables go by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContactMirror {
@@ -555,30 +555,30 @@ pub struct PotentialDef {
     pub numbered: bool,
 }
 
-/// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
-/// and shortest labelled wire are written only when the project chose them (brief 066, F2).
+/// Wiring settings. `colour_style` is left out at its default; the label height, rule
+/// and shortest labelled wire are written only when the project chose them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WiringSettings {
     pub scheme: Scheme,
-    /// Brief 066 (F3): absent follows the built-in.
+    /// Absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digits: Option<u8>,
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour_style: Option<m::geometry::colour::ColourWords>,
-    /// Brief 066 (F2): written only when the project chose a height, even one equal to the
+    /// Written only when the project chose a height, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_height: Option<f64>,
-    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    /// Left out at its default, like its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_rule: Option<String>,
-    /// Brief 032 (FP-W1); left out at its default, like its neighbours.
+    /// Left out at its default, like its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_min_length: Option<f64>,
-    /// Design 072 F40: what one wire number counts, `net` or `conductor`; left out at `net`.
+    /// What one wire number counts, `net` or `conductor`; left out at `net`.
     #[serde(default, skip_serializing_if = "m::connectivity::wiring::NumberBy::is_net")]
     pub number_by: m::connectivity::wiring::NumberBy,
 }
@@ -679,11 +679,9 @@ pub enum ObjectRef {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
-    /// Brief 019 (decision FP1).
     Page(PageId),
-    /// Brief 019 (decision FP1).
     Project,
-    /// Brief 050a (FP3): the standard's registry values.
+    /// The standard's registry values.
     Standard,
 }
 
@@ -700,7 +698,7 @@ pub enum TxKind {
     Edit,
     Undo(TxId),
     Redo(TxId),
-    /// A merge (brief 020b, FQ1): `{"merge": {"source": hex, "source_head": {seq, chain},
+    /// A merge: `{"merge": {"source": hex, "source_head": {seq, chain},
     /// "ancestor": {branch, seq, chain}}}`. An older reader refuses the unknown kind.
     Merge(MergeKind),
 }
@@ -771,7 +769,6 @@ pub enum Op {
         page: Page,
         index: u64,
     },
-    /// Design 072 §5.1.
     ModifyPage {
         id: PageId,
         before: Page,
@@ -806,13 +803,11 @@ pub enum Op {
         id: DeviceId,
         device: Device,
     },
-    /// Design 072 F13.
     ModifyDevice {
         id: DeviceId,
         before: Device,
         after: Device,
     },
-    /// Brief 048, FP5.
     SetDeviceDefinition {
         id: DeviceId,
         before: Option<DefinitionId>,
@@ -852,7 +847,6 @@ pub enum Op {
         before: Wire,
         after: Wire,
     },
-    /// Design 072 F31.
     AddRoute {
         id: RouteId,
         route: Route,
@@ -900,18 +894,17 @@ pub enum Op {
     NameVersion {
         name: m::PointName,
         at: u64,
-        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        /// A version's description; left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
     UnnameVersion {
         name: m::PointName,
         at: u64,
-        /// A version's description (brief 020, FQ5); left out of the record when absent.
+        /// A version's description; left out of the record when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
-    /// Brief 019 (decision FP3).
     AddFolder {
         id: FolderId,
         folder: Folder,
@@ -927,7 +920,7 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
-    /// Brief 050a (FP3): one whole style record; `null` is no record.
+    /// One whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
         catalogue: m::StyleCatalogue,
@@ -935,17 +928,17 @@ pub enum Op {
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
     },
-    /// Brief 050a (FP3): the standard's header; `null` is no standard (IEC built in).
+    /// The standard's header; `null` is no standard (IEC built in).
     SetStandard {
         before: Option<StandardHeader>,
         after: Option<StandardHeader>,
     },
-    /// Design 072 §5.3: the project's own data, the model's strict record.
+    /// The project's own data, the model's strict record.
     ModifyProject {
         before: m::Project,
         after: m::Project,
     },
-    /// Design 072 §2.6: a link between two devices made or removed, the model's strict record.
+    /// A link between two devices made or removed, the model's strict record.
     AddDeviceLink {
         id: m::LinkId,
         link: m::DeviceLink,
@@ -954,7 +947,7 @@ pub enum Op {
         id: m::LinkId,
         link: m::DeviceLink,
     },
-    /// Design 072 §6.2: a drawing aid made, removed or changed, the model's strict record.
+    /// A drawing aid made, removed or changed, the model's strict record.
     CreateAid {
         id: m::AidId,
         aid: m::Aid,
@@ -968,7 +961,7 @@ pub enum Op {
         before: m::Aid,
         after: m::Aid,
     },
-    /// Design 072 §6.4: a loose part made, removed or changed, the model's strict record.
+    /// A loose part made, removed or changed, the model's strict record.
     CreateLoosePart {
         id: m::LoosePartId,
         part: m::objects::loose_part::LoosePart,
@@ -984,7 +977,7 @@ pub enum Op {
     },
 }
 
-/// Where a style record lives (brief 050a).
+/// Where a style record lives.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleLayer {
@@ -992,10 +985,10 @@ pub enum StyleLayer {
     Project,
 }
 
-/// A style record (brief 050a, design 072 §8): the model's strict record, its typed body as is.
+/// A style record: the model's strict record, its typed body as is.
 pub type StyleRecord = m::StyleRecord;
 
-/// A standard's header (brief 050a, FP1): the model's strict record.
+/// A standard's header: the model's strict record.
 pub type StandardHeader = m::StandardHeader;
 
 fn layer(l: m::StyleLayer) -> StyleLayer {
@@ -1384,8 +1377,8 @@ impl From<&m::TxKind> for TxKind {
 pub(crate) type ConvertError = String;
 
 /// The `kind`s of things that were devices and are not any more, with the read error of each.
-/// Continuations and location boxes are drawing aids (design 072 §6.2), BOM items loose parts
-/// (§6.4); pre-v1, a file with a device of one of these kinds is not read (no conversion).
+/// Continuations and location boxes are drawing aids, BOM items loose parts;
+/// pre-v1, a file with a device of one of these kinds is not read (no conversion).
 const NOT_DEVICE_KINDS: [(&str, &str); 3] = [
     ("continuation", "a device of kind `continuation`: continuations are drawing aids since format change 072 F (no conversion before v1)"),
     ("location_box", "a device of kind `location_box`: location boxes are drawing aids since format change 072 F (no conversion before v1)"),

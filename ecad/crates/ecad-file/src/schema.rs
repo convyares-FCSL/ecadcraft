@@ -1,11 +1,11 @@
-//! The logical schema of container version 2 (EEP-0005 §3): the redb tables, their keys and the
+//! The logical schema of container version 2: the redb tables, their keys and the
 //! records stored in them.
 //!
 //! - Integers in keys are big-endian, so key order is numeric order.
 //! - `meta`, `branches` and `versions` values are JSON (small, read by eye in `ecadinspect`).
 //! - A `transactions` value is `flag ‖ chain value (32 bytes) ‖ body`, the body being the
-//!   transaction's E2 canonical JSON record (codec `json/1`), compressed when smaller (flag, see
-//!   [`super::pack`]). The chain value is E2's `H(record)`, so it is also the next record's `prev`.
+//!   transaction's canonical JSON record (codec `json/1`), compressed when smaller (flag, see
+//!   [`super::pack`]). The chain value is the hash of the record, so it is also the next record's `prev`.
 //! - A `chunks` value is `flag ‖ body`, keyed by [`chunk_hash`] of the uncompressed body.
 //! - An `assets` value is `media type length (u16 BE) ‖ media type ‖ bytes`, keyed by SHA-256 of
 //!   the bytes, stored as they are.
@@ -38,17 +38,17 @@ pub(crate) const ASSETS: TableDefinition<[u8; 32], &[u8]> = TableDefinition::new
 pub(crate) const FORMAT_PROJECT: &str = "ecad-project";
 /// `meta.container_version`.
 pub const CONTAINER_VERSION: u64 = 2;
-/// `meta.codec`: rows and chunks are JSON, compressed (overseer, 2026-11-08; `bin/1` later).
+/// `meta.codec`: rows and chunks are JSON, compressed (`bin/1` later).
 pub const CODEC: &str = "json/1";
 /// The `meta` names this build reads and writes. Any other name is an unknown word (pre-v1, no
-/// forward compatibility; owner, 0.2.3): the project opens read-only, names it and keeps the file
+/// forward compatibility): the project opens read-only, names it and keeps the file
 /// as it is. A name this build needs and cannot read is refused.
 pub const META_NAMES: [&str; 9] = ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "active"];
-/// The default number of transactions between automatic snapshots (overseer, 2026-11-08).
+/// The default number of transactions between automatic snapshots.
 pub const DEFAULT_SNAPSHOT_EVERY: u64 = 2_000;
 /// Smallest and largest snapshot intervals accepted from a file.
 pub const SNAPSHOT_EVERY_RANGE: (u64, u64) = (16, 1_000_000);
-/// The most entries of each undo and redo stack a snapshot records (overseer, 2026-11-09).
+/// The most entries of each undo and redo stack a snapshot records.
 pub const STACK_CAP: u64 = 1_024;
 /// Longest version name accepted from a file.
 pub const MAX_NAME: usize = 4_096;
@@ -98,8 +98,8 @@ impl BranchId {
         Some(BranchId(n.to_be_bytes()))
     }
 
-    /// The branch ID made from `seed` (overseer FQ7: random 128-bit). The caller passes the
-    /// randomness, from `ecad_store::random_u128` (design 065 §3.1: ecad-file reads no OS
+    /// The branch ID made from `seed` (random, 128 bits). The caller passes the
+    /// randomness, from `ecad_store::random_u128` (ecad-file reads no OS
     /// randomness or clock itself).
     pub(crate) fn from_seed(seed: u128) -> Self {
         BranchId(seed.to_be_bytes())
@@ -122,16 +122,16 @@ pub(crate) fn key_seq(key: &[u8; 24]) -> u64 {
     u64::from_be_bytes(s)
 }
 
-/// What a `versions` row is (overseer, 2026-11-08: an explicit kind, never a name prefix; S4: the
+/// What a `versions` row is (an explicit kind, never a name prefix; the
 /// two named kinds are [`PointKind`]s, the same type the document keys its points by).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RowKind {
-    /// A named point: a user's version or an issued revision (brief 019: with release data).
+    /// A named point: a user's version or an issued revision (with release data).
     Point(PointKind),
     /// An automatic snapshot, a loading accelerator only: never shown as a version.
     Auto,
-    /// The merge index (brief 020b, FQ2): one row per live merge into the branch, named by its
+    /// The merge index: one row per live merge into the branch, named by its
     /// `seq` as [`auto_name`]; no chunks.
     Merge,
 }
@@ -215,7 +215,7 @@ impl Point {
     }
 }
 
-/// A branch's status (EEP-0005 §3.2).
+/// A branch's status.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BranchStatus {
@@ -224,7 +224,7 @@ pub enum BranchStatus {
     Archived,
 }
 
-/// Where a merged branch went (FQ3; written by merges, brief 020b).
+/// Where a merged branch went (written by merges).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Merged {
     /// The target branch ID (hex).
@@ -246,7 +246,7 @@ pub struct BranchRecord {
     /// The last `seq` and its chain value.
     pub head: Point,
     pub release_line: bool,
-    /// Where a `merged` branch was merged (brief 020b).
+    /// Where a `merged` branch was merged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merged: Option<Merged>,
     /// When the branch was created (milliseconds since 1970; for display).
@@ -279,7 +279,7 @@ impl BranchRecord {
     }
 }
 
-/// Release data of an issued revision (EEP-0005 §3.4). Unknown fields are refused.
+/// Release data of an issued revision. Unknown fields are refused.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Release {
@@ -303,7 +303,7 @@ pub struct VersionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<Release>,
     /// The top of the undo and redo stacks at `point`: `[seq, transaction ID]`, oldest first,
-    /// at most `stack_cap` entries each (EEP-0005 §5.5 as built, overseer 2026-11-09).
+    /// at most `stack_cap` entries each.
     pub undo: Vec<(u64, String)>,
     pub redo: Vec<(u64, String)>,
     /// How many entries lie below `undo` and `redo`: read from the history, once a session, when
@@ -315,14 +315,14 @@ pub struct VersionRecord {
     /// The cap this row was written with.
     #[serde(default)]
     pub stack_cap: u64,
-    /// The version's description, when it was given one (FQ5).
+    /// The version's description, when it was given one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// A merge index row's facts (kind `merge` only, FQ2).
+    /// A merge index row's facts (kind `merge` only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merge: Option<MergeRow>,
     /// The rule ([`ecad_model::naming::tag::TAG_RULE`]) this snapshot's `model:meta` tag marks were
-    /// computed with (brief 029, FP1). Absent in snapshots written before it: rule 1. Marks of an
+    /// computed with. Absent in snapshots written before it: rule 1. Marks of an
     /// older rule are recomputed from the history on open. Here, not in `model:meta` (which
     /// refuses unknown fields), so builds before it still open files that carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -342,7 +342,7 @@ impl VersionRecord {
     }
 }
 
-/// What a merge index row records (FQ2): the merge's source branch, the source head it merged and
+/// What a merge index row records: the merge's source branch, the source head it merged and
 /// the common ancestor it compared against. The row's `point` is the merge step itself (or the
 /// redo that made it live again).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -386,7 +386,7 @@ impl MergeRow {
     }
 }
 
-/// `meta.cache`: the snapshot policy and, per branch, the latest snapshot (EEP-0005 §3.1).
+/// `meta.cache`: the snapshot policy and, per branch, the latest snapshot.
 /// Unknown fields are refused (pre-v1: a newer file is refused by its format version).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -467,7 +467,7 @@ pub(crate) fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, FileErro
 /// A malformed value, or a media type over 255 bytes.
 pub fn split_asset_value(v: &[u8]) -> Result<(String, &[u8]), FileError> {
     let len = v.get(..2).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or(FileError::AssetRowShort)?;
-    // EEP-0005 read limits: a media type is at most 255 bytes.
+    // Read limit: a media type is at most 255 bytes.
     if len > 255 {
         return Err(FileError::AssetMediaLong);
     }

@@ -1,4 +1,4 @@
-//! Brief 055 (FP1): a frame record's title block body through the op records, a project file's
+//! A frame record's title block body through the op records, a project file's
 //! log and its snapshot chunks; a hostile or newer body still opens.
 
 use std::path::PathBuf;

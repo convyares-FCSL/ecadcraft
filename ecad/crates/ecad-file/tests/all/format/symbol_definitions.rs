@@ -1,6 +1,6 @@
-//! Brief 048 (symbol builder): a definition's text slots, defaults and `derived_from` (FP1, FP2,
-//! FP4) are left out of the record when empty, so existing content hashes hold, and round-trip
-//! when set; the op `SetDeviceDefinition` (FP5) round-trips; a project symbol's content hash is
+//! A definition's text slots, defaults and `derived_from` are left out of the record when empty, so
+//! existing content hashes hold, and round-trip
+//! when set; the op `SetDeviceDefinition` round-trips; a project symbol's content hash is
 //! checked on read like any embedded definition's.
 
 use crate::common::*;

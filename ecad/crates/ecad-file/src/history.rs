@@ -1,11 +1,10 @@
-//! The version and branch graph of a project's history as the History tab shows it (brief 020a,
-//! design 020; moved out of the engine by brief 074): branch rows, graph rows and their lanes,
-//! named points, session groups of the change list, restore plans, and the words and JSON rows
+//! The version and branch graph of a project's history as the History tab shows it: branch rows, graph rows and
+//! their lanes, named points, session groups of the change list, restore plans, and the words and JSON rows
 //! the history commands show.
 //!
 //! - The rows of all branches merge newest first, a page at a time ([`merge_by_time_paged`]); each
 //!   branch's own order is kept and its rows stay above its fork row.
-//! - [`layout`] gives each branch its lane (`main` in lane 0, at most [`MAX_LANES`]), the current
+//! - [`layout`] gives each branch its lane (`main` in the first lane, at most [`MAX_LANES`]), the current
 //!   line and the merge joins.
 //! - Times are shown with an offset the caller passes (`None`: UTC, labelled).
 //!
@@ -18,13 +17,13 @@ use crate::schema::{BranchId, BranchStatus};
 use ecad_model::{Op, Transaction, TxKind};
 use serde_json::{Value, json};
 
-/// Longest version name, in characters (design 020 §2.5.1).
+/// Longest version name, in characters.
 pub const MAX_VERSION_NAME: usize = ecad_model::document::rev::MAX_VERSION_NAME;
 /// The most lanes drawn; a branch beyond them is drawn in the last lane with `»`.
 pub const MAX_LANES: usize = 6;
-/// Nodes read per page of the graph (design 020 §2.2).
+/// Nodes read per page of the graph.
 pub const PAGE: usize = 200;
-/// Steps read per page of the Steps list (design 020 §2.4).
+/// Steps read per page of the Steps list.
 pub const STEPS_PAGE: u64 = 50;
 
 /// What a graph row is.
@@ -36,7 +35,7 @@ pub enum NodeKind {
     Revision,
     /// A version the user created.
     Version,
-    /// A merge into this branch (brief 020b; none are written yet).
+    /// A merge into this branch (none are written yet).
     Merge,
     /// Where a branch starts, when no other node is there.
     Fork,
@@ -93,7 +92,7 @@ pub struct Node {
     /// Branches that start at this node (their lines bend into this row).
     pub forks: Vec<BranchId>,
     /// A merge row: the source branch and the step of it that was merged (its join is drawn
-    /// from there, brief 020b).
+    /// from there).
     pub from: Option<(BranchId, u64)>,
 }
 
@@ -103,7 +102,7 @@ pub struct Graph {
     pub current: Option<BranchId>,
     pub branches: Vec<BranchRow>,
     pub nodes: Vec<Node>,
-    /// More rows than were read (design 020 §2.2: the next page is read on scrolling to the end).
+    /// More rows than were read (the next page is read on scrolling to the end).
     pub more: bool,
 }
 
@@ -130,11 +129,11 @@ pub struct Layout {
     /// Each node's lane.
     pub lanes: Vec<usize>,
     pub spans: Vec<Span>,
-    /// Merge joins: from the source's row and lane to the merge row (brief 020b).
+    /// Merge joins: from the source's row and lane to the merge row.
     pub joins: Vec<Join>,
 }
 
-/// A merge drawn as a join (brief scope 1): a line from the source branch's row at the step that
+/// A merge drawn as a join: a line from the source branch's row at the step that
 /// was merged up to the merge row on the target's lane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Join {
@@ -174,7 +173,7 @@ fn shifted(ms: u64, offset: Option<i64>) -> u64 {
     u64::try_from(ms.max(0)).unwrap_or(0)
 }
 
-/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise (design 020 §2.2), with the zone's offset given (`None`: UTC, labelled).
+/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, with the zone's offset given (`None`: UTC, labelled).
 pub fn short_time_in(ms: Option<u64>, now_ms: Option<u64>, offset: Option<i64>) -> String {
     let Some(ms) = ms else { return String::new() };
     let (y, mo, d, h, mi) = civil(shifted(ms, offset));
@@ -198,7 +197,7 @@ fn civil(ms: u64) -> (i64, u32, u32, u32, u32) {
     (i64::from(t.year()), t.month(), t.day(), t.hour(), t.minute())
 }
 
-/// One row of History's list of changes (brief 043, screen f): a **session group**, a run of
+/// One row of History's list of changes (screen f): a **session group**, a run of
 /// consecutive transactions by one agent, or one transaction (a person's, or an agent's alone).
 ///
 /// # Semantics
@@ -273,7 +272,7 @@ pub fn sessions_split(log: &[Transaction], marked: impl Fn(&ecad_model::TxId) ->
     out
 }
 
-/// Options of the graph (design 020 §2.3: both off by default, per session).
+/// Options of the graph (both off by default, per session).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Show {
     pub autos: bool,
@@ -332,7 +331,7 @@ pub fn merge_by_time_paged(
     (out, more)
 }
 
-/// Lanes for `g` (design 020 §2.2): `main` in lane 0; other branches by their fork rows, bottom
+/// Lanes for `g`: `main` in the first lane; other branches by their fork rows, bottom
 /// up, each in the lowest lane free over its rows (lanes are reused); beyond [`MAX_LANES`], the
 /// last lane with `»`. The branch shown and its ancestry below each fork are the current line.
 pub fn layout(g: &Graph) -> Layout {
@@ -604,7 +603,7 @@ mod tests {
 
     #[test]
     fn times_read_at_the_offset_given_or_in_utc_labelled() {
-        // 2026-11-10 09:12 UTC.
+        // 10 November 2026, 09:12 UTC.
         let ms = 1_794_301_920_000;
         assert_eq!(full_time_in(Some(ms), Some(0)), "2026-11-10 09:12");
         assert_eq!(full_time_in(Some(ms), None), "2026-11-10 09:12 UTC");

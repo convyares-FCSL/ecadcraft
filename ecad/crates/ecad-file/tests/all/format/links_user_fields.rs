@@ -1,4 +1,4 @@
-//! Lane 072 B step 5 (design 072 §2.6, §2.8): device links and user fields are stored and read
+//! Device links and user fields are stored and read
 //! back, through the op records and through the project chunk of a snapshot.
 
 use std::path::PathBuf;

@@ -1,4 +1,4 @@
-//! Merges in a version 2 file (brief 020b, FQ1–FQ3): a merge transaction round-trips through
+//! Merges in a version 2 file: a merge transaction round-trips through
 //! the record, the merge index (`versions` kind `merge`) and the source's `merged` status follow
 //! the merge, its undo and its redo through Save, and a branch's first save writes its first
 //! snapshot (so switching to it costs about an open).

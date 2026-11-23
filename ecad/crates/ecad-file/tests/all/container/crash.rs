@@ -1,4 +1,4 @@
-//! Crash safety of container version 2 (brief 021, EEP-0005 §12): permanent tests, in the slow
+//! Crash safety of container version 2: permanent tests, in the slow
 //! set (run at every QA gate with `--include-ignored`).
 //!
 //! - **Power loss** ([`ecad_store::power`]): a save is cut at a random point of its writes and

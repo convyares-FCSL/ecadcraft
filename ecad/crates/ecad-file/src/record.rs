@@ -1,5 +1,5 @@
 //! Transaction records as JSON values: the flat op form `{"op": name, "v": n, …}`, version
-//! checks and input caps (proposal §20.2, §20.7, §20.11). The project file stores every
+//! checks and input caps. The project file stores every
 //! transaction as one such record, in canonical form ([`crate::canonical`]).
 
 use ecad_model as m;
@@ -19,7 +19,7 @@ use crate::records;
 /// transaction, so a changed format with the old number fails there.
 ///
 /// - 1: the first format.
-/// - 2: S4 (typed revisions, point names), 2026-11.
+/// - 2: typed revisions, point names.
 pub const SCHEMA_VERSION: u64 = 2;
 
 /// Longest string in a record (1 MiB).
@@ -103,7 +103,7 @@ pub(crate) const OP_NAMES: &[&str] = &[
     "ModifyLoosePart",
 ];
 
-/// Why a record could not be decoded (§20.6).
+/// Why a record could not be decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeError {
     /// Not the expected record type (including the reserved `checkpoint`).
@@ -116,7 +116,7 @@ pub enum DecodeError {
     OpVersion(String),
     /// A size or integer limit.
     Limits(String),
-    /// An embedded definition's recorded content hash does not match its content (§20.3).
+    /// An embedded definition's recorded content hash does not match its content.
     ContentHash(String),
 }
 
@@ -220,7 +220,7 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
     Ok(op)
 }
 
-/// A content hash is computed, never trusted from the file (§20.3): an embedded definition's
+/// A content hash is computed, never trusted from the file: an embedded definition's
 /// recorded `origin.content_hash` must equal the hash of its content.
 fn check_content_hash(op: &m::Op) -> Result<(), DecodeError> {
     let (m::Op::EmbedDefinition { id, definition } | m::Op::RemoveDefinition { id, definition }) = op else {
@@ -243,7 +243,7 @@ fn check_op_version(name: &str, version: u64) -> Result<(), FileError> {
     if version == records::OP_VERSION { Ok(()) } else { Err(FileError::OpVersion { name: name.to_string(), version }) }
 }
 
-/// Integer fields of ops must be exact as doubles (§20.10).
+/// Integer fields of ops must be exact as doubles.
 fn check_integers(op: &records::Op) -> Result<(), FileError> {
     let n = match op {
         records::Op::AddPage { index, .. }
@@ -259,7 +259,7 @@ fn check_integers(op: &records::Op) -> Result<(), FileError> {
     if n > MAX_SAFE_INTEGER { Err(FileError::Integer(n)) } else { Ok(()) }
 }
 
-/// Refuse values beyond the caps before typed decoding (§20.11).
+/// Refuse values beyond the caps before typed decoding.
 ///
 /// # Errors
 /// A message naming the cap.
@@ -285,7 +285,7 @@ pub(crate) fn check_limits(v: &Value) -> Result<(), FileError> {
     walk(v, 0)
 }
 
-/// The content hash of a definition (§20.9): SHA-256 over the canonical form of its record with
+/// The content hash of a definition: SHA-256 over the canonical form of its record with
 /// `origin` cleared, because the origin records the hash itself.
 ///
 /// # Errors
