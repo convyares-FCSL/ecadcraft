@@ -8,7 +8,7 @@
 //! Fields: `source` (what the user says the values come from) and [`ROWS`] (the CSV, read by
 //! [`crate::devices::ratings::dataset`]). The rows field may hold up to
 //! [`crate::devices::ratings::dataset::MAX_BYTES`] ([`crate::styles::field_cap`]); it is read here, raw, not through
-//! [`crate::styles::field`] (it holds line breaks, which a text field refuses).
+//! [`ecad_model::registry::styles::field`] (it holds line breaks, which a text field refuses).
 
 use ecad_model::objects::styles::StyleLayer;
 use ecad_model::{Document, StyleRef};
@@ -16,9 +16,10 @@ use ecad_model::{Document, StyleRef};
 use ecad_model::objects::styles::{RatingTable, StyleBody};
 
 use crate::CmdError;
-use crate::defaults::{Kind, Scope, Slot, Value};
 use crate::devices::ratings::dataset::{self, Dataset};
-use crate::styles::{Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Catalogue, Field};
+use ecad_model::registry::{Kind, Scope, Value};
 
 /// The field holding the CSV rows.
 pub const ROWS: &str = "rows";
@@ -32,12 +33,24 @@ fn any_text(_: &str) -> bool {
 }
 
 static FIELDS: [Field; 2] = [
-    Field { key: SOURCE, label: "Source", kind: Kind::Parsed { max_chars: MAX_SOURCE_CHARS, parse: any_text }, slot: Slot::new(), over: None },
+    Field {
+        key: SOURCE,
+        label: "Source",
+        kind: Kind::Parsed { max_chars: MAX_SOURCE_CHARS, parse: any_text },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     // Read raw by `rows_text`; listed so `style` knows the key.
-    Field { key: ROWS, label: "Rows", kind: Kind::Parsed { max_chars: 1, parse: any_text }, slot: Slot::new(), over: None },
+    Field {
+        key: ROWS,
+        label: "Rows",
+        kind: Kind::Parsed { max_chars: 1, parse: any_text },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
 ];
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     vec![&crate::defaults::rating::TABLE]
 }
 
@@ -50,18 +63,30 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &[],
     choices,
     project_field: None,
+    body,
+    typed: None,
+    adjust: None,
 };
+
+/// The value field `key` of a ratingtable style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::RatingTable(t) => get(t, key),
+        _ => None,
+    }
+}
 
 /// The project's chosen rating table, when it names one that exists.
 pub fn chosen(doc: &Document) -> Option<StyleRef> {
-    let r = crate::defaults::resolve(doc, &crate::defaults::rating::TABLE, Scope::project());
-    StyleRef::parse(&r.text()).filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::RatingTable, id))
+    let r = ecad_model::registry::resolve(doc, &crate::defaults::rating::TABLE, Scope::project());
+    StyleRef::parse(&r.text())
+        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id))
 }
 
 /// The stored rows of table `id`: the project's record, else the standard's; within the cap.
 pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(v) = crate::styles::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| match &r.body {
+        if let Some(v) = ecad_model::registry::styles::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| match &r.body {
             StyleBody::RatingTable(t) => t.rows.as_ref(),
             _ => None,
         }) && v.as_str().len() <= dataset::MAX_BYTES
@@ -74,7 +99,9 @@ pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
 
 /// The source text of table `id` (empty when none was given).
 pub fn source(doc: &Document, id: &StyleRef) -> String {
-    crate::styles::field_of(doc, ecad_model::StyleCatalogue::RatingTable, id, SOURCE, None).map(|r| r.text()).unwrap_or_default()
+    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id, SOURCE, None)
+        .map(|r| r.text())
+        .unwrap_or_default()
 }
 
 /// A rating table read: its ID, name, source and rows.
@@ -90,7 +117,7 @@ pub struct Table {
 pub fn read(doc: &Document, id: &StyleRef) -> Table {
     Table {
         id: id.clone(),
-        name: crate::styles::name(doc, ecad_model::StyleCatalogue::RatingTable, id),
+        name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id),
         source: source(doc, id),
         data: dataset::parse(rows_text(doc, id)),
     }

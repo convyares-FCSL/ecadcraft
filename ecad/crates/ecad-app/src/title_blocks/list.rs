@@ -2,8 +2,8 @@
 //! tools; the frames with their thumbnails; **+ Title block** and **Import DXF**; the field
 //! palette, whose rows are dragged onto the block.
 
-use ecad_electrical::styles::Layer;
 use ecad_model::objects::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextDraw, TitleBlockLayout};
+use ecad_model::registry::styles::Layer;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
 use serde_json::json;

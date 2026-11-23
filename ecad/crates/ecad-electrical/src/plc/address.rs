@@ -17,8 +17,9 @@ use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document};
 
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::plc::rack::{self, CardType, Direction, RackRef};
+use ecad_model::registry::Scope;
 
 /// The `setprop` name of a module's pinned start byte.
 pub(crate) const START_KEY: &str = "plc.addr.start";
@@ -46,7 +47,7 @@ impl Style {
         if let Some(s) = crate::plc::edit::station_of(doc, r).and_then(|x| x.address_style) {
             return Style::of_stored(s);
         }
-        match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, Scope::project()).word() {
+        match ecad_model::registry::resolve(doc, &defaults::plc::ADDRESS_STYLE, Scope::project()).word() {
             "iec" => Style::Iec,
             "percent" => Style::Percent,
             "slot" => Style::Slot,
@@ -104,7 +105,7 @@ pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
 pub(crate) fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
     let e = if ty == CardType::Iol { &defaults::plc::IOL_BYTES } else { &defaults::plc::ANALOG_BYTES };
-    let n = defaults::resolve(doc, e, at).number();
+    let n = ecad_model::registry::resolve(doc, e, at).number();
     if n.is_finite() && n >= 1.0 { (n as u32).min(32) } else { 2 }
 }
 
@@ -144,8 +145,8 @@ pub type Member = (DeviceId, CardType, u32, u32);
 /// The blocks of a rack's cards, `members` in slot order.
 pub fn blocks(doc: &Document, r: DeviceId, members: &[Member]) -> BTreeMap<DeviceId, Block> {
     let at = Scope { component: Some(r), ..Scope::project() };
-    let start = |e: &defaults::Entry| {
-        let n = defaults::resolve(doc, e, at).number();
+    let start = |e: &ecad_model::registry::Entry| {
+        let n = ecad_model::registry::resolve(doc, e, at).number();
         if n.is_finite() && n >= 0.0 { (n as u32).min(MAX_BYTE) } else { 0 }
     };
     let (mut cin, mut cout) = (start(&defaults::plc::START_INPUT), start(&defaults::plc::START_OUTPUT));

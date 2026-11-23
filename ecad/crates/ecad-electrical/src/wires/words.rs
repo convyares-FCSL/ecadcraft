@@ -73,11 +73,12 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     // The wire's own values, else its category's (named).
     let draw = crate::styles::wire::wire_draw(doc, w);
     let w = &doc.settings().wiring;
-    let cat = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
-    let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
+    let cat =
+        draw.category.as_ref().map(|id| ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id));
+    let shown = |key: &str, v: &Option<(String, ecad_model::registry::Source)>| {
         let text = |v: &str| if key == ecad_model::connectivity::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
-            (Some((v, crate::defaults::Source::Object)), _) => Some(text(v)),
+            (Some((v, ecad_model::registry::Source::Object)), _) => Some(text(v)),
             (Some((v, _)), Some(n)) => Some(format!("{} ({n})", text(v))),
             (Some((v, _)), None) => Some(text(v)),
             (None, _) => None,

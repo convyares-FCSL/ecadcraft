@@ -5,7 +5,8 @@
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
 use crate::CmdError;
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 ecad_model::word_enum! {
     /// How continuation sheets are numbered.
@@ -42,7 +43,7 @@ const GROUP: &str = "Print";
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
-    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels: SP, project: ProjectSource::Property }
 }
 
 /// How a generated page's continuation sheets are numbered: `sequence` is the
@@ -72,7 +73,7 @@ pub static TAG_DASH: Entry = Entry {
     group: "Tags",
 
     kind: Kind::Choice(ecad_model::naming::tag::DASH_WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -84,7 +85,7 @@ pub static TAG_CASE: Entry = Entry {
     group: "Tags",
 
     kind: Kind::Choice(ecad_model::naming::tag::CASE_WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -97,7 +98,7 @@ pub static REVISION_COLUMNS: Entry = Entry {
     group: "Revisions",
 
     kind: Kind::Parsed { max_chars: crate::releases::revisions::MAX_COLUMNS_CHARS, parse: crate::releases::revisions::columns_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -109,7 +110,7 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     group: "Revisions",
 
     kind: Kind::Length { min: crate::releases::revisions::MIN_WIDTH_MM, max: crate::releases::revisions::MAX_WIDTH_MM },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -121,7 +122,7 @@ pub static REVISION_PENDING: Entry = Entry {
     group: "Revisions",
 
     kind: Kind::Choice(<crate::releases::revisions::PendingStyle as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -132,7 +133,7 @@ pub static REVISION_PENDING: Entry = Entry {
 pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::naming::tag::Style {
     use ecad_model::naming::tag::{Case, MAX_PADDING, Style};
     use ecad_model::naming::words::Word;
-    let word = |e: &Entry| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).word();
+    let word = |e: &Entry| ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).word();
     Style {
         padding: doc.settings().tag_padding().min(MAX_PADDING),
         dash: ecad_model::naming::words::flag(word(&TAG_DASH)).unwrap_or(true),
@@ -149,14 +150,14 @@ pub static COLOUR: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<PrintColour as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
 
 /// Whether `doc` prints mono ([`COLOUR`] is `mono`, the default).
 pub fn mono(doc: &ecad_model::Document) -> bool {
-    crate::defaults::resolve(doc, &COLOUR, crate::defaults::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
+    ecad_model::registry::resolve(doc, &COLOUR, ecad_model::registry::Scope::project()).choice::<PrintColour>() != Some(PrintColour::Colour)
 }
 
 /// A print command's `colour` parameter (`mono`, `colour`, or `screen` as `colour`), or the

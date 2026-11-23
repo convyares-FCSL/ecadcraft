@@ -14,6 +14,7 @@ It has no drawing engine, no UI, no file encoding and no I/O.
 - `connectivity`, `wiring`, `derive`: nets (kept up to date by every op), wire numbers, and results worked out from the document.
 - `merge`, `numbering`, `diff`: merging two documents, renumbering by rule, comparing two states.
 - `book`, `sheet`, `title_block`, `style`, `tag`, `links`, `geom`, `id`: pages and sheets, style catalogues, tags, typed ids, points.
+- `registry`: the defaults registry's mechanism: entries, kinds, levels, resolution, the built-in data sets each crate declares (`registry::data`) and style catalogue fields and built-ins (`registry::styles`).
 - `palette`: the canvas palette: `Color`, the paper and dark sheet colours, markers, wire colours and dashes, line weights in mm, the sheet font's bytes.
 - `dev`: the verify-mode switch (a developer and test hook).
 

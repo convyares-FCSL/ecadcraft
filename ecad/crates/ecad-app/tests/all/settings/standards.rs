@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use ecad_app::settings::{Section, standards};
 use ecad_app::shell::{Workspace, status_bar, top_bar};
-use ecad_electrical::defaults::{self, Scope, Source};
+use ecad_electrical::defaults::{self};
+use ecad_model::registry::{Scope, Source};
 use eframe::egui::Key;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -129,7 +130,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
     let e = defaults::find("symbol.coil.prefix").unwrap();
-    assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
+    assert_eq!(ecad_model::registry::resolve(&d, e, Scope::project()).from, Source::Project);
     h.run_steps(2);
     assert!(h.query_by_label("ecad.standards.chain.project").is_some(), "the project's level, above the built-in");
     assert_eq!(h.query_all_by_label(standards::IN_USE).count(), 1, "one level in use");
@@ -138,7 +139,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     save(&h, &deltas, "042-standards-project.png");
     // Reset: back to the built-in.
     click(&mut h, standards::RESET);
-    assert_eq!(defaults::resolve(&doc(&mut h), e, Scope::project()).from, Source::Builtin);
+    assert_eq!(ecad_model::registry::resolve(&doc(&mut h), e, Scope::project()).from, Source::Builtin);
 }
 
 #[test]
@@ -175,7 +176,7 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     // The row's list sets it on this symbol (one `setdefault`); Reset takes it off.
     let line = ecad_electrical::styles::commands::defaults::line(
         "text.tag.show",
-        defaults::Level::Object,
+        ecad_model::registry::Level::Object,
         ecad_electrical::styles::commands::defaults::Target::Symbol(rep),
         Some("off"),
     );

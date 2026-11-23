@@ -284,28 +284,28 @@ pub(crate) fn box_temps(doc: &Document) -> BTreeMap<ecad_model::AidId, BoxTemp> 
     doc.aids().keys().filter_map(|a| box_temp(doc, *a).map(|b| (*a, b))).collect()
 }
 
-pub(super) fn project_number(doc: &Document, e: &defaults::Entry) -> f64 {
-    defaults::resolve(doc, e, Scope::project()).number()
+pub(super) fn project_number(doc: &Document, e: &ecad_model::registry::Entry) -> f64 {
+    ecad_model::registry::resolve(doc, e, Scope::project()).number()
 }
 
-pub(super) fn project_word(doc: &Document, e: &defaults::Entry) -> &'static str {
-    defaults::resolve(doc, e, Scope::project()).word()
+pub(super) fn project_word(doc: &Document, e: &ecad_model::registry::Entry) -> &'static str {
+    ecad_model::registry::resolve(doc, e, Scope::project()).word()
 }
 
 /// A project default's source.
-pub(super) fn default_source(doc: &Document, e: &defaults::Entry) -> FactorSource {
-    match defaults::resolve(doc, e, Scope::project()).from {
-        defaults::Source::Standard => FactorSource::Standard,
-        defaults::Source::Project => FactorSource::Project,
+pub(super) fn default_source(doc: &Document, e: &ecad_model::registry::Entry) -> FactorSource {
+    match ecad_model::registry::resolve(doc, e, Scope::project()).from {
+        ecad_model::registry::Source::Standard => FactorSource::Standard,
+        ecad_model::registry::Source::Project => FactorSource::Project,
         _ => FactorSource::ProjectDefault,
     }
 }
 
 /// A project default's source in words.
-pub(super) fn default_from(doc: &Document, e: &defaults::Entry) -> &'static str {
-    match defaults::resolve(doc, e, Scope::project()).from {
-        defaults::Source::Standard => "standard",
-        defaults::Source::Project => "project",
+pub(super) fn default_from(doc: &Document, e: &ecad_model::registry::Entry) -> &'static str {
+    match ecad_model::registry::resolve(doc, e, Scope::project()).from {
+        ecad_model::registry::Source::Standard => "standard",
+        ecad_model::registry::Source::Project => "project",
         _ => "project default",
     }
 }
@@ -325,7 +325,7 @@ pub struct Sheet {
 }
 
 pub(super) fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: Option<&StyleRef>) -> Sheet {
-    let f = |k: &str| id.and_then(|id| styles::field_of(doc, catalogue, id, k, None));
+    let f = |k: &str| id.and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(catalogue), id, k, None));
     Sheet {
         rated: f("rated_current").and_then(|r| crate::devices::ratings::parse::current(&r.text())),
         rated_at: f("rated_at").map_or(30.0, |r| r.number()),
@@ -415,7 +415,9 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
             let sh = sheet(doc, ecad_model::StyleCatalogue::Cable, ty.as_ref());
             let from_type = ty
                 .as_ref()
-                .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
+                .and_then(|id| {
+                    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id, "size", None)
+                })
                 .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
             let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::cores::notation_size));
             (sh, size, ty.is_none())
@@ -457,7 +459,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
         match inp.bundling {
             Some(b) => Some((b, FactorSource::SetHere)),
             None => {
-                let r = defaults::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
+                let r = ecad_model::registry::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
                 crate::devices::ratings::parse::bundling(&r.text()).map(|b| (b, default_source(doc, &defaults::rating::BUNDLING)))
             }
         }
@@ -512,11 +514,17 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
             None => {
                 let why = match s {
                     RatedSubject::Wire(c) => match ctx.draws.category(doc, c).0 {
-                        Some(id) => format!("category {} has no rated current", styles::name(doc, ecad_model::StyleCatalogue::Wire, &id)),
+                        Some(id) => format!(
+                            "category {} has no rated current",
+                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &id)
+                        ),
                         None => "no wire category".into(),
                     },
                     RatedSubject::Cable(k) => match cable::of(doc, k) {
-                        Some(id) => format!("cable type {} has no rated current", styles::name(doc, ecad_model::StyleCatalogue::Cable, &id)),
+                        Some(id) => format!(
+                            "cable type {} has no rated current",
+                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), &id)
+                        ),
                         None => "no cable type".into(),
                     },
                 };

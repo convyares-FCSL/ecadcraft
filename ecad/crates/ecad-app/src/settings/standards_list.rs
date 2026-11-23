@@ -9,8 +9,9 @@
 //! patched and tinted. Any other commit: nothing. A full rebuild only on first show or a new
 //! project.
 
-use ecad_electrical::defaults::{self, Entry, Source};
+use ecad_electrical::defaults::{self};
 use ecad_model::Document;
+use ecad_model::registry::{Entry, Source};
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
@@ -44,10 +45,10 @@ pub(crate) fn source_tone(s: Source) -> Tone {
 }
 
 /// A value as shown: a length with its unit.
-pub fn value_text(e: &Entry, r: &defaults::Resolved<'_>) -> String {
+pub fn value_text(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
     match r.value {
-        defaults::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
-        defaults::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
+        ecad_model::registry::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
+        ecad_model::registry::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
         _ if e.key.ends_with(".prefix") => ecad_electrical::input::tag_prefix_shown(&r.text()),
         _ => r.text(),
     }
@@ -68,7 +69,7 @@ impl PartialEq for Row {
 }
 
 fn row(doc: &Document, entry: &'static Entry) -> Row {
-    let r = defaults::resolve(doc, entry, defaults::Scope::project());
+    let r = ecad_model::registry::resolve(doc, entry, ecad_model::registry::Scope::project());
     Row { entry, value: value_text(entry, &r), from: r.from }
 }
 

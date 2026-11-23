@@ -13,11 +13,12 @@ use ecad_model::{
 };
 
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::symbols::{Side, Starter};
 use ecad_model::objects::devices::ConnectorFamily;
+use ecad_model::registry::Scope;
 
 /// The refusal of a `connector` call with nowhere to place.
 pub(crate) const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pins.";
@@ -67,7 +68,7 @@ pub enum NamesInput {
 /// The registry asks for a list, or the names do not read.
 pub fn names(doc: &Document, names: Option<&NamesInput>) -> Result<Names, CmdError> {
     match names {
-        None => match defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word() {
+        None => match ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word() {
             "letters" => Ok(Names::Letters),
             "list" => Err(CmdError::refused("Give the pin names as a list: names [\"L\",\"N\",\"PE\"].")),
             _ => Ok(Names::Numbers),
@@ -94,7 +95,7 @@ pub fn names(doc: &Document, names: Option<&NamesInput>) -> Result<Names, CmdErr
 /// A word that is not socket, plug or both.
 pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
     let w = match halves {
-        None => defaults::resolve(doc, &defaults::connectors::MAKER_HALVES, Scope::project()).word().to_string(),
+        None => ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_HALVES, Scope::project()).word().to_string(),
         Some(w) => w.trim().to_ascii_lowercase(),
     };
     match w.as_str() {
@@ -111,7 +112,7 @@ pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
 /// A word that names no family.
 pub fn family(doc: &Document, family: Option<&str>) -> Result<ConnectorFamily, CmdError> {
     match family {
-        None => Ok(ConnectorFamily::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
+        None => Ok(ConnectorFamily::of_typed(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
             .unwrap_or(ConnectorFamily::Plain)),
         Some(w) => ConnectorFamily::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
     }
@@ -138,7 +139,7 @@ pub fn pins(pins: Option<u64>) -> Result<Option<usize>, CmdError> {
 /// A word that is not row or pins.
 pub fn pins_layout(doc: &Document, layout: Option<&str>) -> Result<bool, CmdError> {
     let w = match layout {
-        None => defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word().to_string(),
+        None => ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word().to_string(),
         Some(w) => w.trim().to_ascii_lowercase(),
     };
     match w.as_str() {
@@ -150,7 +151,7 @@ pub fn pins_layout(doc: &Document, layout: Option<&str>) -> Result<bool, CmdErro
 
 /// The registry's first pin count.
 fn maker_pins(doc: &Document) -> usize {
-    let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
+    let n = ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
     if n.is_finite() && n >= 1.0 && n <= cn::MAX_PINS as f64 { n as usize } else { 4 }
 }
 

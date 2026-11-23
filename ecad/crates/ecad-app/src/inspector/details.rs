@@ -101,7 +101,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             }),
             _ => None,
         });
-        let scope = ecad_electrical::defaults::Scope::symbol(doc, rep);
+        let scope = ecad_model::registry::Scope::symbol(doc, rep);
         d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_electrical::styles::text_style::text_style_at(doc, *k, scope)))).collect();
     }
     let (drawn, drawn_count) = crate::references::drawn::rows(doc, c, rep, &dev, &mut places, deps);

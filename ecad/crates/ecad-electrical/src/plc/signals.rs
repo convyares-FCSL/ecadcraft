@@ -24,9 +24,10 @@ use ecad_model::{DeviceId, Document, Op};
 use serde_json::{Value, json};
 
 use crate::defaults::plc::SafeState;
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::plc::iolist::Target;
 use crate::plc::rack::{self, CardType, RackRef};
+use ecad_model::registry::Scope;
 
 /// The field names of a channel's tag and safe state (`plc.ch.<i>.tag`, `plc.ch.<i>.safe`).
 pub const TAG: &str = "tag";
@@ -61,7 +62,7 @@ pub(crate) fn has_safe(t: CardType) -> bool {
 }
 
 /// The registry entry of a card type's safe state.
-pub(crate) fn safe_entry(t: CardType) -> Option<&'static defaults::Entry> {
+pub(crate) fn safe_entry(t: CardType) -> Option<&'static ecad_model::registry::Entry> {
     match t {
         CardType::Dq => Some(&defaults::plc::SAFE_DQ),
         CardType::Ao | CardType::Iol => Some(&defaults::plc::SAFE_AO),
@@ -112,7 +113,7 @@ pub fn safe_value(t: Option<CardType>, value: Option<&str>) -> Result<Option<Str
 pub fn safe_default(doc: &Document, c: DeviceId, t: CardType) -> Option<String> {
     let e = safe_entry(t)?;
     let at = Scope { component: Some(c), ..Scope::project() };
-    Some(defaults::resolve(doc, e, at).text()).filter(|w| !w.is_empty())
+    Some(ecad_model::registry::resolve(doc, e, at).text()).filter(|w| !w.is_empty())
 }
 
 /// A safe value in words: `Off`, `On`, `Hold`, `Min`, `Max`, or the value as stored.

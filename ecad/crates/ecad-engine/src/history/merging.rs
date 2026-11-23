@@ -358,7 +358,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             if let Some(sid) = ecad_model::StyleRef::parse(id).filter(ecad_model::StyleRef::is_builtin)
                 && let Some(cat) = <ecad_model::StyleCatalogue as ecad_model::Word>::parse(cat)
             {
-                let name = ecad_electrical::styles::name(target, cat, &sid);
+                let name = ecad_model::registry::styles::name(target, ecad_electrical::styles::catalogue(cat), &sid);
                 c.what = format!("{} \"{name}\" · changed on both", ecad_electrical::styles::catalogue(cat).one);
             }
         }

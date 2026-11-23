@@ -80,8 +80,7 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, draw: TextDraw) -> V
         return Vec::new();
     }
     let inset_mm =
-        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::print::MISSING_BOX_INSET, ecad_electrical::defaults::Scope::project())
-            .number();
+        ecad_model::registry::resolve(doc, &ecad_electrical::defaults::print::MISSING_BOX_INSET, ecad_model::registry::Scope::project()).number();
     let mut d = Draw { k, x0: 0.0, out: Vec::new() };
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
     let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);

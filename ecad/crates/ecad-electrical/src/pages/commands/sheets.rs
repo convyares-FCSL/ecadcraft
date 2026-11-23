@@ -353,7 +353,7 @@ pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option
         Some(t) => Some(
             strip_pages::STYLE
                 .parse(t)
-                .and_then(|v| if let crate::defaults::Value::Choice(w) = v { Some(w.to_string()) } else { None })
+                .and_then(|v| if let ecad_model::registry::Value::Choice(w) = v { Some(w.to_string()) } else { None })
                 .ok_or(CmdError::input("`style` is \"table\" or \"graphic\""))?,
         ),
         None => None,
@@ -387,7 +387,7 @@ pub fn new_page_type(
     let page_type = crate::pages::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type.
     let title = match (&page_type, kind.generated) {
-        (Some(t), None) => Some(crate::styles::name(doc, ecad_model::StyleCatalogue::Page, t)),
+        (Some(t), None) => Some(ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), t)),
         _ => None,
     };
     Ok((page_type, title))
@@ -1331,5 +1331,5 @@ pub(crate) fn project_json(doc: &Document) -> Value {
 /// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
 /// or the built-in).
 pub fn wire_label_height(doc: &ecad_model::Document) -> f64 {
-    crate::defaults::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, crate::defaults::Scope::project()).number()
+    ecad_model::registry::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, ecad_model::registry::Scope::project()).number()
 }

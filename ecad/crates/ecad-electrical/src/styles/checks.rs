@@ -82,14 +82,14 @@ fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
 
 /// Whether a stored choice is dangling.
 fn dangling(doc: &Document, catalogue: ecad_model::StyleCatalogue, value: &str) -> bool {
-    StyleRef::parse(value).is_none_or(|id| !crate::styles::exists(doc, catalogue, &id))
+    StyleRef::parse(value).is_none_or(|id| !ecad_model::registry::styles::exists(doc, crate::styles::catalogue(catalogue), &id))
 }
 
 /// `Not found: drawn as Tag` words for a dangling choice of `key`.
 fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
     let next = crate::defaults::find(key).and_then(|e| {
-        let id = crate::styles::chosen(doc, e, crate::defaults::Scope::project());
-        catalogue_of(key).map(|c| crate::styles::name(doc, c, &id))
+        let id = ecad_model::registry::styles::chosen(doc, e, ecad_model::registry::Scope::project());
+        catalogue_of(key).map(|c| ecad_model::registry::styles::name(doc, crate::styles::catalogue(c), &id))
     });
     let one = catalogue_of(key).map_or("Style", |c| crate::styles::catalogue(c).one);
     match next {
@@ -122,7 +122,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     // One drawing order for the rows' go-to places: the book is built at most once.
     let mut places = ecad_model::naming::numbering::Places::new(doc);
     // A built-in default that failed to load. Never in a tested build.
-    if let Some(first) = crate::defaults::data::builtin_problems().first() {
+    if let Some(first) = crate::defaults::data::DATA.problems().first() {
         out.push(Check {
             kind: Kind::DefaultsDamaged,
             page: None,
@@ -134,7 +134,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     }
     // Two categories default for one potential.
     for (pot, ids) in &crate::styles::wire::WireDraws::new(doc).twice {
-        let names: Vec<String> = ids.iter().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id)).collect();
+        let names: Vec<String> =
+            ids.iter().map(|id| ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id)).collect();
         let shown = doc.settings().wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {
             kind: Kind::CategoryPotentialTwice,
@@ -146,8 +147,8 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         });
     }
     // A category on the BOM (a part number) with no allowance.
-    for row in crate::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
-        let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None);
+    for row in ecad_model::registry::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
+        let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &row.id, k, None);
         let has_part = f("part_number").is_some_and(|r| crate::styles::wire::filled(&r).is_some());
         if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
             out.push(Check {

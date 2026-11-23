@@ -13,7 +13,8 @@
 //!
 //! Families, sizes and side keys are catalogue code ([`crate::connectors`], [`crate::symbols`]).
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 ecad_model::word_enum! {
     /// Which half of a connector a symbol draws by default.
@@ -86,7 +87,7 @@ pub static SEPARATOR: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 3, parse: separator_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -97,7 +98,7 @@ pub static SIDE_SOCKET: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -108,7 +109,7 @@ pub static SIDE_PLUG: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -119,7 +120,7 @@ pub static DESCRIPTION: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Text { max_chars: 64 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -133,7 +134,7 @@ macro_rules! descriptions {
                 group: GROUP,
 
                 kind: Kind::Parsed { max_chars: 64, parse: description_ok },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Property,
             };
@@ -165,7 +166,7 @@ pub static MAKER_HALVES: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<ConnectorSide as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -176,7 +177,7 @@ pub static MAKER_FAMILY: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<MakerShape as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -187,7 +188,7 @@ pub static MAKER_PINS: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 1.0, max: 64.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -198,7 +199,7 @@ pub static MAKER_NAMES: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<PinNaming as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -209,7 +210,7 @@ pub static MAKER_LAYOUT: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<MakerLayout as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -261,7 +262,7 @@ pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::defaults::Value;
+    use ecad_model::registry::Value;
 
     #[test]
     fn entries_parse_as_designed() {

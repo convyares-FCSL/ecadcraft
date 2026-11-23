@@ -93,7 +93,7 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
             for (id, r) in records.iter().take(ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE) {
                 // Only a frame style's body holds a title block.
                 let Some(l) = r.title_block() else { continue };
-                let name = crate::styles::name(doc, *cat, id);
+                let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(*cat), id);
                 // A size past the bounds is drawn with the built-in's
                 // keep-out strip; say so.
                 if !l.size_ok() {
@@ -137,7 +137,7 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
             "Page {} is {}, but its frame {} is {}; the frame wins.",
             ecad_model::document::book::page_number(doc, *page),
             crate::title_blocks::sheet_name(&own),
-            crate::styles::name(doc, sheet::FRAME_CATALOGUE, &id),
+            ecad_model::registry::styles::name(doc, crate::styles::catalogue(sheet::FRAME_CATALOGUE), &id),
             crate::title_blocks::sheet_name(&framed)
         );
         out.push(Check {

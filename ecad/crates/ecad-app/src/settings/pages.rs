@@ -125,7 +125,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
                 let look = ptype::draw_of(doc, &r.id);
                 TypeRow {
                     subtitle: ptype::subtitle(&r.id),
-                    own: r.layer != ecad_electrical::styles::Layer::Builtin,
+                    own: r.layer != ecad_model::registry::styles::Layer::Builtin,
                     overridden: r.overridden,
                     shown: look.sheet.unwrap_or(project_sheet),
                     sheet: look.sheet,
@@ -141,7 +141,8 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
                 }
             })
             .collect();
-        let frames = ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
+        let frames =
+            ecad_model::registry::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
         Snapshot { head: p.ledger.head(), rows, project_sheet, frames }
     })
     .ok()

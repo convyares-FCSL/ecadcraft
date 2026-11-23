@@ -55,9 +55,10 @@ use ecad_model::objects::styles::wire::{ConductorClass, Material};
 use ecad_model::objects::wire::CircuitInputs;
 use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
-use crate::defaults::{self, Scope};
+use crate::defaults;
 use crate::devices::ratings::dataset::{Dataset, Insulation};
-use crate::styles::{self, cable, ratingtable, wire};
+use crate::styles::{cable, ratingtable, wire};
+use ecad_model::registry::Scope;
 use load::{Load, LoadFrom, LoadSource, TypedLoads};
 use trace::{Found, How};
 
@@ -68,8 +69,9 @@ pub mod fields {
     // slot is filled once there; the constants themselves are never read directly.
     #![allow(clippy::declare_interior_mutable_const, reason = "copied into each catalogue's static field list")]
 
-    use crate::defaults::{Kind, Slot};
-    use crate::styles::Field;
+    use ecad_model::registry::Kind;
+    use ecad_model::registry::data::Slot;
+    use ecad_model::registry::styles::Field;
 
     fn is_current(s: &str) -> bool {
         crate::devices::ratings::parse::current(s).is_some()
@@ -83,32 +85,42 @@ pub mod fields {
         key: "rated_current",
         label: "Rated current (A)",
         kind: Kind::Parsed { max_chars: 32, parse: is_current },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     };
-    pub const RATED_AT: Field =
-        Field { key: "rated_at", label: "Rated at (\u{b0}C)", kind: Kind::Number { min: -40.0, max: 90.0 }, slot: Slot::new(), over: None };
+    pub const RATED_AT: Field = Field {
+        key: "rated_at",
+        label: "Rated at (\u{b0}C)",
+        kind: Kind::Number { min: -40.0, max: 90.0 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    };
     pub const MAX_TEMPERATURE: Field = Field {
         key: "max_temperature",
         label: "Max conductor temperature (\u{b0}C)",
         kind: Kind::Number { min: 50.0, max: 250.0 },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     };
-    pub const MATERIAL: Field =
-        Field { key: "material", label: "Material", kind: Kind::Choice(<super::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
+    pub const MATERIAL: Field = Field {
+        key: "material",
+        label: "Material",
+        kind: Kind::Choice(<super::Material as ecad_model::Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    };
     pub const CONDUCTOR_CLASS: Field = Field {
         key: "conductor_class",
         label: "Conductor class",
         kind: Kind::Choice(<super::ConductorClass as ecad_model::Word>::WORDS),
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     };
     pub const CROSS_SECTION: Field = Field {
         key: "cross_section",
         label: "Cross-section (mm\u{b2})",
         kind: Kind::Parsed { max_chars: 32, parse: is_size },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     };
 }

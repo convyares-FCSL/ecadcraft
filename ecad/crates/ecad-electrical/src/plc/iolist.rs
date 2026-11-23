@@ -336,7 +336,7 @@ pub fn heading(card: &CardData, rows: &[Row], plc: &Plc) -> String {
 /// The page's lines: per card a heading, then its rows (`Slot | Card | Ch | Address | Tag |
 /// Description | Safe | Pins | Wired to | Wire | Place`).
 pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
-    let spare = crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text();
+    let spare = ecad_model::registry::resolve(doc, &crate::defaults::plc::SPARE_TEXT, ecad_model::registry::Scope::project()).text();
     let mut out = Vec::new();
     for card in cards_in_order(plc) {
         let rows = rows_of(doc, plc, card);

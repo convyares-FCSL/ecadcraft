@@ -350,7 +350,7 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         if StyleRef::parse(value).is_some_and(|id| ecad_model::document::sheet::page_type_exists(doc, &id)) {
             continue;
         }
-        let used = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, &ptype::type_of(doc, p));
+        let used = ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), &ptype::type_of(doc, p));
         let which = format!("Page {}: page type {value:?} not found; drawn as {used}", book::page_number(doc, p));
         let mut r = row(Kind::PageTypeUnknown, Some(p), which);
         r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));

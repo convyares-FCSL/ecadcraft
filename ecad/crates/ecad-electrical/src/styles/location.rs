@@ -11,35 +11,48 @@ use ecad_model::objects::styles::text::StyleColour;
 use ecad_model::{AidId, Document, StyleRef, Word};
 
 use crate::CmdError;
-use crate::defaults::{Kind, Scope, Slot, Value};
-use crate::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Scope, Value};
 
 /// The line types a box may take, as the field stores them.
 pub(crate) const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
 
 static FIELDS: [Field; 5] = [
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(), over: None },
-    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(LINE_TYPES), slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "line_weight",
+        label: "Line weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     Field {
         key: "line_colour",
         label: "Line colour",
         kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
-    Field { key: "label_style", label: "Label style", kind: Kind::Style(ecad_model::StyleCatalogue::Text), slot: Slot::new(), over: None },
+    Field {
+        key: "label_style",
+        label: "Label style",
+        kind: Kind::Style(&crate::styles::text::CATALOGUE),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     Field {
         key: "fill",
         label: "Fill (reserved)",
         kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
 ];
 
-static BUILTINS: [Builtin; 1] = [Builtin { id: "box", name: "Location box", slot: Slot::new() }];
+static BUILTINS: [Builtin; 1] = [Builtin { id: "box", name: "Location box", slot: Slot::new(&crate::defaults::data::DATA) }];
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     vec![&crate::defaults::styles::LOCATION]
 }
 
@@ -52,7 +65,21 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &BUILTINS,
     choices,
     project_field: None,
+    body,
+    typed: None,
+    adjust: None,
 };
+
+/// The value field `key` of a location style record holds; a label style naming no text style
+/// counts as absent.
+fn body<'a>(doc: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Location(l) => {
+            get(l, key).filter(|v| v.style().is_none_or(|id| ecad_model::registry::styles::exists(doc, &crate::styles::text::CATALOGUE, &id)))
+        }
+        _ => None,
+    }
+}
 
 /// A location box's resolved look.
 #[derive(Debug, Clone, PartialEq)]
@@ -85,19 +112,19 @@ pub fn box_draw(doc: &Document, a: AidId) -> BoxDraw {
 /// The location style box `a` is drawn in: its own when it names one that exists, else the
 /// project's (the standard's, the built-in `box`).
 pub(crate) fn box_style(doc: &Document, a: AidId) -> StyleRef {
-    own_style(doc, a).cloned().unwrap_or_else(|| crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
+    own_style(doc, a).cloned().unwrap_or_else(|| ecad_model::registry::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
 }
 
 /// Box `a`'s own location style, when it names one that exists (a dangling one falls through).
 pub(crate) fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
     crate::locations::box_values(doc, a)
         .and_then(|b| b.style.as_ref())
-        .filter(|s| crate::styles::exists(doc, ecad_model::StyleCatalogue::Location, s))
+        .filter(|s| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Location), s))
 }
 
 /// The look of location style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
-    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Location, id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Location), id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;
@@ -109,7 +136,7 @@ pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
 /// Whether the project's location style labels with text style `id` (a change of that text style
 /// then reaches every box).
 pub(crate) fn labels_with(doc: &Document, id: &StyleRef) -> bool {
-    let project = crate::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
+    let project = ecad_model::registry::styles::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
     draw_of(doc, &project).label_style == *id
 }
 

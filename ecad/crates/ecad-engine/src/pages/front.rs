@@ -16,7 +16,7 @@ const OVERLAY: &str = crate::convert::MARKER_LAYER;
 /// The cover's lines as fractions of the `Cover` text style's height: block titles, body text, column
 /// heads, the customer line. The factors are `[layout]` data in `pages.toml`.
 fn cover_factor(key: &str) -> f64 {
-    ecad_electrical::defaults::data::layout(key)
+    ecad_electrical::defaults::data::DATA.layout(key)
 }
 /// `ecad.front.derived` and `ecad.front.typed` in ACI (blue, orange).
 const DERIVED_ACI: u8 = 5;
@@ -208,8 +208,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
 
     // Heading and customer line, centred.
     let title_text = prop(ecad_electrical::pages::frames::TITLE).unwrap_or_default();
-    let heading =
-        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::pages::HEADING, ecad_electrical::defaults::Scope::project()).text();
+    let heading = ecad_model::registry::resolve(doc, &ecad_electrical::defaults::pages::HEADING, ecad_model::registry::Scope::project()).text();
     let heading = heading.trim();
     let heading = if heading.eq_ignore_ascii_case(ecad_electrical::defaults::pages::NO_HEADING) { "" } else { heading };
     let line = match (title_text.is_empty(), heading.is_empty()) {

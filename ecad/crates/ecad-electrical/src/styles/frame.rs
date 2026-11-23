@@ -15,8 +15,9 @@ use ecad_model::objects::styles::text::StyleColour;
 use ecad_model::{Document, PageId, StyleRef, Word};
 
 use crate::CmdError;
-use crate::defaults::{Kind, Slot, Value};
-use crate::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Value};
 
 /// The `sheet` field's word for "the page's own sheet".
 pub(crate) const PAGE_SHEET: &str = "page";
@@ -30,28 +31,58 @@ fn margins_ok(s: &str) -> bool {
 }
 
 static FIELDS: [Field; 8] = [
-    Field { key: "border_weight", label: "Border weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "inner_weight", label: "Inner line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
+    Field {
+        key: "border_weight",
+        label: "Border weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "inner_weight",
+        label: "Inner line weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     Field {
         key: "line_colour",
         label: "Line colour",
         kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
-    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(), over: None },
+    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
     // The sheet the frame is drawn for (`page`: the page's own), its margins,
     // its centre marks and where its block sits. The old `title_block` choice is retired: a
     // stored value is listed as unknown.
-    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, slot: Slot::new(), over: None },
-    Field { key: "margins", label: "Margins", kind: Kind::Parsed { max_chars: 48, parse: margins_ok }, slot: Slot::new(), over: None },
-    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Flag, slot: Slot::new(), over: None },
-    Field { key: "block", label: "Block position", kind: Kind::Choice(<BlockAt as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
+    Field {
+        key: "sheet",
+        label: "Sheet",
+        kind: Kind::Parsed { max_chars: 48, parse: sheet_ok },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "margins",
+        label: "Margins",
+        kind: Kind::Parsed { max_chars: 48, parse: margins_ok },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "block",
+        label: "Block position",
+        kind: Kind::Choice(<BlockAt as ecad_model::Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
 ];
 
-static BUILTINS: [Builtin; 1] = [Builtin { id: "sheet", name: "Schematic sheet", slot: Slot::new() }];
+static BUILTINS: [Builtin; 1] = [Builtin { id: "sheet", name: "Schematic sheet", slot: Slot::new(&crate::defaults::data::DATA) }];
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     vec![&crate::defaults::styles::FRAME]
 }
 
@@ -64,7 +95,18 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &BUILTINS,
     choices,
     project_field: None,
+    body,
+    typed: None,
+    adjust: None,
 };
+
+/// The value field `key` of a frame style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Frame(t) => get(t, key),
+        _ => None,
+    }
+}
 
 pub use ecad_model::objects::styles::frame::BlockAt;
 
@@ -118,7 +160,7 @@ pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
 
 /// The look of frame style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
-    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Frame, id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), id, k, None);
     FrameDraw {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),

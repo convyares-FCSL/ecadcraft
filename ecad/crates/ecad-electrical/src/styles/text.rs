@@ -13,27 +13,40 @@ use ecad_model::objects::styles::text::{Font, StyleColour, TextStyle};
 use ecad_model::{Document, StyleRef, Word};
 
 use crate::CmdError;
-use crate::defaults::{Kind, Slot, Value};
-use crate::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Value};
 
 /// A font field's value meaning "the project font" (`text.font`).
 pub(crate) const PROJECT_FONT: &str = "project";
 
 static FIELDS: [Field; 4] = [
-    Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, slot: Slot::new(), over: None },
-    Field { key: "height", label: "Cap height", kind: Kind::Length { min: 0.5, max: 10.0 }, slot: Slot::new(), over: None },
+    Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "height",
+        label: "Cap height",
+        kind: Kind::Length { min: 0.5, max: 10.0 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     Field {
         key: "weight",
         label: "Weight",
         kind: Kind::Choice(<crate::styles::text_style::Weight as ecad_model::Word>::WORDS),
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
-    Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour }, slot: Slot::new(), over: None },
+    Field {
+        key: "colour",
+        label: "Colour",
+        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
 ];
 
 const fn style(id: &'static str, name: &'static str) -> Builtin {
-    Builtin { id, name, slot: Slot::new() }
+    Builtin { id, name, slot: Slot::new(&crate::defaults::data::DATA) }
 }
 
 /// Each kind's cap height and weight.
@@ -74,7 +87,7 @@ fn project_field<'a>(doc: &'a Document, id: &StyleRef, field: &str) -> Option<Va
     }
 }
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     crate::defaults::styles::TEXT.to_vec()
 }
 
@@ -87,7 +100,27 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &BUILTINS,
     choices,
     project_field: Some(project_field),
+    body,
+    typed: None,
+    adjust: Some(wire_label_height),
 };
+
+/// The value field `key` of a text style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Text(t) => get(t, key),
+        _ => None,
+    }
+}
+
+/// The `wire_label` text style's height is the entry `text.wire_label.height` (one value, one
+/// place).
+fn wire_label_height(b: &ecad_model::registry::styles::Builtin, out: &mut Vec<(&'static str, Value<'static>)>) {
+    if b.id == "wire_label" {
+        out.retain(|(k, _)| *k != "height");
+        out.push(("height", crate::defaults::text::WIRE_LABEL_HEIGHT.builtin()));
+    }
+}
 
 /// What a text kind's choice styles, for counting users.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

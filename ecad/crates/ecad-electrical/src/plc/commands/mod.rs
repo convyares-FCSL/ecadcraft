@@ -694,7 +694,7 @@ const MAX_AFTER: usize = 64;
 /// `plc.page.title` filled in for `card`: `{tag}`, `{type}`, `{channels}`, `{rack}`, `{slot}`,
 /// `{slot:02}`.
 pub fn title(doc: &Document, card: DeviceId, ty: CardType) -> String {
-    let pattern = defaults::resolve(doc, &defaults::plc::PAGE_TITLE, defaults::Scope::project()).text();
+    let pattern = ecad_model::registry::resolve(doc, &defaults::plc::PAGE_TITLE, ecad_model::registry::Scope::project()).text();
     let (rack, slot) = match (rack::rack_ref(doc, card), rack::slot_of(doc, card)) {
         (RackRef::Rack(r), s) => (crate::devices::tags::tag_words(doc, r), s),
         (_, s) => (String::new(), s),

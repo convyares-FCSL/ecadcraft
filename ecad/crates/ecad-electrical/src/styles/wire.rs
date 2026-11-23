@@ -27,8 +27,9 @@ use ecad_model::{Document, StyleRef, WireId, Word};
 use serde::Deserialize;
 
 use crate::CmdError;
-use crate::defaults::{Kind, Resolved, Scope, Slot, Source, Value};
-use crate::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Resolved, Scope, Source, Value};
 
 /// The registry's built-in type choice: no type.
 pub const NONE: &str = "none";
@@ -55,18 +56,66 @@ const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
 /// The fields of a wire type, for the editor and the `style` command.
 pub static FIELDS: [Field; 17] = [
-    Field { key: "potential", label: "Potential", kind: TEXT24, slot: Slot::new(), over: None },
-    Field { key: "size", label: "Size", kind: Kind::Parsed { max_chars: 24, parse: is_size }, slot: Slot::new(), over: None },
-    Field { key: "colours", label: "Colours", kind: Kind::Parsed { max_chars: 24, parse: is_colours }, slot: Slot::new(), over: None },
-    Field { key: "insulation", label: "Insulation", kind: Kind::Choice(<Insulation as Word>::WORDS), slot: Slot::new(), over: None },
-    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as Word>::WORDS), slot: Slot::new(), over: None },
-    Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(<RouteLabels as Word>::WORDS), slot: Slot::new(), over: None },
-    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None },
+    Field { key: "potential", label: "Potential", kind: TEXT24, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "size",
+        label: "Size",
+        kind: Kind::Parsed { max_chars: 24, parse: is_size },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "colours",
+        label: "Colours",
+        kind: Kind::Parsed { max_chars: 24, parse: is_colours },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "insulation",
+        label: "Insulation",
+        kind: Kind::Choice(<Insulation as Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "line_colour",
+        label: "Line colour",
+        kind: Kind::Parsed { max_chars: 16, parse: is_line_colour },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "line_type",
+        label: "Line type",
+        kind: Kind::Choice(<LineType as Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "line_weight",
+        label: "Line weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "label_rule",
+        label: "Label rule",
+        kind: Kind::Choice(<RouteLabels as Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "allowance",
+        label: "Allowance (m per wire)",
+        kind: Kind::Number { min: 0.0, max: 100.0 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     // The datasheet rating, shared by the type's wires.
     crate::circuits::fields::RATED_CURRENT,
     crate::circuits::fields::RATED_AT,
@@ -76,7 +125,7 @@ pub static FIELDS: [Field; 17] = [
 ];
 
 const fn wire_type(id: &'static str, name: &'static str) -> Builtin {
-    Builtin { id, name, slot: Slot::new() }
+    Builtin { id, name, slot: Slot::new(&crate::defaults::data::DATA) }
 }
 
 /// The built-in types, in table order; their values are in
@@ -96,7 +145,7 @@ static BUILTINS: [Builtin; 12] = [
     wire_type("analogue", "Analogue"),
 ];
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     vec![&crate::defaults::styles::WIRE_CATEGORY]
 }
 
@@ -109,7 +158,30 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &BUILTINS,
     choices,
     project_field: None,
+    body,
+    typed: Some(ecad_model::registry::styles::Typed { field: typed_field, values: typed_values }),
+    adjust: None,
 };
+
+/// The value field `key` of a wire style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Wire(t) => get(t, key),
+        _ => None,
+    }
+}
+
+/// A wire type field's built-in: the defaults' typed record. A field the defaults leave unset has no
+/// value (an empty text), never a guessed word.
+fn typed_field(f: &ecad_model::registry::styles::Field) -> Value<'static> {
+    get(defaults(), f.key).unwrap_or(Value::Text(""))
+}
+
+/// A built-in wire type's field values, from its typed record.
+fn typed_values(b: &ecad_model::registry::styles::Builtin) -> Vec<(&'static str, Value<'static>)> {
+    let Some(w) = builtin_type(b.id) else { return Vec::new() };
+    CATALOGUE.fields.iter().filter_map(|f| get(w, f.key).map(|v| (f.key, v))).collect()
+}
 
 /// The built-in data's text.
 pub(crate) const DATA: &str = include_str!("../../defaults/wire_types.toml");
@@ -327,8 +399,8 @@ impl WireDraws {
     /// Read the categories of `doc`.
     pub fn new(doc: &Document) -> Self {
         let mut all: BTreeMap<String, Vec<StyleRef>> = BTreeMap::new();
-        for row in crate::styles::rows(doc, &CATALOGUE) {
-            let p = crate::styles::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
+        for row in ecad_model::registry::styles::rows(doc, &CATALOGUE) {
+            let p = ecad_model::registry::styles::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
             if let Some(name) = filled(&p) {
                 all.entry(name.trim().to_lowercase()).or_default().push(row.id);
             }
@@ -361,7 +433,7 @@ impl WireDraws {
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
         let own = doc.wires().get(&c).and_then(|x| x.wire_type.clone());
-        if let Some(id) = own.filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
+        if let Some(id) = own.filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id)) {
             return (Some(id), CategoryFrom::Own);
         }
         let conn = doc.connectivity();
@@ -373,13 +445,15 @@ impl WireDraws {
                 return (Some(id.clone()), CategoryFrom::Potential(p));
             }
         }
-        let r = crate::defaults::resolve(doc, e, Scope::project());
+        let r = ecad_model::registry::resolve(doc, e, Scope::project());
         let from = match r.from {
             Source::Project => CategoryFrom::Project,
             Source::Standard => CategoryFrom::Standard,
             _ => CategoryFrom::None,
         };
-        match StyleRef::parse(&r.text()).filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
+        match StyleRef::parse(&r.text())
+            .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id))
+        {
             Some(id) => (Some(id), from),
             None => (None, CategoryFrom::None),
         }
@@ -390,7 +464,11 @@ impl WireDraws {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires().get(&c);
         let core = !doc.cables_of(c).is_empty();
-        let f = |key: &str| category.as_ref().and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
+        let f = |key: &str| {
+            category
+                .as_ref()
+                .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, key, None))
+        };
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
         let own_colours = wire.and_then(|w| w.colours.clone()).map(|c| (c, Source::Object));
         let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));

@@ -1,13 +1,14 @@
 //! Style choices: registry entries whose value is a
 //! style ID. Which style an object uses resolves through the levels like any entry; what the style
-//! says is [`crate::styles::field`].
+//! says is [`ecad_model::registry::styles::field`].
 //!
 //! - `text.<kind>.style`: S P O (object: the component or conductor owning the text). No page
 //!   level (a page picks no text style).
 //! - `location.style`: S P O (object: the location box).
 //! - `print.frame.style`: S P G (a frame belongs to the sheet).
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 const GROUP: &str = "Styles";
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
@@ -19,8 +20,8 @@ const fn text(key: &'static str, label: &'static str) -> Entry {
         label,
         group: GROUP,
 
-        kind: Kind::Style(ecad_model::StyleCatalogue::Text),
-        slot: Slot::new(),
+        kind: Kind::Style(&crate::styles::text::CATALOGUE),
+        slot: Slot::new(&crate::defaults::data::DATA),
         levels: SPO,
         project: ProjectSource::Property,
     }
@@ -84,8 +85,8 @@ pub static LOCATION: Entry = Entry {
     label: "Location box style",
     group: GROUP,
 
-    kind: Kind::Style(ecad_model::StyleCatalogue::Location),
-    slot: Slot::new(),
+    kind: Kind::Style(&crate::styles::location::CATALOGUE),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -96,8 +97,8 @@ pub static FRAME: Entry = Entry {
     label: "Frame style",
     group: GROUP,
 
-    kind: Kind::Style(ecad_model::StyleCatalogue::Frame),
-    slot: Slot::new(),
+    kind: Kind::Style(&crate::styles::frame::CATALOGUE),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPG,
     project: ProjectSource::Property,
 };
@@ -108,8 +109,8 @@ pub static WIRE_CATEGORY: Entry = Entry {
     label: "Wire category",
     group: GROUP,
 
-    kind: Kind::Style(ecad_model::StyleCatalogue::Wire),
-    slot: Slot::new(),
+    kind: Kind::Style(&crate::styles::wire::CATALOGUE),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };

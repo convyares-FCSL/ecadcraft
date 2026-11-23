@@ -44,14 +44,14 @@ pub const KEYS: &[&str] =
 
 /// A built-in value of [`KEYS`], as the registry reads it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BuiltinValue {
+pub(crate) enum BuiltinValue {
     Number(f64),
     Word(&'static str),
 }
 
 /// The built-in value of `key`, if [`SETTINGS`] holds it. The sheet is structured
 /// ([`Builtins::sheet`]) and has no single value here.
-pub fn get(key: &str) -> Option<BuiltinValue> {
+pub(crate) fn get(key: &str) -> Option<BuiltinValue> {
     let b = builtins();
     Some(match key {
         TAG_PADDING => BuiltinValue::Number(f64::from(b.tag_padding)),

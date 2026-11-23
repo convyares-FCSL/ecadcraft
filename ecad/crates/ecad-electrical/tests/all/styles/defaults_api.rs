@@ -1,6 +1,7 @@
 //! The shared getter and the defaults registry through their Rust API.
 
-use ecad_electrical::defaults::{self, Scope};
+use ecad_electrical::defaults::{self};
+use ecad_model::registry::Scope;
 use ecad_model::{Document, ObjectRef, Op};
 use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
 
@@ -101,8 +102,8 @@ fn registry_keys_unique_builtins_valid_and_project_level_allowed() {
         // Brief 054 (design 054 §2.3): a page's type is a property of the page, never a project
         // default.
         let page_only = e.key == defaults::pages::PAGE_TYPE.key;
-        assert!(page_only || e.levels.iter().any(|l| matches!(l, defaults::Level::Project)), "{} allows Project", e.key);
-        let r = defaults::resolve(&d, e, Scope::project());
+        assert!(page_only || e.levels.iter().any(|l| matches!(l, ecad_model::registry::Level::Project)), "{} allows Project", e.key);
+        let r = ecad_model::registry::resolve(&d, e, Scope::project());
         let _ = r;
     }
     // Brief 050a: a kind's height is its text style's, chosen by `text.<kind>.style`.

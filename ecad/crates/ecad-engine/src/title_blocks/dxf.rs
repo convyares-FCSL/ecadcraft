@@ -292,9 +292,9 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                 }
                 let layer = [StyleLayer::Project, StyleLayer::Standard]
                     .into_iter()
-                    .find(|l| ecad_electrical::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
+                    .find(|l| ecad_model::registry::styles::record(doc, *l, FRAME_CATALOGUE, &id).is_some())
                     .ok_or(ecad_electrical::title_blocks::commands::NOT_A_FRAME)?;
-                let before = ecad_electrical::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
+                let before = ecad_model::registry::styles::record(doc, layer, FRAME_CATALOGUE, &id).cloned();
                 let mut after = before.clone().unwrap_or_else(|| StyleRecord::empty(FRAME_CATALOGUE));
                 let mut layout = after.title_block().cloned().ok_or("This frame has no title block yet; add a Logo item first.")?;
                 let count = prims.len();
@@ -306,7 +306,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                 if let ecad_model::objects::styles::StyleBody::Frame(f) = &mut after.body {
                     f.title_block = Some(layout);
                 }
-                let name = ecad_electrical::styles::name(doc, FRAME_CATALOGUE, &id);
+                let name = ecad_model::registry::styles::name(doc, ecad_electrical::styles::catalogue(FRAME_CATALOGUE), &id);
                 let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }];
                 p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
                 Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))
@@ -329,7 +329,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                 Some(n) if ecad_model::objects::styles::is_name(n) => n.to_string(),
                 Some(_) => return Err(ecad_electrical::styles::commands::styles::STYLE_NEEDS_NAME.into()),
                 None => {
-                    let taken: Vec<String> = ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE)
+                    let taken: Vec<String> = ecad_model::registry::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE)
                         .into_iter()
                         .map(|r| r.name.to_lowercase())
                         .collect();

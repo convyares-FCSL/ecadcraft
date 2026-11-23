@@ -279,8 +279,9 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         // A standard's value acts like a project-level write of its key, and changes nothing on
         // a page while the project holds its own value.
         Effect::Prop { object: ObjectRef::Standard, key, .. } => {
-            let hidden = crate::defaults::find(key.raw)
-                .is_some_and(|e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).from == crate::defaults::Source::Project);
+            let hidden = crate::defaults::find(key.raw).is_some_and(|e| {
+                ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).from == ecad_model::registry::Source::Project
+            });
             if !hidden && !project_key_drawn_nowhere(*key) {
                 *out = PageSet::All;
             }

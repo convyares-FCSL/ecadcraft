@@ -5,8 +5,8 @@
 //! commands (`textstyle`, `pagetexts`, `movetext`) are declared at the end, measured with the text metrics
 //! the runner gives them. `showtext` and `hiddentext` need the session and stay in the engine.
 
-use crate::defaults::{Entry, Level, Resolved, Source};
 use ecad_model::Word;
+use ecad_model::registry::{Entry, Level, Resolved, Source};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -19,12 +19,13 @@ use ecad_model::{
 
 use crate::commands::input::{Bounded, Point, nullable};
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::devices::texts::TextOf;
 use crate::devices::{self};
 use crate::error::CmdError;
 use crate::styles::text_style::fonts::{Fonts, TextMetrics};
 use crate::styles::text_style::{self, Shown, TextKind, kind_words};
+use ecad_model::registry::Scope;
 
 /// Refusals.
 pub const BAD_HEIGHT: &str = "A text height is 0.5 to 10 mm.";
@@ -142,7 +143,7 @@ fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
     // With a kind, `font` is that kind's own font.
     let font = check(row.font, |f| Some(f.trim().to_string()), BAD_FONT)?;
     if let Some(Some(f)) = &font
-        && defaults::parse_value(defaults::Kind::Text { max_chars: 64 }, f).is_none()
+        && ecad_model::registry::parse_value(ecad_model::registry::Kind::Text { max_chars: 64 }, f).is_none()
     {
         return Err(CmdError::refused(BAD_FONT));
     }
@@ -356,7 +357,7 @@ fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
 pub(crate) fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)> {
     let entry = kind.show_entry()?;
     Some(match level {
-        ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), defaults::symbol_key(entry.key, rep)),
+        ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), ecad_model::registry::symbol_key(entry.key, rep)),
         ShowLevel::Device(c) => (ObjectRef::Device(c), entry.key.to_string()),
         ShowLevel::Wire(c) => (ObjectRef::Wire(c), entry.key.to_string()),
         ShowLevel::Page(p) => (ObjectRef::Page(p), entry.key.to_string()),
@@ -555,11 +556,12 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
         .iter()
         .map(|k| {
             let id = crate::styles::text_style::style_of(doc, *k, Scope::project());
-            let f = |key: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, key, None);
-            let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
-            let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
+            let f =
+                |key: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, key, None);
+            let h = f("height").unwrap_or(Resolved { value: ecad_model::registry::Value::Length(2.5), from: Source::Builtin });
+            let w = f("weight").unwrap_or(Resolved { value: ecad_model::registry::Value::Choice("regular"), from: Source::Builtin });
             let colour = f("colour").map(|r| r.text());
-            let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
+            let sh = k.show_entry().map(|e| ecad_model::registry::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
             let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
             let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
@@ -594,17 +596,17 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
 /// The JSON form of a registry value.
 pub(crate) fn value_json(r: &Resolved<'_>) -> Value {
     match r.value {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
-        defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
-        defaults::Value::Text(t) => json!(t),
-        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
-        defaults::Value::Size(s) => json!(s.to_string()),
-        defaults::Value::Colours(c) => json!(c.to_string()),
-        defaults::Value::Colour(c) => json!(c.to_string()),
-        defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
-        defaults::Value::CoreColours(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Length(x) | ecad_model::registry::Value::Number(x) => json!(x),
+        ecad_model::registry::Value::Choice(w) => json!(w),
+        ecad_model::registry::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
+        ecad_model::registry::Value::Text(t) => json!(t),
+        ecad_model::registry::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        ecad_model::registry::Value::Size(s) => json!(s.to_string()),
+        ecad_model::registry::Value::Colours(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Colour(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Sheet(s) => json!(s.text()),
+        ecad_model::registry::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
+        ecad_model::registry::Value::CoreColours(c) => json!(c.to_string()),
     }
 }
 
@@ -619,7 +621,7 @@ pub fn level_word(l: Level) -> &'static str {
 
 /// One registry entry as `defaults` lists it, resolved at `at`.
 pub(crate) fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
-    let r = defaults::resolve(doc, e, at);
+    let r = ecad_model::registry::resolve(doc, e, at);
     let builtin = Resolved { value: e.builtin(), from: Source::Builtin };
     let mut m = Map::new();
     m.insert("key".into(), json!(e.key));

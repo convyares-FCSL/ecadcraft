@@ -6,7 +6,7 @@
 //! added. [`text_shown`] is public too.
 //!
 //! Every value comes from the kind's text style ([`crate::styles::text`]): the
-//! registry's `text.<kind>.style` choice says which style, and [`crate::styles::field`] what it
+//! registry's `text.<kind>.style` choice says which style, and [`ecad_model::registry::styles::field`] what it
 //! says. Nothing here writes a size or a weight as a literal. The readers are a few map lookups
 //! and never fail: a hostile stored value counts as absent.
 //!
@@ -15,7 +15,8 @@
 use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
 
-use crate::defaults::{self, Entry, Scope, text as d};
+use crate::defaults::text as d;
+use ecad_model::registry::{Entry, Scope};
 
 pub mod fonts;
 
@@ -61,7 +62,7 @@ pub(crate) fn text_colour(value: &str) -> Option<TextColour> {
     if t.eq_ignore_ascii_case("none") {
         return None;
     }
-    if let Some((r, g, b)) = crate::styles::hex_rgb(t) {
+    if let Some((r, g, b)) = ecad_model::registry::styles::hex_rgb(t) {
         return Some(TextColour::Rgb(r, g, b));
     }
     crate::cables::words::colour_code(t).map(|(first, _)| TextColour::Code(first))
@@ -226,7 +227,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
 /// object's style changes height, weight and colour).
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     let id = style_of(doc, kind, at);
-    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -276,7 +277,7 @@ pub(crate) fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_
 /// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
 /// For a text whose style is chosen by something other than its kind (a location box's label).
 pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
-    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -289,17 +290,19 @@ pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
 /// The text catalogue's built-in cap height in drawing units (only when a field cannot be read).
 fn builtin_height(doc: &Document) -> f64 {
     let mm = match crate::styles::text::CATALOGUE.field("height").map(|f| f.builtin()) {
-        Some(defaults::Value::Length(x)) => x,
+        Some(ecad_model::registry::Value::Length(x)) => x,
         _ => 0.0,
     };
-    defaults::Resolved { value: defaults::Value::Length(mm), from: defaults::Source::Builtin }.length(doc)
+    ecad_model::registry::Resolved { value: ecad_model::registry::Value::Length(mm), from: ecad_model::registry::Source::Builtin }.length(doc)
 }
 
 /// [`OwnStyle`] for `style` of text style `id`: its font family when not the project font.
 fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
-    let font = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, "font", None).map(|r| r.text()).unwrap_or_default();
-    let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
-        defaults::Value::Text(t) => t.to_string(),
+    let font = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), id, "font", None)
+        .map(|r| r.text())
+        .unwrap_or_default();
+    let project = match ecad_model::registry::resolve(doc, &d::FONT, Scope::project()).value {
+        ecad_model::registry::Value::Text(t) => t.to_string(),
         _ => default_family().to_string(),
     };
     let family =
@@ -313,7 +316,7 @@ fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
 
 /// The text style `kind` uses at `at`.
 pub fn style_of(doc: &Document, kind: TextKind, at: Scope) -> StyleRef {
-    crate::styles::chosen(doc, kind.style_entry(), at)
+    ecad_model::registry::styles::chosen(doc, kind.style_entry(), at)
 }
 
 /// The CADCraft text styles of kinds with a font of their own: `ECAD-TAG`, `ECAD-TAG-BOLD`…, in
@@ -359,13 +362,13 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
 /// built-in).
 pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     let id = style_of(doc, kind, Scope::project());
-    let r = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, "font", None)?;
-    let defaults::Value::Text(f) = r.value else { return None };
+    let r = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, "font", None)?;
+    let ecad_model::registry::Value::Text(f) = r.value else { return None };
     if f.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) {
         return None;
     }
-    let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
-        defaults::Value::Text(t) => t,
+    let project = match ecad_model::registry::resolve(doc, &d::FONT, Scope::project()).value {
+        ecad_model::registry::Value::Text(t) => t,
         _ => default_family(),
     };
     (!f.eq_ignore_ascii_case(project)).then_some(f)
@@ -467,15 +470,15 @@ impl TextTarget {
 /// a tag. Kinds with no visibility entry are always `On`. Never fails.
 pub(crate) fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
     let Some(entry) = kind.show_entry() else { return Shown::On };
-    let r = defaults::resolve(doc, entry, target.scope());
-    if r.from == defaults::Source::Builtin && kind == TextKind::Tag {
+    let r = ecad_model::registry::resolve(doc, entry, target.scope());
+    if r.from == ecad_model::registry::Source::Builtin && kind == TextKind::Tag {
         let rule = match target.run {
             RunRule::None => None,
             RunRule::Strip => Some(&d::TAG_SHOW_STRIP),
             RunRule::Plc => Some(&d::TAG_SHOW_PLC),
         };
         if let Some(rule) = rule {
-            return <Shown as ecad_model::Word>::parse(defaults::resolve(doc, rule, Scope::project()).word()).unwrap_or_default();
+            return <Shown as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, rule, Scope::project()).word()).unwrap_or_default();
         }
     }
     <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default()
@@ -487,7 +490,7 @@ pub(crate) fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> 
 /// `text.font`.
 pub(crate) fn default_family() -> &'static str {
     match d::FONT.builtin() {
-        defaults::Value::Text(t) => t,
+        ecad_model::registry::Value::Text(t) => t,
         _ => "",
     }
 }
@@ -766,7 +769,7 @@ pub struct Block {
 /// labels). The frame's inside edge is checked separately ([`place_blocks`]).
 fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles {
     let mut obs = Obstacles::default();
-    let clear = defaults::resolve(doc, &d::WIRE_CLEARANCE, Scope::project()).length(doc);
+    let clear = ecad_model::registry::resolve(doc, &d::WIRE_CLEARANCE, Scope::project()).length(doc);
     for (_, r) in doc.representations_on(page) {
         match r.subject {
             ecad_model::Subject::Device(_) if r.form == ecad_model::Form::Symbol => {
@@ -815,7 +818,7 @@ pub(crate) fn place_blocks(
     let frame =
         (ecad_model::Pt::new(grid.frame_left(), grid.frame_bottom()), ecad_model::Pt::new(grid.frame_left() + grid.area_width(), grid.frame_top()));
     let inside = |b: &TextBox| !finite_box(&frame) || (b.0.x >= frame.0.x && b.0.y >= frame.0.y && b.1.x <= frame.1.x && b.1.y <= frame.1.y);
-    let gap_factor = defaults::resolve(doc, &d::TAG_GAP, Scope::project()).number();
+    let gap_factor = ecad_model::registry::resolve(doc, &d::TAG_GAP, Scope::project()).number();
     let tag_height = text_style(doc, TextKind::Tag).height;
     let mut free: Vec<&Block> = Vec::new();
     // Moved blocks first.
@@ -896,8 +899,8 @@ struct Placed {
 /// them. Rows are tried before columns.
 pub(crate) fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTreeSet<RepresentationId> {
     use std::collections::BTreeSet;
-    let align = defaults::resolve(doc, &d::RUN_ALIGN, Scope::project()).length(doc);
-    let gap = defaults::resolve(doc, &d::RUN_GAP, Scope::project()).length(doc);
+    let align = ecad_model::registry::resolve(doc, &d::RUN_ALIGN, Scope::project()).length(doc);
+    let gap = ecad_model::registry::resolve(doc, &d::RUN_GAP, Scope::project()).length(doc);
     let mut all: Vec<Placed> = Vec::new();
     for (rid, r) in doc.representations_on(page) {
         let ecad_model::Subject::Device(c) = r.subject else { continue };
@@ -1043,7 +1046,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::defaults::Value;
+    use ecad_model::registry::Value;
     use ecad_model::{Device, LengthUnit, Page, Representation};
 
     /// The built-in table, written out here so a reader and its entry cannot drift.
@@ -1190,7 +1193,7 @@ mod tests {
         });
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::Off);
         doc.edit_parts(|parts| {
-            parts.devices.get_mut(&comp).map(|c| c.properties.insert(defaults::symbol_key("text.tag.show", rep), "yes".into()));
+            parts.devices.get_mut(&comp).map(|c| c.properties.insert(ecad_model::registry::symbol_key("text.tag.show", rep), "yes".into()));
         });
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.

@@ -222,7 +222,8 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
     match values.and_then(|x| x.panel_temperature) {
         Some(t) => Row::rw(key, label, crate::devices::ratings::dataset::fmt_num(t.0)),
         None => {
-            let project = crate::defaults::resolve(doc, &crate::defaults::rating::PANEL_TEMPERATURE, crate::defaults::Scope::project()).number();
+            let project =
+                ecad_model::registry::resolve(doc, &crate::defaults::rating::PANEL_TEMPERATURE, ecad_model::registry::Scope::project()).number();
             Row { inherited: true, ..Row::rw(key, label, crate::devices::ratings::dataset::fmt_num(project)) }
         }
     }
@@ -233,11 +234,11 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
 fn box_style_row(doc: &Document, b: ecad_model::AidId) -> Row {
     let cat = ecad_model::StyleCatalogue::Location;
     let style = crate::styles::location::box_style(doc, b);
-    let mut r = Row::rw(crate::locations::BOX_STYLE_KEY, "Style", crate::styles::name(doc, cat, &style));
+    let mut r = Row::rw(crate::locations::BOX_STYLE_KEY, "Style", ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat), &style));
     // An own style naming none that exists falls through to the project's, shown faint too (the
     // Checks list has its row).
     r.inherited = crate::styles::location::own_style(doc, b).is_none();
-    r.choices = crate::styles::rows(doc, crate::styles::catalogue(cat)).into_iter().map(|x| x.name).collect();
+    r.choices = ecad_model::registry::styles::rows(doc, crate::styles::catalogue(cat)).into_iter().map(|x| x.name).collect();
     r
 }
 
@@ -602,8 +603,9 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     // What the wire has none of its own comes from its category.
     let draw = crate::styles::wire::wire_draw(doc, w);
     let cat_value =
-        |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
+        |v: &Option<(String, ecad_model::registry::Source)>| v.as_ref().filter(|x| x.1 != ecad_model::registry::Source::Object).map(|x| x.0.clone());
+    let cat_name =
+        draw.category.as_ref().map(|id| ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id));
     let (cs_default, colour_default) = (cat_value(&draw.cross_section), cat_value(&draw.colour_text()));
     let wire = doc.wires().get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
@@ -780,18 +782,18 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let (key, own, inherited) = match at {
             TextsAt::Device(c) => {
                 let own = doc.devices().get(&c).and_then(|x| x.properties.get(entry.key)).cloned();
-                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+                (entry.key.to_string(), own, ecad_model::registry::resolve(doc, entry, ecad_model::registry::Scope::project()).word())
             }
             TextsAt::Symbol(r, c) => {
-                let key = crate::defaults::symbol_key(entry.key, r);
+                let key = ecad_model::registry::symbol_key(entry.key, r);
                 let own = doc.devices().get(&c).and_then(|x| x.properties.get(&key)).cloned();
                 let page = doc.representations().get(&r).map(|x| x.page);
-                let scope = crate::defaults::Scope { page, component: Some(c), ..crate::defaults::Scope::project() };
-                (key, own, crate::defaults::resolve(doc, entry, scope).word())
+                let scope = ecad_model::registry::Scope { page, component: Some(c), ..ecad_model::registry::Scope::project() };
+                (key, own, ecad_model::registry::resolve(doc, entry, scope).word())
             }
             TextsAt::Page(p) => {
                 let own = doc.pages().get(&p).and_then(|x| x.display.get(entry.key)).cloned();
-                (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
+                (entry.key.to_string(), own, ecad_model::registry::resolve(doc, entry, ecad_model::registry::Scope::project()).word())
             }
         };
         let own = own.filter(|v| entry.parse(v).is_some());

@@ -5,7 +5,8 @@
 //! by key. Guards (most cable lanes, leads per side, far devices) are constants in
 //! `crate::strip_page`, not entries.
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 ecad_model::word_enum! {
     /// How a terminal strip page draws its strip.
@@ -35,7 +36,7 @@ pub static STYLE: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<StripPageForm as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: PP,
     project: ProjectSource::Property,
 };
@@ -50,7 +51,7 @@ macro_rules! length {
             group: GROUP,
 
             kind: Kind::Length { min: $min, max: $max },
-            slot: Slot::new(),
+            slot: Slot::new(&crate::defaults::data::DATA),
             levels: P,
             project: ProjectSource::Property,
         };
@@ -72,7 +73,7 @@ pub static TAG_SCALE: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 1.0, max: 4.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Property,
 };

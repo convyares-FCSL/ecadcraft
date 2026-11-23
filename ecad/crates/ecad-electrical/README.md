@@ -15,7 +15,7 @@ One folder per feature area under `src/` (the crate doc in `src/lib.rs` gives on
 - `references/`, `continuations/`: device and cable references, continuation arrows.
 - `checks/`, `circuits/`: the Checks list, and wire and cable sizing (each result a Checks row).
 - `reports/`, `releases/`: the BOM, wire and cable reports; revisions, issue and release.
-- `pages/`, `title_blocks/`, `styles/`, `defaults/`, `properties/`: page types, frames and generated pages, title blocks, style catalogues and text styles, the defaults registry, the Properties palette rows.
+- `pages/`, `title_blocks/`, `styles/`, `defaults/`, `properties/`: page types, frames and generated pages, title blocks, the electrical style catalogues and text styles, the electrical registry entries and their built-in data set (the mechanism is `ecad_model::registry`), the Properties palette rows.
 - `commands/`, `input.rs`, `error.rs`, `merge.rs`, `views/`: the generic command runner, typed input grammars, the crate's errors, merge value rules, and the update pipeline for derived views.
 
 ## Must not depend on

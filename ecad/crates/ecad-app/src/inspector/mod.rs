@@ -47,10 +47,11 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::styles::text_style::TextKind;
 use ecad_engine::project::Mapped;
+use ecad_model::registry::{Entry, Kind, Level, Scope, Source};
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
@@ -614,7 +615,7 @@ pub struct Inspector {
 const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber];
 
 /// A value as the inspector shows it: a show word in words, else as the Standards table.
-fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
+fn shown(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
         use ecad_electrical::styles::text_style::Shown;
         return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
@@ -629,17 +630,18 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
 /// A style choice's row: the chosen style's name, the catalogue's styles, and the
 /// warning of an own choice naming no style.
 fn style_row(
-    doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
+    doc: &ecad_model::Document, e: &Entry, cat: &ecad_model::registry::styles::Catalogue, scope: Scope, r: &ecad_model::registry::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
     use ecad_electrical::styles;
+    use ecad_model::registry::styles::{chosen, exists, name, rows};
     // A wire's category with where it comes from.
     if e.key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         && let Some(c) = scope.conductor
     {
         let draws = styles::wire::WireDraws::new(doc);
         let (id, from) = draws.category(doc, c);
-        let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|r| (r.id.text(), r.name)).collect();
-        let name = id.as_ref().map(|i| styles::name(doc, cat, i));
+        let list = rows(doc, cat).into_iter().map(|r| (r.id.text(), r.name)).collect();
+        let name = id.as_ref().map(|i| name(doc, cat, i));
         let value = match (name, from) {
             (Some(n), styles::wire::CategoryFrom::Potential(p)) => format!("{n} (from potential {p})"),
             (Some(n), styles::wire::CategoryFrom::Project) => format!("{n} (project default)"),
@@ -648,19 +650,19 @@ fn style_row(
             (None, _) => "None".into(),
         };
         let own = doc.wires().get(&c).and_then(|x| x.wire_type.as_ref());
-        let dangling = own.filter(|t| !styles::exists(doc, cat, t)).map(|_| "Not found: drawn without a category".to_string());
+        let dangling = own.filter(|t| !exists(doc, cat, t)).map(|_| "Not found: drawn without a category".to_string());
         let _ = r;
         return (value, list, dangling);
     }
-    let id = styles::chosen(doc, e, scope);
-    let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|x| (x.id.text(), x.name)).collect();
+    let id = chosen(doc, e, scope);
+    let list = rows(doc, cat).into_iter().map(|x| (x.id.text(), x.name)).collect();
     let own = match scope.component {
         Some(c) => doc.devices().get(&c).and_then(|x| x.properties.get(e.key)),
         None => scope.page.and_then(|p| doc.pages().get(&p)).and_then(|x| x.display.get(e.key)),
     };
-    let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
+    let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", name(doc, cat, &id)));
     let _ = r;
-    (styles::name(doc, cat, &id), list, dangling)
+    (name(doc, cat, &id), list, dangling)
 }
 
 /// What one build of the inspector's copy makes.
@@ -727,7 +729,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let rows = entries
         .into_iter()
         .map(|e| {
-            let r = defaults::resolve(doc, e, scope);
+            let r = ecad_model::registry::resolve(doc, e, scope);
             // A style choice is set on the device (its component), not on one symbol.
             let target = match (e.kind, here) {
                 (Kind::Style(_), Some((Level::Object, Target::Symbol(_)))) => match what {

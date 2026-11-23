@@ -3,14 +3,15 @@
 //! Read them through [`crate::continuations`], not by key. The caption text's size, weight, font
 //! and visibility are the text kind `continuation_caption` (`defaults/text.rs`).
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 const GROUP: &str = "Continuations";
 /// Standard and project.
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
-    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels: SP, project: ProjectSource::Property }
 }
 
 /// How many other ends an arrow lists before `+n`.

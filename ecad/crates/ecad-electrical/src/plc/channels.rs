@@ -24,10 +24,11 @@ use ecad_model::{
     Placement, PointKey, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
 };
 
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::plc::card_type_of;
 use crate::plc::rack::{CardType, MAX_CHANNELS, channel_count};
 use crate::symbols::{Kind, Starter};
+use ecad_model::registry::Scope;
 
 /// The property prefix of a channel's own data (`plc.ch.<i>.text`, `plc.ch.<i>.address`).
 pub(crate) const CH_PREFIX: &str = "plc.ch.";
@@ -97,7 +98,7 @@ fn cells_words(t: CardType) -> String {
 /// The first channel number shown on card `c` (`plc.channel.first`, 0 or 1).
 pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
-    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
+    u32::from(ecad_model::registry::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
@@ -116,7 +117,7 @@ pub fn pins_for(
     doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[ChannelRole], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
-    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
+    let by_channel = ecad_model::registry::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
     let all = ty.roles();
     let r_count = u32::try_from(all.len()).unwrap_or(1).max(1);
     let n = n.max(i.saturating_add(1));

@@ -23,9 +23,10 @@ use ecad_model::objects::styles::page::{TypeBlock, TypeFrame, TypeSheet};
 use ecad_model::{Document, PageId, StyleRef, Word};
 
 use crate::CmdError;
-use crate::defaults::{Kind, Slot, Value};
-use crate::styles::{Builtin, Catalogue, Field};
 use ecad_model::GenKind;
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Value};
 
 fn is_sheet(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(PROJECT_SHEET) || SheetSpec::parse(s).is_ok()
@@ -46,28 +47,46 @@ fn is_title_block(s: &str) -> bool {
 pub(crate) const HOLDS: &[&str] = &["none", "front", "report"];
 
 static FIELDS: [Field; 6] = [
-    Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 64, parse: is_sheet }, slot: Slot::new(), over: None },
-    Field { key: "frame", label: "Frame style", kind: Kind::Parsed { max_chars: 40, parse: is_frame }, slot: Slot::new(), over: None },
-    Field { key: "title_block", label: "Title block", kind: Kind::Parsed { max_chars: 40, parse: is_title_block }, slot: Slot::new(), over: None },
-    Field { key: "zones", label: "Zones", kind: Kind::Flag, slot: Slot::new(), over: None },
+    Field {
+        key: "sheet",
+        label: "Sheet",
+        kind: Kind::Parsed { max_chars: 64, parse: is_sheet },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "frame",
+        label: "Frame style",
+        kind: Kind::Parsed { max_chars: 40, parse: is_frame },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "title_block",
+        label: "Title block",
+        kind: Kind::Parsed { max_chars: 40, parse: is_title_block },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "zones", label: "Zones", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
     // Off, the type's pages get no electrical checks, cross-references or
     // numbering.
-    Field { key: "checks", label: "Checks and references", kind: Kind::Flag, slot: Slot::new(), over: None },
+    Field { key: "checks", label: "Checks and references", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
     // Not shown: copied with the type, so an own type holds what its source holds.
-    Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), slot: Slot::new(), over: None },
+    Field { key: "holds", label: "Generated kinds", kind: Kind::Choice(HOLDS), slot: Slot::new(&crate::defaults::data::DATA), over: None },
 ];
 
 static BUILTINS: [Builtin; 7] = [
-    Builtin { id: "front", name: "Cover sheet", slot: Slot::new() },
-    Builtin { id: "schematic", name: "Schematic", slot: Slot::new() },
-    Builtin { id: "network", name: "Network", slot: Slot::new() },
-    Builtin { id: "singleline", name: "Single-line", slot: Slot::new() },
-    Builtin { id: "panel", name: "Panel layout", slot: Slot::new() },
-    Builtin { id: "report", name: "Report", slot: Slot::new() },
-    Builtin { id: "plain", name: "Plain", slot: Slot::new() },
+    Builtin { id: "front", name: "Cover sheet", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "schematic", name: "Schematic", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "network", name: "Network", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "singleline", name: "Single-line", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "panel", name: "Panel layout", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "report", name: "Report", slot: Slot::new(&crate::defaults::data::DATA) },
+    Builtin { id: "plain", name: "Plain", slot: Slot::new(&crate::defaults::data::DATA) },
 ];
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     vec![&crate::defaults::pages::PAGE_TYPE]
 }
 
@@ -80,7 +99,18 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &BUILTINS,
     choices,
     project_field: None,
+    body,
+    typed: None,
+    adjust: None,
 };
+
+/// The value field `key` of a page style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Page(t) => get(t, key),
+        _ => None,
+    }
+}
 
 /// The built-in Cover sheet type (ID `front`, kept: old files store it).
 pub(crate) const FRONT: &str = "front";
@@ -118,8 +148,8 @@ pub struct TypeDraw {
     pub checks: bool,
 }
 
-fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
-    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Page, id, key, None)
+fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<ecad_model::registry::Resolved<'a>> {
+    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), id, key, None)
 }
 
 /// What type `id` brings. Never fails: a malformed field falls through.
@@ -129,12 +159,12 @@ pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| crate::styles::exists(doc, ecad_model::StyleCatalogue::Frame, f));
+        .filter(|f| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| crate::styles::exists(doc, ecad_model::StyleCatalogue::Frame, f));
+        .filter(|f| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), f));
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false));
     let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);
@@ -194,8 +224,8 @@ pub(crate) fn generated_only(id: &StyleRef) -> bool {
 
 /// The types in the picker's and the table's order: the catalogue's (built-ins in their order,
 /// then own types by name).
-pub fn ordered(doc: &Document) -> Vec<crate::styles::Row> {
-    crate::styles::rows(doc, &CATALOGUE)
+pub fn ordered(doc: &Document) -> Vec<ecad_model::registry::styles::Row> {
+    ecad_model::registry::styles::rows(doc, &CATALOGUE)
 }
 
 /// How many pages have each type, in one pass over the pages (asked on demand: the Settings
@@ -267,7 +297,10 @@ pub(crate) fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
         [one] => one.clone(),
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
-    format!("A {} page is generated: give generated: {words}.", crate::styles::name(doc, ecad_model::StyleCatalogue::Page, id))
+    format!(
+        "A {} page is generated: give generated: {words}.",
+        ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), id)
+    )
 }
 
 /// The value of field `key` that `t` sets, if it sets one.

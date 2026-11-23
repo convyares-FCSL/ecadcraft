@@ -6,8 +6,8 @@
 
 use ecad_app::settings::standards;
 use ecad_app::settings::style_catalogues as sc;
-use ecad_electrical::defaults::Source;
 use ecad_model::StyleRef;
+use ecad_model::registry::Source;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
 
@@ -115,7 +115,7 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     let large = style.styles.iter().find(|(_, n)| n == "Tag large").unwrap().0.clone();
     let line = ecad_electrical::styles::commands::defaults::line(
         "text.tag.style",
-        ecad_electrical::defaults::Level::Object,
+        ecad_model::registry::Level::Object,
         ecad_electrical::styles::commands::defaults::Target::Device(c),
         Some(&large),
     );

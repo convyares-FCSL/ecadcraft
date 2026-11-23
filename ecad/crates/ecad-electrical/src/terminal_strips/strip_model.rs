@@ -999,7 +999,7 @@ fn type_parts(
         if let Some(e) = e {
             inherits.insert(e.key.to_string());
         }
-        e.map_or_else(|| ty.name.to_string(), |e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).text())
+        e.map_or_else(|| ty.name.to_string(), |e| ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).text())
     });
     TypeCount { ty, drawn, spare, part_number, maker, article_number, description }
 }

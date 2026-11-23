@@ -19,7 +19,8 @@
 
 use ecad_model::ProjectSettings;
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Value};
 
 use crate::CmdError;
 
@@ -68,7 +69,7 @@ pub static SEPARATOR: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 4, parse: separator_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -87,7 +88,7 @@ macro_rules! prefixes {
                 group: "Tag prefixes",
 
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -143,7 +144,7 @@ macro_rules! levels {
                 group: GROUP,
 
                 kind: Kind::Parsed { max_chars: 64, parse: $parse },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SPO,
                 project: ProjectSource::Property,
             };
@@ -176,7 +177,7 @@ macro_rules! descriptions {
                 group: GROUP,
 
                 kind: Kind::Text { max_chars: 64 },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Property,
             };

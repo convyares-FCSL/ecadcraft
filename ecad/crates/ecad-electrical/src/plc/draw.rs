@@ -77,8 +77,8 @@ pub struct Run {
 
 /// Whether the frame of card `c` is drawn (`plc.frame.show`).
 pub(crate) fn frame_shown(doc: &Document, c: DeviceId) -> bool {
-    let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).flag()
+    let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
+    ecad_model::registry::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).flag()
 }
 
 /// The piece of representation `r` of card `c`, when it is a PLC cell or card body at 0° or 180°.
@@ -200,8 +200,8 @@ fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
 /// The card's words for its name block, top to bottom, with their text kinds.
 fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
-    let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if <crate::styles::text_style::Shown as ecad_model::Word>::parse(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+    let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
+    if <crate::styles::text_style::Shown as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
         .unwrap_or_default()
         != crate::styles::text_style::Shown::Off
     {

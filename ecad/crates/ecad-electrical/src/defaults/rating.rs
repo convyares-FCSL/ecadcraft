@@ -3,7 +3,8 @@
 //! `rating.vd_limit` (and a conductor's `rating.bundling`) are read by [`crate::circuits`] from the
 //! object itself, since the registry has no cable level.
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 ecad_model::word_enum! {
     /// The supply system a rating is checked for.
@@ -21,7 +22,7 @@ const GROUP: &str = "Rating";
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
-    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels: SP, project: ProjectSource::Property }
 }
 
 /// The bases a subject may use.
@@ -36,7 +37,7 @@ pub static CABLE_BASIS: Entry = entry("rating.cable_basis", "Field cable basis",
 pub static PANEL_TEMPERATURE: Entry = entry("rating.panel_temperature", "Panel temperature (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
 pub static AMBIENT: Entry = entry("rating.ambient", "Field ambient (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
 /// The project's rating table: none until the user enters or imports one.
-pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(ecad_model::StyleCatalogue::RatingTable));
+pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(&crate::styles::ratingtable::CATALOGUE));
 /// Not set: × 1.00 is used, with a warning.
 pub static BUNDLING: Entry = entry("rating.bundling", "Bundling", Kind::Parsed { max_chars: 32, parse: bundling_or_none });
 pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::devices::ratings::dataset::METHODS));

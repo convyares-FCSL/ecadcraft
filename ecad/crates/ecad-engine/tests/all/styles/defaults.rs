@@ -6,8 +6,9 @@
 
 use crate::common::{H, id};
 
-use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
+use ecad_model::registry::{Entry, Kind, Level, Scope, Source};
 use ecad_model::{DeviceId, PageId, RepresentationId};
 use serde_json::{Value, json};
 
@@ -15,7 +16,7 @@ const SEED: u64 = 42;
 
 /// A valid value for `entry` that is not its built-in, as typed (`None` for a one-word choice).
 fn other_value(e: &Entry) -> Option<String> {
-    let builtin = defaults::Resolved { value: e.builtin(), from: Source::Builtin }.text();
+    let builtin = ecad_model::registry::Resolved { value: e.builtin(), from: Source::Builtin }.text();
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
@@ -42,7 +43,7 @@ fn other_value(e: &Entry) -> Option<String> {
             .collect()
         }
         // Brief 050a: a style choice takes another built-in style of its catalogue.
-        Kind::Style(cat) => ecad_electrical::styles::catalogue(cat).builtins.iter().map(|b| b.id.to_string()).collect(),
+        Kind::Style(cat) => cat.builtins.iter().map(|b| b.id.to_string()).collect(),
     };
     candidates.into_iter().find(|c| e.parse(c).is_some() && !c.eq_ignore_ascii_case(&builtin))
 }
@@ -104,13 +105,13 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
             // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
-            let single = |c: ecad_model::StyleCatalogue| ecad_electrical::styles::catalogue(c).builtins.len() <= 1;
+            let single = |c: &ecad_model::registry::styles::Catalogue| c.builtins.len() <= 1;
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };
         let stored = ecad_electrical::styles::commands::defaults::json_stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
         for (level, target, scope, source) in targets(page, c, rep, &doc) {
-            let base = defaults::resolve(&doc, e, scope);
+            let base = ecad_model::registry::resolve(&doc, e, scope);
             let ops = default_cmds::ops(&doc, e, level, target, Some(stored.clone()));
             if !e.allows(level) {
                 let m = ops.expect_err(&format!("{} at {level:?}", e.key)).to_string();
@@ -123,15 +124,15 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             for op in &ops {
                 op.apply(&mut d).unwrap();
             }
-            let got = defaults::resolve(&d, e, scope);
+            let got = ecad_model::registry::resolve(&d, e, scope);
             assert_eq!(got.from, source, "{} at {level:?}", e.key);
-            assert_eq!(got.text(), e.parse(&value).map(|x| defaults::Resolved { value: x, from: source }.text()).unwrap(), "{}", e.key);
+            assert_eq!(got.text(), e.parse(&value).map(|x| ecad_model::registry::Resolved { value: x, from: source }.text()).unwrap(), "{}", e.key);
             assert!(default_cmds::ops(&d, e, level, target, Some(stored.clone())).unwrap().is_empty(), "{}: again, nothing", e.key);
             let reset = default_cmds::ops(&d, e, level, target, None).unwrap();
             for op in &reset {
                 op.apply(&mut d).unwrap();
             }
-            assert_eq!(defaults::resolve(&d, e, scope), base, "{} at {level:?}: reset falls back", e.key);
+            assert_eq!(ecad_model::registry::resolve(&d, e, scope), base, "{} at {level:?}: reset falls back", e.key);
             written += 1;
         }
     }
@@ -150,7 +151,7 @@ fn setdefault_is_one_undoable_transaction() {
     {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
-        let base = defaults::resolve(&d0, e, scope);
+        let base = ecad_model::registry::resolve(&d0, e, scope);
         let head = h.head();
         let v = h.run("setdefault", call(key, level, &target_json(target), Some(value))).unwrap();
         assert_eq!((v["changed"].clone(), v["from"].clone(), h.head()), (json!(true), json!(source.as_str()), head + 1), "{key}");
@@ -158,9 +159,9 @@ fn setdefault_is_one_undoable_transaction() {
         assert_eq!((again["changed"].clone(), h.head()), (json!(false), head + 1), "{key}: nothing recorded");
         h.run("setdefault", call(key, level, &target_json(target), None)).unwrap();
         assert_eq!(h.head(), head + 2, "{key}: reset is one transaction");
-        assert_eq!(defaults::resolve(&h.doc(), e, scope), base, "{key}");
+        assert_eq!(ecad_model::registry::resolve(&h.doc(), e, scope), base, "{key}");
         h.cmdline("u");
-        assert_eq!(defaults::resolve(&h.doc(), e, scope).from, source, "{key}: undo");
+        assert_eq!(ecad_model::registry::resolve(&h.doc(), e, scope).from, source, "{key}: undo");
         let last = h.p(|p| p.ledger.log().iter().rev().nth(1).map(|t| t.label.clone()));
         assert_eq!(last.as_deref(), Some(format!("Default {}", e.label).as_str()));
     }
@@ -208,10 +209,11 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     let d = h.doc();
     assert_eq!(d.settings().starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
     assert!(!d.display().contains_key(e.key), "never a project property too");
-    assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
+    assert_eq!(ecad_model::registry::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
-    let chain = defaults::chain(&d, e, Scope::project());
-    let words: Vec<(Source, Option<String>)> = chain.iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
+    let chain = ecad_model::registry::chain(&d, e, Scope::project());
+    let words: Vec<(Source, Option<String>)> =
+        chain.iter().map(|(s, v)| (*s, v.map(|v| ecad_model::registry::Resolved { value: v, from: *s }.text()))).collect();
     assert_eq!(words, vec![(Source::Builtin, Some("K".into())), (Source::Standard, None), (Source::Project, Some("Q".into()))]);
     h.run("setdefault", json!({"key": e.key, "reset": true})).unwrap();
     assert!(!h.doc().settings().starter_prefix("coil").is_some());
@@ -224,14 +226,14 @@ fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     let height = defaults::find("text.run.gap").unwrap();
     let doc = h.doc();
     let at = Scope::symbol(&doc, rep);
-    let levels = |e: &Entry, d: &ecad_model::Document| defaults::chain(d, e, at).iter().map(|(s, _)| *s).collect::<Vec<_>>();
+    let levels = |e: &Entry, d: &ecad_model::Document| ecad_model::registry::chain(d, e, at).iter().map(|(s, _)| *s).collect::<Vec<_>>();
     assert_eq!(levels(show, &doc), vec![Source::Builtin, Source::Standard, Source::Project, Source::Page, Source::Object, Source::Symbol]);
     // A height has no page level (owner answer 4).
     assert!(!levels(height, &doc).contains(&Source::Page));
     let _ = c;
     h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "no"})).unwrap();
     let d = h.doc();
-    let chain = defaults::chain(&d, show, at);
-    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("no")));
-    assert_eq!(defaults::resolve(&d, show, at).from, Source::Page);
+    let chain = ecad_model::registry::chain(&d, show, at);
+    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(ecad_model::registry::Value::Choice("no")));
+    assert_eq!(ecad_model::registry::resolve(&d, show, at).from, Source::Page);
 }

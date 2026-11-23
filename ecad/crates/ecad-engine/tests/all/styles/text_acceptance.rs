@@ -393,7 +393,7 @@ fn t2_textstyle_reads_the_defaults_of_every_kind() {
     }
     // FP6 made it 1.6; brief 066 moved it to data and made it 2.5.
     let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
-    assert_eq!(builtin, ecad_electrical::defaults::Value::Length(2.5), "066: wire label built-in 2.5");
+    assert_eq!(builtin, ecad_model::registry::Value::Length(2.5), "066: wire label built-in 2.5");
     let s = serde_json::to_value(h.doc().settings()).unwrap();
     assert!(s.pointer("/wiring/label_height").is_none(), "a new project chooses no height (066, F2): {s}");
 }
@@ -1406,7 +1406,7 @@ fn t16_defaults_registry_lists_every_entry_and_where_it_comes_from() {
             "key rule: {key}"
         );
         // The registry's own list of areas (it admits `wiring.` for lane W's keys, 032).
-        assert!(ecad_electrical::defaults::AREAS.contains(&parts[0]), "area first: {key}");
+        assert!(ecad_model::registry::AREAS.contains(&parts[0]), "area first: {key}");
         for f in ["label", "group", "kind", "builtin", "levels", "value", "from"] {
             assert!(r.get(f).is_some(), "{key} has {f}: {r}");
         }

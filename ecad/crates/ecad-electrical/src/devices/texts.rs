@@ -79,7 +79,7 @@ impl TagSizes {
     pub fn of(doc: &Document) -> TagSizes {
         use crate::styles::text_style::{TextKind, text_style};
         let tag = text_style(doc, TextKind::Tag).height;
-        let factor = crate::defaults::resolve(doc, &crate::defaults::text::TAG_GAP, crate::defaults::Scope::project()).number();
+        let factor = ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_GAP, ecad_model::registry::Scope::project()).number();
         TagSizes { tag, label: text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
     }
 }
@@ -216,7 +216,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
     let draw = crate::styles::text_style::fonts::DrawStyles::with(doc, m);
-    let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
+    let pitch = ecad_model::registry::resolve(doc, &crate::defaults::text::LINE_PITCH, ecad_model::registry::Scope::project()).number();
     let firsts = crate::styles::text_style::run_firsts(doc, page);
     // Location prefixes read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
@@ -233,7 +233,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     // `text.<kind>.style`), else `None` (the kind's project style).
     let own = |c: DeviceId, kind: TextKind| -> Option<crate::styles::text_style::OwnStyle> {
         let props = &doc.devices().get(&c)?.properties;
-        crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), props)
+        crate::styles::text_style::own_style(doc, kind, ecad_model::registry::Scope::component(c), props)
     };
     let height_of = |c: DeviceId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
@@ -429,8 +429,10 @@ fn slot_texts(
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
         // The device's own text style of this kind, font included.
-        let own =
-            doc.devices().get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+        let own = doc
+            .devices()
+            .get(&c)
+            .and_then(|x| crate::styles::text_style::own_style(doc, kind, ecad_model::registry::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,

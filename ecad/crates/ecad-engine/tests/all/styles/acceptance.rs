@@ -13,10 +13,11 @@
 
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
-use ecad_electrical::defaults::{self, Kind, Level, Scope, Source};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::Word;
 use ecad_model::palette::sheet::PAPER;
+use ecad_model::registry::{Kind, Level, Scope, Source};
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
 use {ecad_engine::Persistence, ecad_engine::export::printbook};
@@ -402,7 +403,7 @@ after only {new:#?}"
 #[test]
 fn a02_registry_choice_entries_and_their_levels() {
     let mut h = H::new(0x50a_0201);
-    assert!(defaults::AREAS.contains(&"location"), "FP5: the new area");
+    assert!(ecad_model::registry::AREAS.contains(&"location"), "FP5: the new area");
     let builtin_ids = |h: &mut H, cat: &str| styles(h, cat).iter().filter(|r| s(&r["layer"]) == "builtin").map(|r| s(&r["id"])).collect::<Vec<_>>();
     let text_ids = builtin_ids(&mut h, "text");
     let mut checked = 0;
@@ -416,8 +417,8 @@ fn a02_registry_choice_entries_and_their_levels() {
         (key, "text", text_ids.clone(), vec![Level::Standard, Level::Project, Level::Object], vec![Level::Page])
     })) {
         let e = defaults::find(key).unwrap_or_else(|| panic!("choice entry {key}"));
-        assert!(matches!(&e.kind, Kind::Style(c) if c.to_string() == cat), "{key} is Kind::Style({cat})");
-        let b = defaults::Resolved { value: e.builtin(), from: Source::Builtin }.text();
+        assert!(matches!(&e.kind, Kind::Style(c) if c.catalogue.to_string() == cat), "{key} is Kind::Style({cat})");
+        let b = ecad_model::registry::Resolved { value: e.builtin(), from: Source::Builtin }.text();
         assert!(ids.contains(&b), "{key}: built-in {b} names a built-in style of {cat} ({ids:?})");
         for l in allowed {
             assert!(e.allows(l), "{key} allows {l:?}");
@@ -457,17 +458,19 @@ fn a02_standard_level_values_resolve_between_built_in_and_project() {
     let (_, tx) = one_tx(&mut h, "setdefault", json!({"key": e.key, "level": "standard", "value": "Q"}));
     assert!(matches!(tx.ops.as_slice(), [Op::SetProperty { object: ObjectRef::Standard, .. }]), "{:?}", tx.ops);
     let d = h.doc();
-    assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Standard);
-    let chain: Vec<(Source, Option<String>)> =
-        defaults::chain(&d, e, Scope::project()).iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
+    assert_eq!(ecad_model::registry::resolve(&d, e, Scope::project()).from, Source::Standard);
+    let chain: Vec<(Source, Option<String>)> = ecad_model::registry::chain(&d, e, Scope::project())
+        .iter()
+        .map(|(s, v)| (*s, v.map(|v| ecad_model::registry::Resolved { value: v, from: *s }.text())))
+        .collect();
     assert_eq!(chain[..2], [(Source::Builtin, Some("K".into())), (Source::Standard, Some("Q".into()))], "{chain:?}");
     let k = coil(&mut h, 100.0);
     assert!(tag(&mut h, k).starts_with("-Q"), "a new coil takes the standard's prefix: {}", tag(&mut h, k));
     // The project's own value wins over the standard's.
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "R"})).unwrap();
-    assert_eq!(defaults::resolve(&h.doc(), e, Scope::project()).from, Source::Project);
+    assert_eq!(ecad_model::registry::resolve(&h.doc(), e, Scope::project()).from, Source::Project);
     undo(&mut h);
-    assert_eq!(defaults::resolve(&h.doc(), e, Scope::project()).from, Source::Standard, "the standard value is back");
+    assert_eq!(ecad_model::registry::resolve(&h.doc(), e, Scope::project()).from, Source::Standard, "the standard value is back");
     for _ in 0..3 {
         undo(&mut h);
     }
@@ -509,18 +512,18 @@ fn res_field_and_choice_resolution_order() {
     let height = |h: &mut H, c: DeviceId| ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
     let e = defaults::find("text.tag.style").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "standard", "value": big})).unwrap();
-    assert_eq!((height(&mut h, k1), defaults::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
+    assert_eq!((height(&mut h, k1), ecad_model::registry::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "Mid"})).unwrap();
-    assert_eq!((height(&mut h, k1), defaults::resolve(&h.doc(), e, at(k1)).from), (4.5, Source::Project), "a name is accepted ({mid})");
+    assert_eq!((height(&mut h, k1), ecad_model::registry::resolve(&h.doc(), e, at(k1)).from), (4.5, Source::Project), "a name is accepted ({mid})");
     h.run("setdefault", json!({"key": e.key, "level": "object", "component": k1.hex(), "value": small})).unwrap();
-    assert_eq!((height(&mut h, k1), defaults::resolve(&h.doc(), e, at(k1)).from), (1.5, Source::Object));
+    assert_eq!((height(&mut h, k1), ecad_model::registry::resolve(&h.doc(), e, at(k1)).from), (1.5, Source::Object));
     assert!(near(height(&mut h, k2), 4.5), "only K1 chose its own");
     let m = refused(&mut h, "setdefault", json!({"key": e.key, "level": "page", "page": page.hex(), "value": "tag"}));
     assert!(m.contains("cannot be set at page level"), "{m}");
     // Frames: page level allowed, object not.
     let f = defaults::find("print.frame.style").unwrap();
     h.run("setdefault", json!({"key": f.key, "level": "page", "page": page.hex(), "value": "sheet"})).unwrap();
-    assert_eq!(defaults::resolve(&h.doc(), f, Scope::page(page)).from, Source::Page);
+    assert_eq!(ecad_model::registry::resolve(&h.doc(), f, Scope::page(page)).from, Source::Page);
 }
 
 /// AC 3 (031's hostile table, one row more): hostile values stored at the Standard level and in
@@ -544,7 +547,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         let before = h.doc().standard().and_then(|s| s.values.get(key).cloned());
         inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Standard, key: key.into(), before, after: Some(value.clone()) }]);
         let d = h.doc();
-        let r = defaults::resolve(&d, e, Scope::project());
+        let r = ecad_model::registry::resolve(&d, e, Scope::project());
         assert_eq!(r.from, Source::Builtin, "{key}={value:.40}: a hostile standard value counts as absent");
     }
     // Hostile record fields: the style resolves to its built-in values. The record is built from a
@@ -794,7 +797,7 @@ fn a05_promote_a_style_and_a_value() {
     let (_, tx) = one_tx(&mut h, "promote", json!({"key": e.key}));
     assert!(tx.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Standard, .. })), "{:?}", tx.ops);
     let d = h.doc();
-    let r = defaults::resolve(&d, e, Scope::project());
+    let r = ecad_model::registry::resolve(&d, e, Scope::project());
     assert_eq!((r.from, r.text()), (Source::Standard, "Q".to_string()));
     // Refused when the standard already holds a different value.
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "R"})).unwrap();
@@ -843,7 +846,7 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     let rule = defaults::find("wiring.label_rule").unwrap();
     b.run("setdefault", json!({"key": rule.key, "level": "project", "value": "each"})).unwrap();
     one_tx(&mut b, "standard", json!({"from": path_a}));
-    assert_eq!(defaults::resolve(&b.doc(), rule, Scope::project()).from, Source::Project, "project values stay");
+    assert_eq!(ecad_model::registry::resolve(&b.doc(), rule, Scope::project()).from, Source::Project, "project values stay");
     undo(&mut b);
     let _ = std::fs::remove_dir_all(dir);
 }

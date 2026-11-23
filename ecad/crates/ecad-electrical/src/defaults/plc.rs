@@ -17,7 +17,8 @@
 
 use ecad_model::ProjectSettings;
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Value};
 
 ecad_model::word_enum! {
     /// The number of a card's first channel.
@@ -70,7 +71,7 @@ pub static SLOTS: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 1.0, max: 999.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -81,7 +82,7 @@ pub static SLOT_FIRST: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -95,7 +96,7 @@ macro_rules! channels {
                 group: GROUP,
 
                 kind: Kind::Number { min: 0.0, max: 256.0 },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Property,
             };
@@ -146,7 +147,7 @@ pub static CAPTION: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 40, parse: caption_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -157,7 +158,7 @@ pub static CAPTION_SHOW: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -176,7 +177,7 @@ macro_rules! prefixes {
                 group: "Tag prefixes",
 
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -218,7 +219,7 @@ pub static CHANNEL_FIRST: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -229,7 +230,7 @@ pub static PINS: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<PlcPins as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -240,7 +241,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<AddressStyle as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -251,7 +252,7 @@ pub static START_INPUT: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 0.0, max: 65535.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -262,7 +263,7 @@ pub static START_OUTPUT: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 0.0, max: 65535.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -273,7 +274,7 @@ pub static ANALOG_BYTES: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 1.0, max: 16.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -284,7 +285,7 @@ pub static IOL_BYTES: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Number { min: 1.0, max: 32.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -295,7 +296,7 @@ pub static SPARE_TEXT: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Text { max_chars: 16 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -306,7 +307,7 @@ pub static CHANNEL_SHOW: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -317,7 +318,7 @@ pub static ADDRESS_SHOW: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -328,7 +329,7 @@ pub static ROTATION: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<CardRotation as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -339,7 +340,7 @@ pub static REFERENCE_TABLE: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -371,7 +372,7 @@ pub static FRAME_SHOW: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -382,7 +383,7 @@ pub static PAGE_TITLE: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Parsed { max_chars: 40, parse: page_title_ok },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -394,7 +395,7 @@ pub static SAFE_DQ: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Choice(<SafeState as ecad_model::Word>::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };
@@ -406,7 +407,7 @@ pub static SAFE_AO: Entry = Entry {
     group: GROUP,
 
     kind: Kind::Text { max_chars: 16 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SPO,
     project: ProjectSource::Property,
 };

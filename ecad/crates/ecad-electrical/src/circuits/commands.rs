@@ -405,9 +405,9 @@ pub(crate) fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) 
         return Err(CmdError::refused(crate::styles::commands::styles::STANDARD_FIRST));
     }
     let cat = &ratingtable::CATALOGUE;
-    let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
+    let existing = ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
-    let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
+    let before = ecad_model::registry::styles::record(doc, w.layer, cat.catalogue, &id).cloned();
     let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::objects::styles::StyleBody::empty(cat.catalogue)));
     if rec.name.is_none() && existing.is_none() {
         rec.name = ecad_model::objects::styles::StyleName::new(&w.name).ok();

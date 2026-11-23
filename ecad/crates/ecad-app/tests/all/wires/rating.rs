@@ -70,7 +70,7 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
     ok(h, &format!(r#"rating {{"wire":"{}","bundling":"0.80"}}"#, wire.hex()));
     ok(h, &format!(r#"ratingtable {{"name":"Test (synthetic)","source":"made up for tests","csv":"{SYNTHETIC}"}}"#));
     let d = doc(h);
-    let table = ecad_electrical::styles::rows(&d, &ecad_electrical::styles::ratingtable::CATALOGUE)[0].id.text();
+    let table = ecad_model::registry::styles::rows(&d, &ecad_electrical::styles::ratingtable::CATALOGUE)[0].id.text();
     ok(h, &format!(r#"setdefault {{"key":"rating.table","level":"project","value":"{table}"}}"#));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"length","value":"12 m"}}"#, w01.hex()));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"type","value":"H07RN-F 4G1.5"}}"#, w01.hex()));
@@ -123,7 +123,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let (_, w01) = rated(&mut h, &dir);
     ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"size":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
     let d = doc(&mut h);
-    let ty = ecad_electrical::styles::rows(&d, &ecad_electrical::styles::cable::CATALOGUE)[0].id.text();
+    let ty = ecad_model::registry::styles::rows(&d, &ecad_electrical::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
     show(&mut h, ListsView::Cables);
     let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();

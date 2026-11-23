@@ -5,7 +5,8 @@
 //! A kind's cap height, weight and font are no longer registry entries; they are
 //! fields of its text style (`crate::styles::text`).
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Value};
 
 const GROUP: &str = "Text";
 /// Standard and project.
@@ -21,7 +22,7 @@ const SHOW: Kind = Kind::Flag;
 const SHOW_RUN: Kind = Kind::Choice(<crate::styles::text_style::Shown as ecad_model::Word>::WORDS);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, levels: &'static [Level]) -> Entry {
-    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels, project: ProjectSource::Property }
 }
 
 /// The wire label height the project chose (`settings.wiring.label_height`), or `None` when it
@@ -53,7 +54,7 @@ pub static WIRE_LABEL_HEIGHT: Entry = Entry {
     group: GROUP,
 
     kind: HEIGHT,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Settings(wire_label_height),
 };

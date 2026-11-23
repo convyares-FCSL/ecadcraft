@@ -16,7 +16,8 @@ use ecad_model::document::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
 use {ecad_model::naming::keys, ecad_model::naming::words};
 
-use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
+use crate::defaults::{self};
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 /// Every unknown word in `doc`, in a stable order (by place, then setting).
 ///
@@ -124,7 +125,7 @@ fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
 }
 
 /// The registry entry stored under `key` at `level`: the entry itself, or on an object a
-/// symbol's own value of it (`text.<rep>.tag.show`, [`defaults::symbol_key`]).
+/// symbol's own value of it (`text.<rep>.tag.show`, [`ecad_model::registry::symbol_key`]).
 fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
     if let Some(e) = defaults::find(key) {
         return Some((e, level));

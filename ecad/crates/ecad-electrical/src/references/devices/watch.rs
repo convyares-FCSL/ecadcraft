@@ -100,7 +100,11 @@ impl Scope {
             // A change of the text style the table text uses (its height, weight).
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
                 if **id
-                    == crate::styles::text_style::style_of(doc, crate::styles::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+                    == crate::styles::text_style::style_of(
+                        doc,
+                        crate::styles::text_style::TextKind::Table,
+                        ecad_model::registry::Scope::project(),
+                    ) =>
             {
                 self.wide = true;
             }

@@ -13,8 +13,9 @@
 //! commit: nothing. A full build only on first show or another project. Used by is asked for the
 //! selected row once per change count, never per frame.
 
-use ecad_electrical::defaults::{self, Source};
-use ecad_electrical::styles::{self, Catalogue, Layer};
+use ecad_electrical::styles::{self};
+use ecad_model::registry::Source;
+use ecad_model::registry::styles::{Catalogue, Layer};
 use ecad_model::{Document, StyleRef};
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
@@ -38,10 +39,10 @@ const LAYER: ColumnId = ColumnId(1);
 const FIRST_FIELD: u16 = 2;
 
 /// A field's value as a table shows it: a length with its unit.
-pub fn value_words(r: &defaults::Resolved<'_>) -> String {
+pub fn value_words(r: &ecad_model::registry::Resolved<'_>) -> String {
     match r.value {
-        defaults::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
-        defaults::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
+        ecad_model::registry::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
+        ecad_model::registry::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
         _ => r.text(),
     }
 }
@@ -58,17 +59,19 @@ pub struct StyleRow {
 }
 
 fn rows_of(doc: &Document, cat: &Catalogue) -> Vec<StyleRow> {
-    styles::rows(doc, cat)
+    ecad_model::registry::styles::rows(doc, cat)
         .into_iter()
         .map(|r| {
             let values = cat
                 .fields
                 .iter()
                 .map(|f| {
-                    let v = styles::field(doc, cat, &r.id, f, None);
+                    let v = ecad_model::registry::styles::field(doc, cat, &r.id, f, None);
                     // A text style's name of a style field reads better than its ID.
                     let shown = match f.kind {
-                        defaults::Kind::Style(c) => StyleRef::parse(&v.text()).map_or_else(|| v.text(), |id| styles::name(doc, c, &id)),
+                        ecad_model::registry::Kind::Style(c) => {
+                            StyleRef::parse(&v.text()).map_or_else(|| v.text(), |id| ecad_model::registry::styles::name(doc, c, &id))
+                        }
                         _ => value_words(&v),
                     };
                     (shown, v.from)
@@ -235,13 +238,15 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         .fields
         .iter()
         .map(|f| {
-            let r = styles::field(doc, cat, id, f, None);
-            let at = |l| styles::record(doc, l, cat.catalogue, id).and_then(|rec| styles::record_text(rec, f.key));
+            let r = ecad_model::registry::styles::field(doc, cat, id, f, None);
+            let at = |l| {
+                ecad_model::registry::styles::record(doc, l, cat.catalogue, id).and_then(|rec| ecad_model::registry::styles::record_text(rec, f.key))
+            };
             let builtin = cat.builtin(id).and_then(|b| b.value(f.key)).unwrap_or_else(|| f.builtin());
             FieldDetail {
                 key: f.key,
                 label: f.label,
-                builtin: value_words(&defaults::Resolved { value: builtin, from: Source::Builtin }),
+                builtin: value_words(&ecad_model::registry::Resolved { value: builtin, from: Source::Builtin }),
                 standard: at(StyleLayer::Standard),
                 project: at(StyleLayer::Project),
                 from: r.from,
@@ -252,10 +257,10 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
     let c = styles::users(doc, cat.catalogue, id);
     let boxes = styles::box_users(doc, cat.catalogue, id).len();
     let explicit = ecad_electrical::styles::commands::styles::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
-    let layer = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
+    let layer = ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),
-        name: styles::name(doc, cat.catalogue, id),
+        name: ecad_model::registry::styles::name(doc, ecad_electrical::styles::catalogue(cat.catalogue), id),
         layer,
         fields,
         has_standard: doc.standard().is_some(),

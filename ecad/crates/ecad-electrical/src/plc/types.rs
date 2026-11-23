@@ -17,9 +17,9 @@ use ecad_model::objects::plc::{
     SystemModule,
 };
 
-use crate::defaults::{self, Scope};
 use crate::plc::rack::CardType;
 use crate::symbols::StarterKey as K;
+use ecad_model::registry::Scope;
 
 /// The built-in count of a new module's channels, before the project's registry value.
 const fn standard_count(t: CardType) -> u16 {
@@ -92,7 +92,7 @@ pub(crate) fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> Dev
     let mut t = declared.clone();
     let Some(card) = CardType::of_type(&t) else { return t };
     let Some(entry) = card.channels_entry() else { return t };
-    let n = defaults::resolve(doc, entry, Scope::project()).number();
+    let n = ecad_model::registry::resolve(doc, entry, Scope::project()).number();
     // The registry holds 0–256.
     let n = if n.is_finite() && n >= 0.0 { (n as u16).min(ecad_model::objects::plc::MAX_CHANNELS) } else { standard_count(card) };
     if let DeviceType::PlcModule(m) = &mut t

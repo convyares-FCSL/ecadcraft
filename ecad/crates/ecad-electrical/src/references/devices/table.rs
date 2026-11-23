@@ -351,7 +351,8 @@ pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> 
 pub(crate) fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
     let g = ecad_model::document::sheet::Grid::of(doc, page);
     let k = unit(doc);
-    let gap = crate::defaults::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, crate::defaults::Scope::project()).length(doc);
+    let gap =
+        ecad_model::registry::resolve(doc, &crate::defaults::print::CONTACT_TABLE_CLEARANCE, ecad_model::registry::Scope::project()).length(doc);
     let lo = Pt::new(g.frame_left(), g.frame_bottom() + ecad_model::document::sheet::keep_out(doc, page) * k + gap);
     let hi = Pt::new(g.frame_left() + g.area_width(), g.frame_top());
     (lo, hi)

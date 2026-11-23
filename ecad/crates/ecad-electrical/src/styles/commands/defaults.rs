@@ -3,7 +3,7 @@
 //!
 //! # Semantics
 //! It writes a registry entry's value at one level through the same stored values the registry
-//! reads ([`crate::defaults::resolve`]): the project property of the entry's key, or the project
+//! reads ([`ecad_model::registry::resolve`]): the project property of the entry's key, or the project
 //! setting behind it ([`ProjectSource::Settings`], through [`Op::SetProjectSettings`]); a page's
 //! property; a device's, conductor's or symbol's property (`text.<rep>.<rest>` on its component).
 //! No new op and no new stored field. A call that changes nothing has no ops. A reset removes the
@@ -11,7 +11,7 @@
 //!
 //! The standard level writes the project's standard's value (`SetProperty` on
 //! `ObjectRef::Standard`); it is refused while the project uses IEC (built in). A style choice
-//! ([`defaults::Kind::Style`]) takes a style's ID or name and stores the ID.
+//! ([`ecad_model::registry::Kind::Style`]) takes a style's ID or name and stores the ID.
 //!
 //! A symbol's family entry (`symbol.<key>.<field>`, [`crate::defaults::symbols::family`]) is
 //! written at the project level only ([`plan_family`]).
@@ -20,15 +20,16 @@
 
 use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId, WireId};
 
-use crate::defaults::{self, Entry, Level, ProjectSource};
+use crate::defaults::{self};
+use ecad_model::registry::{Entry, Level, ProjectSource};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::TextOrNumber;
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
-use crate::defaults::Scope;
 use crate::error::CmdError;
+use ecad_model::registry::Scope;
 
 /// Refusals, in words.
 pub const STANDARD_READ_ONLY: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
@@ -82,32 +83,34 @@ pub(crate) fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError
         return crate::devices::valid_prefix(typed).ok_or_else(|| bad_value(entry));
     }
     Ok(match parsed {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
-        defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
-        defaults::Value::Size(s) => s.to_string(),
-        defaults::Value::Colours(c) => c.to_string(),
-        defaults::Value::Colour(c) => c.to_string(),
-        defaults::Value::Sheet(s) => s.text(),
-        defaults::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
-        defaults::Value::CoreColours(c) => c.to_string(),
-        defaults::Value::Text(t) => t.trim().to_string(),
-        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
+        ecad_model::registry::Value::Length(x) | ecad_model::registry::Value::Number(x) => format!("{x}"),
+        ecad_model::registry::Value::Choice(w) => w.to_string(),
+        ecad_model::registry::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
+        ecad_model::registry::Value::Size(s) => s.to_string(),
+        ecad_model::registry::Value::Colours(c) => c.to_string(),
+        ecad_model::registry::Value::Colour(c) => c.to_string(),
+        ecad_model::registry::Value::Sheet(s) => s.text(),
+        ecad_model::registry::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
+        ecad_model::registry::Value::CoreColours(c) => c.to_string(),
+        ecad_model::registry::Value::Text(t) => t.trim().to_string(),
+        ecad_model::registry::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     })
 }
 
 /// What a value of `entry` must be, in words.
 fn bad_value(entry: &Entry) -> CmdError {
     CmdError::refused(match entry.kind {
-        defaults::Kind::Length { min, max } => format!("`{}` is a length from {min} to {max} mm.", entry.key),
-        defaults::Kind::Number { min, max } => format!("`{}` is a number from {min} to {max}.", entry.key),
-        defaults::Kind::Choice(words) => format!("`{}` is one of: {}.", entry.key, words.join(", ")),
-        defaults::Kind::Flag => format!("`{}` is yes or no.", entry.key),
+        ecad_model::registry::Kind::Length { min, max } => format!("`{}` is a length from {min} to {max} mm.", entry.key),
+        ecad_model::registry::Kind::Number { min, max } => format!("`{}` is a number from {min} to {max}.", entry.key),
+        ecad_model::registry::Kind::Choice(words) => format!("`{}` is one of: {}.", entry.key, words.join(", ")),
+        ecad_model::registry::Kind::Flag => format!("`{}` is yes or no.", entry.key),
         _ if is_prefix(entry) => format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS),
-        defaults::Kind::Text { max_chars } | defaults::Kind::Parsed { max_chars, .. } => {
+        ecad_model::registry::Kind::Text { max_chars } | ecad_model::registry::Kind::Parsed { max_chars, .. } => {
             format!("`{}` is 1 to {max_chars} characters with no control characters, in its own form.", entry.key)
         }
-        defaults::Kind::Style(cat) => format!("`{}` is a style of the {cat} catalogue: its ID or name (see `styles`).", entry.key),
+        ecad_model::registry::Kind::Style(cat) => {
+            format!("`{}` is a style of the {} catalogue: its ID or name (see `styles`).", entry.key, cat.catalogue)
+        }
     })
 }
 
@@ -216,7 +219,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
                 Some(ecad_model::Subject::Device(c)) => c,
                 _ => return Err(CmdError::refused(format!("No symbol {}.", rep.hex()))),
             };
-            property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
+            property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), ecad_model::registry::symbol_key(entry.key, rep))
         }
         (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), entry.key.to_string()),
         // A wire's own type is its field, changed with `ModifyWire`.
@@ -260,8 +263,8 @@ pub enum Chosen {
 /// Neither or both given, or a value the entry refuses.
 pub(crate) fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen, CmdError> {
     // A style choice names a style by ID or name, resolved in the project.
-    if let (Some(Given::Text(v)), false, defaults::Kind::Style(cat)) = (&value, reset, entry.kind) {
-        return Ok(Chosen::Style(cat, v.clone()));
+    if let (Some(Given::Text(v)), false, ecad_model::registry::Kind::Style(cat)) = (&value, reset, entry.kind) {
+        return Ok(Chosen::Style(cat.catalogue, v.clone()));
     }
     match (value, reset) {
         // An empty cover heading is allowed, stored as `none`.

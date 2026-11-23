@@ -490,7 +490,7 @@ pub(crate) fn make_field(d: &mut Draft, i: usize) {
 /// The block's panel, with nothing selected.
 #[allow(clippy::too_many_arguments)]
 fn block_panel(
-    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_electrical::styles::Layer>,
+    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_model::registry::styles::Layer>,
     notice: &Option<String>, ask_discard: &mut bool,
 ) {
     let s = ecad_widgets::SHELL;
@@ -583,7 +583,7 @@ fn block_panel(
         }
     });
     let layer_word = match layer {
-        Some(ecad_electrical::styles::Layer::Standard) => "Standard",
+        Some(ecad_model::registry::styles::Layer::Standard) => "Standard",
         _ => "Project",
     };
     ui.horizontal(|ui| {

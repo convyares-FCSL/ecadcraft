@@ -270,9 +270,9 @@ pub(crate) fn pages_modified(
 /// is read at the card's level.
 pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
     let (rack::RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return None };
-    let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    let pattern = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION, at).text();
-    let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).flag();
+    let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
+    let pattern = ecad_model::registry::resolve(doc, &crate::defaults::plc::CAPTION, at).text();
+    let shown = ecad_model::registry::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).flag();
     let text = pattern
         .replace("{rack}", &crate::devices::tags::tag_words(doc, r))
         .replace("{slot:02}", &format!("{slot:02}"))
@@ -442,8 +442,8 @@ pub(crate) fn channel_texts(
     // The channel this symbol shows: its first point's.
     let shown_points = crate::devices::merge::shown_connection_points(doc, c, r);
     let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
-    let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).flag();
+    let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
+    let on = |e: &ecad_model::registry::Entry| ecad_model::registry::resolve(doc, e, at).flag();
     let first = channels::first_number(doc, c);
     let (auto, _) = address::of_channel(doc, c, i, kept, cache);
     let (addr, _) = address::shown(doc, c, i, auto);
@@ -455,10 +455,11 @@ pub(crate) fn channel_texts(
         .any(|(t, _)| conn.net_of_connection_point(t).and_then(|n| conn.net(n)).is_some_and(|n| n.connection_points.len() > 1));
     let description = match (&text, used) {
         (Some(t), _) => Some(t.clone()),
-        (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
+        (None, false) => Some(ecad_model::registry::resolve(doc, &crate::defaults::plc::SPARE_TEXT, ecad_model::registry::Scope::project()).text()),
         (None, true) => None,
     };
-    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
+    let rotated =
+        ecad_model::registry::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors::anchors(s);
     let label = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::PointLabel).height;
     // The two text styles of their own.
@@ -530,7 +531,7 @@ pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Opti
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     Some(match v {
         None => Ok(None),
-        Some(_) if !entry.allows(crate::defaults::Level::Object) => {
+        Some(_) if !entry.allows(ecad_model::registry::Level::Object) => {
             Err(CmdError::refused(format!("{key} is a project setting; set it with setdefault at project level.")))
         }
         Some(t) if entry.parse(t).is_some() => Ok(Some(t.to_string())),

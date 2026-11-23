@@ -6,9 +6,10 @@ use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
-use ecad_electrical::defaults::{self, Scope, Source};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles;
 use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
+use ecad_model::registry::{Scope, Source};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
 use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::text_style};
@@ -66,9 +67,9 @@ fn a_standard_value_reaches_new_devices_and_undoes_back_to_iec() {
     h.run("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"})).unwrap();
     let e = defaults::find("symbol.coil.prefix").unwrap();
     let doc = h.doc();
-    let chain = defaults::chain(&doc, e, Scope::project());
+    let chain = ecad_model::registry::chain(&doc, e, Scope::project());
     assert!(chain.iter().any(|(s, v)| *s == Source::Standard && v.is_some()), "{chain:?}");
-    assert_eq!(defaults::resolve(&doc, e, Scope::project()).from, Source::Standard);
+    assert_eq!(ecad_model::registry::resolve(&doc, e, Scope::project()).from, Source::Standard);
     let r = h.run("place", json!({"symbol": "coil", "at": [150, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
     let tag = h.p(|p| p.ledger.document().devices()[&c].tag_shown()).unwrap();
@@ -131,7 +132,11 @@ fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     assert_eq!(height(&t1, &mut h), Some(2.5));
     let doc = h.doc();
     assert_eq!(doc.devices()[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"));
-    assert!(!styles::exists(&doc, ecad_model::StyleCatalogue::Text, &StyleRef::parse(&large).unwrap()));
+    assert!(!ecad_model::registry::styles::exists(
+        &doc,
+        ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Text),
+        &StyleRef::parse(&large).unwrap()
+    ));
     // Built-in styles stay.
     assert!(h.run("deletestyle", json!({"catalogue": "text", "id": "tag"})).unwrap_err().contains("cannot be deleted"));
 }
@@ -147,8 +152,8 @@ fn promote_moves_a_project_style_to_the_standard_with_the_same_id() {
     h.run("promote", json!({"catalogue": "text", "id": large})).unwrap();
     let doc = h.doc();
     let id = StyleRef::parse(&large).unwrap();
-    assert!(styles::record(&doc, StyleLayer::Standard, ecad_model::StyleCatalogue::Text, &id).is_some());
-    assert!(styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, &id).is_none());
+    assert!(ecad_model::registry::styles::record(&doc, StyleLayer::Standard, ecad_model::StyleCatalogue::Text, &id).is_some());
+    assert!(ecad_model::registry::styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, &id).is_none());
     let tag = doc.devices()[&k1].tag().unwrap();
     assert_eq!(tag_texts(&mut h, page, tag).first().map(|x| x.0), Some(5.0), "K1 still uses it");
     // A project value moves too; the standard's own differing value is refused.
@@ -156,7 +161,7 @@ fn promote_moves_a_project_style_to_the_standard_with_the_same_id() {
     h.run("promote", json!({"key": "symbol.coil.prefix"})).unwrap();
     let doc = h.doc();
     assert_eq!(doc.standard().unwrap().values.get("symbol.coil.prefix").map(String::as_str), Some("KA"));
-    assert_eq!(defaults::resolve(&doc, defaults::find("symbol.coil.prefix").unwrap(), Scope::project()).from, Source::Standard);
+    assert_eq!(ecad_model::registry::resolve(&doc, defaults::find("symbol.coil.prefix").unwrap(), Scope::project()).from, Source::Standard);
 }
 
 #[test]
@@ -308,11 +313,11 @@ fn a_hostile_style_document_opens_draws_and_reports() {
     });
     let doc = h.doc();
     let cat = styles::catalogue(ecad_model::StyleCatalogue::Text);
-    assert!(styles::rows(&doc, cat).len() <= 23 + ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE);
+    assert!(ecad_model::registry::styles::rows(&doc, cat).len() <= 23 + ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE);
     let rows = ecad_engine::checks::all(&doc, 0.01);
     assert!(rows.iter().any(|c| c.kind == ecad_electrical::checks::Kind::StyleLimits));
     assert!(rows.iter().filter(|c| c.kind == ecad_electrical::checks::Kind::StyleUnknown).count() >= 2);
-    let name = styles::name(&doc, ecad_model::StyleCatalogue::Location, &StyleRef::Own(9));
+    let name = ecad_model::registry::styles::name(&doc, ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Location), &StyleRef::Own(9));
     assert!(name.chars().count() <= 64);
     // It draws (the page projected from the document, as a print does) and the reads answer.
     let fan = Default::default();

@@ -23,8 +23,7 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, draws: &
     };
     let sheets = io_pack(plc);
     let Some(segs) = sheets.get(i) else { return };
-    let spare =
-        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::plc::SPARE_TEXT, ecad_electrical::defaults::Scope::project()).text();
+    let spare = ecad_model::registry::resolve(doc, &ecad_electrical::defaults::plc::SPARE_TEXT, ecad_model::registry::Scope::project()).text();
     let widths: Vec<f64> = IO_COLUMNS.iter().map(|(_, w)| w * a.scale).collect();
     let total: f64 = widths.iter().sum();
     let mut y = a.t;

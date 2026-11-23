@@ -1,7 +1,7 @@
 //! Entries: project settings with a built-in.
 //!
 //! The settings' built-ins live only in ecad-model's data (`ecad-model/defaults/settings.toml`;
-//! the registry reads them through `ecad_model::naming::builtins::get`, never a copy. Their project level is the
+//! the registry reads them from `ecad_model::naming::builtins`, never a copy. Their project level is the
 //! settings field, absent when the project chose none. They have no standard level: ecad-model
 //! reads the project's choice or the built-in, never the standard. The project sheet's built-in
 //! (`page.sheet`) is ecad-model's alone: a sheet is structured, not one value.
@@ -9,7 +9,8 @@
 use ecad_model::ProjectSettings;
 use ecad_model::naming::builtins as mb;
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Value};
 
 const P: &[Level] = &[Level::Project];
 
@@ -40,7 +41,7 @@ pub static TAG_PADDING: Entry = Entry {
     group: "Tags",
 
     kind: Kind::Number { min: 1.0, max: ecad_model::naming::tag::MAX_PADDING as f64 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Settings(tag_padding),
 };
@@ -52,7 +53,7 @@ pub static WIRE_DIGITS: Entry = Entry {
     group: "Wire numbers",
 
     kind: Kind::Number { min: 1.0, max: ecad_model::connectivity::wiring::MAX_DIGITS as f64 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Settings(wire_digits),
 };
@@ -64,7 +65,7 @@ pub static COLOUR_STYLE: Entry = Entry {
     group: "Wire labels",
 
     kind: Kind::Choice(ecad_model::connectivity::wiring::COLOUR_STYLE_WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Settings(colour_style),
 };
@@ -76,7 +77,7 @@ pub static PAGE_NUMBER_STEP: Entry = Entry {
     group: "Pages",
 
     kind: Kind::Number { min: 1.0, max: mb::MAX_PAGE_NUMBER_STEP as f64 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Settings(page_number_step),
 };
@@ -88,7 +89,7 @@ pub static REFERENCE_STYLE: Entry = Entry {
     group: "Pages",
 
     kind: Kind::Choice(ecad_model::ReferenceStyle::WORDS),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: P,
     project: ProjectSource::Settings(reference_style),
 };

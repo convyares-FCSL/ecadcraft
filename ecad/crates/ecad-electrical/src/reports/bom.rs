@@ -25,7 +25,8 @@ use ecad_model::objects::loose_part::LoosePart;
 use ecad_model::{DeviceId, Document, LoosePartId, ObjectRef, Op, Properties};
 use serde_json::{Value, json};
 
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
+use ecad_model::registry::Scope;
 
 /// The prefix of a part line's keys.
 pub(crate) const PART_PREFIX: &str = "part.";
@@ -625,18 +626,18 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
 pub(crate) fn article_column(doc: &Document) -> bool {
-    ecad_model::naming::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
+    ecad_model::naming::words::flag(ecad_model::registry::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
 pub(crate) fn lines_nested(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
+    ecad_model::registry::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
 }
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).
 pub fn item_unit_metres(doc: &Document) -> bool {
     use ecad_model::objects::loose_part::ItemUnit;
-    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<ItemUnit>() == Some(ItemUnit::Metres)
+    ecad_model::registry::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<ItemUnit>() == Some(ItemUnit::Metres)
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.

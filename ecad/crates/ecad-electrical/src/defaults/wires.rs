@@ -5,7 +5,8 @@
 //! `wires::label_rule::label_min_length`, not by key. Their built-ins are data (`defaults/wires.toml`, brief;
 //! a project's chosen value is its `settings.wiring` field, absent when it chose none.
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Value};
 
 /// Standard and project.
 const SP: &[Level] = &[Level::Standard, Level::Project];
@@ -18,7 +19,7 @@ pub static WIRE_JOIN: Entry = Entry {
     group: "Wires",
 
     kind: Kind::Flag,
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -41,7 +42,7 @@ pub static WIRING_LABEL_RULE: Entry = Entry {
     group: "Wire labels",
 
     kind: Kind::Choice(LABEL_RULES),
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Settings(label_rule_setting),
 };
@@ -61,7 +62,7 @@ pub static WIRING_LABEL_MIN_LENGTH: Entry = Entry {
         min: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.start(),
         max: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.end(),
     },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Settings(label_min_length_setting),
 };

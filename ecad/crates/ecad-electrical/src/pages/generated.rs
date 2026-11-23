@@ -43,12 +43,12 @@ pub(crate) const A3_TABLE_MM: f64 = 230.0;
 /// `ecad.table-row`: a report table's row height, millimetres (the `[layout]` value
 /// `page.report.row_height` in `pages.toml`).
 pub fn row_mm() -> f64 {
-    crate::defaults::data::layout("page.report.row_height")
+    crate::defaults::data::DATA.layout("page.report.row_height")
 }
 
 /// `ecad.table-header`: a report table's header height, millimetres (`page.report.header_height`).
 pub fn header_mm() -> f64 {
-    crate::defaults::data::layout("page.report.header_height")
+    crate::defaults::data::DATA.layout("page.report.header_height")
 }
 
 /// Rows per A3 sheet of a generated table: as many rows as fit under the header

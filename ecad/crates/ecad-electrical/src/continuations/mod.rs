@@ -33,13 +33,13 @@ use crate::CmdError;
 use ecad_model::connectivity::continuation_key;
 use ecad_model::{Aid, AidId, Document, Form, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
-use crate::defaults::{self, Scope};
 use crate::references::devices::classify::Group;
 use crate::references::devices::index::RefIndex;
 use crate::references::devices::places::Places;
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
+use ecad_model::registry::Scope;
 
 /// The `setprop` key of a continuation's name.
 pub(crate) const NAME_KEY: &str = "name";
@@ -205,12 +205,12 @@ struct Settings {
 impl Settings {
     fn of(doc: &Document) -> Settings {
         use crate::defaults::continuations as c;
-        let len = |e: &defaults::Entry| defaults::resolve(doc, e, Scope::project()).length(doc);
+        let len = |e: &ecad_model::registry::Entry| ecad_model::registry::resolve(doc, e, Scope::project()).length(doc);
         let mm = |x: f64| match doc.settings().length_unit {
             ecad_model::LengthUnit::Millimetre => x,
             ecad_model::LengthUnit::Inch => x / 25.4,
         };
-        let max = defaults::resolve(doc, &c::PLACES_MAX, Scope::project()).number();
+        let max = ecad_model::registry::resolve(doc, &c::PLACES_MAX, Scope::project()).number();
         Settings {
             max: if max.is_finite() { (max.round() as usize).clamp(1, 10) } else { 3 },
             gap: len(&c::REFERENCE_GAP),
@@ -599,7 +599,7 @@ pub(crate) fn is_wide_key(key: &str) -> bool {
 /// style the reference or the caption text uses.
 pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
     use crate::styles::text_style::{TextKind, style_of};
-    let at = crate::defaults::Scope::project();
+    let at = ecad_model::registry::Scope::project();
     catalogue == ecad_model::StyleCatalogue::Text
         && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
 }

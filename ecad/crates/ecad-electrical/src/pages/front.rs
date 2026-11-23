@@ -209,7 +209,7 @@ impl Block {
     pub const ALL: [Block; 6] = [Block::Notes, Block::WireColours, Block::SymbolLegend, Block::Revisions, Block::StructureCodes, Block::CustomerSite];
 
     /// Its registry entry.
-    pub fn entry(self) -> &'static crate::defaults::Entry {
+    pub fn entry(self) -> &'static ecad_model::registry::Entry {
         use crate::defaults::pages as d;
         match self {
             Block::Notes => &d::NOTES,
@@ -223,7 +223,8 @@ impl Block {
 
     /// Whether it is on in `doc`.
     pub fn on(self, doc: &Document) -> bool {
-        ecad_model::naming::words::flag(crate::defaults::resolve(doc, self.entry(), crate::defaults::Scope::project()).word()) != Some(false)
+        ecad_model::naming::words::flag(ecad_model::registry::resolve(doc, self.entry(), ecad_model::registry::Scope::project()).word())
+            != Some(false)
     }
 }
 
@@ -304,12 +305,12 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
         }
     }
     let mut out: Vec<WireLine> = Vec::new();
-    for row in crate::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
+    for row in ecad_model::registry::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
         if !used.contains(&row.id) {
             continue;
         }
         let f = |k: &str| {
-            crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None)
+            ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &row.id, k, None)
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };

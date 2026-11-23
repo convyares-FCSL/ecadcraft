@@ -300,14 +300,14 @@ pub fn level_of(doc: &Document, t: ConnectionPointId) -> (u32, Option<char>) {
 /// The registry value of `terminal_block.level.separator` for strip `c`: strip → project → built-in;
 /// the word `none` is no separator.
 pub fn separator(doc: &Document, c: DeviceId) -> String {
-    let v = crate::defaults::resolve(doc, &crate::defaults::terminal_blocks::SEPARATOR, crate::defaults::Scope::component(c)).text();
+    let v = ecad_model::registry::resolve(doc, &crate::defaults::terminal_blocks::SEPARATOR, ecad_model::registry::Scope::component(c)).text();
     if v.eq_ignore_ascii_case(crate::defaults::terminal_blocks::NO_SEPARATOR) { String::new() } else { v }
 }
 
 /// The level names of type `t` on strip `c` (registry `terminal_block.<code>.levels`, else built-in).
 pub fn level_names(doc: &Document, c: DeviceId, t: &TermType) -> Vec<String> {
     if let Some(e) = crate::defaults::terminal_blocks::levels_entry(t.code) {
-        let v = crate::defaults::resolve(doc, e, crate::defaults::Scope::component(c)).text();
+        let v = ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::component(c)).text();
         let names: Vec<String> = v.split(',').map(|x| x.trim().to_string()).collect();
         if names.len() == t.levels.len() {
             return names;

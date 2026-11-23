@@ -537,17 +537,21 @@ impl ReportModels {
         let draw = crate::styles::wire::wire_draw(doc, w);
         let cross_section = draw.cross_section.as_ref().map(|v| v.0.clone());
         let colour = draw.colour.as_ref().map(|v| v.0.to_string());
-        let colour_own = draw.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
-        let cross_section_own = draw.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
+        let colour_own = draw.colour.as_ref().is_some_and(|v| v.1 == ecad_model::registry::Source::Object);
+        let cross_section_own = draw.cross_section.as_ref().is_some_and(|v| v.1 == ecad_model::registry::Source::Object);
         let category = draw.category.clone().map(|id| {
-            let n = crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, &id);
+            let n = ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &id);
             (id, n)
         });
         let part = draw.category.as_ref().and_then(|id| {
-            let f =
-                |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let f = |k: &str| {
+                ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, k, None)
+                    .and_then(|r| crate::styles::wire::filled(&r))
+            };
             let pn = f("part_number")?;
-            let allowance = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "allowance", None).map_or(0.0, |r| r.number());
+            let allowance =
+                ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, "allowance", None)
+                    .map_or(0.0, |r| r.number());
             Some((pn, f("maker"), f("description"), allowance))
         });
         let cable = doc

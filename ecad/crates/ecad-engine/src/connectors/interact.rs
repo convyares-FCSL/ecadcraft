@@ -13,9 +13,10 @@ use crate::interact::{
 };
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::connectors::{self as cn, FamilyRules};
-use ecad_electrical::defaults::{self, Scope};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::symbols::Side;
 use ecad_model::objects::devices::ConnectorFamily;
+use ecad_model::registry::Scope;
 
 /// `connector`: which connector, halves, type, pins, pin names, then how to draw it.
 pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
@@ -23,18 +24,18 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
     let first = read(s, |p, _| {
         let doc = p.ledger.document();
         let dc = &defaults::connectors::MAKER_HALVES;
-        let halves = match defaults::resolve(doc, dc, Scope::project()).word() {
+        let halves = match ecad_model::registry::resolve(doc, dc, Scope::project()).word() {
             "socket" => Side::Socket,
             "plug" => Side::Plug,
             _ => Side::Both,
         };
-        let family = ConnectorFamily::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
+        let family = ConnectorFamily::of_typed(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
             .unwrap_or(ConnectorFamily::Plain);
-        let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
+        let n = ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
         let pins = if n.is_finite() && (1.0..=cn::MAX_PINS as f64).contains(&n) { n as usize } else { 4 };
-        let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
-        let pins_layout =
-            defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
+        let names = ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
+        let pins_layout = ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice()
+            == Some(defaults::connectors::MakerLayout::Pins);
         let next = p
             .tag_high
             .peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::json::starter("socket4")?))

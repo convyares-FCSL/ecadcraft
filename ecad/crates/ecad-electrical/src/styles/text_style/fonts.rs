@@ -10,8 +10,9 @@
 
 use ecad_model::Document;
 
-use crate::defaults::{self, Scope, text as d};
+use crate::defaults::text as d;
 use crate::styles::text_style::{TextKind, TextStyle, Weight, default_family, kind_font, text_style};
+use ecad_model::registry::Scope;
 
 /// What the drawing engine knows about fonts on this machine: whether a font is found, and the
 /// width of a text drawn in it.
@@ -71,8 +72,8 @@ pub struct Fonts {
 impl Fonts {
     /// Resolve `doc`'s font with `m`. Never fails: a missing font falls back.
     pub fn resolve_with(doc: &Document, m: &dyn TextMetrics) -> Fonts {
-        let wanted = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
-            defaults::Value::Text(t) => t.to_string(),
+        let wanted = match ecad_model::registry::resolve(doc, &d::FONT, Scope::project()).value {
+            ecad_model::registry::Value::Text(t) => t.to_string(),
             _ => default_family().to_string(),
         };
         Fonts::for_family_with(doc, wanted, m)
@@ -90,7 +91,7 @@ impl Fonts {
                 Fonts { wanted, regular: f.clone(), bold, drawn_with: f, bold_lineweight: None }
             }
             None => {
-                let w = defaults::resolve(doc, &d::BOLD_STROKE_WEIGHT, Scope::project()).number();
+                let w = ecad_model::registry::resolve(doc, &d::BOLD_STROKE_WEIGHT, Scope::project()).number();
                 // A lineweight is hundredths of a millimetre, at most 2.11 mm (the entry's range).
                 let lw = (w * 100.0).round().clamp(0.0, 211.0) as u16;
                 let stroke = m.stroke_font().to_string();

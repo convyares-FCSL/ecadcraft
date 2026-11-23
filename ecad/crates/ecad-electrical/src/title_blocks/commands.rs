@@ -28,7 +28,7 @@ pub const NOT_A_FRAME: &str = "Name a frame: `id` or `name` (`titleblocks` lists
 pub(crate) const BLANK_SIZE: (f64, f64) = (180.0, 40.0);
 
 /// The frame catalogue.
-fn catalogue() -> &'static styles::Catalogue {
+fn catalogue() -> &'static ecad_model::registry::styles::Catalogue {
     &styles::frame::CATALOGUE
 }
 
@@ -54,7 +54,7 @@ pub fn sheet(doc: &Document, text: Option<&str>) -> Result<SheetSpec, CmdError> 
 
 /// The layer that holds own frame `id` (the project's when both do).
 pub fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
-    [StyleLayer::Project, StyleLayer::Standard].into_iter().find(|l| styles::record(doc, *l, FRAME_CATALOGUE, id).is_some())
+    [StyleLayer::Project, StyleLayer::Standard].into_iter().find(|l| ecad_model::registry::styles::record(doc, *l, FRAME_CATALOGUE, id).is_some())
 }
 
 /// A body, checked against the title block bounds.
@@ -99,15 +99,15 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
     }
     let cat = catalogue();
     let layer = layer_of(doc, id).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    let before = styles::record(doc, layer, FRAME_CATALOGUE, id).cloned();
+    let before = ecad_model::registry::styles::record(doc, layer, FRAME_CATALOGUE, id).cloned();
     let fields = fields(doc, cat, edit.fields)?;
-    let current = styles::name(doc, FRAME_CATALOGUE, id);
+    let current = ecad_model::registry::styles::name(doc, crate::styles::catalogue(FRAME_CATALOGUE), id);
     let rename = edit.rename.as_deref().filter(|n| *n != current);
     if let Some(n) = rename {
         if !is_name(n) {
             return Err(CmdError::refused(STYLE_NEEDS_NAME));
         }
-        if styles::rows(doc, cat).iter().any(|r| r.id != *id && r.name.eq_ignore_ascii_case(n)) {
+        if ecad_model::registry::styles::rows(doc, cat).iter().any(|r| r.id != *id && r.name.eq_ignore_ascii_case(n)) {
             return Err(name_taken(n));
         }
     }
@@ -158,7 +158,7 @@ pub(crate) fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<St
 /// # Errors
 /// A name that does not read, or one in use.
 pub(crate) fn new_name(doc: &Document, given: Option<&str>, spec: &SheetSpec) -> Result<String, CmdError> {
-    let rows = styles::rows(doc, catalogue());
+    let rows = ecad_model::registry::styles::rows(doc, catalogue());
     match given.map(str::trim) {
         Some(n) if is_name(n) => {
             if rows.iter().any(|r| r.name.eq_ignore_ascii_case(n)) {
@@ -201,7 +201,7 @@ pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>)
     let mut set: Vec<(String, Option<String>)> = Vec::new();
     if let Some(src) = new.source {
         for f in cat.fields {
-            let v = styles::field(doc, cat, src, f, None).text();
+            let v = ecad_model::registry::styles::field(doc, cat, src, f, None).text();
             if !v.is_empty() {
                 set.push((f.key.to_string(), Some(v)));
             }
@@ -251,7 +251,7 @@ fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
 }
 
 /// One row of `titleblocks`.
-fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
+fn row_json(doc: &Document, row: &ecad_model::registry::styles::Row, text: &FrameText) -> Value {
     let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings().sheet());
     let layout = layout_of(doc, &row.id, &spec, text);
     let keys: Vec<String> = own_keys(&layout).into_iter().collect();
@@ -259,7 +259,7 @@ fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
         "id": row.id.text(),
         "name": row.name,
         "layer": row.layer.word(),
-        "builtin": row.layer == styles::Layer::Builtin,
+        "builtin": row.layer == ecad_model::registry::styles::Layer::Builtin,
         "sheet": frame_sheet_text(doc, &row.id),
         "items": layout.items.len(),
         "users": {"pages": pages_using(doc, &row.id).len()},
@@ -270,7 +270,7 @@ fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
 /// The JSON `titleblocks {}` returns: every frame with its sheet, items, users and keys, and the
 /// project keys every frame in use reads.
 pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
-    let rows: Vec<Value> = styles::rows(doc, &styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
+    let rows: Vec<Value> = ecad_model::registry::styles::rows(doc, &styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
     // The project keys every frame in use reads (Settings ▸ Project info).
     let mut keys = BTreeSet::new();
     let mut seen = BTreeSet::new();
@@ -289,10 +289,10 @@ pub(crate) fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
 /// `id` is not a frame.
 pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
     let cat = &styles::frame::CATALOGUE;
-    let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
+    let row = ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
     let mut v = crate::styles::commands::styles::style_json(doc, cat, &row, false);
     let layout = layout_of(doc, id, spec, text);
-    v["builtin"] = json!(row.layer == styles::Layer::Builtin);
+    v["builtin"] = json!(row.layer == ecad_model::registry::styles::Layer::Builtin);
     v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
     v["users"] = json!({"pages": pages_using(doc, id).len()});
     v["keys"] = json!(own_keys(&layout).into_iter().collect::<Vec<_>>());

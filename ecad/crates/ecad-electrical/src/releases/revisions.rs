@@ -284,7 +284,8 @@ pub struct Column {
 /// the built-in six), each with its header and width (the built-in list's for a built-in
 /// field, `revisions.custom_width` for a custom one).
 pub fn columns(doc: &Document) -> Vec<Column> {
-    use crate::defaults::{Scope, Value, print, resolve};
+    use crate::defaults::print;
+    use ecad_model::registry::{Scope, Value, resolve};
     let builtin: Vec<ColumnSpec> = match print::REVISION_COLUMNS.builtin() {
         Value::Text(t) => parse_columns(t).unwrap_or_default(),
         _ => Vec::new(),
@@ -340,7 +341,7 @@ ecad_model::word_enum! {
 impl PendingStyle {
     /// The project's style (registry `revisions.pending`).
     pub fn of(doc: &Document) -> PendingStyle {
-        let word = crate::defaults::resolve(doc, &crate::defaults::print::REVISION_PENDING, crate::defaults::Scope::project()).word();
+        let word = ecad_model::registry::resolve(doc, &crate::defaults::print::REVISION_PENDING, ecad_model::registry::Scope::project()).word();
         <PendingStyle as ecad_model::Word>::parse(word).unwrap_or_default()
     }
 }

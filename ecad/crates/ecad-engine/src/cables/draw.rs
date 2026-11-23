@@ -250,7 +250,7 @@ pub(crate) fn colour_rgb(value: &str, sheet: &ecad_model::palette::Sheet) -> Opt
     if t.eq_ignore_ascii_case("none") {
         return None;
     }
-    if let Some((r, g, b)) = ecad_electrical::styles::hex_rgb(t) {
+    if let Some((r, g, b)) = ecad_model::registry::styles::hex_rgb(t) {
         return Some(cadcraft_engine::doc::color::Rgb(r, g, b));
     }
     let w = ecad_electrical::cables::words::wire_colours(&ecad_model::objects::wire::Colours::parse(t)?, sheet)?;

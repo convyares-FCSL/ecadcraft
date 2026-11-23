@@ -549,7 +549,7 @@ fn labels_are_small_and_never_touch() {
     let labels = ecad_engine::wires::draw::labels_on_page(&doc, page);
     assert_eq!(labels.len(), 10);
     let builtin = ecad_electrical::defaults::text::WIRE_LABEL_HEIGHT.builtin();
-    assert!(labels.iter().all(|l| ecad_electrical::defaults::Value::Length(l.height) == builtin));
+    assert!(labels.iter().all(|l| ecad_model::registry::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {
             let (p, q) = (ecad_electrical::wires::labels::label_box(x), ecad_electrical::wires::labels::label_box(y));

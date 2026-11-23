@@ -13,8 +13,9 @@
 //! catalogue ([`crate::settings::style_catalogues`]) with the shared style detail on the right. A
 //! later catalogue (wire categories) adds one line there.
 
-use ecad_electrical::defaults::{self, Entry, Level, Scope, Source};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
+use ecad_model::registry::{Entry, Level, Scope, Source};
 use ecad_widgets::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
 
@@ -238,10 +239,10 @@ fn detail(t: &mut App, entry: &'static Entry) -> Option<Detail> {
     let p = t.project.clone()?;
     p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let r = defaults::resolve(doc, entry, Scope::project());
-        let chain = defaults::chain(doc, entry, Scope::project())
+        let r = ecad_model::registry::resolve(doc, entry, Scope::project());
+        let chain = ecad_model::registry::chain(doc, entry, Scope::project())
             .into_iter()
-            .map(|(s, v)| (s, v.map(|v| value_text(entry, &defaults::Resolved { value: v, from: s }))))
+            .map(|(s, v)| (s, v.map(|v| value_text(entry, &ecad_model::registry::Resolved { value: v, from: s }))))
             .collect();
         Detail { chain, from: r.from, current: value_text(entry, &r) }
     })
@@ -504,7 +505,9 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let typed = v.edit.trim().to_string();
     let parsed = ecad_electrical::styles::commands::defaults::json_stored_text(entry, &serde_json::Value::String(typed.clone()));
     let changes = match &parsed {
-        Ok(s) => entry.parse(s).map(|x| value_text(entry, &defaults::Resolved { value: x, from: Source::Project })).filter(|n| *n != d.current),
+        Ok(s) => {
+            entry.parse(s).map(|x| value_text(entry, &ecad_model::registry::Resolved { value: x, from: Source::Project })).filter(|n| *n != d.current)
+        }
         Err(_) => None,
     };
     if let (Err(e), false) = (&parsed, typed.is_empty() || typed == d.current) {
@@ -710,7 +713,7 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         let doc = p.ledger.document();
         let d = sc::detail(doc, cat, &id);
         let others: Vec<(String, String)> =
-            ecad_electrical::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
+            ecad_model::registry::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
         (d, others)
     });
     let Ok((d, others)) = read else { return };

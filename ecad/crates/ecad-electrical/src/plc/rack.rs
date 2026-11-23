@@ -21,7 +21,8 @@ use ecad_model::{ChannelRole, DeviceId, Document, Op};
 
 use crate::plc::edit;
 
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
+use ecad_model::registry::Scope;
 
 /// The `setprop` name of a module's station.
 pub(crate) const RACK_KEY: &str = "plc.rack";
@@ -176,7 +177,7 @@ impl CardType {
     }
 
     /// The registry entry of its built-in channel count (`plc.<type>.channels`).
-    pub(crate) fn channels_entry(self) -> Option<&'static defaults::Entry> {
+    pub(crate) fn channels_entry(self) -> Option<&'static ecad_model::registry::Entry> {
         defaults::plc::channels_entry(&self.code().to_ascii_lowercase())
     }
 
@@ -233,8 +234,8 @@ pub(crate) fn slot_of(doc: &Document, c: DeviceId) -> Option<u32> {
 /// A rack's slot range: its first slot and how many (registry, rack level allowed).
 pub(crate) fn slot_range(doc: &Document, rack: DeviceId) -> (u32, u32) {
     let at = Scope { component: Some(rack), ..Scope::project() };
-    let n = defaults::resolve(doc, &defaults::plc::SLOTS, at).number();
-    let first = defaults::resolve(doc, &defaults::plc::SLOT_FIRST, at).word();
+    let n = ecad_model::registry::resolve(doc, &defaults::plc::SLOTS, at).number();
+    let first = ecad_model::registry::resolve(doc, &defaults::plc::SLOT_FIRST, at).word();
     // The registry only returns values in range; the casts are of 1–999 and 0/1.
     let n = if n.is_finite() && n >= 1.0 { (n as u32).min(MAX_SLOT) } else { 32 };
     (if first == "0" { 0 } else { 1 }, n)

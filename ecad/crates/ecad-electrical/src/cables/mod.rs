@@ -14,7 +14,7 @@ use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subje
 use crate::cables::slash::MAX_CABLE_MEMBERS;
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::designations::{self, Aspect};
-use crate::styles::{self, cable};
+use crate::styles::cable;
 
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
 pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
@@ -195,7 +195,11 @@ pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
         return c.shield.map(|s| ecad_model::naming::words::Word::word(s).to_string());
     }
     if field == CableField::CableType {
-        return c.cable_type.as_ref().filter(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, id)).map(StyleRef::text);
+        return c
+            .cable_type
+            .as_ref()
+            .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id))
+            .map(StyleRef::text);
     }
     let v = c.get(field.key())?;
     valid(doc, field, v).then(|| v.trim().to_string())
@@ -211,7 +215,8 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
         CableField::Cores => crate::terminal_strips::cores::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
-        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
+        CableField::CableType => StyleRef::parse(v)
+            .is_some_and(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), &id)),
         CableField::Tag => !v.trim().is_empty(),
     }
 }
@@ -499,7 +504,7 @@ pub(crate) fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check
 /// The notation a cable type gives `type` (`H07RN-F 4G1.5`): its name when it carries a core
 /// notation, else its cores and cross-section (`4G1.5`).
 pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
-    let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
+    let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id);
     if crate::terminal_strips::cores::offer_from_type(&name).is_some() {
         return Some(name);
     }

@@ -101,7 +101,7 @@ fn every_level_is_checked() {
     let rep = RepresentationId(0xab);
     d.edit_parts(|parts| {
         if let Some(comp) = parts.devices.get_mut(&c) {
-            comp.properties.insert(defaults::symbol_key("text.tag.show", rep), "never".into());
+            comp.properties.insert(ecad_model::registry::symbol_key("text.tag.show", rep), "never".into());
         }
     });
     let places: Vec<WordPlace> = check(&d).iter().map(UnknownWord::place).collect();
@@ -137,5 +137,5 @@ fn registry_and_key_list_are_disjoint() {
         assert!(area.is_registry(), "{} classifies to {area:?}, not a registry area", e.key);
     }
     let words: Vec<&str> = keys::Area::REGISTRY.iter().map(|a| ecad_model::Word::word(*a)).collect();
-    assert_eq!(words, defaults::AREAS, "Area::REGISTRY has the registry's words in its order");
+    assert_eq!(words, ecad_model::registry::AREAS, "Area::REGISTRY has the registry's words in its order");
 }

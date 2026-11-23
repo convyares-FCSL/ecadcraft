@@ -212,7 +212,7 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
         .unwrap();
     let _ = n;
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": no_rep.hex()})).unwrap();
-    let key = ecad_electrical::defaults::symbol_key("text.tag.show", no_rep);
+    let key = ecad_model::registry::symbol_key("text.tag.show", no_rep);
     assert!(h.doc().devices()[&c].properties.contains_key(&key));
     // Erase the contact: its key goes in the same transaction.
     let page = h.first_page();
@@ -277,7 +277,7 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
-    assert_eq!(props.get(&ecad_electrical::defaults::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
+    assert_eq!(props.get(&ecad_model::registry::symbol_key("text.tag.show", new_rep)).map(String::as_str), Some("no"));
     assert!(props.contains_key(&format!("text.{new_hex}.tag.at")), "{keys:?}");
     assert_eq!(keys.len(), 2, "{keys:?}");
     h.check();

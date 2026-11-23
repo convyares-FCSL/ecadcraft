@@ -1,19 +1,26 @@
 //! Built-in defaults are data. The files are complete and valid, the
 //! loader refuses hostile files without a panic, and the values read are the data's.
 
-use ecad_electrical::defaults::data::{self, DefaultsError, MAX_LISTED, load};
-use ecad_electrical::defaults::{self, Kind, Value};
+use ecad_electrical::defaults::data::{self, DATA};
+use ecad_electrical::defaults::{self};
 use ecad_electrical::styles;
+use ecad_model::registry::data::DefaultsError;
+use ecad_model::registry::data::{Loaded, MAX_LISTED, load_in};
+use ecad_model::registry::{Kind, Value};
+
+fn load<'i>(name: &str, text: &'i str) -> Loaded<'i> {
+    load_in(&DATA, name, text)
+}
 
 /// The built-in files load with no problem: every entry and style field has a value, every key
 /// is known, every value is valid for its kind.
 #[test]
 fn the_built_in_data_is_complete_and_valid() {
-    assert_eq!(data::builtin_problems(), &[] as &[DefaultsError]);
+    assert_eq!(DATA.problems(), &[] as &[DefaultsError]);
     for (name, text) in data::FILES {
         assert_eq!(load(name, text).problems(), &[] as &[DefaultsError], "{name}");
     }
-    for e in data::entries() {
+    for e in DATA.valued() {
         let v = e.builtin();
         assert!(e.accepts(&v), "{}: built-in {v:?} is not a valid {:?}", e.key, e.kind);
     }
@@ -25,12 +32,12 @@ fn every_built_in_style_value_is_valid_for_its_field() {
     for c in styles::CATALOGUES {
         for f in c.fields {
             let v = f.builtin();
-            assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, &v), "{}.{}: {v:?}", c.catalogue, f.key);
+            assert!(matches!(v, Value::Text("")) || ecad_model::registry::accepts(f.kind, &v), "{}.{}: {v:?}", c.catalogue, f.key);
         }
         for b in c.builtins {
             for (k, v) in b.values() {
                 let f = c.field(k).unwrap_or_else(|| panic!("{}.{} names no field {k}", c.catalogue, b.id));
-                assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, v), "{}.{}.{k}: {v:?}", c.catalogue, b.id);
+                assert!(matches!(v, Value::Text("")) || ecad_model::registry::accepts(f.kind, v), "{}.{}.{k}: {v:?}", c.catalogue, b.id);
             }
         }
     }
@@ -40,7 +47,7 @@ fn every_built_in_style_value_is_valid_for_its_field() {
 #[test]
 fn the_data_holds_the_values_the_code_held() {
     use defaults::{connectors, plc, strip_pages, symbols, text, wires};
-    let cases: &[(&defaults::Entry, Value<'static>)] = &[
+    let cases: &[(&ecad_model::registry::Entry, Value<'static>)] = &[
         (&text::FONT, Value::Text(text::SHEET_FONT)),
         (&text::TAG_GAP, Value::Number(0.6)),
         (&text::RUN_GAP, Value::Length(15.0)),
@@ -102,7 +109,7 @@ fn hostile_files_are_refused_with_their_error() {
     let deep = "[".repeat(10_000);
     let long = format!("[values]\n\"text.font\" = \"{}\"\n", "x".repeat(70_000));
     let dotted = format!("[values]\n{} = 1\n", vec!["a"; 10_000].join("."));
-    let cases: Vec<(&str, String, Want, &defaults::Entry)> = vec![
+    let cases: Vec<(&str, String, Want, &ecad_model::registry::Entry)> = vec![
         ("empty", String::new(), Want::None, height),
         ("binary junk", junk, Want::Syntax, height),
         ("1 MiB", huge, Want::TooLarge, font),
@@ -176,8 +183,8 @@ fn a_refused_value_names_its_key_and_span() {
 /// The safe value of each kind is inside its range or one of its words (design 066 §7).
 #[test]
 fn every_safe_value_is_valid_where_the_kind_allows_one() {
-    for e in data::entries() {
-        let v = data::safe_value(e.kind);
+    for e in DATA.valued() {
+        let v = ecad_model::registry::data::safe_value(e.kind);
         match e.kind {
             Kind::Length { .. } | Kind::Number { .. } | Kind::Choice(_) | Kind::Flag | Kind::Style(_) => {
                 assert!(e.accepts(&v), "{}: safe {v:?}", e.key);
@@ -197,16 +204,16 @@ fn a_tested_build_reports_no_damaged_defaults() {
 
 // ---------------------------------------------------------------- 066b: the saved-file rule (F2)
 
-use ecad_electrical::defaults::{Scope, resolve};
 use ecad_engine::Persistence;
 use ecad_model::Document;
+use ecad_model::registry::{Scope, resolve};
 use serde_json::json;
 
 use crate::common::{H, close_all, pts, reopen, tmp_dir};
 
 /// Every entry's resolved value at project scope, as text, with where it came from.
 fn resolved_all(doc: &Document) -> Vec<(&'static str, String, &'static str)> {
-    data::entries().map(|e| (e.key, resolve(doc, e, Scope::project()).text(), resolve(doc, e, Scope::project()).from.as_str())).collect()
+    DATA.valued().map(|e| (e.key, resolve(doc, e, Scope::project()).text(), resolve(doc, e, Scope::project()).from.as_str())).collect()
 }
 
 fn wire_label_height(doc: &Document) -> Value<'_> {
@@ -332,15 +339,15 @@ fn every_built_in_lives_in_exactly_one_place() {
             assert!(!f.names(key), "{key} is ecad-model's, yet {name} names it");
         }
     }
-    for e in data::entries() {
+    for e in DATA.valued() {
         let in_files = files.iter().filter(|(_, f)| f.names(e.key)).count();
-        let in_model = usize::from(ecad_model::naming::builtins::get(e.key).is_some());
+        let in_model = usize::from(ecad_model::registry::data::in_model(e.key));
         assert_eq!(in_files + in_model, 1, "{}: built-in in {in_files} file(s) and {in_model} model key(s)", e.key);
     }
     // Every model key but the structured sheet is a registry entry reading it.
     for key in model.iter().filter(|k| **k != ecad_model::naming::builtins::SHEET) {
         let e = defaults::find(key).unwrap_or_else(|| panic!("{key} has no entry"));
-        assert!(data::in_model(e.key) && e.accepts(&e.builtin()), "{key}");
+        assert!(ecad_model::registry::data::in_model(e.key) && e.accepts(&e.builtin()), "{key}");
     }
     // And they are today's values: nothing moves.
     let b = ecad_model::naming::builtins::builtins();

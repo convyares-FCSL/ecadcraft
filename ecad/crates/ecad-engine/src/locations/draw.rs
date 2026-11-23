@@ -32,7 +32,7 @@ pub(crate) fn styled_label_entity(
         return e;
     };
     let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
-    if label == ecad_electrical::styles::text_style::style_of(doc, TextKind::LocationLabel, ecad_electrical::defaults::Scope::project()) {
+    if label == ecad_electrical::styles::text_style::style_of(doc, TextKind::LocationLabel, ecad_model::registry::Scope::project()) {
         return e;
     }
     // The label style as a whole (height, weight, font, colour), never a literal

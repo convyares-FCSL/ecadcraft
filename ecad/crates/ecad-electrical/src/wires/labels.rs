@@ -209,7 +209,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         let Some((rid, c, v)) = routes.get(i) else { continue };
         // A conductor's own wire label style (height, weight, colour, font).
         let own = doc.wires().get(c).and_then(|x| {
-            let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
+            let at = ecad_model::registry::Scope { conductor: Some(*c), ..ecad_model::registry::Scope::project() };
             crate::styles::text_style::own_style(doc, crate::styles::text_style::TextKind::WireLabel, at, &x.display)
         });
         let h = own.as_ref().map_or(h, |o| o.style.height);

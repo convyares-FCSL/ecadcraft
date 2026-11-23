@@ -32,12 +32,13 @@ use ecad_model::objects::devices::{Connector, ConnectorCheck, DeviceType, HalfPa
 
 use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
-use crate::defaults::{self, Scope};
+use crate::defaults::{self};
 use crate::locations::{BoxCache, Located};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::terminal_strips::{self, connection_point_words};
 use crate::wires::ON_WIRE;
 use crate::wires::placing::OnRoute;
+use ecad_model::registry::Scope;
 
 /// Most pins a connector has: a guard, not a preference.
 pub const MAX_PINS: usize = 64;
@@ -209,11 +210,13 @@ pub(crate) fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
 pub(crate) fn side_names(doc: &Document, c: Option<DeviceId>) -> (String, String, String) {
     use crate::defaults::connectors as dc;
     let scope = c.map_or_else(Scope::project, Scope::component);
-    let sep = defaults::resolve(doc, &dc::SEPARATOR, scope).text();
-    let s = defaults::resolve(doc, &dc::SIDE_SOCKET, scope).text();
-    let p = defaults::resolve(doc, &dc::SIDE_PLUG, scope).text();
+    let sep = ecad_model::registry::resolve(doc, &dc::SEPARATOR, scope).text();
+    let s = ecad_model::registry::resolve(doc, &dc::SIDE_SOCKET, scope).text();
+    let p = ecad_model::registry::resolve(doc, &dc::SIDE_PLUG, scope).text();
     if s.eq_ignore_ascii_case(&p) {
-        let b = |e: &defaults::Entry| defaults::Resolved { value: e.builtin(), from: defaults::Source::Builtin }.text();
+        let b = |e: &ecad_model::registry::Entry| {
+            ecad_model::registry::Resolved { value: e.builtin(), from: ecad_model::registry::Source::Builtin }.text()
+        };
         return (sep, b(&dc::SIDE_SOCKET), b(&dc::SIDE_PLUG));
     }
     (sep, s, p)
@@ -668,7 +671,7 @@ pub fn create_ops(
     let doc = ledger.document();
     let tag = high.given(ledger, tag, &crate::devices::prefix_for(doc, starter))?;
     let c: DeviceId = ids.fresh();
-    let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
+    let description = ecad_model::registry::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
     let mut device_type = starter.device_type();
     if let DeviceType::Connector(x) = &mut device_type {
         x.pins = pins.and_then(|n| u8::try_from(n).ok()).and_then(ecad_model::objects::devices::PinCount::new);
@@ -918,7 +921,7 @@ pub(crate) fn default_description(doc: &Document, family: ConnectorFamily, side:
         _ => ConnectorFamily::Plain,
     };
     let Some(e) = crate::defaults::connectors::description_entry(fam.word(), side.word()) else { return String::new() };
-    defaults::resolve(doc, e, Scope::project()).text().replace("{n}", &n.to_string())
+    ecad_model::registry::resolve(doc, e, Scope::project()).text().replace("{n}", &n.to_string())
 }
 
 /// One row per drawn half of connector `c`: its half tag, own fields or the

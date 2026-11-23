@@ -84,13 +84,13 @@ pub(crate) fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<us
 /// The project's label rule word, `net` or `each` (the registered `wiring.label_rule`; a stored
 /// value it does not know resolves as the default).
 pub fn label_rule_word(doc: &Document) -> &'static str {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRING_LABEL_RULE, crate::defaults::Scope::project()).word()
+    ecad_model::registry::resolve(doc, &crate::defaults::wires::WIRING_LABEL_RULE, ecad_model::registry::Scope::project()).word()
 }
 
 /// The project's shortest labelled wire, millimetres (the registered `wiring.label_min_length`;
 /// out of range resolves as the default).
 pub fn label_min_length(doc: &Document) -> f64 {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRING_LABEL_MIN_LENGTH, crate::defaults::Scope::project()).number()
+    ecad_model::registry::resolve(doc, &crate::defaults::wires::WIRING_LABEL_MIN_LENGTH, ecad_model::registry::Scope::project()).number()
 }
 
 /// The project's label rule.

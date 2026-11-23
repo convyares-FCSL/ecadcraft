@@ -10,7 +10,8 @@
 
 use ecad_model::{Document, ProjectSettings};
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Scope, Slot, Value};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource, Scope, Value};
 
 const GROUP: &str = "Tag prefixes";
 /// A standard (reserved) and the project may override a prefix.
@@ -35,7 +36,7 @@ macro_rules! prefixes {
                 group: GROUP,
 
                 kind: PREFIX,
-                slot: Slot::new(),
+                slot: Slot::new(&crate::defaults::data::DATA),
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
@@ -157,7 +158,7 @@ pub static POINT_GRID: Entry = Entry {
     group: "Symbols",
 
     kind: Kind::Length { min: 1.0, max: 10.0 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -167,7 +168,7 @@ pub static BUILDER_ENTRIES: &[&Entry] = &[&POINT_GRID];
 
 /// The point grid of `doc`, millimetres.
 pub fn point_grid(doc: &Document) -> f64 {
-    crate::defaults::resolve(doc, &POINT_GRID, Scope::project()).number()
+    ecad_model::registry::resolve(doc, &POINT_GRID, Scope::project()).number()
 }
 
 // ---------------------------------------------------------------- family entries
@@ -286,11 +287,11 @@ pub fn family_property(symbol: &str, field: Field) -> Option<String> {
 }
 
 /// The value of `symbol`'s `field` and where it came from: the project's
-/// override, else the definition's own value of a project symbol ([`Source::Definition`](crate::defaults::Source::Definition)),
+/// override, else the definition's own value of a project symbol ([`Source::Definition`](ecad_model::registry::Source::Definition)),
 /// else a starter's built-in (its prefix, its name as description). `None` when nothing gives one.
 /// A hostile stored value counts as absent.
-pub fn resolve_for(doc: &Document, symbol: &str, field: Field) -> Option<(String, crate::defaults::Source)> {
-    project_value(doc, symbol, field).map(|v| (v, crate::defaults::Source::Project)).or_else(|| own_value(doc, symbol, field))
+pub fn resolve_for(doc: &Document, symbol: &str, field: Field) -> Option<(String, ecad_model::registry::Source)> {
+    project_value(doc, symbol, field).map(|v| (v, ecad_model::registry::Source::Project)).or_else(|| own_value(doc, symbol, field))
 }
 
 /// The project's override of `symbol`'s `field`, if it holds a valid one.
@@ -316,14 +317,14 @@ pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<Stri
 
 /// `symbol`'s own value of `field`, without the project's override: a starter's built-in, or a
 /// project symbol's definition value.
-pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, crate::defaults::Source)> {
+pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, ecad_model::registry::Source)> {
     let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
     if let Some(s) = crate::symbols::catalogue::by_key(symbol) {
         return match field {
             Field::Prefix => {
-                prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), crate::defaults::Source::Builtin)).filter(|(p, _)| !p.is_empty())
+                prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), ecad_model::registry::Source::Builtin)).filter(|(p, _)| !p.is_empty())
             }
-            Field::Description => Some((s.name.to_string(), crate::defaults::Source::Builtin)),
+            Field::Description => Some((s.name.to_string(), ecad_model::registry::Source::Builtin)),
             Field::Rating | Field::Join => None,
         };
     }
@@ -334,7 +335,7 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
         Field::Description => v.def.defaults.description.as_ref().map(|t| t.as_str()).and_then(ok),
         Field::Rating => v.def.defaults.rating.as_ref().map(|t| t.as_str()).and_then(ok),
     };
-    own.map(|x| (x, crate::defaults::Source::Definition))
+    own.map(|x| (x, ecad_model::registry::Source::Definition))
 }
 
 /// The tag prefix a new device of project symbol `key` gets: the project's override,
@@ -350,7 +351,7 @@ pub fn prefix(doc: &Document, key: crate::symbols::StarterKey) -> String {
     let Some(entry) = prefix_entry(key) else {
         return resolve_for(doc, ecad_model::Word::word(key), Field::Prefix).map(|(p, _)| p).unwrap_or_default();
     };
-    let resolved = crate::defaults::resolve(doc, entry, Scope::project()).text();
+    let resolved = ecad_model::registry::resolve(doc, entry, Scope::project()).text();
     crate::devices::valid_prefix(&resolved).unwrap_or_else(|| builtin_prefix(entry).to_string())
 }
 
@@ -413,7 +414,7 @@ mod tests {
             parts.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
         });
         assert_eq!(prefix(&doc, crate::symbols::StarterKey::Fusebank8), "FB");
-        assert_eq!(crate::defaults::resolve(&doc, &FUSEBANK8, Scope::project()).from, crate::defaults::Source::Project);
+        assert_eq!(ecad_model::registry::resolve(&doc, &FUSEBANK8, Scope::project()).from, ecad_model::registry::Source::Project);
         // A project property of the same key is never read: one project path.
         doc.edit_parts(|parts| parts.settings.tag_prefixes.clear());
         doc.edit_parts(|parts| {

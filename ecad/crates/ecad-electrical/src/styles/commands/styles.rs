@@ -13,9 +13,11 @@ use ecad_model::objects::styles::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, 
 use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
-use crate::defaults::{self, Entry, Kind};
+use crate::defaults::{self};
 use crate::error::CmdError;
-use crate::styles::{self, Catalogue, Layer};
+use crate::styles::{self};
+use ecad_model::registry::styles::{Catalogue, Layer};
+use ecad_model::registry::{Entry, Kind};
 
 /// Refusals, in words.
 pub const STANDARD_FIRST: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
@@ -77,7 +79,7 @@ pub fn layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError>
 }
 
 /// What field `f` takes, in the registry's words.
-pub(crate) fn field_rule(f: &styles::Field) -> String {
+pub(crate) fn field_rule(f: &ecad_model::registry::styles::Field) -> String {
     match f.kind {
         Kind::Length { min, max } if f.key == "height" => format!("{} is {min} to {max} mm (cap height)", f.key),
         Kind::Length { min, max } => format!("{} is {min} to {max} mm", f.key),
@@ -88,7 +90,7 @@ pub(crate) fn field_rule(f: &styles::Field) -> String {
             format!("{} is none, one IEC 60757 colour code (RD, BU…) or #rrggbb", f.key)
         }
         Kind::Text { max_chars } | Kind::Parsed { max_chars, .. } => format!("{} is 1 to {max_chars} characters", f.key),
-        Kind::Style(c) => format!("{} is a style of the {c} catalogue (its ID or name)", f.key),
+        Kind::Style(c) => format!("{} is a style of the {} catalogue (its ID or name)", f.key, c.catalogue),
     }
 }
 
@@ -102,7 +104,7 @@ pub(crate) enum FieldInput {
 }
 
 /// The field `key` of `cat`.
-fn field_of(cat: &Catalogue, key: &str) -> Result<&'static styles::Field, CmdError> {
+fn field_of(cat: &Catalogue, key: &str) -> Result<&'static ecad_model::registry::styles::Field, CmdError> {
     cat.field(key).ok_or_else(|| {
         let keys: Vec<&str> = cat.fields.iter().map(|f| f.key).collect();
         CmdError::refused(format!("No field {key:?}; {} have {}.", cat.plural, keys.join(", ")))
@@ -110,31 +112,31 @@ fn field_of(cat: &Catalogue, key: &str) -> Result<&'static styles::Field, CmdErr
 }
 
 /// The stored text of `v` for field `f`, checked (`None`: clear it).
-fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Option<String>, CmdError> {
+fn field_value(doc: &Document, f: &ecad_model::registry::styles::Field, v: FieldInput) -> Result<Option<String>, CmdError> {
     let typed = match v {
         FieldInput::Clear => return Ok(None),
         FieldInput::Value(s) => s.trim().to_string(),
     };
     if let Kind::Style(c) = f.kind {
-        return styles::find(doc, c, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
+        return styles::find(doc, c.catalogue, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
     }
     let parsed = match f.kind {
-        Kind::Flag => defaults::parse_input(f.kind, &typed),
-        _ => defaults::parse_value_in(doc, f.kind, &typed),
+        Kind::Flag => ecad_model::registry::parse_input(f.kind, &typed),
+        _ => ecad_model::registry::parse_value_in(doc, f.kind, &typed),
     }
     .ok_or_else(|| CmdError::refused(format!("{}.", field_rule(f))))?;
     Ok(Some(match parsed {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
-        defaults::Value::Choice(w) => w.to_string(),
-        defaults::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
-        defaults::Value::Text(t) => t.to_string(),
-        defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
-        defaults::Value::Size(s) => s.to_string(),
-        defaults::Value::Colours(c) => c.to_string(),
-        defaults::Value::Colour(c) => c.to_string(),
-        defaults::Value::Sheet(s) => s.text(),
-        defaults::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
-        defaults::Value::CoreColours(c) => c.to_string(),
+        ecad_model::registry::Value::Length(x) | ecad_model::registry::Value::Number(x) => format!("{x}"),
+        ecad_model::registry::Value::Choice(w) => w.to_string(),
+        ecad_model::registry::Value::Flag(b) => ecad_model::naming::words::flag_word(b).to_string(),
+        ecad_model::registry::Value::Text(t) => t.to_string(),
+        ecad_model::registry::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
+        ecad_model::registry::Value::Size(s) => s.to_string(),
+        ecad_model::registry::Value::Colours(c) => c.to_string(),
+        ecad_model::registry::Value::Colour(c) => c.to_string(),
+        ecad_model::registry::Value::Sheet(s) => s.text(),
+        ecad_model::registry::Value::Margins(m) => ecad_model::document::sheet::margins_text(&m),
+        ecad_model::registry::Value::CoreColours(c) => c.to_string(),
     }))
 }
 
@@ -401,8 +403,8 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
             let mut ops = Vec::new();
             // Explicit users of a standard-only own style need a replacement.
             for cat in styles::CATALOGUES {
-                for (id, _) in styles::records(doc, StyleLayer::Standard, cat.catalogue) {
-                    if cat.builtin(id).is_some() || styles::record(doc, StyleLayer::Project, cat.catalogue, id).is_some() {
+                for (id, _) in ecad_model::registry::styles::records(doc, StyleLayer::Standard, cat.catalogue) {
+                    if cat.builtin(id).is_some() || ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, id).is_some() {
                         continue;
                     }
                     let users = styles::explicit_users(doc, cat.catalogue, id);
@@ -414,16 +416,17 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
                         let (who, verb) = who_uses(&users, boxes);
                         return Err(CmdError::refused(format!(
                             "{who} {verb} {}, which only the standard has; give replace_with {{\"{}\": style}}.",
-                            styles::name(doc, cat.catalogue, id),
+                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id),
                             cat.catalogue
                         )));
                     };
                     let to = styles::find(doc, cat.catalogue, w)?;
-                    let standard_only = cat.builtin(&to).is_none() && styles::record(doc, StyleLayer::Project, cat.catalogue, &to).is_none();
+                    let standard_only =
+                        cat.builtin(&to).is_none() && ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, &to).is_none();
                     if standard_only {
                         return Err(CmdError::refused(format!(
                             "{} is the standard's too; replace it with a built-in or a project style.",
-                            styles::name(doc, cat.catalogue, &to)
+                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &to)
                         )));
                     }
                     ops.extend(rewrite_users(doc, cat, id, &to));
@@ -487,7 +490,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
     let fields = fields(doc, cat, edit.fields)?;
     if edit.new {
         let name = name.filter(|n| is_name(n)).ok_or(CmdError::refused(STYLE_NEEDS_NAME))?;
-        if styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(&name)) {
+        if ecad_model::registry::styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(&name)) {
             return Err(CmdError::refused(format!("A {} is already called {name:?}; choose another name.", cat.one.to_lowercase())));
         }
         // A catalogue with no built-in styles (cable types, rating tables) starts an
@@ -504,7 +507,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
             if cat.catalogue == ecad_model::StyleCatalogue::Wire && f.key == "potential" {
                 continue;
             }
-            let v = styles::field(doc, cat, from, f, None).text();
+            let v = ecad_model::registry::styles::field(doc, cat, from, f, None).text();
             if !v.is_empty() {
                 copied.push((f.key.to_string(), Some(v)));
             }
@@ -524,7 +527,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         if id.is_builtin() {
             return Err(CmdError::refused("A built-in style keeps its name; make a new style from it (`new`, `copy_of`) instead."));
         }
-        if styles::rows(doc, cat).iter().any(|r| r.id != id && r.name.eq_ignore_ascii_case(n)) {
+        if ecad_model::registry::styles::rows(doc, cat).iter().any(|r| r.id != id && r.name.eq_ignore_ascii_case(n)) {
             return Err(CmdError::refused(format!("A {} is already called {n:?}; choose another name.", cat.one.to_lowercase())));
         }
     }
@@ -532,7 +535,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         return Err(CmdError::input("Give `fields` to set, `rename`, or `new: true`."));
     }
     // A rename goes to the layer holding the style's name.
-    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| r.name.is_some()) {
+    let name_layer = if ecad_model::registry::styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| r.name.is_some()) {
         StyleLayer::Standard
     } else {
         StyleLayer::Project
@@ -544,7 +547,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         if f.is_empty() && n.is_none() {
             continue;
         }
-        let before = styles::record(doc, l, cat.catalogue, &id).cloned();
+        let before = ecad_model::registry::styles::record(doc, l, cat.catalogue, &id).cloned();
         let rec = styles::with_fields(cat.catalogue, before.as_ref(), n, &f)?;
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
@@ -562,11 +565,13 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
     let changes: Vec<String> = fields
         .iter()
         .map(|(k, v)| {
-            let was = styles::field_of(doc, cat.catalogue, &id, k, None).map(|r| r.text()).unwrap_or_default();
+            let was = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(cat.catalogue), &id, k, None)
+                .map(|r| r.text())
+                .unwrap_or_default();
             format!("{k} {was} → {}", v.as_deref().unwrap_or("(reset)"))
         })
         .collect();
-    let name = rename.map_or_else(|| styles::name(doc, cat.catalogue, &id), str::to_string);
+    let name = rename.map_or_else(|| ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id), str::to_string);
     let label = if changes.is_empty() { format!("{} {name}", cat.one) } else { format!("{} {name}: {}", cat.one, changes.join(", ")) };
     Ok(StylePlan { ops, id, label })
 }
@@ -594,7 +599,7 @@ pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace
     if id.is_builtin() {
         return Err(CmdError::refused(BUILTIN_KEPT));
     }
-    let name = styles::name(doc, cat.catalogue, &id);
+    let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id);
     let users = styles::explicit_users(doc, cat.catalogue, &id);
     let boxes = styles::box_users(doc, cat.catalogue, &id).len();
     let mut ops = Vec::new();
@@ -649,8 +654,8 @@ pub(crate) fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
 pub(crate) fn promote_value(doc: &Document, entry: &Entry) -> Result<(Vec<Op>, String), CmdError> {
     let std = needs_standard(doc)?;
     let key = entry.key;
-    let r = defaults::resolve(doc, entry, defaults::Scope::project());
-    if r.from != defaults::Source::Project {
+    let r = ecad_model::registry::resolve(doc, entry, ecad_model::registry::Scope::project());
+    if r.from != ecad_model::registry::Source::Project {
         return Err(CmdError::refused(format!("The project has no value of its own for `{key}` to promote.")));
     }
     let text = r.text();
@@ -675,12 +680,16 @@ pub(crate) fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef)
             "A built-in style is in every standard; set its fields at standard level instead (setstyle … layer: \"standard\").",
         ));
     }
-    if styles::record(doc, StyleLayer::Standard, cat.catalogue, id).is_some() {
-        return Err(CmdError::refused(format!("{} is already in the standard.", styles::name(doc, cat.catalogue, id))));
+    if ecad_model::registry::styles::record(doc, StyleLayer::Standard, cat.catalogue, id).is_some() {
+        return Err(CmdError::refused(format!(
+            "{} is already in the standard.",
+            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id)
+        )));
     }
-    let rec =
-        styles::record(doc, StyleLayer::Project, cat.catalogue, id).cloned().ok_or(CmdError::refused("Only a project style can be promoted."))?;
-    let name = styles::name(doc, cat.catalogue, id);
+    let rec = ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, id)
+        .cloned()
+        .ok_or(CmdError::refused("Only a project style can be promoted."))?;
+    let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id);
     let ops = vec![
         Op::SetStyle { layer: StyleLayer::Project, catalogue: cat.catalogue, id: id.clone(), before: Some(rec.clone()), after: None },
         Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) },
@@ -707,12 +716,12 @@ pub(crate) fn standard_json(doc: &Document) -> Value {
 }
 
 /// One style as `styles` returns it.
-pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: bool) -> Value {
+pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &ecad_model::registry::styles::Row, users: bool) -> Value {
     let fields: Map<String, Value> = cat
         .fields
         .iter()
         .map(|f| {
-            let r = styles::field(doc, cat, &row.id, f, None);
+            let r = ecad_model::registry::styles::field(doc, cat, &row.id, f, None);
             (f.key.to_string(), json!({"value": value_json(&r), "from": r.from.as_str()}))
         })
         .collect();
@@ -734,19 +743,19 @@ pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, use
     v
 }
 
-pub(crate) fn value_json(r: &defaults::Resolved<'_>) -> Value {
+pub(crate) fn value_json(r: &ecad_model::registry::Resolved<'_>) -> Value {
     match r.value {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
-        defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
-        defaults::Value::Text(t) => json!(t),
-        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
-        defaults::Value::Size(s) => json!(s.to_string()),
-        defaults::Value::Colours(c) => json!(c.to_string()),
-        defaults::Value::Colour(c) => json!(c.to_string()),
-        defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
-        defaults::Value::CoreColours(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Length(x) | ecad_model::registry::Value::Number(x) => json!(x),
+        ecad_model::registry::Value::Choice(w) => json!(w),
+        ecad_model::registry::Value::Flag(b) => json!(ecad_model::naming::words::flag_word(b)),
+        ecad_model::registry::Value::Text(t) => json!(t),
+        ecad_model::registry::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        ecad_model::registry::Value::Size(s) => json!(s.to_string()),
+        ecad_model::registry::Value::Colours(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Colour(c) => json!(c.to_string()),
+        ecad_model::registry::Value::Sheet(s) => json!(s.text()),
+        ecad_model::registry::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
+        ecad_model::registry::Value::CoreColours(c) => json!(c.to_string()),
     }
 }
 
@@ -891,7 +900,7 @@ impl Generic for StylesParams {
         let doc = cx.doc;
         let mut out = Vec::new();
         for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
-            for row in styles::rows(doc, cat) {
+            for row in ecad_model::registry::styles::rows(doc, cat) {
                 out.push(style_json(doc, cat, &row, users));
             }
         }
@@ -959,12 +968,13 @@ layer?: \"project\"|\"standard\"} (one transaction)";
         let changed = !plan.ops.is_empty();
         let id = plan.id;
         Ok(Outcome::edit_then(plan.label, plan.ops, move |doc| {
-            let row = styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| styles::Row {
-                id: id.clone(),
-                name: styles::name(doc, cat.catalogue, &id),
-                layer: Layer::Project,
-                overridden: false,
-            });
+            let row =
+                ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| ecad_model::registry::styles::Row {
+                    id: id.clone(),
+                    name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id),
+                    layer: Layer::Project,
+                    overridden: false,
+                });
             let mut v = style_json(doc, cat, &row, false);
             v["changed"] = json!(changed);
             v
@@ -1009,14 +1019,14 @@ impl Generic for PromoteParams {
         if let Some(key) = self.key.as_deref().map(str::trim) {
             let entry = promote_entry(key)?;
             needs_standard(doc)?;
-            if !entry.allows(defaults::Level::Standard) {
-                return Err(CmdError::refused(crate::styles::commands::defaults::level_refused(entry, defaults::Level::Standard)));
+            if !entry.allows(ecad_model::registry::Level::Standard) {
+                return Err(CmdError::refused(crate::styles::commands::defaults::level_refused(entry, ecad_model::registry::Level::Standard)));
             }
             let (mut ops, text) = promote_value(doc, entry)?;
             ops.extend(crate::styles::commands::defaults::ops(
                 doc,
                 entry,
-                defaults::Level::Project,
+                ecad_model::registry::Level::Project,
                 crate::styles::commands::defaults::Target::Project,
                 None,
             )?);

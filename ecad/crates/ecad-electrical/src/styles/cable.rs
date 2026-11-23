@@ -19,8 +19,9 @@ use serde::Deserialize;
 
 use crate::CmdError;
 use crate::circuits::fields;
-use crate::defaults::{Kind, Slot, Value};
-use crate::styles::{Catalogue, Field};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Catalogue, Field};
+use ecad_model::registry::{Kind, Value};
 
 /// The input word (and style-choice index key) naming a cable's cable type; stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
@@ -47,26 +48,62 @@ fn is_size(s: &str) -> bool {
 }
 
 static FIELDS: [Field; 15] = [
-    Field { key: "size", label: "Size", kind: Kind::Parsed { max_chars: 24, parse: is_size }, slot: Slot::new(), over: None },
+    Field {
+        key: "size",
+        label: "Size",
+        kind: Kind::Parsed { max_chars: 24, parse: is_size },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     fields::MATERIAL,
     fields::MAX_TEMPERATURE,
     fields::CONDUCTOR_CLASS,
     fields::RATED_CURRENT,
     fields::RATED_AT,
-    Field { key: CORE_COLOURS, label: "Core colours", kind: Kind::Parsed { max_chars: 256, parse: is_colour_list }, slot: Slot::new(), over: None },
-    Field { key: CORE_SCHEME, label: "Core colour scheme", kind: Kind::Choice(<CoreScheme as Word>::WORDS), slot: Slot::new(), over: None },
-    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
+    Field {
+        key: CORE_COLOURS,
+        label: "Core colours",
+        kind: Kind::Parsed { max_chars: 256, parse: is_colour_list },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: CORE_SCHEME,
+        label: "Core colour scheme",
+        kind: Kind::Choice(<CoreScheme as Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(&crate::defaults::data::DATA), over: None },
     // The cable's defaults.
-    Field { key: TYPE_CORES, label: "Cores", kind: Kind::Parsed { max_chars: 256, parse: is_offer }, slot: Slot::new(), over: None },
-    Field { key: TYPE_SHIELD, label: "Shield", kind: Kind::Parsed { max_chars: 16, parse: is_shield }, slot: Slot::new(), over: None },
-    Field { key: TYPE_GLAND, label: "Gland", kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland }, slot: Slot::new(), over: None },
+    Field {
+        key: TYPE_CORES,
+        label: "Cores",
+        kind: Kind::Parsed { max_chars: 256, parse: is_offer },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: TYPE_SHIELD,
+        label: "Shield",
+        kind: Kind::Parsed { max_chars: 16, parse: is_shield },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: TYPE_GLAND,
+        label: "Gland",
+        kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
     Field {
         key: TYPE_OUTER_DIAMETER,
         label: "Outer diameter (mm)",
         kind: Kind::Parsed { max_chars: 16, parse: is_outer_diameter },
-        slot: Slot::new(),
+        slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },
 ];
@@ -108,7 +145,7 @@ fn is_outer_diameter(s: &str) -> bool {
     outer_diameter(s).is_some()
 }
 
-fn choices() -> Vec<&'static crate::defaults::Entry> {
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
     Vec::new()
 }
 
@@ -121,16 +158,31 @@ pub static CATALOGUE: Catalogue = Catalogue {
     builtins: &[],
     choices,
     project_field: None,
+    body,
+    typed: None,
+    adjust: None,
 };
+
+/// The value field `key` of a cable style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Cable(t) => get(t, key),
+        _ => None,
+    }
+}
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
-    doc.cables().get(&k)?.cable_type.clone().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id))
+    doc.cables()
+        .get(&k)?
+        .cable_type
+        .clone()
+        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None)
+    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id, key, None)
         .map(|r| r.text())
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
@@ -150,7 +202,10 @@ pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>,
     {
         return Some((c, crate::terminal_strips::cores::OfferSource::Cores, v.to_string()));
     }
-    let ty = cab.cable_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Cable, id));
+    let ty = cab
+        .cable_type
+        .as_ref()
+        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
         && let Ok(c) = crate::terminal_strips::cores::parse_cores(&v)
     {
@@ -214,7 +269,7 @@ pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
     let own = |get: &dyn Fn(&CableType) -> bool| -> Option<&CableType> {
         [StyleLayer::Project, StyleLayer::Standard]
             .into_iter()
-            .filter_map(|l| crate::styles::record(doc, l, ecad_model::StyleCatalogue::Cable, &id).and_then(|r| r.body.cable()))
+            .filter_map(|l| ecad_model::registry::styles::record(doc, l, ecad_model::StyleCatalogue::Cable, &id).and_then(|r| r.body.cable()))
             .find(|t| get(t))
     };
     if let Some(list) = own(&|t| t.core_colours.is_some()).and_then(|t| t.core_colours.as_ref()) {
@@ -343,7 +398,7 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
 /// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
 pub fn size(doc: &Document, k: CableId) -> Option<String> {
     let from_type = of(doc, k)
-        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
+        .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), &id, "size", None))
         .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
     from_type
         .or_else(|| doc.cables().get(&k).and_then(|x| x.properties.get("type")).and_then(|t| crate::terminal_strips::cores::notation_size(t)))

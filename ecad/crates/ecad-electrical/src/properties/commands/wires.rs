@@ -9,9 +9,10 @@ use ecad_model::naming::words::Word;
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
 
-use crate::defaults::{self, Level};
+use crate::defaults::{self};
 use crate::error::{CmdError, msg};
 use crate::properties::commands::{Build, PropRule};
+use ecad_model::registry::Level;
 
 /// The `setprop` key of a wire's size.
 pub const SIZE: &str = "size";

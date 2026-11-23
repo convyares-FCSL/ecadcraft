@@ -96,7 +96,10 @@ pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
         .collect();
     let draws = crate::styles::wire::WireDraws::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| draws.category(doc, *c).0).collect();
-    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id) };
+    let named = |id: &StyleRef| CategoryName {
+        id: id.text(),
+        name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id),
+    };
     let uncategorised = net.wires.iter().any(|c| draws.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
@@ -466,7 +469,7 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// No such wire.
 pub(crate) fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let pot = value
-        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
+        .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, "potential", None))
         .and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
@@ -534,7 +537,7 @@ pub(crate) fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Res
     };
     let (ops, message) = category_ops(doc, &conductors, id.as_ref())?;
     let label = match &id {
-        Some(i) => format!("Category {}", crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, i)),
+        Some(i) => format!("Category {}", ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), i)),
         None => "Clear category".into(),
     };
     Ok(Categorised { ops, label, wires: conductors.len(), category: id, message })
@@ -780,5 +783,5 @@ pub(crate) fn settings_json(doc: &Document) -> Value {
 /// Whether `wire` joins ends that meet other wires when `join` is not given:
 /// the registered default `wire.join`.
 pub fn join_by_default(doc: &Document) -> bool {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()
+    ecad_model::registry::resolve(doc, &crate::defaults::wires::WIRE_JOIN, ecad_model::registry::Scope::project()).flag()
 }

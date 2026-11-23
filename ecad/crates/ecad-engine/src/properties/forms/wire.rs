@@ -131,8 +131,10 @@ impl Wire {
             let id =
                 read(s, |p, _| ecad_electrical::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
                     .map_err(other)?;
-            let name =
-                read(s, |p, _| Ok(ecad_electrical::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
+            let name = read(s, |p, _| {
+                Ok(ecad_model::registry::styles::name(p.ledger.document(), ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire), &id))
+            })
+            .unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -238,7 +240,7 @@ impl Interactive for Wire {
         if self.asking_category {
             let names = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(ecad_electrical::styles::rows(doc, ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire))
+                Ok(ecad_model::registry::styles::rows(doc, ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire))
                     .into_iter()
                     .map(|r| r.name)
                     .collect::<Vec<_>>())

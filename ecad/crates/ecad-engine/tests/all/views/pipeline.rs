@@ -19,7 +19,7 @@ fn areas_cover_the_keys() {
     for e in defaults::all() {
         assert_ne!(keys::area_of(e.key), Area::Free, "{}", e.key);
     }
-    // The registry's words as they were written out before design 064 (`defaults::AREAS` is now
+    // The registry's words as they were written out before design 064 (`ecad_model::registry::AREAS` is now
     // derived from `Area::REGISTRY`, so compare both with the old list).
     let old = [
         "text",
@@ -42,7 +42,7 @@ fn areas_cover_the_keys() {
     ];
     let words: Vec<&str> = Area::REGISTRY.iter().map(|a| a.word()).collect();
     assert_eq!(words, old, "Area::REGISTRY");
-    assert_eq!(defaults::AREAS, old, "defaults::AREAS");
+    assert_eq!(ecad_model::registry::AREAS, old, "ecad_model::registry::AREAS");
 }
 
 /// Step 3, `TreeFeed`'s update map (design 064 §4.1): which ops make the Pages tree read again,

@@ -46,7 +46,7 @@ pub enum Style {
 
 /// The style of `page` (registry `terminal_block.plan.style`: page, project, built-in `table`).
 pub fn style_of(doc: &Document, page: PageId) -> Style {
-    match crate::defaults::resolve(doc, &entries::STYLE, crate::defaults::Scope::page(page)).word() {
+    match ecad_model::registry::resolve(doc, &entries::STYLE, ecad_model::registry::Scope::page(page)).word() {
         entries::GRAPHIC => Style::Graphic,
         _ => Style::Table,
     }
@@ -73,8 +73,8 @@ pub struct Geometry {
 impl Default for Geometry {
     /// The built-ins.
     fn default() -> Self {
-        let n = |e: &crate::defaults::Entry| match e.builtin() {
-            crate::defaults::Value::Length(x) | crate::defaults::Value::Number(x) => x,
+        let n = |e: &ecad_model::registry::Entry| match e.builtin() {
+            ecad_model::registry::Value::Length(x) | ecad_model::registry::Value::Number(x) => x,
             _ => 0.0,
         };
         Geometry {
@@ -93,7 +93,7 @@ impl Default for Geometry {
 impl Geometry {
     /// The project's values (the registry keeps each in its range).
     pub fn of(doc: &Document) -> Geometry {
-        let n = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).number();
+        let n = |e: &ecad_model::registry::Entry| ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).number();
         Geometry {
             pitch: n(&entries::PITCH),
             body: n(&entries::BODY),

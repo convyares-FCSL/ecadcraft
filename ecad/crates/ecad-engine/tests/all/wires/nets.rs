@@ -431,7 +431,7 @@ fn the_join_default_comes_from_the_registry() {
     }
     // The label rule's built-in is `net` (data since brief 066).
     let rule = &ecad_electrical::defaults::wires::WIRING_LABEL_RULE;
-    assert_eq!(rule.builtin(), ecad_electrical::defaults::Value::Choice(ecad_model::connectivity::wiring::LABEL_RULE_NET));
+    assert_eq!(rule.builtin(), ecad_model::registry::Value::Choice(ecad_model::connectivity::wiring::LABEL_RULE_NET));
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {

@@ -628,10 +628,13 @@ impl Scope {
                         self.potentials.insert(pot.as_str().to_lowercase());
                     }
                 }
-                if let Some(r) = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {
+                if let Some(r) =
+                    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, "potential", None)
+                {
                     self.potentials.insert(r.text().trim().to_lowercase());
                 }
-                if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == **id {
+                if ecad_model::registry::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, ecad_model::registry::Scope::project()) == **id
+                {
                     self.all_wires = true;
                 }
             }

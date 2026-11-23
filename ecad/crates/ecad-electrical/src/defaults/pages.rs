@@ -1,7 +1,8 @@
 //! Registry entries: a page's type (page level only)
 //! and the cover's block toggles (standard and project).
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 const GROUP: &str = "Pages";
 const G: &[Level] = &[Level::Page];
@@ -9,7 +10,7 @@ const SP: &[Level] = &[Level::Standard, Level::Project];
 const SWITCH: Kind = Kind::Flag;
 
 const fn toggle(key: &'static str, label: &'static str) -> Entry {
-    Entry { key, label, group: "Cover", kind: SWITCH, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: "Cover", kind: SWITCH, slot: Slot::new(&crate::defaults::data::DATA), levels: SP, project: ProjectSource::Property }
 }
 
 /// The cover's block toggles, standard and project only.
@@ -30,7 +31,7 @@ pub static HEADING: Entry = Entry {
     group: "Cover",
 
     kind: Kind::Text { max_chars: 64 },
-    slot: Slot::new(),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: SP,
     project: ProjectSource::Property,
 };
@@ -43,8 +44,8 @@ pub static PAGE_TYPE: Entry = Entry {
     label: "Page type",
     group: GROUP,
 
-    kind: Kind::Style(ecad_model::StyleCatalogue::Page),
-    slot: Slot::new(),
+    kind: Kind::Style(&crate::styles::page::CATALOGUE),
+    slot: Slot::new(&crate::defaults::data::DATA),
     levels: G,
     project: ProjectSource::Property,
 };
