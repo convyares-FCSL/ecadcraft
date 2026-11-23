@@ -1,5 +1,5 @@
 //! Canvas colours: the paper sheet (default) and the dark sheet, a second token set of the same
-//! meanings (spec §4, "Canvas colours"). Whether a meaning prints is data ([`prints`]): ink
+//! meanings. Whether a meaning prints is data ([`prints`]): ink
 //! prints, overlay never does.
 
 use crate::Color;
@@ -43,7 +43,7 @@ pub enum Meaning {
 }
 
 impl Meaning {
-    /// Every meaning, in the spec's order.
+    /// Every meaning, in declaration order.
     pub const ALL: [Meaning; 16] = [
         Meaning::Sheet,
         Meaning::Ink,
@@ -160,16 +160,16 @@ pub const DARK: Sheet = Sheet {
     agent_write: Color::hex(0xB9E34A),
 };
 
-/// A page thumbnail's paper in the Book panel (UI rev 3, board 1.02).
+/// A page thumbnail's paper in the Book panel.
 pub const THUMBNAIL_PAPER: Color = Color::hex(0xE8E8E8);
-/// A page's preview paper in the status bar's page menu (UI rev 3).
+/// A page's preview paper in the status bar's page menu.
 pub const PREVIEW_PAPER: Color = Color::hex(0xECECEC);
-/// The ink of page thumbnails and previews (UI rev 3).
+/// The ink of page thumbnails and previews.
 pub const THUMBNAIL_INK: Color = Color::hex(0x464646);
 
-/// Selection fill opacity, % (spec: "12 % fill").
+/// Selection fill opacity, %.
 pub const SELECTION_FILL_PERCENT: u8 = 12;
-/// Placement preview fill opacity, % (spec: "8 % fill").
+/// Placement preview fill opacity, %.
 pub const PREVIEW_FILL_PERCENT: u8 = 8;
 
 impl Sheet {

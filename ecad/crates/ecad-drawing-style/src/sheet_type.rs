@@ -1,7 +1,7 @@
-//! Sheet text styles (spec §4, "Type"; owner answer 9): sizes are **cap heights** on paper, in
+//! Sheet text styles: sizes are **cap heights** on paper, in
 //! mm, never enlarged for the screen. The sheet font is Barlow Semi Condensed, whose cap height
 //! is 0.70 em, so the font size is the cap height divided by 0.70. Switching the sheet to these
-//! styles is U4a; this table is the source it reads.
+//! styles later; this table is the source it reads.
 
 /// Barlow Semi Condensed's cap height as a fraction of its em.
 pub const CAP_HEIGHT_EM: f32 = 0.70;

@@ -1,5 +1,5 @@
-//! Default wire category colours on each sheet, and the two-colour dash (spec §4). All are
-//! defaults the user changes in Standards (U4c); these are the built-in values.
+//! Default wire category colours on each sheet, and the two-colour dash. All are
+//! defaults the user changes in Standards; these are the built-in values.
 
 use crate::Color;
 

@@ -1,6 +1,5 @@
-//! `ecad/docs/design/tokens.md` and the drawing style agree (brief 037, acceptance criterion 1;
-//! design 065 §1.1): every row of the "Drawing style" tables names a constant and shows its value,
-//! and every constant has a row.
+//! The design tokens document and the drawing style agree: every row of the
+//! "Drawing style" tables names a constant and shows its value, and every constant has a row.
 
 use std::collections::BTreeMap;
 

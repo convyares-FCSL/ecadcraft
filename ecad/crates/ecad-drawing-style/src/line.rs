@@ -1,6 +1,6 @@
-//! Line weights on the page (spec §4, "Line weights"): canvas lines are in mm on paper and scale
+//! Line weights on the page: canvas lines are in mm on paper and scale
 //! with zoom, with a floor of 1 px on screen (`ecad_widgets::tokens::line::SCREEN_FLOOR_PX`). The screen's own
-//! strokes (px) are UI tokens, in `ecad-tokens`.
+//! strokes (px) are UI tokens, in `ecad-widgets`.
 
 /// Symbol outline, mm.
 pub const SYMBOL_MM: f32 = 0.35;

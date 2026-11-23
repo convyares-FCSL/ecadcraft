@@ -1,5 +1,5 @@
-//! Canvas markers: the shape of each meaning and, for the screen-size markers, their size (spec
-//! §4, "Canvas colours"). Markers are drawn at a fixed screen size and do not scale with zoom;
+//! Canvas markers: the shape of each meaning and, for the screen-size markers, their size. Markers
+//! are drawn at a fixed screen size and do not scale with zoom;
 //! the line-like marks (terminal link, selection outline, agent's last write) are in millimetres
 //! and scale with the sheet ([`crate::line`]).
 

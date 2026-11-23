@@ -1,5 +1,4 @@
-//! Contracts of the drawing style (brief 037, acceptance criterion 1; moved from `ecad-tokens` by
-//! design 065 §1.1).
+//! Contracts of the drawing style.
 
 use ecad_drawing_style::sheet::{self, DARK, Meaning, PAPER, prints};
 use ecad_drawing_style::{Color, sheet_type};

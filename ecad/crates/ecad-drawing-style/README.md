@@ -17,8 +17,8 @@ engine, the rules and the UI kit can all reach it.
 
 ## Must not depend on
 Nothing at all: it has no dependencies. It is plain `const` data plus the font bytes. It holds no
-drawing code, no toolkit type, and not the screen's own look (shell colours, spacing, icons), which
-is `ecad-tokens`.
+drawing code, no toolkit type, and not the screen's own appearance (shell colours, spacing, icons),
+which is `ecad-widgets`' tokens.
 
 ## Key types
 `Color`, `Sheet`, `Meaning`, and the `sheet::PAPER` and `sheet::DARK` sets.

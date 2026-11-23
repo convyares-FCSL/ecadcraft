@@ -1,9 +1,9 @@
-//! ecad-drawing-style: how an ECAD page is drawn and printed (design 065 §1.1).
+//! ecad-drawing-style: how an ECAD page is drawn and printed.
 //!
-//! The drawing style is part of the drawing's definition, so it sits in Core: the engine draws
-//! with it, `ecad-electrical` measures sheet text with the sheet font, and the UI kit and the app
-//! paint the canvas with its colours. The values are documented in `ecad/docs/design/tokens.md`
-//! ("Drawing style"), and a test compares every row of that section with these constants.
+//! The drawing style is part of the drawing's definition, so it sits in Core: the engine draws with it,
+//! `ecad-electrical` measures sheet text with the sheet font, and the UI kit and the app paint the canvas with
+//! its colours. A test compares every row of the "Drawing style" section of the design tokens document with
+//! these constants.
 //!
 //! - [`sheet`]: the paper and dark sheet colour sets, and which meanings print.
 //! - [`marker`]: the shape and screen size of each canvas marker.
@@ -12,9 +12,8 @@
 //! - [`sheet_font`]: the embedded sheet font.
 //! - [`line`]: line weights on the page, in mm.
 //!
-//! This crate **excludes** any drawing, any toolkit type, any dependency and the screen's own look
-//! (shell colours, spacing, UI type, icons: `ecad-tokens`). It is plain `const` data and the font
-//! bytes.
+//! This crate **excludes** any drawing, any toolkit type, any dependency and the screen's own look (shell
+//! colours, spacing, UI type and icons are `ecad-widgets`' tokens). It is plain `const` data and the font bytes.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod line;
