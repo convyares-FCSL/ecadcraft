@@ -1,5 +1,5 @@
 //! MCP contracts: the `contacts` reply's `table` and `table`'s refusal, through `execute`; the writes are the
-//! agent's transactions and are refused with writes off.
+//! agent's transactions, and with writes off `newpage` and `table` are refused.
 
 use ecad_engine::agent::policy;
 use ecad_model::{Author, Op};
@@ -82,15 +82,6 @@ fn table_is_refused_on_an_ecad_page_in_clean_words() {
 }
 
 #[test]
-fn with_writes_off_the_move_is_refused_and_contacts_reads() {
-    let mut c = reader();
-    let before = c.log();
-    let m = c.refused("execute", json!({"command": "mirrormove", "params": {"component": "1", "at": [0, 0]}}));
-    assert_eq!(m, policy::WRITES_OFF);
-    assert_eq!(c.log(), before);
-}
-
-#[test]
 fn continuation_sheets_are_numbered_taken_and_printed_whole() {
     let mut c = writer(WRITER_SEED);
     let contents = c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
@@ -128,13 +119,11 @@ fn continuation_sheets_are_numbered_taken_and_printed_whole() {
 }
 
 #[test]
-fn with_writes_off_newpage_and_pageprops_are_refused() {
+fn with_writes_off_newpage_with_a_number_is_refused() {
     let mut c = reader();
     let before = c.log();
-    for (cmd, params) in [("newpage", json!({"number": "401"})), ("pageprops", json!({"number": "401"}))] {
-        let m = c.refused("execute", json!({"command": cmd, "params": params}));
-        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
-    }
+    let m = c.refused("execute", json!({"command": "newpage", "params": {"number": "401"}}));
+    assert_eq!(m, policy::WRITES_OFF);
     assert_eq!(c.log(), before);
 }
 

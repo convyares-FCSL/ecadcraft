@@ -1,6 +1,6 @@
 //! MCP contract: `textstyle` and
-//! `defaults` through `execute`: each write records one transaction by `Author::Agent(<client>)`
-//! and is refused with writes off; the reads answer with writes off and record nothing; the
+//! `defaults` through `execute`: each write records one transaction by `Author::Agent(<client>)`;
+//! the reads answer with writes off and record nothing; the
 //! property commands refuse `text.` keys.
 
 use ecad_model::{Author, Op};
@@ -69,9 +69,6 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert_eq!(c.log().len(), n);
 
     let mut r = reader();
-    for p in [json!({"kind": "tag", "height": 3}), json!({"font": "X"}), json!({"kind": "wire_label", "height": 2})] {
-        r.refused("execute", json!({"command": "textstyle", "params": p}));
-    }
     let n = r.log().len();
     let read = r.exec("textstyle", json!({}));
     let tag = read["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "tag").unwrap().clone();
@@ -226,6 +223,4 @@ fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off()
     let r = one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "to": [130, 170]}));
     assert_eq!(r["changed"], json!(true));
     one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "reset": true}));
-    let mut w = reader();
-    w.refused("execute", json!({"command": "movetext", "params": {"representation": rep, "kind": "tag", "to": [1, 2]}}));
 }

@@ -28,5 +28,7 @@ library tools, and anything beyond loopback on this machine.
 ```bash
 cargo test -p ecad-mcp
 ```
-Tests are in `tests/all/`; `mcp_contracts.rs` drives commands through `execute`; every new or changed
-command gets a test there. To try it by hand, see [`docs/quick-start.md`](../../docs/quick-start.md).
+Tests are in `tests/all/`, one file per area; `mcp_contracts.rs` drives commands through `execute`.
+Every generic command that may edit has a row in `generic_commands_contracts.rs` (refused with writes
+off, one transaction by the agent with writes on); a new or changed session command gets a test of
+its own. To try it by hand, see [`docs/quick-start.md`](../../docs/quick-start.md).

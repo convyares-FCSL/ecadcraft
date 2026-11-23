@@ -1,12 +1,12 @@
 //! A PLC module's field set through MCP's `setprop` records
-//! one `ModifyDevice` with the typed field, as the agent, and is refused with writes off.
+//! one `ModifyDevice` with the typed field, as the agent.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::objects::plc::ModuleFunction;
 use ecad_model::{Author, DeviceType, Op};
 use serde_json::json;
 
-use crate::mcp_contracts::{AGENT, Client, reader};
+use crate::mcp_contracts::{AGENT, Client};
 
 #[test]
 fn setprop_on_a_module_records_modify_device() {
@@ -24,7 +24,4 @@ fn setprop_on_a_module_records_modify_device() {
     let DeviceType::PlcModule(m) = &after.device_type else { panic!("a module: {:?}", after.device_type) };
     assert!(matches!(m.function, ModuleFunction::DigitalIn(_)));
     assert_eq!(m.channel(2).and_then(|x| x.text.as_ref()).map(|t| t.as_str()), Some("Door closed"));
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "plc.ch.2.text", "value": "x"}}));
 }

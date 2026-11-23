@@ -1,11 +1,11 @@
 //! `setprop` on several components through MCP walks the single-component rules,
-//! records one agent transaction, and is refused with writes off.
+//! and records one agent transaction.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Op};
 use serde_json::json;
 
-use crate::mcp_contracts::{AGENT, Client, reader};
+use crate::mcp_contracts::{AGENT, Client};
 
 #[test]
 fn setprop_on_several_connectors_through_mcp_refuses_what_one_refuses() {
@@ -37,7 +37,4 @@ fn setprop_on_several_connectors_through_mcp_refuses_what_one_refuses() {
         })
         .collect();
     assert_eq!(set, ["6", "6"], "{:?}", last.ops);
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"devices": ids, "key": "pins", "value": "6"}}));
 }

@@ -23,6 +23,7 @@ mod defaults_contracts;
 mod demo;
 mod device_records_contracts;
 mod drawing_pack_contracts;
+mod generic_commands_contracts;
 mod history_contracts;
 mod levels_contracts;
 mod levels_saved_contracts;

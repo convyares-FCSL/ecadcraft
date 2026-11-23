@@ -1,7 +1,7 @@
 //! A continuation is a drawing aid. Placed through
 //! MCP's `execute` it records `CreateAid` with its point owned by the aid; `setprop {aids}` and
 //! `contcaption` record one `ModifyAid` each; `references {aid}` lists its other end; all by the
-//! agent, and every one refused with writes off.
+//! agent. With writes off, `place` is refused.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Aid, Author, Op};
@@ -51,13 +51,11 @@ fn continuations_through_mcp_are_aids() {
 
     let mut r = reader();
     r.refused("execute", json!({"command": "place", "params": {"symbol": "continuation", "at": [20, 20], "name": "24V"}}));
-    r.refused("execute", json!({"command": "setprop", "params": {"aids": [a], "key": "name", "value": "0V"}}));
-    r.refused("execute", json!({"command": "contcaption", "params": {"continuations": [a], "caption": "X"}}));
 }
 
 /// F1c: a location box is a drawing aid. Placed through `execute` it records `CreateAid` (no
 /// device); `setprop {aids}` with its location records one `ModifyAid`; both by the agent. A key
-/// a box does not have is refused with nothing recorded, and every one is refused with writes off.
+/// a box does not have is refused with nothing recorded.
 #[test]
 fn location_boxes_through_mcp_are_aids() {
     let mut c = Client::new(EcadMcp::in_memory("lane072f-box", 0x72fb, Options { write: true, agent: None }).unwrap());
@@ -92,16 +90,11 @@ fn location_boxes_through_mcp_are_aids() {
     let m = c.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "name", "value": "24V"}}));
     assert!(m.contains("location box") && m.contains("panel_temperature"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "locationbox", "params": {"location": "+CP1", "corners": [[10, 10], [80, 60]]}}));
-    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "location", "value": "+CP2"}}));
-    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "panel_temperature", "value": "40"}}));
 }
 
 /// F1c-2: a box keeps its own location style. `setprop {aids, key: "style"}` records one
 /// `ModifyAid` with the style's ID, by the agent, and null clears it; an unknown style is refused;
-/// `setlocation` on a box names it as a box; every write is refused with writes off.
+/// `setlocation` on a box names it as a box.
 #[test]
 fn a_location_boxs_own_style_through_mcp() {
     let mut c = Client::new(EcadMcp::in_memory("lane072f-box-style", 0x72fc, Options { write: true, agent: None }).unwrap());
@@ -130,16 +123,12 @@ fn a_location_boxs_own_style_through_mcp() {
     let m = c.refused("execute", json!({"command": "setlocation", "params": {"component": b, "value": "+CP2"}}));
     assert!(m.contains(&format!("{b} is a location box; edit it with setprop {{aids}}")), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "style", "value": "box"}}));
 }
 
 /// F2b: a BOM item is a loose part (design 072 §6.4). `bomitem` through `execute` records one
 /// `CreateLoosePart` (no device), `{item, set}` one `ModifyLoosePart` and `{item, delete}` one
 /// `DeleteLoosePart`, all by the agent; `bom` names the item by its own id. A description longer
-/// than 200 characters is refused in words, never cut, with nothing recorded; every write is
-/// refused with writes off.
+/// than 200 characters is refused in words, never cut, with nothing recorded.
 #[test]
 fn bom_items_through_mcp_are_loose_parts() {
     let mut c = Client::new(EcadMcp::in_memory("lane072f-loose", 0x72f2, Options { write: true, agent: None }).unwrap());
@@ -186,8 +175,4 @@ fn bom_items_through_mcp_are_loose_parts() {
     let (author, ops) = last_aid(&mut c);
     assert_eq!(author, Author::Agent(AGENT.into()));
     assert!(matches!(ops.as_slice(), [Op::DeleteLoosePart { .. }]), "{ops:?}");
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "bomitem", "params": {"description": "DIN rail"}}));
-    r.refused("execute", json!({"command": "bomitem", "params": {"item": item, "delete": true}}));
 }

@@ -1,5 +1,5 @@
 //! `place` through MCP records the device with the type
-//! its symbol declares, as the agent, and is refused with writes off.
+//! its symbol declares, as the agent.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::objects::devices::DeviceGroup;
@@ -32,7 +32,7 @@ fn place_records_the_device_with_its_symbol_s_type() {
 }
 
 /// Step 2b (design 072 §2.1): `setprop` of a device's description or maker through MCP records one
-/// `ModifyDevice` as the agent, and is refused with writes off.
+/// `ModifyDevice` as the agent.
 #[test]
 fn setprop_of_a_text_field_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-text", 73, Options { write: true, agent: None }).unwrap());
@@ -50,12 +50,10 @@ fn setprop_of_a_text_field_records_modify_device() {
             other => panic!("{key}: {other:?}"),
         }
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "description", "value": "x"}}));
 }
 
 /// Step 2c (design 072 §6.3): `setlocation` through MCP records one `ModifyDevice` (with the new
-/// list entry) as the agent, the location fixed, and is refused with writes off.
+/// list entry) as the agent, the location fixed.
 #[test]
 fn setlocation_records_modify_device_with_fixed() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-loc", 74, Options { write: true, agent: None }).unwrap());
@@ -73,12 +71,10 @@ fn setlocation_records_modify_device_with_fixed() {
         }
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setlocation", "params": {"component": id, "value": "+CP2"}}));
 }
 
 /// Step 3, Connector: `setprop` of a connector's pin count through MCP records one `ModifyDevice`
-/// as the agent, and is refused with writes off.
+/// as the agent.
 #[test]
 fn setprop_of_a_connector_field_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-conn", 75, Options { write: true, agent: None }).unwrap());
@@ -94,12 +90,10 @@ fn setprop_of_a_connector_field_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("pins").as_deref(), Some("6")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "pins", "value": "5"}}));
 }
 
 /// Step 3, Protection: `setprop rating` through MCP records one `ModifyDevice` with the typed
-/// rating as the agent, answers what it read, and is refused with writes off.
+/// rating as the agent, answers what it read.
 #[test]
 fn setprop_of_a_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-rating", 76, Options { write: true, agent: None }).unwrap());
@@ -116,13 +110,10 @@ fn setprop_of_a_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("curve C, 10 A")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "B6"}}));
 }
 
 /// Step 3, Switching: `setprop rating` on a coil through MCP records one `ModifyDevice` with the
-/// typed coil voltage and AC-3 rating as the agent, answers what it read, and is refused with
-/// writes off.
+/// typed coil voltage and AC-3 rating as the agent, answers what it read.
 #[test]
 fn setprop_of_a_switching_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-switching", 77, Options { write: true, agent: None }).unwrap());
@@ -139,12 +130,10 @@ fn setprop_of_a_switching_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("coil 230 V AC, AC-3 12 A")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
 
 /// Step 3, Sensor: `setprop rating` on a PNP sensor through MCP records one `ModifyDevice` with
-/// the typed supply as the agent, answers what it read, and is refused with writes off.
+/// the typed supply as the agent, answers what it read.
 #[test]
 fn setprop_of_a_sensor_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-sensor", 78, Options { write: true, agent: None }).unwrap());
@@ -161,13 +150,10 @@ fn setprop_of_a_sensor_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("24 V DC")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
 
 /// Step 3, TerminalStrip: `setprop rating.<p>` on a strip's fuse position through MCP records one
-/// `ModifyDevice` with the typed fuse as the agent, answers what it read, and is refused with
-/// writes off.
+/// `ModifyDevice` with the typed fuse as the agent, answers what it read.
 #[test]
 fn setprop_of_a_strip_fuse_position_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-strip", 79, Options { write: true, agent: None }).unwrap());
@@ -188,12 +174,10 @@ fn setprop_of_a_strip_fuse_position_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating.1").as_deref(), Some("4 A")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating.1", "value": "4A"}}));
 }
 
 /// Step 3, Motor: `setprop rating` on a motor through MCP records one `ModifyDevice` with the
-/// typed nameplate as the agent, answers what it read, and is refused with writes off.
+/// typed nameplate as the agent, answers what it read.
 #[test]
 fn setprop_of_a_motor_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-motor", 79, Options { write: true, agent: None }).unwrap());
@@ -210,12 +194,10 @@ fn setprop_of_a_motor_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("4 kW, 8.2 A, DOL")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "4 kW"}}));
 }
 
 /// Step 3, Load: `setprop rating` on a heater through MCP records one `ModifyDevice` with the
-/// typed power as the agent, answers what it read, and is refused with writes off.
+/// typed power as the agent, answers what it read.
 #[test]
 fn setprop_of_a_load_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-load", 80, Options { write: true, agent: None }).unwrap());
@@ -232,12 +214,10 @@ fn setprop_of_a_load_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("2.5 kW")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "2 kW"}}));
 }
 
 /// Step 3, Indicator: `setprop rating` on a lamp through MCP records one `ModifyDevice` with the
-/// typed colour and voltage as the agent, answers what it read, and is refused with writes off.
+/// typed colour and voltage as the agent, answers what it read.
 #[test]
 fn setprop_of_an_indicator_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-lamp", 81, Options { write: true, agent: None }).unwrap());
@@ -254,12 +234,10 @@ fn setprop_of_an_indicator_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("green, 230 V AC")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "red"}}));
 }
 
 /// Step 3, PowerSupply: `setprop rating` on a power supply through MCP records one `ModifyDevice`
-/// with the typed voltages as the agent, answers what it read, and is refused with writes off.
+/// with the typed voltages as the agent, answers what it read.
 #[test]
 fn setprop_of_a_power_supply_rating_records_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-psu", 82, Options { write: true, agent: None }).unwrap());
@@ -276,13 +254,10 @@ fn setprop_of_a_power_supply_rating_records_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("230 V AC / 24 V DC, 10 A")),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
 
 /// Step 5 (design 072 §2.8, brief 011): `userfield` records one `ModifyProject` and
-/// `setprop user.<name>` one `ModifyDevice` with the typed value, as the agent; both are refused
-/// with writes off.
+/// `setprop user.<name>` one `ModifyDevice` with the typed value, as the agent.
 #[test]
 fn user_fields_record_modify_project_and_modify_device() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-user", 86, Options { write: true, agent: None }).unwrap());
@@ -304,13 +279,10 @@ fn user_fields_record_modify_project_and_modify_device() {
         [Op::ModifyDevice { after, .. }] => assert_eq!(after.user.get(&fid), Some(&ecad_model::UserValue::Number(3.0))),
         other => panic!("{other:?}"),
     }
-    let mut r = reader();
-    r.refused("execute", json!({"command": "userfield", "params": {"name": "Row", "kind": "flag"}}));
-    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "user.Row", "value": "4"}}));
 }
 
 /// Step 5 (design 072 §2.6, brief 011): `linkdevices` records one `AddDeviceLink` and
-/// `unlinkdevices` one `RemoveDeviceLink`, as the agent; both are refused with writes off.
+/// `unlinkdevices` one `RemoveDeviceLink`, as the agent.
 #[test]
 fn device_links_record_add_and_remove_device_link() {
     let mut c = Client::new(EcadMcp::in_memory("lane072b-link", 87, Options { write: true, agent: None }).unwrap());
@@ -325,7 +297,4 @@ fn device_links_record_add_and_remove_device_link() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     assert!(matches!(last.ops.as_slice(), [Op::RemoveDeviceLink { .. }]));
-    let mut r = reader();
-    r.refused("execute", json!({"command": "linkdevices", "params": {"kind": "auxiliary_block", "devices": [a, b]}}));
-    r.refused("execute", json!({"command": "unlinkdevices", "params": {"link": link}}));
 }

@@ -1,8 +1,6 @@
 //! Defaults through MCP: `setdefault` records one transaction by
-//! `Author::Agent(<client>)`, a refused level gives the reason and the allowed levels, and with
-//! writes off it is refused and records nothing.
+//! `Author::Agent(<client>)`, and a refused level gives the reason and the allowed levels.
 
-use ecad_engine::agent::policy;
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::json;
@@ -23,10 +21,4 @@ fn setdefault_by_the_agent_then_refused_with_writes_off() {
     let m = c.refused("execute", json!({"command": "setdefault", "params": {"key": "text.run.gap", "level": "page", "value": 3}}));
     assert!(m.contains("cannot be set at page level") && m.contains("It can be set at: project"), "{m}");
     assert_eq!(c.log().len(), n + 1, "a refusal records nothing");
-
-    let mut r = crate::mcp_contracts::reader();
-    let log = r.log();
-    let m = r.refused("execute", json!({"command": "setdefault", "params": {"key": "symbol.coil.prefix", "value": "Q"}}));
-    assert_eq!(m, policy::WRITES_OFF);
-    assert_eq!(r.log(), log, "nothing recorded with writes off");
 }

@@ -2,7 +2,7 @@
 //! MCP's `execute` record one `ModifyWire` by the agent; a value that does not read, and a key a
 //! wire does not have, are refused and record nothing; `wire` point to point records its route
 //! and the wire the rewrite made; `cableslash` across a loose line puts the core on the line;
-//! with writes off each command is refused.
+//! with writes off `wire`, `cableslash` and `cablecore` are refused.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::geometry::units::Amps;
@@ -54,9 +54,6 @@ fn a_wires_values_set_through_mcp_record_one_modify_wire() {
         assert!(m.contains(words), "{key}: {m}");
     }
     assert_eq!(c.log().len(), before, "a refusal records nothing");
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"conductor": w, "key": "size", "value": "2.5"}}));
 }
 
 /// Brief 011's contract for lane 072 D (design 072 §4): `wire` from one connection point to
@@ -143,7 +140,7 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
 
 /// Brief 011's contract for design 072 F40: `wiresettings {number_by}` through `execute` records
 /// one transaction by the agent holding the settings change and the renumbered wires; each wire
-/// then shows its own number; a word it does not know is refused; with writes off it is refused.
+/// then shows its own number; a word it does not know is refused.
 #[test]
 fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
     let mut c = Client::new(EcadMcp::in_memory("lane072d-number-by", 722, Options { write: true, agent: None }).unwrap());
@@ -177,12 +174,6 @@ fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
     let m = c.refused("execute", json!({"command": "wiresettings", "params": {"number_by": "wire"}}));
     assert!(m.contains("number_by") && m.contains("conductor"), "{m}");
     assert_eq!(c.log().len(), before, "a refusal records nothing");
-
-    let mut r = reader();
-    let before = r.log();
-    let m = r.refused("execute", json!({"command": "wiresettings", "params": {"number_by": "conductor"}}));
-    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
-    assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
 
 /// The `ModifyCable` of the last transaction, with its author.
@@ -204,8 +195,8 @@ fn last_cable(c: &mut Client) -> (Author, ecad_model::Cable) {
 /// Brief 011's contract for lane 072 D c3 (design 072 §4.5): a cable is written whole. `cableedit`,
 /// `cablecore`, `rating` and `setprop` on a cable (its offer, a core's Not used, its shield, its
 /// design current, its tag) through `execute` each record one transaction by the agent holding one
-/// `ModifyCable` and no `SetProperty`; the offer stores the cores it offers; with writes off each
-/// is refused.
+/// `ModifyCable` and no `SetProperty`; the offer stores the cores it offers; with writes off
+/// `cablecore` is refused.
 #[test]
 fn a_cables_values_set_through_mcp_record_one_modify_cable() {
     use ecad_model::{CorePosition, Purpose};
@@ -250,23 +241,16 @@ fn a_cables_values_set_through_mcp_record_one_modify_cable() {
     assert_eq!(c.log().len(), before, "a refusal records nothing");
 
     let mut r = reader();
-    for (cmd, params) in [
-        ("cableedit", json!({"cable": "-W01", "set": {"length": 5}})),
-        ("cablecore", json!({"cable": k, "cores": ["1"]})),
-        ("setprop", json!({"cable": k, "key": "cores", "value": "5G"})),
-        ("setprop", json!({"cable": k, "key": "unused.1", "value": "yes"})),
-    ] {
-        let before = r.log();
-        let m = r.refused("execute", json!({"command": cmd, "params": params}));
-        assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF, "{cmd}");
-        assert_eq!(r.log(), before, "{cmd}: nothing recorded with writes off");
-    }
+    let before = r.log();
+    let m = r.refused("execute", json!({"command": "cablecore", "params": {"cable": k, "cores": ["1"]}}));
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
+    assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
 
 /// Lane 072 D step d (overseer ruling, 2026-11-18): `rating {protected_by}` through `execute`
 /// records one `ModifyWire` by the agent holding the device itself; deleting that device clears it
 /// in the same transaction and says so, and undo brings it back; a name that is no device is
-/// refused and records nothing; with writes off it is refused.
+/// refused and records nothing.
 #[test]
 fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     let mut c = Client::new(EcadMcp::in_memory("lane072d-protect", 723, Options { write: true, agent: None }).unwrap());
@@ -296,14 +280,11 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     assert_eq!(c.doc().wires()[&wid].protected_by, None, "cleared in the same transaction");
     c.exec("undo", json!({}));
     assert_eq!(c.doc().wires()[&wid].protected_by.map(|p| p.device), Some(q_id), "undo brings it back");
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "rating", "params": {"wire": w, "protected_by": tag}}));
 }
 
 /// Brief 011's contract for lane 072 D e2/e4 (design 072 §4.5, §4.6): `setprop wire.category`
 /// records one `ModifyWire` writing `wire_type`, and `cableedit` / `setprop cable_type` one
-/// `ModifyCable` writing `cable_type`, each by the agent; with writes off both are refused.
+/// `ModifyCable` writing `cable_type`, each by the agent.
 #[test]
 fn wire_and_cable_types_set_through_mcp_record_typed_fields_as_the_agent() {
     let mut c = Client::new(EcadMcp::in_memory("lane072d-types", 724, Options { write: true, agent: None }).unwrap());
@@ -342,10 +323,6 @@ fn wire_and_cable_types_set_through_mcp_record_typed_fields_as_the_agent() {
         assert!(!after.properties.contains_key("cable_type"), "{cmd}: never a property");
         assert_eq!(after.cable_type.as_ref().map(ecad_model::StyleRef::text), want, "{cmd}");
     }
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setprop", "params": {"conductor": w, "key": "wire.category", "value": "signal"}}));
-    r.refused("execute", json!({"command": "cableedit", "params": {"cable": k, "set": {"cable_type": null}}}));
 }
 
 /// Lane 072 D step F3: the junction is gone for agents too. `place {"symbol": "junction"}`

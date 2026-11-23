@@ -239,12 +239,18 @@ At a milestone, the owner asks for the QA gate: first the phase-end tidy-up PR i
 "Branches and testing"), then a PR from `dev` into `main`, full suite, screenshots, the full
 bench, and the owner's trial.
 
-**Agent access is built in (owner decision, 2026-11-07, brief 011).** Every brief that adds or
-changes an ECAD command includes, in its acceptance criteria, an MCP contract test: it drives the
-command through `ecad-mcp`'s `execute` tool (as `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs` does)
-and checks the transaction it records and its author (`Author::Agent(<client name>)`), and that
-the command is refused with writes off. The worker writes it with the command; the tester covers
-it like any other criterion. A brief without one is not ready for approval.
+**Agent access is built in (owner decisions, 2026-11-07, brief 011, and 2026-11-23).** Generic
+commands (the engine's `GENERIC` list, each with its `Access`) are covered by one table,
+`ecad/apps/ecad-mcp/tests/all/generic_commands_contracts.rs`: each command that may edit has a row
+of parameters that change a small project; with writes off they are refused in the gate's words
+and record nothing, with writes on they record exactly one transaction by
+`Author::Agent(<client name>)`. A new generic command fails `every_generic_edit_command_has_a_row`
+until its row is added. Every brief that adds or changes a session command, or a generic command's
+own edge (a form that only reads, a refusal in its own words), includes in its acceptance criteria
+an MCP contract test: it drives the command through `ecad-mcp`'s `execute` tool (as
+`ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs` does) and checks the transaction it records, its
+author, and that the command is refused with writes off. The worker writes it with the command; the
+tester covers it like any other criterion. A brief without one is not ready for approval.
 
 Gates where the overseer stops and asks the owner: starting any brief not marked `Approved`; any
 change outside `ecad/` that the brief does not approve; any change to a fixed principle (proposal

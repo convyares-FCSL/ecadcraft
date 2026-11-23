@@ -1,12 +1,12 @@
 //! `setstyle` on a wire type through MCP records the
-//! typed record (size, colours, insulation) as the agent, and is refused with writes off.
+//! typed record (size, colours, insulation) as the agent.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::objects::styles::wire::Insulation;
 use ecad_model::{Author, Op, StyleCatalogue};
 use serde_json::json;
 
-use crate::mcp_contracts::{AGENT, Client, reader};
+use crate::mcp_contracts::{AGENT, Client};
 
 #[test]
 fn setstyle_records_a_typed_wire_type() {
@@ -23,9 +23,6 @@ fn setstyle_records_a_typed_wire_type() {
     assert_eq!(w.size.map(|s| s.to_string()).as_deref(), Some("6"));
     assert_eq!(w.colours.as_ref().map(ToString::to_string).as_deref(), Some("GN/YE"));
     assert_eq!(w.insulation, Some(Insulation::Xlpe));
-
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setstyle", "params": params}));
 }
 
 #[test]
@@ -57,6 +54,4 @@ fn setstyle_records_a_cable_type_with_a_core_scheme() {
         "execute",
         json!({"command": "setstyle", "params": {"catalogue": "cable", "new": true, "name": "Bad", "fields": {"core_scheme": "rainbow"}}}),
     );
-    let mut r = reader();
-    r.refused("execute", json!({"command": "setstyle", "params": params}));
 }

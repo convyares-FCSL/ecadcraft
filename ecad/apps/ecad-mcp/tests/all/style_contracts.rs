@@ -1,10 +1,9 @@
 //! Styles and standards through MCP: `standard` (`new`, `name`,
 //! `remove`), `style`, `deletestyle`, `promote` and `setdefault` at `standard` each record one
-//! transaction by `Author::Agent(<client>)`, are refused with writes off, and one undo restores
+//! transaction by `Author::Agent(<client>)`, and one undo restores
 //! the document; `styles` and `standard {}` read with writes off. `standard {from}` names another
 //! project file, which agents may not read (the server's file rule): refused in words.
 
-use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::json;
 
@@ -69,19 +68,9 @@ fn the_style_commands_record_one_transaction_by_the_agent() {
 }
 
 #[test]
-fn writes_are_refused_with_writes_off_and_the_reads_still_answer() {
+fn the_reads_answer_with_writes_off() {
     let mut r = crate::mcp_contracts::reader();
     let log = r.log();
-    for (command, params) in [
-        ("standard", json!({"new": "House"})),
-        ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"colour": "RD"}})),
-        ("deletestyle", json!({"catalogue": "text", "id": "#0123456789abcdef0123456789abcdef"})),
-        ("promote", json!({"catalogue": "text", "id": "tag"})),
-        ("setdefault", json!({"key": "symbol.coil.prefix", "level": "standard", "value": "Q"})),
-    ] {
-        let m = r.refused("execute", json!({"command": command, "params": params}));
-        assert_eq!(m, policy::WRITES_OFF, "{command}");
-    }
     assert_eq!(r.exec("standard", json!({}))["name"], json!("IEC (built in)"));
     assert_eq!(r.exec("styles", json!({"catalogue": "frame"}))["styles"][0]["id"], json!("sheet"));
     assert_eq!(r.log(), log, "nothing recorded with writes off");
@@ -102,7 +91,4 @@ fn category_and_wire_with_a_category_by_the_agent() {
     let d = c.doc();
     let cond = d.wires().iter().find(|(k, _)| k.hex() == id).unwrap().1;
     assert_eq!(cond.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
-    let mut r = crate::mcp_contracts::reader();
-    let m = r.refused("execute", json!({"command": "category", "params": {"conductor": w, "value": "signal"}}));
-    assert_eq!(m, policy::WRITES_OFF);
 }
