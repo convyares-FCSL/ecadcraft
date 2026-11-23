@@ -66,6 +66,21 @@ fn the_parameters_text_is_made_from_the_schema() {
     assert!(disconnect.starts_with(r#"{route: hex id, end: "A"|"B"}"#), "{disconnect}");
 }
 
+/// A closed set of words is an enum, so the parameters text lists its words.
+#[test]
+fn closed_word_sets_are_listed() {
+    let rows: &[(&str, &str)] = &[
+        ("wiresettings", r#"scheme?: "potential"|"page"|"page-column""#),
+        ("wiresettings", r#"colour_style?: "code2"|"code3"|"name""#),
+        ("wiresettings", r#"label_rule?: "net"|"each""#),
+        ("wiresettings", r#"number_by?: "net"|"conductor""#),
+    ];
+    for (id, words) in rows {
+        let help = ecad_engine::commands::help_of(id);
+        assert!(help.contains(words), "{id} lists {words}: {help}");
+    }
+}
+
 #[test]
 fn a_schema_says_what_the_command_takes() {
     let wire = schema_of("wire").unwrap_or(Value::Null);
@@ -101,7 +116,8 @@ fn the_wire_commands_refuse_input_uniformly() {
         ("potential", json!({}), "`conductor` (hex id) is required"),
         ("potential", json!({"conductor": "00000000000000000000000000000001"}), "`value` (text, or null) is required"),
         ("category", json!({"conductors": "1", "value": null}), "`conductors` must be a list of hex ids, or null"),
-        ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
+        ("wiresettings", json!({"scheme": 1}), r#"`scheme` must be one of "potential", "page", "page-column", or null"#),
+        ("wiresettings", json!({"scheme": "pages"}), r#"`scheme` must be one of "potential", "page", "page-column", or null"#),
         ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
         ("renumberwires", json!({"scope": "x"}), "`scope` must be one of \"unnumbered\", \"all\", or null"),
         ("joinwires", json!({"at": "here"}), "`at` must be a point [x, y]"),

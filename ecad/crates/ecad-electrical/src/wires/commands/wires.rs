@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::wiring::{self, Scheme};
+use ecad_model::geometry::colour::ColourWords;
 use ecad_model::naming::text::Text;
 use ecad_model::{
     ConnectionPointId, Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd,
@@ -554,14 +555,14 @@ pub(crate) struct PotentialRow {
 /// A change to the wiring settings: what is `None` stays.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct WireSettingsChange {
-    pub scheme: Option<String>,
+    pub scheme: Option<Scheme>,
     pub digits: Option<u64>,
-    pub colour_style: Option<String>,
+    pub colour_style: Option<ColourWords>,
     pub label_height: Option<f64>,
     pub label_rule: Option<String>,
     pub label_min_length: Option<f64>,
-    /// What one wire number counts, `net` or `conductor`.
-    pub number_by: Option<String>,
+    /// What one wire number counts.
+    pub number_by: Option<wiring::NumberBy>,
     pub unclassified_prefix: Option<String>,
     /// The whole table.
     pub potentials: Option<Vec<PotentialRow>>,
@@ -574,17 +575,15 @@ pub(crate) struct WireSettingsChange {
 pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> Result<ProjectSettings, CmdError> {
     let mut after = before.clone();
     let w = &mut after.wiring;
-    if let Some(sc) = &change.scheme {
-        w.scheme = Scheme::parse(sc).ok_or(CmdError::input("`scheme` must be \"potential\", \"page\" or \"page-column\""))?;
+    if let Some(sc) = change.scheme {
+        w.scheme = sc;
     }
     if let Some(d) = change.digits {
         let d = Some(d).filter(|d| (1..=u64::from(wiring::MAX_DIGITS)).contains(d)).ok_or(CmdError::input("`digits` must be 1 to 6"))?;
         w.digits = Some(d as u8);
     }
-    if let Some(c) = &change.colour_style {
-        w.colour_style = Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(c).ok_or(CmdError::input(
-            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
-        ))?);
+    if let Some(c) = change.colour_style {
+        w.colour_style = Some(c);
     }
     if let Some(hv) = change.label_height {
         w.label_height =
@@ -592,19 +591,14 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
     }
     // The label rule and the shortest labelled wire.
     if let Some(r) = &change.label_rule {
-        let r = r.trim().to_ascii_lowercase();
-        if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
-            return Err(CmdError::refused("`label_rule` must be \"net\" (one label per net per page) or \"each\" (every wire)"));
-        }
-        w.label_rule = Some(r);
+        w.label_rule = Some(r.clone());
     }
     if let Some(lv) = change.label_min_length {
         w.label_min_length =
             Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or(CmdError::input("Shortest labelled wire is 0 to 100 mm."))?);
     }
-    if let Some(b) = &change.number_by {
-        w.number_by = <wiring::NumberBy as ecad_model::Word>::parse(b)
-            .ok_or(CmdError::input("`number_by` must be \"net\" (one number per net) or \"conductor\" (one number per wire)"))?;
+    if let Some(b) = change.number_by {
+        w.number_by = b;
     }
     if let Some(u) = &change.unclassified_prefix {
         w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(CmdError::refused)?.unwrap_or_default();

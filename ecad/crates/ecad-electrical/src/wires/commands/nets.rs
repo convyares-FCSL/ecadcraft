@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::connectivity::wiring;
+use ecad_model::geometry::colour::ColourWords;
 use ecad_model::{ConnectionPointId, Op, PageId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -155,9 +156,9 @@ struct PotentialRowParam {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WiresettingsParams {
-    /// How wires are numbered: "potential", "page" or "page-column".
+    /// How wires are numbered.
     #[serde(default)]
-    scheme: Option<String>,
+    scheme: Option<SchemeWord>,
     /// Digits of a wire number's sequence, 1 to 6.
     #[serde(default)]
     digits: Option<u64>,
@@ -167,22 +168,58 @@ pub struct WiresettingsParams {
     /// The whole potentials table (colours and cross-sections are wire categories').
     #[serde(default)]
     potentials: Option<Vec<PotentialRowParam>>,
-    /// "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name" (Brown, Blue, Green/Yellow).
+    /// How colours are written: code2 (BN, BU, GN/YE), code3 (BRN, BLU, GRN/YEL) or name (Brown,
+    /// Blue, Green/Yellow).
     #[serde(default)]
-    colour_style: Option<String>,
+    colour_style: Option<ColourWords>,
     /// Wire label height in mm, 0.5 to 10.
     #[serde(default)]
     label_height: Option<f64>,
-    /// "net" (one label per net per page) or "each" (every wire).
+    /// Which wires get a label: net (one label per net per page) or each (every wire).
     #[serde(default)]
-    label_rule: Option<String>,
+    label_rule: Option<LabelRuleWord>,
     /// The shortest labelled wire in mm, 0 to 100.
     #[serde(default)]
     label_min_length: Option<f64>,
-    /// What one wire number counts: "net" (every wire of a net shows the net's number) or
-    /// "conductor" (every wire its own). Switching renumbers every net in the same edit.
+    /// What one wire number counts: net (every wire of a net shows the net's number) or
+    /// conductor (every wire its own). Switching renumbers every net in the same edit.
     #[serde(default)]
-    number_by: Option<String>,
+    number_by: Option<wiring::NumberBy>,
+}
+
+ecad_model::word_enum! {
+    /// How wires are numbered (`wiresettings`'s `scheme`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum SchemeWord {
+        /// `24V-07`: one sequence per prefix, project-wide.
+        Potential,
+        /// `24V-105.03`: one sequence per prefix and page.
+        Page,
+        /// `105C.1`: one sequence per prefix, page and column.
+        #[strum(serialize = "page-column")]
+        PageColumn,
+    }
+}
+
+impl From<SchemeWord> for wiring::Scheme {
+    fn from(w: SchemeWord) -> Self {
+        match w {
+            SchemeWord::Potential => wiring::Scheme::Potential,
+            SchemeWord::Page => wiring::Scheme::Page,
+            SchemeWord::PageColumn => wiring::Scheme::PageColumn,
+        }
+    }
+}
+
+ecad_model::word_enum! {
+    /// Which wires get a label (`wiresettings`'s `label_rule`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum LabelRuleWord {
+        /// One label per net per page.
+        Net,
+        /// Every wire.
+        Each,
+    }
 }
 
 /// Which wires `renumberwires` renumbers.
@@ -368,11 +405,11 @@ impl Generic for WiresettingsParams {
                 .collect()
         });
         let change = WireSettingsChange {
-            scheme: self.scheme,
+            scheme: self.scheme.map(wiring::Scheme::from),
             digits: self.digits,
             colour_style: self.colour_style,
             label_height: self.label_height,
-            label_rule: self.label_rule,
+            label_rule: self.label_rule.map(|r| ecad_model::Word::word(r).to_string()),
             label_min_length: self.label_min_length,
             number_by: self.number_by,
             unclassified_prefix: self.unclassified_prefix,
