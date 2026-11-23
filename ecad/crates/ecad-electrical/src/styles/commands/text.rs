@@ -625,7 +625,6 @@ pub(crate) fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
     m.insert("key".into(), json!(e.key));
     m.insert("label".into(), json!(e.label));
     m.insert("group".into(), json!(e.group));
-    m.insert("brief".into(), json!(e.brief));
     m.insert("kind".into(), json!(e.kind_word()));
     m.insert("builtin".into(), value_json(&builtin));
     m.insert("levels".into(), json!(e.levels.iter().map(|l| level_word(*l)).collect::<Vec<_>>()));

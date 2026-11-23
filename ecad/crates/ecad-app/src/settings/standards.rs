@@ -454,7 +454,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     }
     ui.label(RichText::new(entry.label).strong());
     ui.label(RichText::new(entry.key).monospace().small());
-    ui.label(RichText::new(format!("{} · brief {}", entry.group, entry.brief)).small());
+    ui.label(RichText::new(entry.group).small());
     ui.add_space(ecad_widgets::tokens::space::M);
     // The chain, broadest first, the level in use marked.
     egui::Grid::new("ecad.standards.chain").num_columns(3).spacing([12.0, 6.0]).show(ui, |ui| {

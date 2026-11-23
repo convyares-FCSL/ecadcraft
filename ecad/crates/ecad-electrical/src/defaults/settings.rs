@@ -38,7 +38,7 @@ pub static TAG_PADDING: Entry = Entry {
     key: mb::TAG_PADDING,
     label: "Tag number digits",
     group: "Tags",
-    brief: "018",
+
     kind: Kind::Number { min: 1.0, max: ecad_model::naming::tag::MAX_PADDING as f64 },
     slot: Slot::new(),
     levels: P,
@@ -50,7 +50,7 @@ pub static WIRE_DIGITS: Entry = Entry {
     key: mb::WIRE_DIGITS,
     label: "Wire number digits",
     group: "Wire numbers",
-    brief: "022",
+
     kind: Kind::Number { min: 1.0, max: ecad_model::connectivity::wiring::MAX_DIGITS as f64 },
     slot: Slot::new(),
     levels: P,
@@ -62,7 +62,7 @@ pub static COLOUR_STYLE: Entry = Entry {
     key: mb::COLOUR_STYLE,
     label: "Wire colour codes",
     group: "Wire labels",
-    brief: "022",
+
     kind: Kind::Choice(ecad_model::connectivity::wiring::COLOUR_STYLE_WORDS),
     slot: Slot::new(),
     levels: P,
@@ -74,7 +74,7 @@ pub static PAGE_NUMBER_STEP: Entry = Entry {
     key: mb::PAGE_NUMBER_STEP,
     label: "Page number step",
     group: "Pages",
-    brief: "019",
+
     kind: Kind::Number { min: 1.0, max: mb::MAX_PAGE_NUMBER_STEP as f64 },
     slot: Slot::new(),
     levels: P,
@@ -86,7 +86,7 @@ pub static REFERENCE_STYLE: Entry = Entry {
     key: mb::REFERENCE_STYLE,
     label: "Reference style",
     group: "Pages",
-    brief: "019",
+
     kind: Kind::Choice(ecad_model::ReferenceStyle::WORDS),
     slot: Slot::new(),
     levels: P,

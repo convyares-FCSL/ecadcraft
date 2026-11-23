@@ -4,13 +4,12 @@
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Pages";
-const BRIEF: &str = "054";
 const G: &[Level] = &[Level::Page];
 const SP: &[Level] = &[Level::Standard, Level::Project];
 const SWITCH: Kind = Kind::Flag;
 
 const fn toggle(key: &'static str, label: &'static str) -> Entry {
-    Entry { key, label, group: "Cover", brief: BRIEF, kind: SWITCH, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: "Cover", kind: SWITCH, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
 /// The cover's block toggles, standard and project only.
@@ -29,7 +28,7 @@ pub static HEADING: Entry = Entry {
     key: "front.cover.heading",
     label: "Cover heading",
     group: "Cover",
-    brief: BRIEF,
+
     kind: Kind::Text { max_chars: 64 },
     slot: Slot::new(),
     levels: SP,
@@ -43,7 +42,7 @@ pub static PAGE_TYPE: Entry = Entry {
     key: "page.type",
     label: "Page type",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Style(ecad_model::StyleCatalogue::Page),
     slot: Slot::new(),
     levels: G,

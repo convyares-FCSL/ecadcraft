@@ -10,7 +10,6 @@
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 const GROUP: &str = "Styles";
-const BRIEF: &str = "050";
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 const SPG: &[Level] = &[Level::Standard, Level::Project, Level::Page];
 
@@ -19,7 +18,7 @@ const fn text(key: &'static str, label: &'static str) -> Entry {
         key,
         label,
         group: GROUP,
-        brief: BRIEF,
+
         kind: Kind::Style(ecad_model::StyleCatalogue::Text),
         slot: Slot::new(),
         levels: SPO,
@@ -84,7 +83,7 @@ pub static LOCATION: Entry = Entry {
     key: "location.style",
     label: "Location box style",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Style(ecad_model::StyleCatalogue::Location),
     slot: Slot::new(),
     levels: SPO,
@@ -96,7 +95,7 @@ pub static FRAME: Entry = Entry {
     key: "print.frame.style",
     label: "Frame style",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Style(ecad_model::StyleCatalogue::Frame),
     slot: Slot::new(),
     levels: SPG,
@@ -108,7 +107,7 @@ pub static WIRE_CATEGORY: Entry = Entry {
     key: "wire.category",
     label: "Wire category",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Style(ecad_model::StyleCatalogue::Wire),
     slot: Slot::new(),
     levels: SPO,

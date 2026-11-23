@@ -16,7 +16,7 @@ pub static WIRE_JOIN: Entry = Entry {
     key: "wire.join",
     label: "Join wire ends that meet",
     group: "Wires",
-    brief: "032",
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SP,
@@ -39,7 +39,7 @@ pub static WIRING_LABEL_RULE: Entry = Entry {
     key: "wiring.label_rule",
     label: "Wire labels",
     group: "Wire labels",
-    brief: "032",
+
     kind: Kind::Choice(LABEL_RULES),
     slot: Slot::new(),
     levels: SP,
@@ -56,7 +56,7 @@ pub static WIRING_LABEL_MIN_LENGTH: Entry = Entry {
     key: "wiring.label_min_length",
     label: "Shortest labelled wire",
     group: "Wire labels",
-    brief: "032",
+
     kind: Kind::Length {
         min: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.start(),
         max: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.end(),

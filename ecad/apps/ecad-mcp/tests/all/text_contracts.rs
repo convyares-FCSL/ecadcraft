@@ -138,7 +138,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     assert_eq!(
         one["defaults"],
         json!([{
-            "key": "text.tag.style", "label": "Tag style", "group": "Styles", "brief": "050", "kind": "style",
+            "key": "text.tag.style", "label": "Tag style", "group": "Styles", "kind": "style",
             "builtin": "tag", "levels": ["standard", "project", "object"], "value": "tag", "from": "builtin",
         }])
     );

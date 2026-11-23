@@ -33,7 +33,7 @@ pub static STYLE: Entry = Entry {
     key: "terminal_block.plan.style",
     label: "Terminal plan style",
     group: GROUP,
-    brief: "046",
+
     kind: Kind::Choice(<StripPageForm as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: PP,
@@ -48,7 +48,7 @@ macro_rules! length {
             key: $key,
             label: $label,
             group: GROUP,
-            brief: "046",
+
             kind: Kind::Length { min: $min, max: $max },
             slot: Slot::new(),
             levels: P,
@@ -70,7 +70,7 @@ pub static TAG_SCALE: Entry = Entry {
     key: "strippage.tag_scale",
     label: "Strip tag size (× heading)",
     group: GROUP,
-    brief: "046",
+
     kind: Kind::Number { min: 1.0, max: 4.0 },
     slot: Slot::new(),
     levels: P,

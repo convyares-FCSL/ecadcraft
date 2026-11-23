@@ -38,12 +38,11 @@ ecad_model::word_enum! {
 }
 
 const GROUP: &str = "Print";
-const BRIEF: &str = "033";
 /// Standard and project (no command writes these project keys in v0.15).
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
-    Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
 /// How a generated page's continuation sheets are numbered: `sequence` is the
@@ -71,7 +70,7 @@ pub static TAG_DASH: Entry = Entry {
     key: ecad_model::naming::tag::DASH_KEY,
     label: "Leading - on tags",
     group: "Tags",
-    brief: BRIEF,
+
     kind: Kind::Choice(ecad_model::naming::tag::DASH_WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -83,7 +82,7 @@ pub static TAG_CASE: Entry = Entry {
     key: ecad_model::naming::tag::CASE_KEY,
     label: "Tag case",
     group: "Tags",
-    brief: BRIEF,
+
     kind: Kind::Choice(ecad_model::naming::tag::CASE_WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -96,7 +95,7 @@ pub static REVISION_COLUMNS: Entry = Entry {
     key: crate::releases::revisions::COLUMNS_KEY,
     label: "Revision columns",
     group: "Revisions",
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: crate::releases::revisions::MAX_COLUMNS_CHARS, parse: crate::releases::revisions::columns_ok },
     slot: Slot::new(),
     levels: SP,
@@ -108,7 +107,7 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     key: "revisions.custom_width",
     label: "Custom revision column width",
     group: "Revisions",
-    brief: BRIEF,
+
     kind: Kind::Length { min: crate::releases::revisions::MIN_WIDTH_MM, max: crate::releases::revisions::MAX_WIDTH_MM },
     slot: Slot::new(),
     levels: SP,
@@ -120,7 +119,7 @@ pub static REVISION_PENDING: Entry = Entry {
     key: crate::releases::revisions::PENDING_KEY,
     label: "Pending changes marker",
     group: "Revisions",
-    brief: BRIEF,
+
     kind: Kind::Choice(<crate::releases::revisions::PendingStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -148,7 +147,7 @@ pub static COLOUR: Entry = Entry {
     key: "print.colour",
     label: "Print colour",
     group: GROUP,
-    brief: "040",
+
     kind: Kind::Choice(<PrintColour as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,

@@ -59,7 +59,6 @@ ecad_model::word_enum! {
 }
 
 const GROUP: &str = "PLC";
-const BRIEF: &str = "045";
 /// A standard (reserved), the project and the object (rack or card) may override.
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 /// A standard (reserved) and the project may override.
@@ -69,7 +68,7 @@ pub static SLOTS: Entry = Entry {
     key: "plc.slots",
     label: "Slots in a rack",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Number { min: 1.0, max: 999.0 },
     slot: Slot::new(),
     levels: SPO,
@@ -80,7 +79,7 @@ pub static SLOT_FIRST: Entry = Entry {
     key: "plc.slot.first",
     label: "Number of a rack's first slot",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
@@ -94,7 +93,7 @@ macro_rules! channels {
                 key: concat!("plc.", $code, ".channels"),
                 label: concat!("Channels of a ", $label, " card"),
                 group: GROUP,
-                brief: BRIEF,
+
                 kind: Kind::Number { min: 0.0, max: 256.0 },
                 slot: Slot::new(),
                 levels: SP,
@@ -145,7 +144,7 @@ pub static CAPTION: Entry = Entry {
     key: "plc.card.caption",
     label: "Card caption",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: 40, parse: caption_ok },
     slot: Slot::new(),
     levels: SP,
@@ -156,7 +155,7 @@ pub static CAPTION_SHOW: Entry = Entry {
     key: "plc.text.caption.show",
     label: "Show the card caption",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
@@ -175,7 +174,7 @@ macro_rules! prefixes {
                 key: concat!("plc.", $key, ".prefix"),
                 label: concat!("Tag prefix: ", $symbol),
                 group: "Tag prefixes",
-                brief: BRIEF,
+
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
                 slot: Slot::new(),
                 levels: SP,
@@ -217,7 +216,7 @@ pub static CHANNEL_FIRST: Entry = Entry {
     key: "plc.channel.first",
     label: "Number of a card's first channel",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Choice(<ChannelFirst as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
@@ -228,7 +227,7 @@ pub static PINS: Entry = Entry {
     key: "plc.pins",
     label: "Pin layout of a card",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Choice(<PlcPins as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
@@ -239,7 +238,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     key: "plc.address.style",
     label: "Address style",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Choice(<AddressStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -250,7 +249,7 @@ pub static START_INPUT: Entry = Entry {
     key: "plc.address.start.input",
     label: "First input byte of a rack",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Number { min: 0.0, max: 65535.0 },
     slot: Slot::new(),
     levels: SPO,
@@ -261,7 +260,7 @@ pub static START_OUTPUT: Entry = Entry {
     key: "plc.address.start.output",
     label: "First output byte of a rack",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Number { min: 0.0, max: 65535.0 },
     slot: Slot::new(),
     levels: SPO,
@@ -272,7 +271,7 @@ pub static ANALOG_BYTES: Entry = Entry {
     key: "plc.address.analog.bytes",
     label: "Bytes per analogue channel",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Number { min: 1.0, max: 16.0 },
     slot: Slot::new(),
     levels: SPO,
@@ -283,7 +282,7 @@ pub static IOL_BYTES: Entry = Entry {
     key: "plc.address.iol.bytes",
     label: "Bytes per IO-Link port",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Number { min: 1.0, max: 32.0 },
     slot: Slot::new(),
     levels: SPO,
@@ -294,7 +293,7 @@ pub static SPARE_TEXT: Entry = Entry {
     key: "plc.spare.text",
     label: "Text under a spare channel",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Text { max_chars: 16 },
     slot: Slot::new(),
     levels: SP,
@@ -305,7 +304,7 @@ pub static CHANNEL_SHOW: Entry = Entry {
     key: "plc.text.channel.show",
     label: "Show channel numbers",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
@@ -316,7 +315,7 @@ pub static ADDRESS_SHOW: Entry = Entry {
     key: "plc.text.address.show",
     label: "Show addresses on channels",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
@@ -327,7 +326,7 @@ pub static ROTATION: Entry = Entry {
     key: "plc.text.channel.rotation",
     label: "Channel description rotation",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Choice(<CardRotation as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
@@ -338,7 +337,7 @@ pub static REFERENCE_TABLE: Entry = Entry {
     key: "plc.references.table",
     label: "Channel table under a card body",
     group: GROUP,
-    brief: "045",
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
@@ -370,7 +369,7 @@ pub static FRAME_SHOW: Entry = Entry {
     key: "plc.frame.show",
     label: "Draw a frame around a card's cells",
     group: GROUP,
-    brief: "051",
+
     kind: Kind::Flag,
     slot: Slot::new(),
     levels: SPO,
@@ -381,7 +380,7 @@ pub static PAGE_TITLE: Entry = Entry {
     key: "plc.page.title",
     label: "Title of a card's page (Make its page)",
     group: GROUP,
-    brief: "051",
+
     kind: Kind::Parsed { max_chars: 40, parse: page_title_ok },
     slot: Slot::new(),
     levels: SP,
@@ -393,7 +392,7 @@ pub static SAFE_DQ: Entry = Entry {
     key: "plc.safe.dq",
     label: "Safe state of a digital output",
     group: GROUP,
-    brief: "056",
+
     kind: Kind::Choice(<SafeState as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SPO,
@@ -405,7 +404,7 @@ pub static SAFE_AO: Entry = Entry {
     key: "plc.safe.ao",
     label: "Safe state of an analogue output",
     group: GROUP,
-    brief: "056",
+
     kind: Kind::Text { max_chars: 16 },
     slot: Slot::new(),
     levels: SPO,

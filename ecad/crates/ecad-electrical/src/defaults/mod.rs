@@ -57,8 +57,6 @@ pub struct Entry {
     pub label: &'static str,
     /// Group heading on the Standards screen: `"Text"`, `"Wire labels"`…
     pub group: &'static str,
-    /// A short code naming the area that added it.
-    pub brief: &'static str,
     pub kind: Kind,
     /// Its built-in value, read from the data files on first use ([`Entry::builtin`]):
     /// the value itself is never written in Rust.
@@ -652,7 +650,7 @@ mod tests {
         for e in all() {
             assert!(seen.insert(e.key), "duplicate key {}", e.key);
             assert!(key_ok(e.key), "bad key {}", e.key);
-            assert!(!e.label.is_empty() && !e.group.is_empty() && !e.brief.is_empty(), "{} lacks words", e.key);
+            assert!(!e.label.is_empty() && !e.group.is_empty(), "{} lacks words", e.key);
         }
     }
 
@@ -820,7 +818,7 @@ mod kind_tests {
         key: "tags.test.prefix",
         label: "Test prefix",
         group: "Test",
-        brief: "031",
+
         kind: Kind::Parsed { max_chars: 3, parse: prefix },
         slot: Slot::new(),
         levels: &[Level::Project],
@@ -835,7 +833,7 @@ mod kind_tests {
         key: "wiring.test.rule",
         label: "Test rule",
         group: "Test",
-        brief: "031",
+
         kind: Kind::Choice(&["net", "each"]),
         slot: Slot::new(),
         levels: &[Level::Standard, Level::Project],
@@ -847,7 +845,7 @@ mod kind_tests {
         key: "print.test.page",
         label: "Test page only",
         group: "Test",
-        brief: "031",
+
         kind: Kind::Length { min: 0.0, max: 10.0 },
         slot: Slot::new(),
         levels: &[Level::Page],

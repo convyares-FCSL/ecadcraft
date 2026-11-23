@@ -58,7 +58,6 @@ ecad_model::word_enum! {
 use crate::CmdError;
 
 const GROUP: &str = "Connectors";
-const BRIEF: &str = "044";
 /// A standard (reserved), the project and the connector may override.
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 /// A standard (reserved) and the project may override.
@@ -85,7 +84,7 @@ pub static SEPARATOR: Entry = Entry {
     key: "connector.half.separator",
     label: "Separator between a connector's tag and its half",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: 3, parse: separator_ok },
     slot: Slot::new(),
     levels: SPO,
@@ -96,7 +95,7 @@ pub static SIDE_SOCKET: Entry = Entry {
     key: "connector.side.socket",
     label: "Name of the socket half",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
     slot: Slot::new(),
     levels: SPO,
@@ -107,7 +106,7 @@ pub static SIDE_PLUG: Entry = Entry {
     key: "connector.side.plug",
     label: "Name of the plug half",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: 4, parse: side_ok },
     slot: Slot::new(),
     levels: SPO,
@@ -118,7 +117,7 @@ pub static DESCRIPTION: Entry = Entry {
     key: "connector.description",
     label: "Description of a new connector",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Text { max_chars: 64 },
     slot: Slot::new(),
     levels: SP,
@@ -132,7 +131,7 @@ macro_rules! descriptions {
                 key: concat!("connector.", $family, ".", $side, ".description"),
                 label: concat!("BOM description: ", $builtin),
                 group: GROUP,
-                brief: BRIEF,
+
                 kind: Kind::Parsed { max_chars: 64, parse: description_ok },
                 slot: Slot::new(),
                 levels: SP,
@@ -164,7 +163,7 @@ pub static MAKER_HALVES: Entry = Entry {
     key: "connector.maker.halves",
     label: "Connector: halves first offered",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Choice(<ConnectorSide as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -175,7 +174,7 @@ pub static MAKER_FAMILY: Entry = Entry {
     key: "connector.maker.family",
     label: "Connector: type first offered",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Choice(<MakerShape as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -186,7 +185,7 @@ pub static MAKER_PINS: Entry = Entry {
     key: "connector.maker.pins",
     label: "Connector: pins first offered",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Number { min: 1.0, max: 64.0 },
     slot: Slot::new(),
     levels: SP,
@@ -197,7 +196,7 @@ pub static MAKER_NAMES: Entry = Entry {
     key: "connector.maker.names",
     label: "Connector: pin names first offered",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Choice(<PinNaming as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
@@ -208,7 +207,7 @@ pub static MAKER_LAYOUT: Entry = Entry {
     key: "connector.maker.layout",
     label: "Connector: drawing first offered",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Choice(<MakerLayout as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,

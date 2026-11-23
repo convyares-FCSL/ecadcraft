@@ -13,7 +13,6 @@ use ecad_model::{Document, ProjectSettings};
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Scope, Slot, Value};
 
 const GROUP: &str = "Tag prefixes";
-const BRIEF: &str = "034";
 /// A standard (reserved) and the project may override a prefix.
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
@@ -34,7 +33,7 @@ macro_rules! prefixes {
                 key: concat!("symbol.", $key, ".prefix"),
                 label: concat!("Tag prefix: ", $symbol),
                 group: GROUP,
-                brief: BRIEF,
+
                 kind: PREFIX,
                 slot: Slot::new(),
                 levels: SP,
@@ -156,7 +155,7 @@ pub static POINT_GRID: Entry = Entry {
     key: "symbol.point_grid",
     label: "Symbol connection point grid",
     group: "Symbols",
-    brief: "048",
+
     kind: Kind::Length { min: 1.0, max: 10.0 },
     slot: Slot::new(),
     levels: SP,
@@ -272,7 +271,6 @@ pub fn family_json(doc: &Document, symbol: &str, field: Field) -> serde_json::Va
         "key": family_key(symbol, field),
         "label": format!("{}: {symbol}", field.label()),
         "group": "Project symbols",
-        "brief": "048",
         "kind": "text",
         "builtin": builtin,
         "levels": if field.overridable() { serde_json::json!(["standard", "project"]) } else { serde_json::json!([]) },

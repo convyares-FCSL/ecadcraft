@@ -24,7 +24,6 @@ use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot, Value};
 use crate::CmdError;
 
 const GROUP: &str = "Terminals";
-const BRIEF: &str = "036";
 /// A standard (reserved), the project and the strip may override.
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 /// A standard (reserved) and the project may override.
@@ -67,7 +66,7 @@ pub static SEPARATOR: Entry = Entry {
     key: "terminal_block.level.separator",
     label: "Level separator in terminal labels",
     group: GROUP,
-    brief: BRIEF,
+
     kind: Kind::Parsed { max_chars: 4, parse: separator_ok },
     slot: Slot::new(),
     levels: SPO,
@@ -86,7 +85,7 @@ macro_rules! prefixes {
                 key: concat!("terminal_block.", $key, ".prefix"),
                 label: concat!("Tag prefix: ", $symbol),
                 group: "Tag prefixes",
-                brief: BRIEF,
+
                 kind: Kind::Parsed { max_chars: crate::devices::MAX_PREFIX_LETTERS + 1, parse: prefix_ok },
                 slot: Slot::new(),
                 levels: SP,
@@ -142,7 +141,7 @@ macro_rules! levels {
                 key: concat!("terminal_block.", $code, ".levels"),
                 label: $label,
                 group: GROUP,
-                brief: BRIEF,
+
                 kind: Kind::Parsed { max_chars: 64, parse: $parse },
                 slot: Slot::new(),
                 levels: SPO,
@@ -175,7 +174,7 @@ macro_rules! descriptions {
                 key: concat!("terminal_block.", $code, ".description"),
                 label: concat!("BOM description: ", $builtin),
                 group: GROUP,
-                brief: BRIEF,
+
                 kind: Kind::Text { max_chars: 64 },
                 slot: Slot::new(),
                 levels: SP,

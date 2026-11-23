@@ -18,12 +18,11 @@ ecad_model::word_enum! {
 }
 
 const GROUP: &str = "BOM";
-const BRIEF: &str = "047";
 /// Standard and project.
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
-    Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
 /// `bom.column.article`: the Article number column of the BOM window, BOM page and CSV:
