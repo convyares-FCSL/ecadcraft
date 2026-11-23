@@ -1,4 +1,4 @@
-//! Brief 041 (U4b): the wheel widget: its geometry, press-move-release and click-click, greyed
+//! The wheel widget: its geometry, press-move-release and click-click, greyed
 //! slots and their reason, a slot's short list, and cancelling.
 
 use crate::common::harness;

@@ -1,6 +1,6 @@
 //! Segmented control: one of a few choices, side by side (the workspace switch is one).
 //!
-//! UI rev 4 (boards 2.05, 2.06, 3.05, 5.02): a soft rounded track on the window ground with a
+//! A soft rounded track on the window ground with a
 //! hairline edge, and the selected choice as a raised chip inside it. Every other choice is plain
 //! secondary text that takes the hover ground under the pointer; the keyboard focus is the focus
 //! ring around the focused choice.
@@ -92,8 +92,8 @@ impl<'a> Segmented<'a> {
         if visible {
             p.rect(outer, corner(radius::BUTTON), color(s.bg), Stroke::new(line::HAIRLINE_PX, color(s.line)), StrokeKind::Inside);
         }
-        // The chip is the raised surface that stands out from the track: `active` on Graphite
-        // (as on the boards), `raised` with a hairline edge on the light shell, where `active`
+        // The chip is the raised surface that stands out from the track: `active` on Graphite,
+        // `raised` with a hairline edge on the light shell, where `active`
         // is almost the track's own colour.
         let (chip, chip_edge) = match crate::theme() {
             Theme::Dark => (s.active, Stroke::NONE),

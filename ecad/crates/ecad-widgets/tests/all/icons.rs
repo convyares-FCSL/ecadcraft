@@ -1,4 +1,4 @@
-//! Every icon paints inside its rect with 1.5 px strokes (brief 037, acceptance criterion 2).
+//! Every icon paints inside its rect with 1.5 px strokes.
 
 use egui::{Color32, Rect, Shape, pos2, vec2};
 use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};

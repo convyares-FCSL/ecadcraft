@@ -1,5 +1,5 @@
-//! The radial wheel's geometry (spec §4; UI rev 3, board 1.14: about 190 px across), px at 100 %
-//! UI scale; the widget itself is U4b.
+//! The radial wheel's geometry (about 190 px across), px at 100 %
+//! UI scale.
 
 /// Outer radius.
 pub const OUTER_RADIUS: f32 = 94.0;

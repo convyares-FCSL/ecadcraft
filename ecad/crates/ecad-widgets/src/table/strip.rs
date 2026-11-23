@@ -1,4 +1,4 @@
-//! The table's group strip (brief 051, design 051 §3.1, Q9): a horizontal row of tiles over a
+//! The table's group strip: a horizontal row of tiles over a
 //! table, one per group; selecting a tile tells the owner to filter the rows to its group. Part of
 //! the table component, like its toolbar and group rows: not a panel.
 //!
@@ -6,7 +6,7 @@
 //! [`MARKS_PER_ROW`] a row) and link lines. The strip draws and reports [`StripEvent`]s; it never
 //! runs a command. Generic: it knows nothing of what the groups are.
 //!
-//! Tokens (design 051 §8, `ecad.plc.*` used generically here): tile width [`TILE_WIDTH`], mark
+//! Tokens (`ecad.plc.*` used generically here): tile width [`TILE_WIDTH`], mark
 //! [`MARK`], gap [`MARK_GAP`].
 
 use egui::{Id, Rect, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
@@ -16,16 +16,15 @@ use crate::color;
 use crate::style::corner;
 use crate::table::cells;
 
-/// `ecad.plc.tile_width`: a tile's width, px (UI rev 3, board 2.03: a card per slot at the
-/// board's scale; was 112).
+/// `ecad.plc.tile_width`: a tile's width, px (a card per slot).
 pub const TILE_WIDTH: f32 = 196.0;
-/// `ecad.plc.square`: a mark's side, px (rev 3; was 8).
+/// `ecad.plc.square`: a mark's side, px.
 pub const MARK: f32 = 13.0;
-/// `ecad.plc.square_gap`: between marks, px (rev 3; was 3).
+/// `ecad.plc.square_gap`: between marks, px.
 pub const MARK_GAP: f32 = 4.0;
-/// A tile's least height, px (rev 3: every card is as tall as the board's).
+/// A tile's least height, px.
 pub const TILE_MIN_HEIGHT: f32 = 200.0;
-/// Marks in a row (one byte, Q16).
+/// Marks in a row (one byte).
 pub const MARKS_PER_ROW: usize = 8;
 
 /// How a mark looks.
@@ -70,9 +69,9 @@ pub struct Tile {
     /// Its element name (`ecad.plc.tile.<slot>`).
     pub name: String,
     pub head: String,
-    /// The head line's right-hand words (UI rev 3: what the card is, `16 outputs, relay`).
+    /// The head line's right-hand words (what the card is, `16 outputs, relay`).
     pub kind: String,
-    /// A line under the marks (rev 3: the card's addresses, `%Q2.0–%Q3.7`).
+    /// A line under the marks (the card's addresses, `%Q2.0–%Q3.7`).
     pub under: String,
     pub title: String,
     /// The title in the faint colour (a free slot).
@@ -200,7 +199,7 @@ fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &m
     let w = inner.width();
     let mut y = inner.top();
     let head_ink = if selected { s.accent_text } else { s.text_3 };
-    // The head line: the slot at the left, what the card is at the right (board 2.03).
+    // The head line: the slot at the left, what the card is at the right.
     let kind_w = if t.kind.is_empty() { 0.0 } else { w * 0.6 };
     if !t.kind.is_empty() {
         let g = cells::fitted(ui, &t.kind, ui_type::SMALL, color(s.text_3), kind_w);
@@ -257,7 +256,7 @@ fn tile(ui: &mut Ui, id: Id, i: usize, t: &Tile, selected: bool, h: f32, out: &m
                 (_, Tone::Error) => s.error,
                 (_, Tone::Plain) => s.text_2,
             };
-            // Rev 3: a link that goes somewhere sits on a soft pill (the board's `page 5 →`).
+            // A link that goes somewhere sits on a soft pill (`page 5 →`).
             let pill = part.enabled && part.tone == Tone::Accent;
             let pad = if pill { space::S } else { 0.0 };
             let room = (inner.right() - x - 2.0 * pad).max(0.0);

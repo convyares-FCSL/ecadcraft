@@ -1,4 +1,4 @@
-//! Multi-select (design §6.2): a set of keys, so it survives sort and filter. Click selects one,
+//! Multi-select: a set of keys, so it survives sort and filter. Click selects one,
 //! Ctrl-click toggles, Shift-click selects the range from the anchor in the shown order, Ctrl+A
 //! selects every shown row, ↑ and ↓ move (with Shift, extend).
 

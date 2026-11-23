@@ -1,4 +1,4 @@
-//! The one table (brief 039, design `ui-architecture.md` §6): every manager is a column set and a
+//! The one table: every manager is a column set and a
 //! data source on this table, never a panel of its own.
 //!
 //! - [`source`]: [`TableSource`], [`Column`], [`Cell`], [`Changed`].
@@ -11,7 +11,7 @@
 //! [`Table::update`] with the keys its update map names. Rows are virtualised
 //! (`egui_extras::TableBuilder`, heterogeneous rows): a frame lays out only the visible ones.
 //!
-//! Excluded: anything about projects or commands; the proposal row state (M2); XLSX (M3).
+//! Excluded: anything about projects or commands; the proposal row state; XLSX.
 
 pub mod cells;
 pub mod edit;
@@ -76,12 +76,12 @@ pub struct Table<K: Ord> {
     now: f64,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
-    /// Captions over runs of columns (UI rev 3's terminal plan: inside | the strip | outside),
+    /// Captions over runs of columns (the terminal plan: inside | the strip | outside),
     /// drawn in a band above the column titles: the caption and its first and last column.
     pub bands: Vec<Band>,
 }
 
-/// A caption over the columns from `first` to `last` (UI rev 3, board 2.02).
+/// A caption over the columns from `first` to `last`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Band {
     pub caption: &'static str,
@@ -268,7 +268,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
     }
 
-    /// The search field (`width` px), as the toolbar draws it. UI rev 3's Project workspace puts
+    /// The search field (`width` px), as the toolbar draws it. The Project workspace puts
     /// it in the workspace's head instead.
     pub fn filter_field(&mut self, ui: &mut Ui, placeholder: &str, width: f32) -> Response {
         let label = format!("Filter {}", self.name);
@@ -410,7 +410,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
         }
         let sort = self.view.sort();
         let mut sort_click = None;
-        // UI rev 3: band captions over runs of columns, in a row above the titles.
+        // Band captions over runs of columns, in a row above the titles.
         let pos = |id: ColumnId| cols.iter().position(|c| c.id == id);
         let bands: Vec<(&'static str, usize, usize)> =
             self.bands.iter().filter_map(|b| Some((b.caption, pos(b.first)?, pos(b.last)?))).filter(|(_, a, b)| a <= b).collect();
@@ -678,7 +678,7 @@ fn interact_unclipped(ui: &mut Ui, rect: Rect, clip: Rect, id: Id) -> Response {
     r
 }
 
-/// A refusal under its cell (spec §5: where the attempt was made), in the error colour.
+/// A refusal under its cell (where the attempt was made), in the error colour.
 fn refusal_note(ui: &Ui, rect: Rect, message: &str, id: Id) {
     let s = crate::SHELL;
     egui::Area::new(id.with("refusal")).order(egui::Order::Foreground).fade_in(false).fixed_pos(rect.left_bottom()).interactable(false).show(

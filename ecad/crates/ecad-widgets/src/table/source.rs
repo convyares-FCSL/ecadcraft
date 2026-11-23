@@ -1,4 +1,4 @@
-//! What a table shows (design §6.1): a [`TableSource`] gives the keys, the [`Column`]s and each
+//! What a table shows: a [`TableSource`] gives the keys, the [`Column`]s and each
 //! [`Cell`]; the table never holds its own copy of a value, it reads cells again for the keys the
 //! source reports changed.
 
@@ -33,7 +33,7 @@ pub enum Editor {
     Number,
 }
 
-/// Whether a column's values are set here or read from the drawing (spec §5, "What you set and
+/// Whether a column's values are set here or read from the drawing ("What you set and
 /// what is read").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColumnKind {
@@ -104,11 +104,11 @@ pub struct Lane {
     pub down: bool,
 }
 
-/// Link lanes beside a row (terminal links, design 036 §9): lane `i` is drawn `i` steps right.
+/// Link lanes beside a row (links between terminal blocks): lane `i` is drawn `i` steps right.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct LaneCell {
     pub lanes: Vec<Option<Lane>>,
-    /// Shown next to the lanes (028's bridge group `● 1`).
+    /// Shown next to the lanes (the bridge group, `● 1`).
     pub text: String,
 }
 
@@ -131,9 +131,9 @@ pub enum Cell {
     /// Colour swatches (a wire's colours).
     Swatch(Vec<Color>),
     /// On or off, drawn as [`crate::control::Toggle`]: a click reports
-    /// [`crate::table::TableEvent::Button`] with index 0 (brief 057: a core's Not used).
+    /// [`crate::table::TableEvent::Button`] with index 0 (a core's Not used).
     Toggle(bool),
-    /// A colour code with its bar (board 2.06's core colours: a short bar, then `BN`); a
+    /// A colour code with its bar (a core's colour: a short bar, then `BN`); a
     /// two-colour code has two bars.
     Colour(Vec<Color>, String),
     /// A small label in a tone.

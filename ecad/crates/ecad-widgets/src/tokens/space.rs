@@ -1,4 +1,4 @@
-//! Spacing (spec §4, "Spacing, sizes, radii"), px at 100 % UI scale.
+//! Spacing ("Spacing, sizes, radii"), px at 100 % UI scale.
 
 /// The spacing steps; nothing in the shell uses a gap that is not one of these.
 pub const STEPS: [f32; 7] = [2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0];

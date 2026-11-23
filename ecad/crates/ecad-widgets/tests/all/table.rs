@@ -1,6 +1,5 @@
-//! Brief 039 (U3): the one table. Model tests (plain Rust) and widget tests (kittest, no wgpu),
-//! acceptance criteria 1, 2 and the fast part of 6; the `ui` measure (criterion 6) is the ignored
-//! `measure_10k_rows`, run in release by hand.
+//! The one table. Model tests (plain Rust) and widget tests (kittest, no wgpu); the
+//! timing of 10,000 rows is the ignored `measure_10k_rows`, run in release by hand.
 
 use std::collections::HashMap;
 use std::time::Instant;

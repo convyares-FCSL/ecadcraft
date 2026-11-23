@@ -1,5 +1,5 @@
 //! Drawing one cell from its [`Cell`]: set values look like fields, read values are grey text
-//! (a go-to when they have a target), provisional values use the provisional look (spec §5).
+//! (a go-to when they have a target), provisional values use the provisional look.
 
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Color32, Galley, Rect, Stroke, StrokeKind, Ui, pos2, vec2};

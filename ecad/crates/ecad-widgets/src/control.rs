@@ -1,5 +1,5 @@
-//! The component set for values in panels and dialogs (UI rev 4, boards 2.03, 2.05, 2.06, 3.05;
-//! style guide `docs/design/components.md`). One component per kind of control, each drawn from
+//! The component set for values in panels and dialogs.
+//! One component per kind of control, each drawn from
 //! tokens in every state: editable, hovered, focused, read-only, disabled, empty.
 //!
 //! **The rule:** anything the person can change looks editable at a glance (a filled, rounded
@@ -374,7 +374,7 @@ impl<'a> TextEntry<'a> {
     }
 }
 
-/// Several lines of text typed here (brief 057: a rating table's CSV rows): the box of a
+/// Several lines of text typed here (a rating table's CSV rows): the box of a
 /// [`TextEntry`], taller, in the code font, scrolling past `rows` lines. The response is the
 /// editor's.
 #[derive(Debug)]

@@ -1,10 +1,10 @@
-//! Shell colours: the Graphite set (spec §4, "Shell colours") and the light set (UI rev 3, board
-//! 1.17). The person picks one with the top bar's light/dark switch; neither follows the operating
+//! Shell colours: the Graphite set and the light set.
+//! The person picks one with the top bar's light/dark switch; neither follows the operating
 //! system's setting.
 
 use {crate::tokens::Color, crate::tokens::WHITE};
 
-/// The shell's colours. Field names are the spec's token names (`line-strong` → `line_strong`).
+/// The shell's colours. Field names are the token names (`line-strong` → `line_strong`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shell {
     /// Window ground, the desk behind the sheet.
@@ -86,7 +86,7 @@ pub const GRAPHITE: Shell = Shell {
     ai_ink: Color::hex(0x14180A),
 };
 
-/// The light shell (UI rev 3, board 1.17): the same meanings as [`GRAPHITE`] on a light ground.
+/// The light shell: the same meanings as [`GRAPHITE`] on a light ground.
 /// The status and list colours are darker than Graphite's so that text in them keeps 4.5:1 on
 /// every light ground ([`Shell::text_pairs`]).
 pub const LIGHT: Shell = Shell {
@@ -114,12 +114,12 @@ pub const LIGHT: Shell = Shell {
     ai_ink: WHITE,
 };
 
-/// Opacity of the light shell's soft fill, %: 18 % reads too strong on a light ground (board 1.17's
+/// Opacity of the light shell's soft fill, %: 18 % reads too strong on a light ground (the
 /// selected row is the accent at about 12 %).
 pub const LIGHT_SOFT_PERCENT: u8 = 12;
 
 impl Shell {
-    /// Every token as `(name, colour)`, in the spec's order; names as in `tokens.md` (`shell.text_2`).
+    /// Every token as `(name, colour)`, in declaration order; names as in the token tables (`shell.text_2`).
     pub fn rows(&self) -> [(&'static str, Color); 22] {
         [
             ("shell.bg", self.bg),

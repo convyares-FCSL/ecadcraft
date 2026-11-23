@@ -1,8 +1,8 @@
-//! egui's style from the tokens (design §3.2): visuals, spacing and text styles for **both** egui
+//! egui's style from the tokens: visuals, spacing and text styles for **both** egui
 //! themes from the shell in use ([`crate::set_theme`]: Graphite or light), so the shell has the
-//! appearance the person chose whatever the operating system prefers. Run [`apply`] once at start, and again when the host re-applies its own style (the
-//! desktop app does it when CADCraft's theme or language changes, until U2's `style` switch keeps
-//! CADCraft from touching the style at all).
+//! appearance the person chose whatever the operating system prefers. Run [`apply`] once at start, and again when
+//! the host re-applies its own style (the desktop app does it when CADCraft's theme or language changes, until
+//! the `style` switch keeps CADCraft from touching the style at all).
 
 use egui::{CornerRadius, FontFamily, FontId, Shadow, Stroke, TextStyle, Theme, Visuals, style::WidgetVisuals};
 use {crate::tokens::line, crate::tokens::radius, crate::tokens::shadow, crate::tokens::space, crate::tokens::ui_type};
@@ -94,7 +94,7 @@ pub fn text_styles(ctx: &egui::Context) -> [(TextStyle, FontId); 5] {
 }
 
 /// Set ECAD's visuals, spacing and text styles on both egui themes. Spacing keeps the host's
-/// layout (no layout changes in U1): item spacing and button padding take the nearest spacing
+/// layout (no layout changes): item spacing and button padding take the nearest spacing
 /// steps; control heights are the primitives' own ([`crate::tokens::size::CONTROL`]).
 ///
 /// # Semantics

@@ -1,4 +1,4 @@
-//! A dialog: an opaque box over the dimmed page (UI rev 4; owner, review of 054). Every popup that
+//! A dialog: an opaque box over the dimmed page. Every popup that
 //! asks for something (a table to edit, a choice to confirm) uses it, so they all look alike: the
 //! `panel` ground with a hairline and the one shadow, the title with a close cross, the body, and
 //! the footer's buttons tight to the bottom edge, right-aligned.

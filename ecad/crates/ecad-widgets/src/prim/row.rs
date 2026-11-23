@@ -35,7 +35,7 @@ pub struct RowSpec {
     pub kind: RowKind,
     /// Selected: the `accent_soft` ground.
     pub selected: bool,
-    /// The change tint (design §8.3), 0 (none) to 1 (just changed); it fades as the caller lowers it.
+    /// The change tint, 0 (none) to 1 (just changed); it fades as the caller lowers it.
     pub tint: f32,
     /// A forced look (the showcase's hovered row).
     pub look: Look,
@@ -82,7 +82,7 @@ pub fn row<R>(ui: &mut Ui, spec: RowSpec, label: &str, add_contents: impl FnOnce
     InnerResponse::new(inner, response)
 }
 
-/// A value read from the drawing (spec §5): plain `text_2` with no box, and a go-to: hovering
+/// A value read from the drawing: plain `text_2` with no box, and a go-to: hovering
 /// underlines it, a click returns `clicked`. Its accessible role is a link labelled with the text.
 pub fn read_value(ui: &mut Ui, text: &str) -> Response {
     let s = crate::SHELL;

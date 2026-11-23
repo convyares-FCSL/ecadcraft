@@ -1,5 +1,5 @@
-//! The building blocks of a right-hand panel: the Draw inspector and the Project panel (UI rev 4,
-//! boards 2.03, 2.05 and 2.06). One set, so both panels line up alike:
+//! The building blocks of a right-hand panel: the Draw inspector and the Project panel.
+//! One set, so both panels line up alike:
 //!
 //! - [`section_header`]: a fold chevron, the title, and a right-aligned summary ("18.8 A ≥ 4 A").
 //! - [`label`]: the grey label in the label column ([`size::LABEL_COLUMN`]).

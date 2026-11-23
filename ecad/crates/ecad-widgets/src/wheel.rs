@@ -1,4 +1,4 @@
-//! The radial wheel (spec §5, brief 041; UI rev 3, board 1.14): about 190 px across, eight
+//! The radial wheel: about 190 px across, eight
 //! icon-only slots on a ring (`crate::tokens::wheel`), centred on the cursor, with a chip above
 //! naming the object. The slot under the cursor names itself in a tooltip beside it. It knows
 //! nothing of commands: the caller gives each slot's label, icon, whether it is greyed (and why),
@@ -336,7 +336,7 @@ fn ring(center: Pos2, a0: f32, a1: f32, fill: Color32) -> Shape {
 mod tests {
     use super::*;
 
-    /// Board 1.14: a slot's tooltip clears the ring, so it never covers another slot's icon (the
+    /// A slot's tooltip clears the ring, so it never covers another slot's icon (the
     /// top slot's used to sit on the top-right one).
     #[test]
     fn no_tooltip_covers_a_slot_icon() {

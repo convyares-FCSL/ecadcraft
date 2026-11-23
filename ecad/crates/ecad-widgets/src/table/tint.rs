@@ -1,4 +1,4 @@
-//! The change tint (design §8.3, spec §5): a cell whose look changed in a commit is tinted for
+//! The change tint: a cell whose look changed in a commit is tinted for
 //! [`TINT_SECONDS`], fading. Only touched keys are compared, so only changed cells are marked.
 
 use std::collections::HashMap;

@@ -1,4 +1,4 @@
-//! The shared pieces of round 2 (brief 063): the widgets lanes used to rebuild by hand.
+//! The shared pieces: the widgets every panel would otherwise rebuild by hand.
 //!
 //! - [`SectionHeader`]: a folding section's header (chevron, title, summary), keeping its state.
 //! - [`property_row`] and [`PropertyGrid`]: a label in the label column and its value.

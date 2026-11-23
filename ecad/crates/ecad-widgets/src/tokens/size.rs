@@ -1,4 +1,4 @@
-//! Control, row, bar and tool sizes (spec §4, "Spacing, sizes, radii"), px at 100 % UI scale.
+//! Control, row, bar and tool sizes ("Spacing, sizes, radii"), px at 100 % UI scale.
 
 /// Small control height.
 pub const CONTROL_SMALL: f32 = 24.0;
@@ -12,15 +12,15 @@ pub const ROW_LIST: f32 = 28.0;
 pub const ROW_TABLE: f32 = 30.0;
 /// Group row.
 pub const ROW_GROUP: f32 = 32.0;
-/// Top bar (UI rev 3: 40 px).
+/// Top bar (40 px).
 pub const TOP_BAR: f32 = 40.0;
 /// Panel header.
 pub const PANEL_HEADER: f32 = 36.0;
 /// Agent banner.
 pub const AGENT_BANNER: f32 = 32.0;
-/// The bottom bar (UI rev 3: status, the page well and the view, 32 px).
+/// The bottom bar (status, the page well and the view, 32 px).
 pub const STATUS_BAR: f32 = 32.0;
-/// Tool button height (UI rev 3: 54 × 44, an icon over a label).
+/// Tool button height (54 × 44, an icon over a label).
 pub const TOOL_BUTTON: f32 = 44.0;
 /// Tool button width in the strip.
 pub const TOOL_BUTTON_W: f32 = 54.0;
@@ -32,18 +32,17 @@ pub const TOOL_ICON: f32 = 18.0;
 pub const TOOL_LABEL: f32 = 10.0;
 /// The bottom bar's page well.
 pub const PAGE_WELL: f32 = 880.0;
-/// Icon button outside the tool strip (design §3.3): the default control height.
+/// Icon button outside the tool strip: the default control height.
 pub const ICON_BUTTON: f32 = 28.0;
 /// Icon grid: icons are drawn on a 16 px grid ([`crate::tokens::line::ICON_STROKE_PX`]).
 pub const ICON: f32 = 16.0;
-/// The label column of a panel's value rows (inspector and Project panel, UI rev 4 boards 2.03,
-/// 2.05, 2.06).
+/// The label column of a panel's value rows (inspector and Project panel).
 pub const LABEL_COLUMN: f32 = 96.0;
-/// A section header's fold chevron (brief 063).
+/// A section header's fold chevron.
 pub const CHEVRON: f32 = 16.0;
-/// A small dialog's content width: a question, a name to type (brief 063).
+/// A small dialog's content width: a question, a name to type.
 pub const DIALOG_S: f32 = 400.0;
-/// A dialog's usual content width: a short form, a list to choose from (brief 063).
+/// A dialog's usual content width: a short form, a list to choose from.
 pub const DIALOG_M: f32 = 560.0;
 
 /// Every token as `(name, px)`, names as in `tokens.md`.

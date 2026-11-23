@@ -1,4 +1,4 @@
-//! Contracts of the token table (brief 037, acceptance criterion 1).
+//! Contracts of the token table.
 
 use {ecad_widgets::tokens::Color, ecad_widgets::tokens::GRAPHITE};
 

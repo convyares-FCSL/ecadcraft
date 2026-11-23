@@ -1,4 +1,4 @@
-//! CSV export (design §6.2): the shown rows and columns, as the table shows them.
+//! CSV export: the shown rows and columns, as the table shows them.
 
 use crate::table::source::{Column, TableSource};
 

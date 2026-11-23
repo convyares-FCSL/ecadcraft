@@ -1,4 +1,4 @@
-//! The embedded faces (brief 037, acceptance criterion 6): the `ui` and `sheet` families are
+//! The embedded faces: the `ui` and `sheet` families are
 //! registered with the embedded faces, and the fonts README's hashes match the committed files.
 
 use ecad_widgets::fonts::{self, FACES, LICENCES};

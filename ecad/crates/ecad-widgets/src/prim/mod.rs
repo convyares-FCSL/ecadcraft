@@ -1,12 +1,12 @@
-//! The nine primitives (design §3.3): [`button`], [`icon_button`], [`pill`], [`chip`],
+//! The nine primitives: [`button`], [`icon_button`], [`pill`], [`chip`],
 //! [`badge`], [`field`], [`segmented`], [`keycap`], [`row`]; and the set-versus-read pair
 //! [`read_value`] (a value read from the drawing: plain text, a go-to) and [`provisional`].
 //!
 //! Each returns an `egui::Response` (or a small struct holding one) and carries an accessible
 //! label, so tests and the control channel find it by label. Sizes, radii, colours and fonts come
-//! from `ecad-tokens` only.
+//! from `ecad-widgets` only.
 //!
-//! Round 2 (brief 063, [`kit`]): [`SectionHeader`], [`property_row`] and [`PropertyGrid`],
+//! The [`kit`] module: [`SectionHeader`], [`property_row`] and [`PropertyGrid`],
 //! [`ListRow`], [`caption`], [`heading`], [`body`] and [`note`], [`Checkbox`], [`Radio`] and
 //! [`SearchField`].
 //!

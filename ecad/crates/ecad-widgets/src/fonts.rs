@@ -1,10 +1,10 @@
-//! The interface and sheet fonts (design §4; brief 037, owner answer Q1: embedded from ECAD's
-//! repository). The five faces are included with `include_bytes!`, so they
+//! The interface and sheet fonts, embedded from ECAD's
+//! repository. The five faces are included with `include_bytes!`, so they
 //! are always present; nothing is read from disk at run time. Sources, versions and hashes are in
 //! `ecad/assets/fonts/README.md`.
 //!
-//! [`install`] takes the host's font set (CADCraft's `theme::font_definitions(language)`, upstream
-//! seam US2, with its script fallbacks), puts IBM Plex Sans first in `Proportional`, adds the
+//! [`install`] takes the host's font set (CADCraft's `theme::font_definitions(language)`,
+//! with its script fallbacks), puts IBM Plex Sans first in `Proportional`, adds the
 //! families [`UI`] and [`SHEET`] and one family per extra weight, and installs the result.
 
 use std::sync::Arc;
@@ -14,13 +14,13 @@ use egui::{FontData, FontDefinitions, FontFamily, FontId};
 
 /// The interface family: IBM Plex Sans Regular, then the host's fallbacks.
 pub const UI: &str = "ui";
-/// IBM Plex Sans Medium (500).
+/// IBM Plex Sans Medium.
 pub const UI_MEDIUM: &str = "ui-500";
-/// IBM Plex Sans SemiBold (600).
+/// IBM Plex Sans SemiBold.
 pub const UI_SEMIBOLD: &str = "ui-600";
-/// The sheet family: Barlow Semi Condensed Regular, then the host's fallbacks (used from U4a).
+/// The sheet family: Barlow Semi Condensed Regular, then the host's fallbacks.
 pub const SHEET: &str = "sheet";
-/// Barlow Semi Condensed SemiBold (600).
+/// Barlow Semi Condensed SemiBold.
 pub const SHEET_SEMIBOLD: &str = "sheet-600";
 
 /// One embedded face.
@@ -59,7 +59,7 @@ pub const FACES: [Face; 5] = [
         key: "ecad-barlow-semi-condensed-400",
         family: SHEET,
         file: "barlow-semi-condensed/BarlowSemiCondensed-Regular.ttf",
-        // One copy for the shell and the page (brief 040).
+        // One copy for the shell and the page.
         bytes: ecad_drawing_style::sheet_font::REGULAR,
     },
     Face {

@@ -1,5 +1,5 @@
-//! The primitives showcase (brief 037 scope 7): one page drawing every primitive in every state,
-//! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The desktop app
+//! The primitives showcase: one page drawing every primitive in every state,
+//! the shell colours and the type ramp, for screenshots. The desktop app
 //! hosts it as a hidden developer page, `ui.primitives`.
 
 use egui::{Rect, RichText, ScrollArea, Sense, Ui, vec2};
@@ -26,7 +26,7 @@ pub struct Showcase {
     /// The gallery's selector and segmented choice.
     pub category: usize,
     pub basis: usize,
-    /// Round 2's checkbox, radio choice and folding section (brief 063).
+    /// The checkbox, radio choice and folding section.
     pub checked: bool,
     pub radio: usize,
     pub open: bool,
@@ -200,8 +200,8 @@ fn cell(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 /// A component table column's width: an inspector value column.
 const COLUMN: f32 = crate::tokens::size::LABEL_COLUMN * 2.0;
 
-/// The value components (`crate::control`, `crate::panel`), each in every state (design
-/// `docs/design/components.md`): the gallery the style guide's screenshots come from.
+/// The value components (`crate::control`, `crate::panel`), each in every state:
+/// the gallery the style guide's screenshots come from.
 pub fn components(ui: &mut Ui, state: &mut Showcase) {
     use crate::control::{Decor, Select, TextEntry, Toggle, ValueBox, link, read_text};
     heading(ui, "Value components");
@@ -397,7 +397,7 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
         };
         ui.add(Button::new(label).kind(kind).small());
     });
-    // Brief 057's shared pieces: several lines of text, a table's colour and toggle cells, and the
+    // Shared pieces: several lines of text, a table's colour and toggle cells, and the
     // splitter between two stacked regions.
     ui.horizontal(|ui| {
         crate::panel::label(ui, "Text area");
@@ -428,7 +428,7 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
     round_two(ui, state);
 }
 
-/// Round 2's pieces (brief 063): section header, property grid, list rows, text styles,
+/// The kit's pieces: section header, property grid, list rows, text styles,
 /// checkbox, radio, search field and a dialog's footer, each in its states.
 fn round_two(ui: &mut Ui, state: &mut Showcase) {
     use crate::prim::{Checkbox, ListRow, PropertyGrid, Radio, SearchField, SectionHeader};

@@ -1,6 +1,6 @@
-//! A splitter: the handle between two panes that a person drags to share the space (brief 057,
-//! owner: Project ▸ Cables' Details pane). One look for every split in the app: a double line
-//! across the width with a filled band between (owner, review of 059) and a grip in the middle, a resize cursor on hover, and the hover colour while
+//! A splitter: the handle between two panes that a person drags to share the space (Project ▸ Cables'
+//! Details pane). One look for every split in the app: a double line across the width with a filled band
+//! between and a grip in the middle, a resize cursor on hover, and the hover colour while
 //! hovered or dragged.
 
 use egui::{CursorIcon, Response, Sense, Stroke, Ui, pos2, vec2};
@@ -9,7 +9,7 @@ use crate::tokens::{line, space};
 
 /// The handle's height (a horizontal splitter) or width (a vertical one).
 pub const THICKNESS: f32 = space::L;
-/// The gap between the two lines (owner, review of 059: a clearly defined double line).
+/// The gap between the two lines: a clearly defined double line.
 const GAP: f32 = 4.0;
 /// The grip's length in the middle.
 const GRIP: f32 = 40.0;

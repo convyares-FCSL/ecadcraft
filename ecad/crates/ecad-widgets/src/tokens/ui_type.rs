@@ -1,4 +1,4 @@
-//! The UI type ramp (spec §4, "Type"), in px at 100 % UI scale. The UI font is IBM Plex Sans.
+//! The UI type ramp, in px at 100 % UI scale. The UI font is IBM Plex Sans.
 
 /// One UI text style.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -23,9 +23,9 @@ pub const BODY_EMPHASIS: TypeStyle = TypeStyle { weight: 500, ..BODY };
 pub const TITLE: TypeStyle = TypeStyle { size: 15.0, line: 20.0, weight: 600 };
 /// The selected object's name, screen titles.
 pub const OBJECT: TypeStyle = TypeStyle { size: 20.0, line: 26.0, weight: 600 };
-/// Point keys and slot labels on symbol drawings in the Library (UI rev 3).
+/// Point keys and slot labels on symbol drawings in the Library.
 pub const MICRO: TypeStyle = TypeStyle { size: 9.0, line: 12.0, weight: 400 };
-/// An empty screen's hint (UI rev 3).
+/// An empty screen's hint.
 pub const LEAD: TypeStyle = TypeStyle { size: 14.0, line: 20.0, weight: 400 };
 
 /// Every style as `(name, style)`, names as in `tokens.md` (`ui_type.body`).

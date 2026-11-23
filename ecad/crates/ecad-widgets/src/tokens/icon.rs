@@ -1,11 +1,11 @@
-//! The names of the shell's icons (design §3.4). `ecad-ui` paints each one in code from lines,
-//! arcs and circles on a 16 px grid; nothing here draws. Later briefs add names here and a
-//! painter in `ecad-ui` together.
+//! The names of the shell's icons. `ecad-widgets` paints each one in code from lines,
+//! arcs and circles on a 16 px grid; nothing here draws. A new icon adds a name here and a
+//! painter in `ecad-widgets` together.
 
 /// An icon of the shell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Icon {
-    // The seven tool groups of the Draw workspace (spec §2).
+    // The seven tool groups of the Draw workspace.
     /// Select (V): an arrow pointer.
     Select,
     /// Wire (W): a line between two end rings.
@@ -55,7 +55,7 @@ pub enum Icon {
     /// Chevron pointing down.
     ChevronDown,
 
-    // 041 (brief 041, U4b): the actions' icons (wheel slots, flyouts, search).
+    // The actions' icons (wheel slots, flyouts, search).
     /// Delete: a bin.
     Delete,
     /// Go to: an arrow out of a box.
@@ -102,10 +102,8 @@ pub enum Icon {
     Cloud,
     /// Show or hide: an eye.
     Eye,
-    // 044
     /// Connector: a socket's cup over a plug's pin.
     Connector,
-    // 048
     /// New symbol: a symbol box with a plus at its corner.
     NewSymbol,
     /// Connection point (the builder's C tool): a ring on a lead.
@@ -114,50 +112,49 @@ pub enum Icon {
     TextSlot,
     /// Origin (the builder's O tool): a cross in a ring.
     Origin,
-    // UI rev 3
-    /// Book: an open book (UI rev 3: the Book panel).
+    /// Book: an open book (the Book panel).
     Book,
-    /// PLC: a rack with three cards (UI rev 3: the PLC group).
+    /// PLC: a rack with three cards (the PLC group).
     Plc,
-    /// Snap: a cross hair on a dot (UI rev 3: the Snap toggle).
+    /// Snap: a cross hair on a dot (the Snap toggle).
     Snap,
-    /// Grid: a hash of four lines (UI rev 3: the Grid toggle).
+    /// Grid: a hash of four lines (the Grid toggle).
     Grid,
-    /// Ortho: a right angle with a square corner mark (UI rev 3: the Ortho toggle).
+    /// Ortho: a right angle with a square corner mark (the Ortho toggle).
     Ortho,
-    /// Dark theme: a crescent (UI rev 3: the light/dark switch).
+    /// Dark theme: a crescent (the light/dark switch).
     Moon,
-    /// Light theme: a ring with eight rays (UI rev 3: the light/dark switch).
+    /// Light theme: a ring with eight rays (the light/dark switch).
     Sun,
-    /// Help: a question mark in a ring (UI rev 3: the top bar).
+    /// Help: a question mark in a ring (the top bar).
     Help,
-    /// Page group: a folder with a tab (UI rev 3: a page group in the well).
+    /// Page group: a folder with a tab (a page group in the well).
     Folder,
-    /// Previous group: two chevrons (UI rev 3: the page well).
+    /// Previous group: two chevrons (the page well).
     ChevronsLeft,
-    /// Next group: two chevrons (UI rev 3: the page well).
+    /// Next group: two chevrons (the page well).
     ChevronsRight,
-    /// Fit: four corner marks (UI rev 3: the view group).
+    /// Fit: four corner marks (the view group).
     Fit,
-    /// Zoom out: a dash (UI rev 3: the view group).
+    /// Zoom out: a dash (the view group).
     Minus,
-    /// Zoom in: a plus (UI rev 3: the view group).
+    /// Zoom in: a plus (the view group).
     Plus,
-    /// Draw tools: a pencil (UI rev 3: the Draw group).
+    /// Draw tools: a pencil (the Draw group).
     Pencil,
-    /// Device tools: a body on a lead (UI rev 3: the Device group).
+    /// Device tools: a body on a lead (the Device group).
     Pin,
-    /// Terminal tools: a lead through a ring with a slash (UI rev 3: the Terminal group).
+    /// Terminal tools: a lead through a ring with a slash (the Terminal group).
     TerminalBlockPin,
-    /// Wire tools: a wire bending up from one end ring to another (UI rev 3: the Wire group).
+    /// Wire tools: a wire bending up from one end ring to another (the Wire group).
     WireBend,
-    /// Cable tools: three leads tied by two strokes (UI rev 3: the Cable group).
+    /// Cable tools: three leads tied by two strokes (the Cable group).
     CableBundle,
-    /// Location tools: a dashed box with a marked corner (UI rev 3: the Location group).
+    /// Location tools: a dashed box with a marked corner (the Location group).
     LocationBox,
-    /// Devices panel: three squares and a plus (UI rev 3: the Devices panel).
+    /// Devices panel: three squares and a plus (the Devices panel).
     DeviceGrid,
-    /// Share: an arrow rising out of a tray (UI rev 3: the top bar).
+    /// Share: an arrow rising out of a tray (the top bar).
     Share,
 }
 
@@ -187,7 +184,6 @@ impl Icon {
         Icon::ChevronRight,
         Icon::ChevronUp,
         Icon::ChevronDown,
-        // 041
         Icon::Delete,
         Icon::GoTo,
         Icon::ShowRow,
@@ -211,14 +207,11 @@ impl Icon {
         Icon::Junction,
         Icon::Cloud,
         Icon::Eye,
-        // 044
         Icon::Connector,
-        // 048
         Icon::NewSymbol,
         Icon::ConnectionPoint,
         Icon::TextSlot,
         Icon::Origin,
-        // UI rev 3
         Icon::Book,
         Icon::Plc,
         Icon::Snap,
@@ -269,7 +262,6 @@ impl Icon {
             Icon::ChevronRight => "Chevron right",
             Icon::ChevronUp => "Chevron up",
             Icon::ChevronDown => "Chevron down",
-            // 041
             Icon::Delete => "Delete",
             Icon::GoTo => "Go to",
             Icon::ShowRow => "Show row",
@@ -293,14 +285,11 @@ impl Icon {
             Icon::Junction => "Junction",
             Icon::Cloud => "Revision cloud",
             Icon::Eye => "Show or hide",
-            // 044
             Icon::Connector => "Connector",
-            // 048
             Icon::NewSymbol => "New symbol",
             Icon::ConnectionPoint => "Connection point",
             Icon::TextSlot => "Text slot",
             Icon::Origin => "Origin",
-            // UI rev 3
             Icon::Book => "Book",
             Icon::Plc => "PLC",
             Icon::Snap => "Snap",

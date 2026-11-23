@@ -1,7 +1,6 @@
-//! `ecad/docs/design/tokens.md` and the constants agree (brief 037, acceptance criterion 1;
-//! design §3.1): every row of the "Tokens" tables names a constant and shows its value, and every
-//! constant has a row. The "Drawing style" tables after them are checked by `ecad-drawing-style`'s
-//! own test (design 065 §1.1); the `ecad.*` rows after those are retired in U4a and not checked.
+//! The design tokens document and the constants agree: every row of the
+//! "Tokens" tables names a constant and shows its value, and every constant has a row. The "Drawing style" tables after them are checked by `ecad-drawing-style`'s
+//! own test; the `ecad.*` rows after those are retired and not checked.
 
 use std::collections::BTreeMap;
 

@@ -1,4 +1,4 @@
-//! Inline edit (design §6.2): only cells of `Set` columns. F2, Enter or a double-click starts;
+//! Inline edit: only cells of `Set` columns. F2, Enter or a double-click starts;
 //! Enter commits one [`crate::table::TableEvent::Commit`]; Esc reverts; Tab commits and goes to the next
 //! set cell. The owner runs the command; a refusal it reports shows under the cell
 //! ([`Refusal`]) and the value reverts, because the cell reads the source again.

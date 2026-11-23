@@ -1,4 +1,4 @@
-//! The one shadow style (spec §4): popovers and the sheet only.
+//! The one shadow style: popovers and the sheet only.
 
 use {crate::tokens::BLACK, crate::tokens::Color};
 

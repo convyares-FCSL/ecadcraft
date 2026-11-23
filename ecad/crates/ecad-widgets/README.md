@@ -13,7 +13,7 @@ is not here; that is `ecad-drawing-style`.
 - `tokens`: the screen tokens as `const` data: `shell` (the Graphite and light shell colours, with
   contrast checks), `ui_type`, `space`, `size`, `radius`, `shadow`, `wheel`, `line` (screen
   strokes in pixels) and `icon` (the names of the shell's icons).
-- `style`: sets egui's look from the tokens (`set_theme`).
+- `style`: sets egui's visuals, spacing and text styles from the tokens (`set_theme`).
 - `control`: components for values: `TextEntry`, `Select`, `Toggle`, `ValueBox`, `TextArea`, `read_text`, `link`.
 - `prim`: primitives such as `Button`, `IconButton`, `Segmented`, `Field`, `ListRow`, `PropertyGrid`.
 - `panel`: section headers, value rows, `status_pill`.

@@ -1,4 +1,4 @@
-//! The visible order (design §6.2, "View model"): filter → group → sort over a source's keys.
+//! The visible order: filter → group → sort over a source's keys.
 //!
 //! Built whole only on [`ViewModel::rebuild`] (first show, reload, a feed that rolled over). A
 //! sort or grouping change re-reads one column; a filter keystroke re-reads nothing (each row's
@@ -231,7 +231,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> ViewModel<K> {
                 sort = SortVal::of(&cell);
             }
         }
-        // A group column the source does not show (UI rev 3: Wires grouped by potential, Terminals
+        // A group column the source does not show (Wires grouped by potential, Terminal blocks
         // by strip) is read for its text alone.
         if let Some(g) = self.group_by
             && !cols.iter().any(|c| c.id == g)

@@ -1,24 +1,25 @@
-//! ecad-ui: ECAD's interface kit (brief 037, design `ui-architecture.md` §3–§4).
+//! ecad-widgets: ECAD's interface kit: generic controls and screen tokens, with no ECAD knowledge.
 //!
-//! - [`style`]: egui's visuals, spacing and text styles from `ecad-tokens` (the shell in use,
-//!   Graphite or light: [`set_theme`]).
-//! - [`control`]: the component set for values (text entry, number with unit, selector, toggle,
-//!   value box, read value, link), one per kind of control, every state from tokens.
-//! - [`fonts`]: IBM Plex Sans (interface) and Barlow Semi Condensed (sheet), embedded, registered
-//!   on top of the font set the host app gives.
-//! - [`prim`]: the nine primitives (button, icon button, pill, chip, badge, field, segmented
-//!   control, key cap, row) and [`prim::read_value`], [`prim::provisional`].
-//! - [`icons`]: the shell's icons, painted in code.
+//! - [`tokens`]: the one table of interface tokens: shell colours (Graphite and light), spacing, type, sizes.
+//! - [`style`]: egui's visuals, spacing and text styles from the tokens (the shell in use: [`set_theme`]).
+//! - [`control`]: the component set for values (text entry, number with unit, selector, toggle, value box, read
+//!   value, link), one per kind of control, every state from tokens.
+//! - [`prim`]: the primitives (button, icon button, pill, chip, badge, field, segmented control, key cap, row),
+//!   [`prim::read_value`] and [`prim::provisional`].
 //! - [`panel`]: a right-hand panel's section headers, value rows, status pill and rules.
-//! - [`showcase`]: one page drawing every primitive in every state (for screenshots).
-//! - [`table`]: the one table every manager uses (brief 039): sort, filter, group, multi-select,
-//!   inline edit, go-to, change tint, CSV; virtualised.
+//! - [`table`]: the one table every manager uses: sort, filter, group, multi-select, inline edit, go-to, change
+//!   tint, CSV; virtualised.
+//! - [`dialog`], [`splitter`], [`wheel`]: a dialog over the dimmed page, the handle between two panes, and the
+//!   radial wheel.
+//! - [`fonts`]: IBM Plex Sans (interface) and Barlow Semi Condensed (sheet), embedded, registered on top of the
+//!   font set the host app gives.
+//! - [`icons`]: the shell's icons, painted in code.
+//! - [`showcase`]: one page drawing every component in every state (for screenshots).
 //!
-//! From brief 037 on, ECAD UI code takes colours, sizes and fonts from here, never locally
-//! (`cargo xtask layers` checks it).
+//! ECAD UI code takes colours, sizes and fonts from here, never locally (`cargo xtask layers` checks it).
 //!
-//! This crate **excludes** anything about projects, documents or commands, and any `cadcraft-*`
-//! dependency (layer class UiKit): it draws widgets from tokens and nothing else.
+//! This crate **excludes** anything about projects, documents or commands, and any `cadcraft-*` dependency: it
+//! draws widgets from tokens and nothing else.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod control;
@@ -52,7 +53,7 @@ pub fn rgba_image(size: [usize; 2], rgba: &[u8]) -> egui::ColorImage {
     egui::ColorImage::from_rgba_premultiplied(size, rgba)
 }
 
-/// The interface theme (UI rev 3, boards 1.17 and 1.18): which shell colour set [`SHELL`] reads.
+/// The interface theme: which shell colour set [`SHELL`] reads.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Theme {
     /// Graphite, the default.

@@ -1,4 +1,4 @@
-//! The primitives (brief 037, acceptance criterion 2): each primitive in each state is found by
+//! The primitives: each primitive in each state is found by
 //! its label; a disabled button reports its reason; a field shows the 2 px `accent_text` focus
 //! ring; `read_value` has no frame and is clickable.
 

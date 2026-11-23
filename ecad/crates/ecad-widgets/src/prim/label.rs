@@ -26,7 +26,7 @@ pub fn pill(ui: &mut Ui, text: &str, tone: Tone) -> Response {
     response
 }
 
-/// A small outlined label: a count or a short code, in a tone. The origin badge of U4c is one.
+/// A small outlined label: a count or a short code, in a tone. The origin badge is one.
 pub fn badge(ui: &mut Ui, text: impl ToString, tone: Tone) -> Response {
     let text = text.to_string();
     let g = galley(ui, &text, ui_type::CAPTION);
