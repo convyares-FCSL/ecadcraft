@@ -1,4 +1,4 @@
-# Wire types (design 072 §4.6, F36, F37): the `wire` catalogue's built-in data, read as typed
+# Wire types: the `wire` catalogue's built-in data, read as typed
 # records (`ecad_model::style::WireType`), so a misspelt key or a value of the wrong form fails the
 # `wire_types_data_reads` test instead of being ignored.
 #

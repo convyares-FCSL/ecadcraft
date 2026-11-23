@@ -1,5 +1,5 @@
-# Brief 047: bill of materials.
-# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# Bill of materials.
+# Built-in defaults. Values only: each key's kind, range, levels and
 # label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
 # Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.

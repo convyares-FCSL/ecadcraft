@@ -1,4 +1,4 @@
-# Core colour schemes for cable types (design 072 §4.6, F37): ECAD's own data. A cable type that
+# Core colour schemes for cable types: ECAD's own data. A cable type that
 # names a scheme takes its cores' colours from here by the cable's core count; a type's own
 # `core_colours` list wins over its scheme. Read as typed data by `src/styles/cable.rs`; the test
 # `core_schemes_data_reads` refuses a misspelt key or a colour not in its stored form.

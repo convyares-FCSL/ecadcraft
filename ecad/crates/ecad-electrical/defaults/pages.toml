@@ -1,5 +1,5 @@
-# Brief 054: cover page and page defaults.
-# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# Cover page and page defaults.
+# Built-in defaults. Values only: each key's kind, range, levels and
 # label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
 # Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
@@ -14,11 +14,11 @@
 "front.cover.customer_site" = "yes"
 "front.cover.heading" = "Electrical documentation"
 
-# Built-in layout values no level overrides (brief 066c).
+# Built-in layout values no level overrides.
 [layout]
 "page.report.row_height" = 5.0     # ecad.table-row: rows per A3 sheet are computed from these
 "page.report.header_height" = 7.0  # ecad.table-header
-# The cover's lines as fractions of the Cover text style's height (brief 066d): with the built-in
+# The cover's lines as fractions of the Cover text style's height: with the built-in
 # 10 mm they keep board 1.16's 5, 3.5, 2.4 and 3.8 mm.
 "front.cover.block_title" = 0.5
 "front.cover.body" = 0.35

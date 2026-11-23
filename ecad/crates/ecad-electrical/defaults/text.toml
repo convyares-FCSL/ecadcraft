@@ -1,12 +1,12 @@
-# Lane T (brief 031): text shown, runs, placement; text styles (brief 050a).
-# Built-in defaults (brief 066, design 066 §3). Values only: each key's kind, range, levels and
+# Text shown, runs, placement; text styles.
+# Built-in defaults. Values only: each key's kind, range, levels and
 # label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
 # Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
 
 [values]
 "text.font" = "Barlow Semi Condensed"
-"text.wire_label.height" = 2.5   # owner, 2026-11-15: was 1.6 (brief 066)
+"text.wire_label.height" = 2.5
 "text.tag.show" = "yes"
 "text.tag.show.strip" = "first"
 "text.tag.show.plc" = "first"
@@ -52,7 +52,7 @@ height = 2.0
 weight = "regular"
 
 # All reference text: cross-references, contact tables, continuations, cable reference ends
-# (brief 066d, owner 2026-11-16: one default, 2.5 so contact cross-references keep their size).
+# (one default, 2.5, so contact cross-references keep their size).
 [styles.text.reference]
 height = 2.5
 weight = "regular"

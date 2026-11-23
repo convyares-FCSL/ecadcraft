@@ -1,5 +1,4 @@
-# The built-in project settings ecad-model computes with (brief 066c, design 066 §2.2; overseer
-# ruling 2026-11-16, option D). One source: ecad-model reads this file, and the registry in
+# The built-in project settings ecad-model computes with. One source: ecad-model reads this file, and the registry in
 # ecad-electrical loads the same file for these keys' built-ins.
 # Values only: each key's kind, range and label stay in the registry (`ecad-electrical`).
 

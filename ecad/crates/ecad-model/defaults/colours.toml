@@ -1,4 +1,4 @@
-# The forms of each conductor base colour (design 072 §4.6). One table per colour, keyed by the
+# The forms of each conductor base colour. One table per colour, keyed by the
 # colour's identity in `ConductorColour` (snake case). The 2-letter codes are IEC 60757's and are
 # what a project stores; the 3-letter codes, names and display hex values are ECAD's own choice.
 # The hex is for display only (swatches); drawings print the words.
