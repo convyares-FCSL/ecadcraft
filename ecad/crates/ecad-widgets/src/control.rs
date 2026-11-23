@@ -23,8 +23,8 @@
 
 use egui::{CursorIcon, Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
 use {
-    crate::tokens::Color, crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space,
-    crate::tokens::ui_type,
+    crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type,
+    ecad_model::palette::Color,
 };
 
 use crate::prim::{Look, accessible};

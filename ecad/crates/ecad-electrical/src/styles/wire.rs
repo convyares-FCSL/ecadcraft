@@ -21,7 +21,7 @@ use std::sync::OnceLock;
 
 use ecad_model::geometry::units::{Amps, Celsius, Metres, Mm};
 use ecad_model::objects::styles::wire::{ConductorRating, Insulation, LineColour, WireType};
-pub use ecad_model::objects::styles::wire::{LineType, RouteLabels};
+use ecad_model::objects::styles::wire::{LineType, RouteLabels};
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, StyleRef, WireId, Word};
 use serde::Deserialize;

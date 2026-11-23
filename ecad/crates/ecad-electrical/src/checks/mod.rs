@@ -1039,5 +1039,3 @@ pub fn all_measured(
     rows.extend(reports.checks());
     sort(doc, rows)
 }
-
-// The engine half, at its old path until step 6 turns this into a facade.

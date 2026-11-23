@@ -254,7 +254,7 @@ impl Shell {
 }
 
 /// The ECAD style of a slot's background.
-pub(crate) fn fill(ui: &egui::Ui, rect: Rect, c: ecad_widgets::tokens::Color) {
+pub(crate) fn fill(ui: &egui::Ui, rect: Rect, c: ecad_model::palette::Color) {
     ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(c));
 }
 

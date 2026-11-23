@@ -68,7 +68,7 @@ pub fn row<R>(ui: &mut Ui, spec: RowSpec, label: &str, add_contents: impl FnOnce
         let tint = spec.tint.clamp(0.0, 1.0);
         if tint > 0.0 {
             let a = (f32::from(s.accent_soft.a) * tint).round().clamp(0.0, 255.0) as u8;
-            p.rect_filled(rect, 0.0, color(crate::tokens::Color { a, ..s.accent_soft }));
+            p.rect_filled(rect, 0.0, color(ecad_model::palette::Color { a, ..s.accent_soft }));
         }
         p.line_segment(
             [pos2(rect.left(), rect.bottom() - 0.5), pos2(rect.right(), rect.bottom() - 0.5)],

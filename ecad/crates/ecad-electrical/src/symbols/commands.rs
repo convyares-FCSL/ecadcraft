@@ -27,9 +27,10 @@ use ecad_model::{
 use crate::defaults::symbols::Field;
 use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
+use crate::symbols;
 use crate::symbols::graphics::POINT_GRID_MM;
 use crate::symbols::project::{PROJECT_SYMBOLS, Version};
-use crate::symbols::{self, Join};
+use ecad_model::Join;
 
 /// Most shapes a symbol holds.
 pub(crate) const MAX_SHAPES: usize = 4000;

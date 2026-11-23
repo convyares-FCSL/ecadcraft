@@ -195,7 +195,7 @@ impl Default for Debugger {
 
 fn now() -> String {
     let secs = (crate::shell::host::host().now_ms)() / 1000;
-    ecad_file::utc(secs)
+    ecad_store::disk::utc(secs)
 }
 
 fn json_text(v: &serde_json::Value) -> String {
@@ -918,7 +918,7 @@ impl Debugger {
                 "{}, by {}, {}, ID {}",
                 ecad_file::history::tx_kind(tx, &self.log),
                 author(&tx.author),
-                tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::utc(ms / 1000)),
+                tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_store::disk::utc(ms / 1000)),
                 tx.id.short()
             ),
             true,

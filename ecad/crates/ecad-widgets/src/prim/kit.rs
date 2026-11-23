@@ -202,7 +202,7 @@ impl<'a> ListRow<'a> {
 }
 
 /// A line of text in a type style and colour, wrapped to the width available.
-fn text(ui: &mut Ui, text: &str, style: ui_type::TypeStyle, ink: crate::tokens::Color) -> Response {
+fn text(ui: &mut Ui, text: &str, style: ui_type::TypeStyle, ink: ecad_model::palette::Color) -> Response {
     ui.add(egui::Label::new(egui::RichText::new(text).font(fonts::font(ui.ctx(), style)).color(color(ink))).wrap())
 }
 

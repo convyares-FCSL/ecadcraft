@@ -127,7 +127,7 @@ struct Group {
     pages: Vec<(PageId, String, String)>,
 }
 
-fn c32(c: ecad_widgets::tokens::Color) -> egui::Color32 {
+fn c32(c: ecad_model::palette::Color) -> egui::Color32 {
     ecad_widgets::color(c)
 }
 

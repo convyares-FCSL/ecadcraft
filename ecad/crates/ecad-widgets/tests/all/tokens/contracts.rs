@@ -1,6 +1,6 @@
 //! Contracts of the token table.
 
-use {ecad_widgets::tokens::Color, ecad_widgets::tokens::GRAPHITE};
+use {ecad_model::palette::Color, ecad_widgets::tokens::GRAPHITE};
 
 /// Every stated text colour reaches 4.5:1 on its background, and the spec's quoted ratios hold.
 #[test]

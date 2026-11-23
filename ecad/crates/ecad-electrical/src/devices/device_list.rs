@@ -232,5 +232,3 @@ pub fn position(doc: &Document, r: &ecad_model::Representation) -> Option<Pt> {
     }
     r.connection_points.values().next().copied()
 }
-
-// The engine half, at its old path until step 6 turns this into a facade.

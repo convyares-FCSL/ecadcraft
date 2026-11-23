@@ -14,6 +14,8 @@ workspace = true
 ecad-engine = { path = "../../crates/ecad-engine" }
 ecad-model = { workspace = true }
 ecad-file = { workspace = true }
+# The debugger shows times as the store writes them (`ecad_store::disk::utc`).
+ecad-store = { workspace = true }
 # Brief 074: the release check plan, by its own path.
 ecad-electrical = { workspace = true }
 ecad-drawing-style = { workspace = true }
@@ -36,7 +38,6 @@ log = "0.4"
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
-ecad-store = { workspace = true }
 # The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature);
 # brief 035's bridge tests make an ECAD command panic (fault injection).
 ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }

@@ -31,7 +31,7 @@ pub fn shadow() -> Shadow {
     }
 }
 
-fn widget(fill: crate::tokens::Color, stroke: Stroke, text: crate::tokens::Color) -> WidgetVisuals {
+fn widget(fill: ecad_model::palette::Color, stroke: Stroke, text: ecad_model::palette::Color) -> WidgetVisuals {
     WidgetVisuals {
         bg_fill: color(fill),
         weak_bg_fill: color(fill),

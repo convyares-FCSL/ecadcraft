@@ -408,7 +408,7 @@ pub fn components(ui: &mut Ui, state: &mut Showcase) {
         crate::panel::label(ui, "Table cells");
         for cell in [
             crate::table::Cell::Colour(vec![ecad_model::palette::sheet::PAPER.ink], "BK".into()),
-            crate::table::Cell::Colour(vec![crate::tokens::Color::hex(0x2e7d32), crate::tokens::Color::hex(0xf9d825)], "GNYE".into()),
+            crate::table::Cell::Colour(vec![ecad_model::palette::Color::hex(0x2e7d32), ecad_model::palette::Color::hex(0xf9d825)], "GNYE".into()),
             crate::table::Cell::Toggle(false),
             crate::table::Cell::Toggle(true),
         ] {

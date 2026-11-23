@@ -84,7 +84,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 }
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
-pub fn bars(code: &str) -> Vec<ecad_widgets::tokens::Color> {
+pub fn bars(code: &str) -> Vec<ecad_model::palette::Color> {
     match ecad_model::objects::wire::Colours::parse(code)
         .and_then(|c| ecad_electrical::cables::words::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
     {

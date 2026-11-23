@@ -37,9 +37,9 @@ fn the_six_built_in_types_are_listed_with_their_fields() {
     assert_eq!(ids, ["front", "schematic", "network", "singleline", "panel", "report", "plain"]);
     let d = h.doc();
     let draw = |w: &str| ptype::draw_of(&d, &StyleRef::Builtin(w.into()));
-    assert_eq!(draw("front").holds, ptype::Holds::Front);
+    assert_eq!(draw("front").holds, ecad_model::objects::styles::page::Holds::Front);
     assert!(!draw("front").zones && draw("schematic").zones && !draw("panel").zones && !draw("report").zones);
-    assert_eq!(draw("report").holds, ptype::Holds::Report);
+    assert_eq!(draw("report").holds, ecad_model::objects::styles::page::Holds::Report);
     assert_eq!((draw("schematic").sheet, draw("schematic").frame.clone(), draw("schematic").title_block), (None, None, None));
     let names: Vec<String> = ptype::ordered(&d).into_iter().map(|r| r.name).collect();
     assert_eq!(names, ["Cover sheet", "Schematic", "Network", "Single-line", "Panel layout", "Report", "Plain"]);
@@ -265,7 +265,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     assert!(serde_json::from_value::<ecad_model::StyleRecord>(hostile).is_err());
     let d = h.doc();
     let draw = ptype::draw_of(&d, &StyleRef::Builtin("schematic".into()));
-    assert_eq!((draw.holds, draw.zones, draw.sheet), (ptype::Holds::None, true, None));
+    assert_eq!((draw.holds, draw.zones, draw.sheet), (ecad_model::objects::styles::page::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings().sheet());
     let rows = kinds(&mut h);
     // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).

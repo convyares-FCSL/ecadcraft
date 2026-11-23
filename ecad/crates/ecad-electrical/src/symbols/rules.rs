@@ -84,7 +84,7 @@ pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String
 
 // ---------------------------------------------------------------- ratings
 
-pub use ecad_model::objects::devices::{RATING_KEY, RATING_OF_PREFIX};
+use ecad_model::objects::devices::{RATING_KEY, RATING_OF_PREFIX};
 
 /// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
 /// (a hostile key cannot make a lookup or a message long).

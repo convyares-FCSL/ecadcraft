@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
-use crate::tokens::Color;
+use ecad_model::palette::Color;
 
 use crate::prim::Tone;
 

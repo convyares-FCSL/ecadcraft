@@ -14,7 +14,7 @@ use crate::style::{corner, shadow};
 use {crate::SHELL, crate::color, crate::fonts};
 
 /// The page behind a dialog: dimmed, black at 45 % (the shadow's colour).
-pub const SCRIM: crate::tokens::Color = crate::tokens::shadow::COLOR;
+pub const SCRIM: ecad_model::palette::Color = crate::tokens::shadow::COLOR;
 
 /// A dialog's frame and layout. [`Dialog::show`] draws it and says whether it was closed.
 #[derive(Debug, Clone, Copy)]

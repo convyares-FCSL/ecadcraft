@@ -9,9 +9,10 @@
 //! # Update map
 //! None while open: it reads the types, the book and the next number once, on opening.
 
-use ecad_electrical::styles::page::{self as ptype, Holds};
+use ecad_electrical::styles::page::{self as ptype};
 use ecad_model::GenKind;
 use ecad_model::document::book::Book;
+use ecad_model::objects::styles::page::Holds;
 use ecad_model::{FolderId, PageId, StyleRef};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Pos2, Rect, Sense, pos2, vec2};

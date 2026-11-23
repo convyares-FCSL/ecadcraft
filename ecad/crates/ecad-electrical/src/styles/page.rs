@@ -124,7 +124,7 @@ pub const PANEL: &str = "panel";
 /// The built-in Report type.
 pub const REPORT: &str = "report";
 
-pub use ecad_model::objects::styles::page::Holds;
+use ecad_model::objects::styles::page::Holds;
 
 /// What a type must hold to take pages of `kind`: a cover, revision history or contents is a
 /// Front sheet page, every other kind a Report page.

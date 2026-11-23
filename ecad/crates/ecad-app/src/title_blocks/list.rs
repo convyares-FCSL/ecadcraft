@@ -25,7 +25,7 @@ pub const ROW_H: f32 = 56.0;
 pub(crate) const FIELD_SIZE: (f64, f64) = (40.0, 8.0);
 pub(crate) const TABLE_SIZE: (f64, f64) = (120.0, 25.0);
 
-fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+fn c32(c: ecad_model::palette::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 

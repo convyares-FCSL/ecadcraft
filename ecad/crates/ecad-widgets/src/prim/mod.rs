@@ -29,8 +29,8 @@ pub use label::{Chip, ChipResponse, badge, chip, keycap, pill};
 pub use row::{RowKind, RowSpec, provisional, read_value, row};
 pub use segmented::{Segmented, SegmentedResponse, segmented};
 
-use crate::tokens::Color;
 use crate::tokens::ui_type::TypeStyle;
+use ecad_model::palette::Color;
 use egui::{Color32, Galley, Response, Ui, WidgetInfo};
 use std::sync::Arc;
 

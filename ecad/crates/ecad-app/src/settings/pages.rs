@@ -10,8 +10,9 @@
 //! ledger's head moves (any commit or undo while Settings is open); nothing is read per frame
 //! beyond the head.
 
-use ecad_electrical::styles::page::{self as ptype, Holds};
+use ecad_electrical::styles::page::{self as ptype};
 use ecad_model::document::sheet::{GridLabels, PRESETS, SheetSpec};
+use ecad_model::objects::styles::page::Holds;
 use ecad_model::{PageId, StyleRef};
 use ecad_widgets::tokens::{size, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};

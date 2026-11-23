@@ -488,7 +488,7 @@ fn label_w(ui: &mut egui::Ui, text: &str, w: f32) {
     );
 }
 
-fn tone_colour(t: Tone) -> ecad_widgets::tokens::Color {
+fn tone_colour(t: Tone) -> ecad_model::palette::Color {
     let s = ecad_widgets::SHELL;
     match t {
         Tone::Ok => s.ok,

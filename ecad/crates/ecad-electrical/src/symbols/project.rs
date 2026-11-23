@@ -10,7 +10,7 @@ pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000
 pub(crate) const MAX_KEY: usize = 16;
 
 /// How a project symbol joins a device.
-pub use ecad_model::Join;
+use ecad_model::Join;
 
 /// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
 pub fn is_project_symbol(d: &Definition) -> bool {

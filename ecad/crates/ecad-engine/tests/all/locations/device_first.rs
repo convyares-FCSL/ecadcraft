@@ -4,7 +4,8 @@
 use crate::common::{H, id};
 
 use ecad_electrical::connectors;
-use ecad_electrical::symbols::reps::{self, PartRole, View};
+use ecad_electrical::symbols::reps::{self, View};
+use ecad_model::PartRole;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, Role, Subject};
 use serde_json::{Value, json};
 

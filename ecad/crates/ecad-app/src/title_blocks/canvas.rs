@@ -25,7 +25,7 @@ pub(crate) const AROUND_MM: f64 = 20.0;
 /// A handle's half size (px).
 const HANDLE: f32 = 4.0;
 
-fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+fn c32(c: ecad_model::palette::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 

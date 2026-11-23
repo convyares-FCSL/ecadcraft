@@ -44,7 +44,7 @@ pub use crate::tokens::Icon;
 /// let c = ecad_widgets::color(ecad_widgets::tokens::GRAPHITE.accent_soft);
 /// assert_eq!(c.a(), ecad_widgets::tokens::GRAPHITE.accent_soft.a);
 /// ```
-pub fn color(c: crate::tokens::Color) -> egui::Color32 {
+pub fn color(c: ecad_model::palette::Color) -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
 }
 

@@ -23,7 +23,7 @@ use ecad_model::{DeviceId, Document, Pt, Representation, RepresentationId, Subje
 use crate::symbols::{Kind, Side};
 
 /// What a representation is for its device: its stored part.
-pub use ecad_model::PartRole;
+use ecad_model::PartRole;
 
 /// Which kind of drawing a representation belongs to. Only the schematic
 /// exists today; rev 4's panel layout adds `Panel` and its source.

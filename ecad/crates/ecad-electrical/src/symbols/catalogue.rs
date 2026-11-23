@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::plc::rack::CardType as CT;
+use ecad_model::Join;
 
 const fn def_id(n: u128) -> DefinitionId {
     DefinitionId(0x0000_ecad_0018_5ea1_0000_0000_0001_0000 + n)

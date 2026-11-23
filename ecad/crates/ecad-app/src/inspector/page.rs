@@ -100,7 +100,7 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             .rev()
             .find(|x| {
                 ecad_electrical::styles::page::draw_of(doc, &ecad_electrical::styles::page::type_of(doc, **x)).holds
-                    == ecad_electrical::styles::page::Holds::Front
+                    == ecad_model::objects::styles::page::Holds::Front
             })
             .copied();
         Some(PageView {
@@ -210,7 +210,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, v: &PageView, writable: bool, full: 
             }
         });
     }
-    if ecad_electrical::styles::page::holds_of_kind(v.kind) == ecad_electrical::styles::page::Holds::Front {
+    if ecad_electrical::styles::page::holds_of_kind(v.kind) == ecad_model::objects::styles::page::Holds::Front {
         widgets::section(ui, &mut folded, full, "page.front", "Generated pages", "in the Book", false, |ui| {
             for row in &v.front {
                 ui.horizontal(|ui| {

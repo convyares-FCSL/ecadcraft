@@ -542,7 +542,7 @@ impl<K: Copy + Ord + std::hash::Hash + std::fmt::Debug> Table<K> {
                                 let tint = self.tint.level(k, c.id, now);
                                 if tint > 0.0 {
                                     let a = (f32::from(s.accent_soft.a) * tint).round().clamp(0.0, 255.0) as u8;
-                                    p.rect_filled(rect, 0.0, color(crate::tokens::Color { a, ..s.accent_soft }));
+                                    p.rect_filled(rect, 0.0, color(ecad_model::palette::Color { a, ..s.accent_soft }));
                                 }
                                 p.line_segment(
                                     [pos2(rect.left(), rect.bottom() - 0.5), pos2(rect.right(), rect.bottom() - 0.5)],

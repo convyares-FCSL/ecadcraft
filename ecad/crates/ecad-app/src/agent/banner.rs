@@ -19,8 +19,9 @@
 
 use std::time::Instant;
 
+use ecad_model::palette::Color;
 use ecad_widgets::prim::{self, Kind, Tone};
-use ecad_widgets::tokens::{Color, line, space, ui_type};
+use ecad_widgets::tokens::{line, space, ui_type};
 use eframe::egui;
 
 /// The banner's element name.

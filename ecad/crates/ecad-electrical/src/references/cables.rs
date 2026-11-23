@@ -29,7 +29,7 @@ use ecad_model::{
 };
 use serde_json::{Value, json};
 
-pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
+use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 
 use ecad_model::look::Look;
 

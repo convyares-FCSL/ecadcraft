@@ -511,5 +511,3 @@ pub(crate) fn wide_checks(
         }
     }
 }
-
-// The engine half, at its old path until step 6 turns this into a facade.

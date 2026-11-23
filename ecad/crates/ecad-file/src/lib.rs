@@ -40,7 +40,7 @@ pub mod store;
 pub mod verify;
 
 pub use crc::crc32c;
-pub use disk::{JUST_ENDED, ReadOnly, utc};
+pub use disk::{JUST_ENDED, ReadOnly};
 pub use error::FileError;
 pub use project::{BranchError, Damage, OpenError, Opened, Project, Report, SaveError, Saved, StoreHistory};
 pub use record::{SCHEMA_VERSION, definition_hash};

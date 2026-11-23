@@ -86,7 +86,7 @@ pub(crate) struct Prop {
     /// whether it is one of a list (a chevron).
     pub(crate) unit: &'static str,
     pub(crate) bold: bool,
-    pub(crate) swatch: Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)>,
+    pub(crate) swatch: Option<(ecad_model::palette::Color, Option<ecad_model::palette::Color>)>,
     pub(crate) choice: bool,
 }
 
@@ -111,7 +111,7 @@ impl Prop {
 
 /// A wire colour code's swatch in its insulation colours (the paper sheet's, on either shell:
 /// black insulation stays black); none for a code that is not a colour.
-pub(crate) fn swatch(code: &str) -> Option<(ecad_widgets::tokens::Color, Option<ecad_widgets::tokens::Color>)> {
+pub(crate) fn swatch(code: &str) -> Option<(ecad_model::palette::Color, Option<ecad_model::palette::Color>)> {
     let sheet = &ecad_model::palette::sheet::PAPER;
     ecad_model::objects::wire::Colours::parse(code).and_then(|c| ecad_electrical::cables::words::wire_colours(&c, sheet)).map(|c| (c.solid, c.dashes))
 }

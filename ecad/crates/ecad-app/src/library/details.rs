@@ -59,7 +59,7 @@ pub enum Act {
     Standards(String),
 }
 
-fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+fn c32(c: ecad_model::palette::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 

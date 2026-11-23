@@ -158,8 +158,8 @@ mod kind_tests {
         }
         assert_eq!(<ecad_model::objects::styles::frame::BlockAt as ecad_model::Word>::WORDS, ["bottom_full", "bottom_right"]);
         assert_eq!(<ecad_model::objects::styles::text::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
-        assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
-        assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
+        assert_eq!(<ecad_model::objects::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
+        assert_eq!(<ecad_model::objects::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
         assert_eq!(<ecad_model::objects::styles::wire::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
         assert_eq!(<ecad_model::objects::styles::wire::Material as ecad_model::Word>::WORDS, ["cu"]);
     }

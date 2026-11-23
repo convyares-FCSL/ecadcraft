@@ -645,7 +645,7 @@ fn slot_box(s: &ecad_model::TextSlot, prefix: &str) -> SlotBox {
 
 // ---------------------------------------------------------------- painting
 
-fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+fn c32(c: ecad_model::palette::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 

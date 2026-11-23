@@ -29,7 +29,7 @@ pub mod wheel;
 pub use icon::Icon;
 pub use shell::{GRAPHITE, LIGHT, Shell};
 
-pub use ecad_model::palette::Color;
+use ecad_model::palette::Color;
 
 /// White, for text on the accent.
 pub const WHITE: Color = Color::hex(0xFFFFFF);

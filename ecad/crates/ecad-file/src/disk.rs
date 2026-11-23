@@ -85,9 +85,6 @@ pub fn holder_record(writer: &str) -> String {
     disk::holder_record(writer, disk::now_secs())
 }
 
-/// `secs` since 1970 as a UTC date and time (kept here for callers; it lives in ecad-store).
-pub use ecad_store::disk::utc;
-
 /// redb's file magic: every project file starts with it.
 pub const MAGIC: &[u8] = b"redb";
 

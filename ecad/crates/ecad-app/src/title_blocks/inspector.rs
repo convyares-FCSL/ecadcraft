@@ -39,7 +39,7 @@ pub const DUPLICATE: &str = "library.tb.block.duplicate";
 pub(crate) const DELETE: &str = "library.tb.block.delete";
 pub const CONSEQUENCE: &str = "library.tb.block.consequence";
 
-fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
+fn c32(c: ecad_model::palette::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 
