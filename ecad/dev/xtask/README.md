@@ -8,7 +8,8 @@ patch guard, the full CI run, the benchmark and the scoped test run. It is a dev
 never shipped.
 
 ## Contents
-- `layers`: the crate-map rules (layers, no OS in Core, `anyhow` and `tokio`, UI components, a README per crate whose Contents names real files, no history in `src/` comments).
+- `layers`: the crate-map rules (layers, no OS in Core, `anyhow` and `tokio`, UI components, a README per crate
+  whose Contents names real files, no history in the comments of `src/` or `defaults/*.toml`).
 - `patches`: files changed outside `ecad/` must be listed in `UPSTREAM-PATCHES.md`.
 - `lint`, `ci`: fmt, clippy, tests (slow set included), layers, patches (the QA gate's run).
 - `test-changed`: fast tests of the crates not pushed yet (`--with-dependents` adds their dependents).

@@ -3,7 +3,8 @@
 //! such a citation goes stale as soon as the next change lands, and the reader cannot open most of them.
 //!
 //! This guard reads the comment text (`//`, `///`, `//!`, and a `//` comment after code) of every `.rs` file under
-//! the `src/` of each workspace member and reports each line [`citation`] recognises. A hard zero: rewrite the
+//! the `src/` of each workspace member, and the `#` comments of the built-in data under its `defaults/` (`.toml`),
+//! and reports each line [`citation`] recognises. A hard zero: rewrite the
 //! comment to say what is true now; there is no allowlist. `ecad-cli` is left out: it is being removed.
 //!
 //! Textual and hand-written like the other guards (xtask has no regex crate). Domain text that looks similar is
@@ -158,10 +159,11 @@ fn date_at(rest: &str) -> bool {
     shape && !digit_at(rest, 10) && b.get(10) != Some(&b'T')
 }
 
-/// The comment text of `line`: the whole line when it is a comment, else what follows a `//` outside a string.
-fn comment_of(line: &str) -> Option<&str> {
+/// The comment text of `line`, whose comments start with `mark` (`//` in Rust, `#` in TOML): the whole line when it
+/// is a comment, else what follows `mark` outside a string.
+fn comment_of<'a>(line: &'a str, mark: &str) -> Option<&'a str> {
     let t = line.trim_start();
-    if t.starts_with("//") {
+    if t.starts_with(mark) {
         return Some(t);
     }
     let mut in_str = false;
@@ -171,16 +173,22 @@ fn comment_of(line: &str) -> Option<&str> {
             _ if escaped => escaped = false,
             '\\' if in_str => escaped = true,
             '"' => in_str = !in_str,
-            '/' if !in_str && line[i..].starts_with("//") => return Some(&line[i..]),
+            _ if !in_str && line[i..].starts_with(mark) => return Some(&line[i..]),
             _ => {}
         }
     }
     None
 }
 
-/// The citing lines of `code`: (line number, kind).
-fn places(code: &str) -> Vec<(usize, &'static str)> {
-    code.lines().enumerate().filter_map(|(i, l)| comment_of(l).and_then(citation).map(|k| (i + 1, k))).collect()
+/// The citing lines of `text`, whose comments start with `mark`: (line number, kind).
+fn places(text: &str, mark: &str) -> Vec<(usize, &'static str)> {
+    text.lines().enumerate().filter_map(|(i, l)| comment_of(l, mark).and_then(citation).map(|k| (i + 1, k))).collect()
+}
+
+/// The `.toml` files directly in `dir`.
+fn toml_files(dir: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect()
 }
 
 /// The guard's problems, if any.
@@ -191,12 +199,14 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
         let (false, Some(dir)) = (SKIPPED.contains(&name), dir) else { continue };
         let mut paths = Vec::new();
         super::rust_files(&dir.join("src"), &mut paths);
+        let mut paths: Vec<(PathBuf, &str)> = paths.into_iter().map(|p| (p, "//")).collect();
+        paths.extend(toml_files(&dir.join("defaults")).into_iter().map(|p| (p, "#")));
         paths.sort();
-        for f in paths {
+        for (f, mark) in paths {
             let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
             out.extend(
-                places(&text)
+                places(&text, mark)
                     .into_iter()
                     .map(|(l, kind)| format!("{rel}:{l}: a comment cites history ({kind}); say what the code does now, in domain words")),
             );
@@ -237,7 +247,7 @@ mod tests {
             ("let x = 1; // brief 012", "a brief or design number"),
         ];
         for (line, kind) in hits {
-            assert_eq!(comment_of(line).and_then(citation), Some(*kind), "{line}");
+            assert_eq!(comment_of(line, "//").and_then(citation), Some(*kind), "{line}");
         }
         let clean = [
             "/// The jumper bar on lane 0 of the strip.",
@@ -255,12 +265,14 @@ mod tests {
             "let s = \"brief 012 // design 065\";",
         ];
         for line in clean {
-            assert_eq!(comment_of(line).and_then(citation), None, "{line}");
+            assert_eq!(comment_of(line, "//").and_then(citation), None, "{line}");
         }
     }
 
     #[test]
     fn places_names_the_lines() {
-        assert_eq!(places("fn a() {}\n// Brief 038: x\nlet s = \"§\";\n"), vec![(2, "a brief or design number")]);
+        assert_eq!(places("fn a() {}\n// Brief 038: x\nlet s = \"§\";\n", "//"), vec![(2, "a brief or design number")]);
+        let toml = "# Brief 047: the BOM.\n\"a.b\" = 2.5   # owner, 2026-11-15\nname = \"#1 §\"\n";
+        assert_eq!(places(toml, "#"), vec![(1, "a brief or design number"), (2, "a date")]);
     }
 }

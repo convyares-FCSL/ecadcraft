@@ -68,7 +68,8 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 - **Every crate has a README** with the six headings and the right `Layer:` line, and every file or folder its
   Contents names exists.
 - **Comments carry no history**: no brief, design, lane, finding or pull request numbers, section marks, rulings or
-  dates in the comments of any `src/`. History lives in git and `docs/`.
+  dates in the comments of any `src/` or of a crate's built-in data (`defaults/*.toml`). History lives in git and
+  `docs/`.
 
 To change a rule, edit the table in `dev/xtask/src/main.rs` and the matching section of
 [`docs/design/crates.md`](../docs/design/crates.md) (§4), and tell the owner: layers are a recorded
