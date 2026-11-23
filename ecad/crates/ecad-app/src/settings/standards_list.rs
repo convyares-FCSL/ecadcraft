@@ -48,7 +48,7 @@ pub fn value_text(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
     match r.value {
         ecad_model::registry::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
         ecad_model::registry::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),
-        _ if e.key.ends_with(".prefix") => ecad_electrical::input::tag_prefix_shown(&r.text()),
+        _ if e.key.ends_with(".prefix") => ecad_electrical::fields::tag_prefix_shown(&r.text()),
         _ => r.text(),
     }
 }

@@ -87,7 +87,7 @@ impl Row {
     /// The `plcchannel` line an edit of `field` to `value` writes, or `None`
     /// when the edit changes nothing or is refused: an input has no safe state, the placeholder of
     /// a free channel is not a tag, the own safe state typed again changes nothing, and pins that
-    /// are not `role:pin` pairs (see [`crate::input::pin_pairs`]).
+    /// are not `role:pin` pairs (see [`crate::fields::pin_pairs`]).
     #[must_use]
     pub fn edit_line(&self, field: Field, value: &str) -> Option<String> {
         use serde_json::{Value, json};
@@ -117,7 +117,7 @@ impl Row {
                     }
                     many => {
                         let roles: Vec<ecad_model::ChannelRole> = many.iter().map(|(r, _)| *r).collect();
-                        for (role, pin) in crate::input::pin_pairs(v, &roles).ok()? {
+                        for (role, pin) in crate::fields::pin_pairs(v, &roles).ok()? {
                             pins.insert(role, json!(pin));
                         }
                     }

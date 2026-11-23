@@ -286,13 +286,13 @@ impl ProjectProps {
             m.insert("contact_mirror".into(), Value::String(self.mirror.clone()));
         }
         if self.padding.trim() != self.padding_orig {
-            let n = ecad_electrical::input::tag_digits(&self.padding).map_err(|e| e.to_string())?;
+            let n = ecad_electrical::fields::tag_digits(&self.padding).map_err(|e| e.to_string())?;
             m.insert("tag_padding".into(), json!(n));
         }
         let mut px = Map::new();
         for (k, v) in &self.prefixes {
             if !self.prefixes_orig.contains(&(k.clone(), v.clone())) {
-                px.insert(k.clone(), Value::String(ecad_electrical::input::tag_prefix(v)));
+                px.insert(k.clone(), Value::String(ecad_electrical::fields::tag_prefix(v)));
             }
         }
         if !px.is_empty() {
@@ -323,14 +323,14 @@ impl ProjectProps {
             m.insert("revision_columns".into(), if t.is_empty() { Value::Null } else { Value::String(t.to_string()) });
         }
         if self.label_height.trim() != self.label_height_orig {
-            let h = ecad_electrical::input::label_height(&self.label_height).map_err(|e| e.to_string())?;
+            let h = ecad_electrical::fields::label_height(&self.label_height).map_err(|e| e.to_string())?;
             m.insert("label_height".into(), json!(h));
         }
         let sheet = self.sheet()?;
         if sheet != self.sheet_orig {
             m.insert("sheet".into(), Value::String(sheet.text()));
         }
-        let step = ecad_electrical::input::page_number_step(&self.step).map_err(|e| e.to_string())?;
+        let step = ecad_electrical::fields::page_number_step(&self.step).map_err(|e| e.to_string())?;
         if step != self.step_orig {
             m.insert("page_number_step".into(), json!(step));
         }
@@ -544,7 +544,7 @@ impl ProjectProps {
                 });
                 g.row("", |ui| Checkbox::new(&mut self.tag_dash, "Leading - on tags").show(ui).accessible_name("ecad.project.props.tag_dash"));
                 let case = self.tag_case;
-                let pad = ecad_electrical::input::tag_digits_or_default(&self.padding);
+                let pad = ecad_electrical::fields::tag_digits_or_default(&self.padding);
                 let example = ecad_model::naming::tag::normalise("k5", ecad_model::naming::tag::Style { padding: pad, dash: self.tag_dash, case })
                     .unwrap_or_default();
                 g.row("Example", |ui| {
@@ -1112,7 +1112,7 @@ impl WireLabels {
             m.insert("label_rule".into(), Value::String(self.rule.clone()));
         }
         if self.min_length.trim() != self.min_orig {
-            let v = ecad_electrical::input::label_min_length(&self.min_length).map_err(|e| e.to_string())?;
+            let v = ecad_electrical::fields::label_min_length(&self.min_length).map_err(|e| e.to_string())?;
             m.insert("label_min_length".into(), json!(v));
         }
         if self.number_by != self.number_by_orig {

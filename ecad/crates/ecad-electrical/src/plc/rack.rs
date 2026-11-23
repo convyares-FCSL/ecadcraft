@@ -393,7 +393,7 @@ pub fn default_rack(doc: &Document, card: Option<DeviceId>) -> Result<DeviceId, 
 /// # Errors
 /// Anything else, in words.
 pub(crate) fn slot_number(text: &str) -> Result<u32, CmdError> {
-    crate::input::plc_slot(text)
+    crate::fields::plc_slot(text)
         .ok()
         .filter(|n| *n <= MAX_SLOT)
         .ok_or_else(|| CmdError::refused(format!("A slot is a whole number from 0 to {MAX_SLOT}.")))

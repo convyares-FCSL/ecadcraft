@@ -139,7 +139,7 @@ impl TextSection {
 
     /// Why OK cannot write, if a field is invalid.
     pub fn error(&self) -> Option<&'static str> {
-        if self.rows.iter().any(|r| ecad_electrical::input::text_height(&r.height).is_err()) {
+        if self.rows.iter().any(|r| ecad_electrical::fields::text_height(&r.height).is_err()) {
             return Some(BAD_HEIGHT);
         }
         if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_drawing_style::defaults::text::FONT.parse(&r.font).is_none()) {
@@ -180,7 +180,7 @@ impl TextSection {
                 k.insert("font".into(), if r.font.trim().is_empty() { Value::Null } else { json!(r.font.trim()) });
             }
             if r.height.trim() != r.height_orig {
-                let h = ecad_electrical::input::text_height(&r.height).map_err(|_| BAD_HEIGHT)?;
+                let h = ecad_electrical::fields::text_height(&r.height).map_err(|_| BAD_HEIGHT)?;
                 k.insert("height".into(), if r.height.trim() == r.builtin_height { Value::Null } else { json!(h) });
             }
             if r.bold != r.bold_orig {

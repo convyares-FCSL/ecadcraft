@@ -51,8 +51,8 @@ impl FrameEdit {
             margins: parse_margins(f("margins")).unwrap_or_default(),
             labels: ecad_model::naming::words::flag(f("grid_labels")) != Some(false),
             centre: ecad_model::naming::words::flag(f("centre_marks")) != Some(false),
-            border: ecad_electrical::input::frame_weight(f("border_weight"), 0.5),
-            inner: ecad_electrical::input::frame_weight(f("inner_weight"), 0.25),
+            border: ecad_electrical::fields::frame_weight(f("border_weight"), 0.5),
+            inner: ecad_electrical::fields::frame_weight(f("inner_weight"), 0.25),
             colour: if f("line_colour").is_empty() { "none".into() } else { f("line_colour").into() },
         }
     }

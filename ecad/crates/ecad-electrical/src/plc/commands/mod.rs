@@ -334,7 +334,7 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
             Some(x) => Some(
                 // A start reads as the person types it (`%Q4.0`, `Q4`, `4`): one grammar, in `input`.
                 if key == "start" {
-                    crate::input::plc_start(x).ok().flatten().filter(|n| *n <= max)
+                    crate::fields::plc_start(x).ok().flatten().filter(|n| *n <= max)
                 } else {
                     ecad_model::naming::words::uint(x, max).filter(|n| x.len() <= 5 && *n >= 1)
                 }

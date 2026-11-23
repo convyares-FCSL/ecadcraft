@@ -21,7 +21,7 @@ One folder per feature area under `src/` (the crate doc in `src/lib.rs` gives on
 The look (text styles, fonts, the text, location and frame catalogues, the built-in title block)
 is `ecad-drawing-style`; the rules reach it only through `ecad_model::look::Look` and the
 `Registry` the engine passes in.
-- `commands/`, `input.rs`, `error.rs`, `merge.rs`, `views/`: the generic command runner, typed input grammars, the crate's errors, merge value rules, and the update pipeline for derived views.
+- `commands/`, `fields.rs`, `error.rs`, `merge.rs`, `views/`: the generic command runner and its JSON input, the grammars of text typed into a field, the crate's errors, merge value rules, and the update pipeline for derived views.
 
 ## Must not depend on
 Core rules: no `cadcraft-*` crate, no UI, no OS access (no files, clock, environment or process:

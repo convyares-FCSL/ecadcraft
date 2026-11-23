@@ -277,9 +277,9 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     let d = doc(&mut h);
     let ecad_model::DeviceType::PlcModule(m) = &d.devices()[&a03].device_type else { panic!("a module") };
     assert_eq!(m.channel(2).and_then(|c| c.tag.as_ref()).map(|t| t.as_str()), Some("Valve_Inlet"));
-    assert_eq!(ecad_electrical::input::plc_start("%Q4.0"), Ok(Some(4)));
-    assert_eq!(ecad_electrical::input::plc_start("IW64"), Ok(Some(64)));
-    assert_eq!(ecad_electrical::input::plc_start(""), Ok(None), "empty unpins");
+    assert_eq!(ecad_electrical::fields::plc_start("%Q4.0"), Ok(Some(4)));
+    assert_eq!(ecad_electrical::fields::plc_start("IW64"), Ok(Some(64)));
+    assert_eq!(ecad_electrical::fields::plc_start(""), Ok(None), "empty unpins");
     // The app passes the text; the command refuses what is not a slot.
     assert!(field_line(a03, "slot", "x").is_some_and(|l| l.contains(r#""slot":"x""#)));
     take(&h, &deltas, "056-card-editor.png");

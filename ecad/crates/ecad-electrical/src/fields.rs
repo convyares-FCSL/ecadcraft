@@ -4,7 +4,7 @@
 //!
 //! # Example
 //! ```
-//! use ecad_electrical::input::{renumber_digits, InputError};
+//! use ecad_electrical::fields::{renumber_digits, InputError};
 //! assert_eq!(renumber_digits(" 3 "), Ok(3));
 //! assert_eq!(renumber_digits("9"), Err(InputError::RenumberDigits));
 //! ```

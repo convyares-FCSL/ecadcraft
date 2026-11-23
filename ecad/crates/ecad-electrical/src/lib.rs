@@ -13,7 +13,8 @@
 //! - [`defaults`]: the defaults registry, one entry per project default and its levels.
 //! - [`devices`]: devices and tags, device kinds, ratings, the device list and placing.
 //! - [`error`]: the crate's error type and the refusals said in more than one place.
-//! - [`input`]: the grammars of text typed into a field, each refusing with a named error.
+//! - [`fields`]: the grammars of text typed into a field, each refusing with a named error (a
+//!   command's JSON parameters are read in [`commands::input`]).
 //! - [`locations`]: device locations and functions, location boxes and designations.
 //! - [`merge`]: what a value typed in a merge conflict is stored as.
 //! - [`numbering`]: renumbering, fixed and provisional tags.
@@ -46,7 +47,7 @@ pub mod continuations;
 pub mod defaults;
 pub mod devices;
 pub mod error;
-pub mod input;
+pub mod fields;
 pub mod locations;
 pub mod merge;
 pub mod numbering;
