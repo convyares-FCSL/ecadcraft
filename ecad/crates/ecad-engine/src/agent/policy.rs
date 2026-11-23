@@ -29,15 +29,6 @@ pub(crate) const READ_COMMANDS: &[&str] = &[
     // Cable references: going to the other end opens or shows its page and selects
     // it, and records nothing.
     "cablegoto",
-    // Devices and starter symbols: finding and listing them, and one device's
-    // properties, read the project only.
-    "symbols",
-    "devices",
-    "deviceprops",
-    // Nets, wire numbers and checks: listing them reads the project.
-    "nets",
-    "net",
-    "checks",
     // Cross-references: going to a reference opens or shows its page and records
     // nothing.
     "refgoto",
@@ -61,8 +52,6 @@ pub(crate) const READ_COMMANDS: &[&str] = &[
     "prerelease",
     // Show Hidden Text is a display state (like a cable view) and records nothing.
     "hiddentext",
-    // What an edit of a symbol would change on its placed copies reads the project.
-    "symbolimpact",
 ];
 
 /// Commands whose form with no fields only reads: `pageprops {page?}` and

@@ -1,8 +1,8 @@
 //! The one runner of generic commands.
 //!
 //! A generic command is a declaration in ecad-electrical: a params struct that implements
-//! [`Generic`]. [`spec`] registers it and [`typed`] lists it with its schema, access and file
-//! parameters; [`run`] does the whole path: read the parameters, read the files it declares, lock
+//! [`Generic`]. Its [`Entry`] in the registry registers it and lists it with its schema, access
+//! and file parameters; [`run`] does the whole path: read the parameters, read the files it declares, lock
 //! the project, give the command its [`Cx`] and its declared state, commit its edit as one
 //! transaction under its id ([`Project::apply_edit`]: history, undo, views), echo its message and
 //! answer. The files it returns are written before its edit is committed, so a file that cannot be
@@ -13,6 +13,7 @@
 
 use std::collections::BTreeMap;
 
+use cadcraft_engine::cmd::Factory;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::commands::input::{parse, schema};
@@ -26,14 +27,46 @@ use crate::commands::input::Typed;
 use crate::commands::{UNAVAILABLE, err, on_any_page, on_project};
 use crate::project::Project;
 
-/// The registration of generic command `P`.
-pub(crate) fn spec<P: Generic>() -> CommandSpec {
-    CommandSpec::new(P::ID, P::TITLE, run::<P>).params(P::HELP).noundo()
+/// A generic command as the registry lists it: its schema and declaration, and how it registers.
+pub(crate) struct Entry {
+    /// Its schema and what the agent gate reads.
+    pub(crate) typed: Typed,
+    spec: fn() -> CommandSpec,
+    interactive: Option<Factory>,
+    undoable: bool,
 }
 
-/// Generic command `P` with its schema and what the agent gate reads.
-pub(crate) const fn typed<P: Generic>() -> Typed {
-    Typed { id: P::ID, run: run::<P>, schema: schema::<P>, access: Some(P::ACCESS), files: P::IO }
+impl Entry {
+    /// Generic command `P`.
+    pub(crate) const fn of<P: Generic>() -> Entry {
+        let typed = Typed { id: P::ID, run: run::<P>, schema: schema::<P>, access: Some(P::ACCESS), files: P::IO };
+        Entry { typed, spec: spec::<P>, interactive: None, undoable: false }
+    }
+
+    /// With the click-based form `f`, started by a bare command name, a menu or a tool button.
+    pub(crate) const fn interactive(self, f: Factory) -> Entry {
+        Entry { interactive: Some(f), ..self }
+    }
+
+    /// Also grouped in the drawing's undo (`linkdevices`, `unlinkdevices`, `userfield`).
+    pub(crate) const fn undoable(self) -> Entry {
+        Entry { undoable: true, ..self }
+    }
+
+    /// Its registration.
+    pub(crate) fn spec(&self) -> CommandSpec {
+        let c = (self.spec)();
+        let c = match self.interactive {
+            Some(f) => c.interactive(f),
+            None => c,
+        };
+        CommandSpec { undoable: c.undoable || self.undoable, ..c }
+    }
+}
+
+/// The registration of generic command `P`.
+fn spec<P: Generic>() -> CommandSpec {
+    CommandSpec::new(P::ID, P::TITLE, run::<P>).params(P::HELP).noundo()
 }
 
 /// What each read parameter of `P` that `params` gives read.
