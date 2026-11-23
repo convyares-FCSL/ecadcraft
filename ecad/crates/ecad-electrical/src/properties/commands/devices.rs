@@ -7,7 +7,7 @@ use ecad_model::{Device, DeviceId, Document, ObjectRef, Op, TextField};
 use crate::error::CmdError;
 use crate::properties::commands::{Build, NO_SUCH_OBJECT, PropRule};
 
-/// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
+/// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
     PropRule {
         what: "user fields (072 B)",

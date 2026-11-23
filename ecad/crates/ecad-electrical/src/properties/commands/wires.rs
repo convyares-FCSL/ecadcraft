@@ -26,7 +26,7 @@ pub(crate) fn no_such_key(key: &str) -> CmdError {
     ))
 }
 
-/// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
+/// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
     PropRule { what: "wire number and potential (brief 022)", claims: |_, o, k| is_wire(o) && is_net_key(k), build: Build::Value(net_key) },
     PropRule { what: "wire size and colours (072 D)", claims: |_, o, k| is_wire(o) && (k == SIZE || k == COLOURS), build: Build::Record(wire_value) },

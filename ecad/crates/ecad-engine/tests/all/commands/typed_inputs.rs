@@ -1722,8 +1722,8 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         assert!(single.is_some(), "{what}: {key} {value} is refused");
         assert_eq!(single, many, "{what}: one and several differ");
     }
-    let lanes = ecad_electrical::properties::commands::LANES.iter().flat_map(|(_, rows)| rows.iter());
-    let all: Vec<&str> = PROP_RULES.iter().chain(lanes).map(|r| r.what).collect();
+    let kinds = ecad_electrical::properties::commands::KIND_RULES.iter().flat_map(|rows| rows.iter());
+    let all: Vec<&str> = PROP_RULES.iter().chain(kinds).map(|r| r.what).collect();
     for (what, ..) in rows {
         assert!(all.contains(what), "{what}");
     }

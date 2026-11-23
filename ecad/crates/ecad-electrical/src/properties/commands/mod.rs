@@ -135,7 +135,7 @@ pub static PROP_RULES: &[PropRule] = &[
 
 /// The row of [`PROP_RULES`] that decides `key` on `object`.
 pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRule {
-    LANES.iter().flat_map(|(_, rows)| rows.iter()).chain(PROP_RULES).find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
+    KIND_RULES.iter().flat_map(|rows| rows.iter()).chain(PROP_RULES).find(|r| (r.claims)(doc, object, key)).unwrap_or(&FREE_TEXT)
 }
 
 /// `setprop` of a `Record` row on one object: its `Modify*` op, `None` when unchanged.
@@ -919,4 +919,4 @@ fn set_tag(cx: &mut Cx<'_>, o: ObjectRef, typed: Option<&str>, conflict: Option<
 }
 
 /// The `setprop` rows of each object kind, checked before [`PROP_RULES`].
-pub static LANES: &[(&str, &[PropRule])] = &[("072b", devices::RULES), ("072c", plc::RULES), ("072d", wires::RULES)];
+pub static KIND_RULES: &[&[PropRule]] = &[devices::RULES, plc::RULES, wires::RULES];

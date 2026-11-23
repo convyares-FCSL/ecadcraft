@@ -35,8 +35,7 @@ use ecad_electrical::{
     wires::commands::nets as net,
 };
 
-/// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
-/// their lines move here at the phase-end tidy-up.
+/// The commands this crate adds.
 pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
     v.extend(GENERIC.iter().map(Entry::spec));
@@ -54,9 +53,8 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::plc::commands::specs());
     v.extend(crate::symbols::commands::specs());
     v.extend(crate::plc::commands::page::specs());
-    for (_, lane) in LANES {
-        v.extend(lane());
-    }
+    v.extend(crate::pages::commands::page_types::specs());
+    v.extend(crate::title_blocks::commands::specs());
     v
 }
 
@@ -352,33 +350,5 @@ pub(crate) fn builtin_coil() -> Definition {
             },
         ],
         ..Default::default()
-    }
-}
-
-pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
-    // ("NNN", crate::<module>::specs), one line per lane, below this one.
-    ("054", crate::pages::commands::page_types::specs),
-    ("055", crate::title_blocks::commands::specs),
-];
-
-#[cfg(test)]
-mod lane_tests {
-    /// Lanes register in brief order, once each. A union merge of `lanes.rs` (see that module) can
-    /// leave two lanes' lines swapped; this says which to swap.
-    #[test]
-    fn lanes_are_in_brief_order() {
-        let briefs: Vec<&str> = super::LANES.iter().map(|(b, _)| *b).collect();
-        for pair in briefs.windows(2) {
-            assert!(pair[0] < pair[1], "LANES: {} must come after {}, once each", pair[0], pair[1]);
-        }
-    }
-
-    /// Every ECAD command id is registered once, so the order of the lists in [`super::specs`]
-    /// never decides which command a name finds (lookups take the first match).
-    #[test]
-    fn command_ids_are_unique() {
-        let mut seen = std::collections::BTreeSet::new();
-        let twice: Vec<&str> = super::specs().iter().map(|c| c.id).filter(|id| !seen.insert(*id)).collect();
-        assert!(twice.is_empty(), "registered more than once: {twice:?}");
     }
 }

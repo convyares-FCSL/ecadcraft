@@ -42,13 +42,13 @@ pub(crate) const CPU_FAMILY: &str = "plc.cpu.family";
 /// The `setprop` key of a station's own address style.
 pub(crate) const ADDRESS_STYLE: &str = "plc.address.style";
 
-/// The module keys of this lane (besides the channel keys).
+/// The PLC module keys `setprop` sets here (besides the channel keys).
 const MODULE_KEYS: [&str; 9] =
     [rack::RACK_KEY, rack::SLOT_KEY, rack::CHANNELS_KEY, SIGNAL, address::START_KEY, address::SIZE_KEY, SAFETY_RATED, EX_I, CALIBRATION];
-/// The station keys of this lane.
+/// The PLC station keys `setprop` sets here.
 const STATION_KEYS: [&str; 5] = [NETWORK, NETWORK_ADDRESS, CPU_FAMILY, ADDRESS_STYLE, PROTOCOL];
 
-/// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
+/// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
     PropRule {
         what: "PLC module fields (072 C)",
