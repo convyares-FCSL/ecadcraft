@@ -14,28 +14,12 @@ use crate::commands::input::nullable;
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 
-/// The aspect `word` names: "function" or "location" (also `f`, `l`, `=`, `+`).
-///
-/// # Errors
-/// Any other word.
-pub fn aspect(word: &str) -> Result<Aspect, CmdError> {
-    Aspect::of_word(word).ok_or(CmdError::refused("`aspect` is \"function\" or \"location\""))
-}
-
-/// The aspect a call that may name none names (`None`: both).
-///
-/// # Errors
-/// A word that is no aspect.
-pub(crate) fn opt_aspect(word: Option<&str>) -> Result<Option<Aspect>, CmdError> {
-    word.map(aspect).transpose()
-}
-
 /// The aspect a call must name where its other fields allow none (`designationremove`).
 ///
 /// # Errors
-/// None named, or a word that is no aspect.
-pub(crate) fn required_aspect(word: Option<&str>) -> Result<Aspect, CmdError> {
-    aspect(word.ok_or(CmdError::input("`aspect` is required: \"function\" or \"location\""))?)
+/// None named.
+pub(crate) fn required_aspect(aspect: Option<Aspect>) -> Result<Aspect, CmdError> {
+    aspect.ok_or(CmdError::input("`aspect` is required: \"function\" or \"location\""))
 }
 
 /// The entry `text` (a key or a code) names; `field` is the parameter it came from.
@@ -319,9 +303,9 @@ pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DesignationsParams {
-    /// "function" or "location" (default: both).
+    /// Function or location (default: both).
     #[serde(default)]
-    aspect: Option<String>,
+    aspect: Option<Aspect>,
 }
 
 impl Generic for DesignationsParams {
@@ -330,12 +314,8 @@ impl Generic for DesignationsParams {
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
-    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        opt_aspect(self.aspect.as_deref()).map(|_| ())
-    }
-
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let only = opt_aspect(self.aspect.as_deref())?;
+        let only = self.aspect;
         let doc = cx.doc;
         Ok(Outcome::answer(rows(doc, cx.uses(), only)))
     }
@@ -345,8 +325,8 @@ impl Generic for DesignationsParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AddParams {
-    /// "function" or "location".
-    aspect: String,
+    /// Function or location.
+    aspect: Aspect,
     /// The code: "=F1", "+CP1".
     code: String,
     /// What it is.
@@ -358,12 +338,8 @@ impl Generic for AddParams {
     const ID: &'static str = "designationadd";
     const TITLE: &'static str = "Add Function or Location";
 
-    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        aspect(&self.aspect).map(|_| ())
-    }
-
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let a = aspect(&self.aspect)?;
+        let a = self.aspect;
         let plan = plan_add(cx.doc, cx.ids, a, &self.code, self.description.as_deref())?;
         Ok(Outcome::edit(plan.label, plan.ops, json!({"changed": true, "key": plan.key, "code": plan.code})))
     }
@@ -375,8 +351,8 @@ impl Generic for AddParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditParams {
-    /// "function" or "location".
-    aspect: String,
+    /// Function or location.
+    aspect: Aspect,
     /// The entry's key; with it, `code` is the new code.
     #[serde(default)]
     key: Option<String>,
@@ -398,12 +374,8 @@ impl Generic for EditParams {
     const ID: &'static str = "designationedit";
     const TITLE: &'static str = "Rename Function or Location";
 
-    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        aspect(&self.aspect).map(|_| ())
-    }
-
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let a = aspect(&self.aspect)?;
+        let a = self.aspect;
         let edit = EditInput { key: self.key, code: self.code, to: self.to, new_code: self.new_code, description: self.description };
         let plan = plan_edit(cx.doc, a, edit)?;
         if plan.ops.is_empty() {
@@ -417,8 +389,8 @@ impl Generic for EditParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MergeParams {
-    /// "function" or "location".
-    aspect: String,
+    /// Function or location.
+    aspect: Aspect,
     /// The entry merged away: its key or code.
     from: String,
     /// The entry kept: its key or code.
@@ -429,12 +401,8 @@ impl Generic for MergeParams {
     const ID: &'static str = "designationmerge";
     const TITLE: &'static str = "Merge Functions or Locations";
 
-    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        aspect(&self.aspect).map(|_| ())
-    }
-
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let a = aspect(&self.aspect)?;
+        let a = self.aspect;
         let doc = cx.doc;
         let m = plan_merge(doc, cx.uses(), a, &self.from, &self.into)?;
         Ok(Outcome::edit(m.label, m.ops, json!({"changed": true, "from": m.from, "into": m.into, "key": m.key, "moved": m.moved})))
@@ -446,9 +414,9 @@ impl Generic for MergeParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveParams {
-    /// "function" or "location" (with `unused`, default both).
+    /// Function or location (with `unused`, default both).
     #[serde(default)]
-    aspect: Option<String>,
+    aspect: Option<Aspect>,
     /// The entry's key.
     #[serde(default)]
     key: Option<String>,
@@ -466,15 +434,15 @@ impl Generic for RemoveParams {
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match self.unused == Some(true) {
-            true => opt_aspect(self.aspect.as_deref()).map(|_| ()),
-            false => required_aspect(self.aspect.as_deref()).map(|_| ()),
+            true => Ok(()),
+            false => required_aspect(self.aspect).map(|_| ()),
         }
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;
         if self.unused == Some(true) {
-            let only = opt_aspect(self.aspect.as_deref())?;
+            let only = self.aspect;
             let (ops, codes) = plan_remove_unused(doc, cx.uses(), only);
             if codes.is_empty() {
                 return Ok(Outcome::answer(json!({"changed": false, "removed": []})));
@@ -483,7 +451,7 @@ impl Generic for RemoveParams {
             let label = format!("Remove {n} unused {}", if n == 1 { "entry" } else { "entries" });
             return Ok(Outcome::edit(label, ops, json!({"changed": true, "removed": codes})));
         }
-        let a = required_aspect(self.aspect.as_deref())?;
+        let a = required_aspect(self.aspect)?;
         let (ops, code) = plan_remove(doc, cx.uses(), a, self.key.as_deref(), self.code.as_deref())?;
         Ok(Outcome::edit(format!("Remove {} {code}", a.word()), ops, json!({"changed": true, "code": code})))
     }

@@ -74,6 +74,14 @@ fn closed_word_sets_are_listed() {
         ("wiresettings", r#"colour_style?: "code2"|"code3"|"name""#),
         ("wiresettings", r#"label_rule?: "net"|"each""#),
         ("wiresettings", r#"number_by?: "net"|"conductor""#),
+        ("designationadd", r#"aspect: "function"|"location""#),
+        ("designations", r#"aspect?: "function"|"location""#),
+        ("setlocation", r#"aspect?: "function"|"location""#),
+        ("conflicts", r#"answer?: "move"|"half"|"leave""#),
+        ("conflicts", r#"aspect?: "function"|"location""#),
+        ("locationbox", r#"proposal?: "propose"|"move"|"keep""#),
+        ("pageprops", r#"proposal?: "propose"|"move"|"keep""#),
+        ("projectprops", r#"proposal?: "propose"|"move"|"keep""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
@@ -224,7 +232,7 @@ fn the_sheet_commands_keep_their_rule_words() {
         ("pageprops", json!({"title": null}), ecad_electrical::msg::PAGE_TITLE),
         ("pageprops", json!({"generated": "bom"}), ecad_electrical::pages::generated::KIND_FIXED),
         ("pageprops", json!({"number": "a b"}), "A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`)."),
-        ("pageprops", json!({"function": "=F1", "proposal": "x"}), ecad_electrical::msg::PROPOSAL_WORDS),
+        ("pageprops", json!({"function": "=F1", "proposal": "x"}), r#"`proposal` must be one of "propose", "move", "keep", or null"#),
         ("projectprops", json!({"page_number_step": 0}), "`page_number_step` must be a whole number from 1 to 1000"),
         ("projectprops", json!({"tag_case": "x"}), "`tag_case` must be \"upper\" or \"typed\""),
         ("projectprops", json!({"props": {"Bad Key": "x"}}), "A property name is 1 to 40 characters a-z, 0-9 or _."),
@@ -304,7 +312,11 @@ fn the_output_commands_keep_their_rule_words() {
             json!({"location": "+CP1"}),
             "give exactly one of `corners` (two corners), `points` (a closed outline) or `item` (a closed polyline)",
         ),
-        ("locationbox", json!({"location": "+CP1", "corners": [[0, 0], [50, 50]], "proposal": "x"}), ecad_electrical::msg::PROPOSAL_WORDS),
+        (
+            "locationbox",
+            json!({"location": "+CP1", "corners": [[0, 0], [50, 50]], "proposal": "x"}),
+            r#"`proposal` must be one of "propose", "move", "keep", or null"#,
+        ),
         ("bom", json!({"group": "x"}), "`group` is \"location\" or \"part\""),
         ("bom", json!({"columns": ["x"]}), "`columns` lists optional columns: [\"article\"]"),
         ("printbook", json!({"scope": "some"}), scope),
@@ -499,8 +511,8 @@ fn the_typed_style_commands_still_work() {
 #[test]
 fn the_designation_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("designations", json!({"aspect": 1}), "`aspect` must be text, or null"),
-        ("designationadd", json!({"code": "=F1"}), "`aspect` (text) is required"),
+        ("designations", json!({"aspect": 1}), r#"`aspect` must be one of "function", "location", or null"#),
+        ("designationadd", json!({"code": "=F1"}), r#"`aspect` (one of "function", "location") is required"#),
         ("designationadd", json!({"aspect": "function"}), "`code` (text) is required"),
         ("designationedit", json!({"aspect": "function", "code": "=F1", "description": 5}), "`description` must be text, or null"),
         ("designationmerge", json!({"aspect": "function", "from": "=F1"}), "`into` (text) is required"),
@@ -519,7 +531,7 @@ fn the_designation_commands_keep_their_rule_words() {
     assert!(h.run("designationadd", json!({"aspect": "function", "code": "=F1"})).is_ok());
     assert!(h.run("designationadd", json!({"aspect": "function", "code": "=F2"})).is_ok());
     let rows: &[(&str, Value, &str)] = &[
-        ("designations", json!({"aspect": "x"}), "`aspect` is \"function\" or \"location\""),
+        ("designations", json!({"aspect": "x"}), r#"`aspect` must be one of "function", "location", or null"#),
         ("designationadd", json!({"aspect": "function", "code": "=F1"}), "=F1 is already in the list."),
         ("designationedit", json!({"aspect": "function"}), "`code` (a key or a code such as =F1) is required"),
         ("designationedit", json!({"aspect": "function", "code": "=F9", "to": "=F8"}), "=F9 is not in the project's list of functions."),
@@ -1168,7 +1180,7 @@ fn the_location_commands_refuse_input_uniformly() {
             json!({"component": "00000000000000000000000000000001", "value": "=F1", "aspect": "location"}),
             "`aspect` is not a parameter of this command; it takes ",
         ),
-        ("conflicts", json!({"answer": 1}), "`answer` must be text, or null"),
+        ("conflicts", json!({"answer": 1}), r#"`answer` must be one of "move", "half", "leave", or null"#),
         ("conflicts", json!({"devices": ["zz"]}), "`devices` must be a list of hex ids, or null"),
     ];
     let mut h = H::new(7045);
@@ -1185,13 +1197,13 @@ fn the_location_commands_keep_their_rule_words() {
     let k = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_or_else(|e| json!(e))["component"].clone();
     let rows: &[(&str, Value, &str)] = &[
         ("setlocation", json!({"value": "+CP1"}), "`component` or `devices` (hex ids) is required"),
-        ("setlocation", json!({"component": k, "value": "+CP1", "aspect": "place"}), "`aspect` is \"location\" or \"function\""),
+        ("setlocation", json!({"component": k, "value": "+CP1", "aspect": "place"}), r#"`aspect` must be one of "function", "location", or null"#),
         ("setlocation", json!({"component": k, "value": "=F1", "aspect": "function", "type": "plug"}), "A function has no overrides"),
         ("setlocation", json!({"component": k, "value": "+CP1", "type": "head"}), "The head is the device; set the device's location."),
         ("setlocation", json!({"component": "000000000000000000000000000000ab", "value": "+CP1"}), "no such device"),
         ("setfunction", json!({"component": k, "value": "=F1", "type": "plug"}), "A function has no overrides: a device's parts share its function."),
-        ("conflicts", json!({"answer": "maybe"}), "`answer` is \"move\", \"half\" or \"leave\""),
-        ("conflicts", json!({"aspect": "x"}), "`aspect` is \"location\" or \"function\""),
+        ("conflicts", json!({"answer": "maybe"}), r#"`answer` must be one of "move", "half", "leave", or null"#),
+        ("conflicts", json!({"aspect": "x"}), r#"`aspect` must be one of "function", "location", or null"#),
         ("conflicts", json!({"answer": "half"}), "No connector half is waiting: Half answers a half or pin just placed."),
     ];
     for (cmd, params, says) in rows {

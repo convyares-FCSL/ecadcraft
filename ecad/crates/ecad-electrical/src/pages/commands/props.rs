@@ -46,10 +46,10 @@ pub struct PagepropsParams {
     /// The page's sheet ("A3", "A2 12x8"…), or null (or "project") for the project's.
     #[serde(default, deserialize_with = "nullable")]
     sheet: Option<Option<String>>,
-    /// What a new function or location does to the page's device symbols: "propose" (default),
-    /// "move" or "keep".
+    /// What a new function or location does to the page's device symbols: propose (default),
+    /// move or keep.
     #[serde(default)]
-    proposal: Option<String>,
+    proposal: Option<proposals::ProposalWord>,
     /// Refused: a page's kind is set when it is made.
     #[serde(default, deserialize_with = "nullable")]
     generated: Option<Option<Value>>,
@@ -142,10 +142,10 @@ pub struct ProjectpropsParams {
     /// Free properties: key: value, or null to clear.
     #[serde(default)]
     props: Option<BTreeMap<String, Option<String>>>,
-    /// What a new function or location does to the device symbols: "propose" (default), "move" or
-    /// "keep".
+    /// What a new function or location does to the device symbols: propose (default), move or
+    /// keep.
     #[serde(default, deserialize_with = "nullable")]
-    proposal: Option<Option<String>>,
+    proposal: Option<Option<proposals::ProposalWord>>,
 }
 
 /// A revision scheme as `projectprops` takes it.
@@ -312,7 +312,7 @@ impl Generic for PagepropsParams {
         if !change.writes() {
             return Ok(Outcome::answer(page_json(doc, &Book::of(doc), page, cx.derived.kept_reports())));
         }
-        change.mode = proposal_mode(self.proposal.as_deref())?;
+        change.mode = proposal_mode(self.proposal);
         let plan = page_props(doc, cx.ids, page, &change, cx.derived.kept_reports())?;
         if plan.ops.is_empty() {
             let mut v = page_json(doc, &Book::of(doc), page, cx.derived.kept_reports());
@@ -364,7 +364,7 @@ impl Generic for ProjectpropsParams {
             tag_case: None,
             mode: Default::default(),
         };
-        change.mode = proposal_mode(self.proposal.flatten().as_deref())?;
+        change.mode = proposal_mode(self.proposal.flatten());
         change.tag_case = self.tag_case.flatten().as_deref().map(tag_case).transpose()?;
         let plan = project_props(doc, cx.ids, &change)?;
         if plan.ops.is_empty() {

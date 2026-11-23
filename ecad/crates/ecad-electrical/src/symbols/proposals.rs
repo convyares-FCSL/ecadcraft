@@ -26,6 +26,29 @@ use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect, Pending};
 use crate::locations::{self, LocBox};
 
+ecad_model::word_enum! {
+    /// What a new function or location does to the device symbols, as a command's `proposal` gives it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ProposalWord {
+        /// Set unset devices; leave conflicts (the default).
+        Propose,
+        /// Also move conflicting devices.
+        Move,
+        /// Propose nothing.
+        Keep,
+    }
+}
+
+impl From<ProposalWord> for Mode {
+    fn from(w: ProposalWord) -> Self {
+        match w {
+            ProposalWord::Propose => Mode::Propose,
+            ProposalWord::Move => Mode::Move,
+            ProposalWord::Keep => Mode::Keep,
+        }
+    }
+}
+
 /// What a JSON call asks for one aspect.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Mode {

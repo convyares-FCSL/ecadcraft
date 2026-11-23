@@ -34,6 +34,28 @@ pub enum Aspect {
     Location,
 }
 
+/// An aspect as a command reads it: "function" or "location" (also `f`, `l`, `=`, `+`, any case).
+impl<'de> serde::Deserialize<'de> for Aspect {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        Aspect::of_word(&text).ok_or_else(|| serde::de::Error::custom(format!("unknown aspect `{text}` (allowed: function, location)")))
+    }
+}
+
+impl schemars::JsonSchema for Aspect {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Aspect".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type": "string", "enum": [FUNCTION_KEY, LOCATION_KEY]})
+    }
+}
+
 impl Aspect {
     /// Both aspects, function first (IEC 81346 order: function, location, product).
     pub const ALL: [Aspect; 2] = [Aspect::Function, Aspect::Location];

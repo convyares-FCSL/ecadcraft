@@ -47,18 +47,9 @@ fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, C
     crate::devices::json::property_value(doc, key, v)
 }
 
-/// The `proposal` word of a page's or the project's function or location:
-/// "propose" (the default), "move" or "keep", in any case.
-///
-/// # Errors
-/// Any other word.
-pub fn proposal_mode(word: Option<&str>) -> Result<Mode, CmdError> {
-    match word.map(|w| w.trim().to_ascii_lowercase()).as_deref() {
-        None | Some("propose") => Ok(Mode::Propose),
-        Some("move") => Ok(Mode::Move),
-        Some("keep") => Ok(Mode::Keep),
-        Some(_) => Err(CmdError::refused(msg::PROPOSAL_WORDS)),
-    }
+/// What a page's or the project's new function or location does (`proposal`; none proposes).
+pub fn proposal_mode(word: Option<proposals::ProposalWord>) -> Mode {
+    word.map_or(Mode::Propose, Mode::from)
 }
 
 /// A page title: 1 to [`MAX_PAGE_TITLE`] characters after trimming, one line, no hidden

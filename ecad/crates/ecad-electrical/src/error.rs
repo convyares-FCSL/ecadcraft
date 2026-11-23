@@ -90,6 +90,4 @@ pub mod msg {
     pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
     /// A page title that does not read.
     pub const PAGE_TITLE: &str = "`title` must be a non-empty string of at most 200 characters";
-    /// A `proposal` word that does not read.
-    pub const PROPOSAL_WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
 }

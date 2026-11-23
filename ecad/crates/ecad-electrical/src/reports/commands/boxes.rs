@@ -167,9 +167,9 @@ pub struct LocationboxParams {
     /// The page (default: the active page).
     #[serde(default)]
     page: Option<PageId>,
-    /// What the box does to the devices inside: "propose" (default), "move" or "keep".
+    /// What the box does to the devices inside: propose (default), move or keep.
     #[serde(default)]
-    proposal: Option<String>,
+    proposal: Option<proposals::ProposalWord>,
 }
 
 impl Generic for LocationboxParams {
@@ -205,9 +205,9 @@ pub struct FunctionboxParams {
     /// The page (default: the active page).
     #[serde(default)]
     page: Option<PageId>,
-    /// What the box does to the devices inside: "propose" (default), "move" or "keep".
+    /// What the box does to the devices inside: propose (default), move or keep.
     #[serde(default)]
-    proposal: Option<String>,
+    proposal: Option<proposals::ProposalWord>,
 }
 
 impl Generic for FunctionboxParams {
@@ -234,8 +234,8 @@ impl BoxInput {
     /// A box: its values, outline, and the proposal it
     /// makes for the device symbols inside. The conflicts it finds wait for an answer when no
     /// device was moved.
-    fn run(self, cx: &mut Cx<'_>, page: Option<PageId>, proposal: Option<String>) -> Result<Outcome, CmdError> {
-        let mode = crate::pages::commands::sheets::proposal_mode(proposal.as_deref())?;
+    fn run(self, cx: &mut Cx<'_>, page: Option<PageId>, proposal: Option<proposals::ProposalWord>) -> Result<Outcome, CmdError> {
+        let mode = crate::pages::commands::sheets::proposal_mode(proposal);
         let corners = self.corners.and_then(|c| match c.0.as_slice() {
             [a, b] => Some((a.0, b.0)),
             _ => None,

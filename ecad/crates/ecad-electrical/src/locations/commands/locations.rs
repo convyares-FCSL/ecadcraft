@@ -25,10 +25,6 @@ pub(crate) const MAX_DEVICES: usize = 10_000;
 
 /// The refusal for an override on a function.
 pub(crate) const NO_FUNCTION_OVERRIDES: &str = "A function has no overrides: a device's parts share its function.";
-/// The refusal for an `aspect` word that does not read.
-pub(crate) const ASPECT_WORDS: &str = "`aspect` is \"location\" or \"function\"";
-/// The refusal for an `answer` word that does not read.
-pub(crate) const ANSWER_WORDS: &str = "`answer` is \"move\", \"half\" or \"leave\"";
 
 /// The property `key` names when it is an aspect property, with the retired connector half key
 /// `half.<s|p>.location` read as the override `location.socket` / `location.plug`.
@@ -40,17 +36,6 @@ pub(crate) fn aspect_property(key: &str) -> Option<String> {
         _ => {}
     }
     Aspect::of_property(key).map(|_| key.to_string())
-}
-
-/// The aspect an `aspect` word names (`location` when none).
-///
-/// # Errors
-/// A word that is neither.
-pub fn aspect(word: Option<&str>) -> Result<Aspect, CmdError> {
-    match word {
-        None => Ok(Aspect::Location),
-        Some(w) => Aspect::of_word(w).ok_or(CmdError::refused(ASPECT_WORDS)),
-    }
 }
 
 /// The property a set of aspect `a` writes: the aspect's own, or with `ty` (a symbol type, trimmed;
@@ -268,17 +253,26 @@ pub enum Answer {
     Leave,
 }
 
-/// The answer an `answer` word gives (trimmed, any case; none lists).
-///
-/// # Errors
-/// Another word.
-pub fn answer(word: Option<&str>) -> Result<Answer, CmdError> {
-    match word.map(|w| w.trim().to_ascii_lowercase()).as_deref() {
-        None => Ok(Answer::List),
-        Some("move") => Ok(Answer::Move),
-        Some("half") => Ok(Answer::Half),
-        Some("leave") => Ok(Answer::Leave),
-        Some(_) => Err(CmdError::refused(ANSWER_WORDS)),
+ecad_model::word_enum! {
+    /// A `conflicts` answer, as given.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum AnswerWord {
+        /// Move the chosen devices to the box's value.
+        Move,
+        /// Set the chosen connector halves' locations.
+        Half,
+        /// Leave them (write nothing).
+        Leave,
+    }
+}
+
+/// The answer a given word means (none lists).
+pub fn answer(word: Option<AnswerWord>) -> Answer {
+    match word {
+        None => Answer::List,
+        Some(AnswerWord::Move) => Answer::Move,
+        Some(AnswerWord::Half) => Answer::Half,
+        Some(AnswerWord::Leave) => Answer::Leave,
     }
 }
 
@@ -378,7 +372,7 @@ pub(crate) fn conflicts_slot<'s, 'a>(state: &'s mut Slot<'a>) -> Result<(&'a [Co
 
 /// The aspect, objects and property a `setlocation` sets.
 fn setlocation_target(p: &SetlocationParams) -> Result<(Aspect, Vec<DeviceId>, String), CmdError> {
-    let a = aspect(p.aspect.as_deref())?;
+    let a = p.aspect.unwrap_or(Aspect::Location);
     let objects = objects(p.component, p.devices.as_ref().map(|c| c.0.clone()))?;
     let prop = property_for(a, p.r#type.as_deref())?;
     Ok((a, objects, prop))
@@ -399,9 +393,9 @@ pub struct SetlocationParams {
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]
     value: Option<Option<String>>,
-    /// location (the default) or function.
+    /// Location (the default) or function.
     #[serde(default)]
-    aspect: Option<String>,
+    aspect: Option<Aspect>,
     /// Location only: an override for one symbol type (socket, plug, terminal or another type).
     #[serde(default)]
     r#type: Option<String>,
@@ -432,15 +426,15 @@ pub struct SetfunctionParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConflictsParams {
-    /// move, half or leave; none lists the waiting conflicts.
+    /// Move, half or leave; none lists the waiting conflicts.
     #[serde(default)]
-    answer: Option<String>,
+    answer: Option<AnswerWord>,
     /// Choose: only these devices.
     #[serde(default)]
     devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
     /// Choose: only this aspect, location or function.
     #[serde(default)]
-    aspect: Option<String>,
+    aspect: Option<Aspect>,
 }
 
 impl Generic for SetlocationParams {
@@ -480,12 +474,7 @@ impl Generic for SetfunctionParams {
 
 /// The answer and the rows a `conflicts` names.
 fn conflicts_pick(p: &ConflictsParams) -> Result<(Answer, Pick), CmdError> {
-    let answer = answer(p.answer.as_deref())?;
-    let aspect = match p.aspect.as_deref() {
-        None => None,
-        Some(w) => Some(Aspect::of_word(w).ok_or(CmdError::refused(ASPECT_WORDS))?),
-    };
-    Ok((answer, Pick { only: p.devices.as_ref().map(|c| c.0.clone()), aspect }))
+    Ok((answer(p.answer), Pick { only: p.devices.as_ref().map(|c| c.0.clone()), aspect: p.aspect }))
 }
 
 /// A `conflicts` answer, echoing its message when it has one.
