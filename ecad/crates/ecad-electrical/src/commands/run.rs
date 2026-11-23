@@ -1,4 +1,4 @@
-//! A generic command (owner decision 5, design `commands.md`): its params struct, what it may read
+//! A generic command: its params struct, what it may read
 //! and change ([`Cx`]), the files it declares ([`Io`]) and its result ([`Outcome`]).
 //!
 //! A generic command is a declaration: a `#[derive(Deserialize, JsonSchema)]` params struct that
@@ -82,7 +82,7 @@ pub enum State {
     None,
     /// The last continuation caption typed (offered next time; `contcaption`).
     LastCaption,
-    /// The location and function conflicts waiting for an answer (design 052 §5.5; `setlocation`,
+    /// The location and function conflicts waiting for an answer (`setlocation`,
     /// `setfunction`, `setprop`, `conflicts`). Any committed edit leaves them.
     Conflicts,
     /// What the last placement in this session placed (the click tools' defaults; `terminalblocks`).
@@ -103,7 +103,7 @@ pub enum Slot<'a> {
     LastPlaced(&'a mut Option<LastPlaced>),
 }
 
-/// What the last placement in this session placed, for the prompts' defaults (design 018 §5.3).
+/// What the last placement in this session placed, for the prompts' defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LastPlaced {
     /// The starter symbol placed (none for a connector, which has no starter of its own).

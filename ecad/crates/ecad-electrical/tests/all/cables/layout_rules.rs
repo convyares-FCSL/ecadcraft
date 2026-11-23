@@ -1,4 +1,4 @@
-//! Geometry rules of a cable's drawing at its ends (design 005).
+//! Geometry rules of a cable's drawing at its ends.
 
 use ecad_electrical::cables::layout::{clip_outside, leaving};
 use ecad_model::Pt;

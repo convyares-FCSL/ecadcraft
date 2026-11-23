@@ -1,4 +1,4 @@
-//! `plcimport` and `plcexport` (brief 056): reading and writing tag files. The formats and the
+//! `plcimport` and `plcexport`: reading and writing tag files. The formats and the
 //! plan are [`crate::plc::exchange`] (bytes in, bytes out); both commands are generic
 //! ([`crate::commands::run`]) and declare the file they read or write.
 
@@ -138,7 +138,7 @@ impl Generic for PlcimportParams {
     }
 }
 
-/// `plcexport {format?, rack?, path?}` (design 056 §6.6): the tag table of a rack (or every rack);
+/// `plcexport {format?, rack?, path?}`: the tag table of a rack (or every rack);
 /// writes the file, or returns `{text, rows, left_out}` without `path`. Changes no project data.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

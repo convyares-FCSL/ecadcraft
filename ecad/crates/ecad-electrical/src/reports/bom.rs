@@ -1,15 +1,15 @@
-//! Brief 047 (design 047): part lines, items and article numbers on the BOM, and the commands
+//! Part lines, items and article numbers on the BOM, and the commands
 //! `partline`, `bomitem` and `article`.
 //!
 //! # Semantics
 //! - A **part line** is one more part of a device or strip, stored as the component properties
 //!   `part.<n>.part_number | maker | description | article_number | qty | unit | kit | for`, `<n>`
-//!   1…99 with no leading zero (design §2.1, FP2). A line exists when any of its keys is set. The
+//!   1…99 with no leading zero. A line exists when any of its keys is set. The
 //!   device's own `part_number`, `maker`, `description` and `article_number` are line 0, its main
-//!   part (§2.2).
-//! - An **item** is a loose part (`Document.loose_parts`, design 072 §6.4): material that belongs
-//!   to no device and is not drawn (§3, FP1). It has one part, a quantity, a unit and a location.
-//! - `for` names the sub-items a line serves: a fuse bank's fuses, a strip's positions (§2.3).
+//!   part.
+//! - An **item** is a loose part (`Document.loose_parts`): material that belongs
+//!   to no device and is not drawn. It has one part, a quantity, a unit and a location.
+//! - `for` names the sub-items a line serves: a fuse bank's fuses, a strip's positions.
 //! - Every value goes through [`setprop_rule`], also when written by `setprop`; a refusal is in
 //!   words and writes nothing. Part lines are `SetProperty`; items are `CreateLoosePart`,
 //!   `ModifyLoosePart` and `DeleteLoosePart`.
@@ -73,7 +73,7 @@ pub enum Field {
     Unit,
     Kit,
     For,
-    /// Brief 044 (design 044 §8.3): on a connector, the half the line belongs to (`s` or `p`).
+    /// On a connector, the half the line belongs to (`s` or `p`).
     Half,
 }
 
@@ -126,7 +126,7 @@ pub(crate) fn field_words() -> String {
     Field::ALL.iter().map(|f| f.word()).collect::<Vec<_>>().join(", ")
 }
 
-// ---------------------------------------------------------------- quantities (§4.4)
+// ---------------------------------------------------------------- quantities
 
 /// A quantity in thousandths: a count of pieces, or metres.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -234,7 +234,7 @@ pub fn plain(key: &str, value: Option<&str>, max: usize) -> Result<Option<String
     Ok(Some(v.to_string()))
 }
 
-// ---------------------------------------------------------------- sub-items (§2.3)
+// ---------------------------------------------------------------- sub-items
 
 /// What a device's `for` may name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,7 +339,7 @@ pub fn names_words(names: &[String]) -> String {
     out.join(", ")
 }
 
-/// Check a `for` value on `c`: every name a sub-item of `c` (§2.3).
+/// Check a `for` value on `c`: every name a sub-item of `c`.
 fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, CmdError> {
     let t = text.trim();
     if t.is_empty() {
@@ -363,7 +363,7 @@ fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, 
 }
 
 /// The ops that keep strips' `part.<n>.for` lists on their positions when a renumber plan `ops`
-/// relabels their terminals (design 047 §2.3, as 030 FP4 keeps `jumper_bar.<n>`), and the preview lines
+/// relabels their terminals (as it keeps `jumper_bar.<n>`), and the preview lines
 /// (`-X05: part line 1 for 1, 5-6 → 1-2, 6`). A list naming no relabelled position is left as
 /// typed; names no terminal had stay.
 pub(crate) fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
@@ -415,7 +415,7 @@ pub struct Line {
     /// The `for` value as stored, and the names it lists (empty: the device as a whole).
     pub for_text: Option<String>,
     pub subs: Vec<String>,
-    /// Brief 044: the connector half the line belongs to (`part.<n>.half`).
+    /// The connector half the line belongs to (`part.<n>.half`).
     pub half: Option<crate::symbols::Side>,
 }
 
@@ -499,7 +499,7 @@ pub fn next_line(used: &BTreeSet<u8>) -> Option<u8> {
     }
 }
 
-/// One row of a device's part set as the inspector shows it (design 047 §6.2): line 0 the main
+/// One row of a device's part set as the inspector shows it: line 0 the main
 /// part, then the part lines.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartSetRow {
@@ -553,7 +553,7 @@ pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
     out
 }
 
-// ---------------------------------------------------------------- setprop (§2.4)
+// ---------------------------------------------------------------- setprop
 
 /// Whether `c` takes part lines: a device or strip (a tag and no `kind`).
 pub(crate) fn takes_lines(doc: &Document, c: DeviceId) -> bool {
@@ -565,11 +565,11 @@ pub(crate) fn is_bom_key(key: &str) -> bool {
     key.starts_with(PART_PREFIX)
 }
 
-/// The `setprop` rule for 047's keys on component `c` (design §2.4): `part.<n>.*` (the main
-/// part's `article_number` is a device field, lane 072 B's row). Returns the value to store.
+/// The `setprop` rule for the part keys on component `c`: `part.<n>.*` (the main
+/// part's `article_number` is a device field). Returns the value to store.
 ///
 /// # Errors
-/// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
+/// Every refusal, in words. Clearing a part line key is always allowed.
 pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let props = doc.devices().get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
@@ -608,7 +608,7 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
         },
         Field::Unit => unit_value(qty, value),
         Field::For => check_for(doc, c, value.unwrap_or("")),
-        // Brief 044 (design 044 §8.3): only on a connector, `s` or `p`.
+        // Only on a connector, `s` or `p`.
         Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
             None => Ok(None),
             Some(_) if !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) => Err(CmdError::refused(format!(
@@ -621,7 +621,7 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
     }
 }
 
-// ---------------------------------------------------------------- defaults (§8)
+// ---------------------------------------------------------------- defaults
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
 pub(crate) fn article_column(doc: &Document) -> bool {
@@ -666,7 +666,7 @@ pub(crate) fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Opt
     Ok(ops)
 }
 
-/// `Slotted trunking 50x75, 3.6 m in +CP1` (brief 052: the location's code from the list).
+/// `Slotted trunking 50x75, 3.6 m in +CP1` (the location's code from the list).
 pub(crate) fn item_words(doc: &Document, item: &LoosePart) -> String {
     let unit = if item.unit == ecad_model::objects::loose_part::ItemUnit::Metres { " m" } else { "" };
     let (d, q) = (item.description.as_str(), item.qty);
@@ -702,8 +702,8 @@ impl ArticleTarget {
 }
 
 /// The article keys `article` writes for part number `pn` (and maker `maker`) on `doc`. A strip's
-/// terminal, accessory and jumper parts are written at the level their part number is stored at
-/// (design 047 §5): the strip's own key, or the project's `strip_<x>_article_number`.
+/// terminal, accessory and jumper parts are written at the level their part number is stored at:
+/// the strip's own key, or the project's `strip_<x>_article_number`.
 pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
     let mut out = Vec::new();
     for (id, p) in doc.loose_parts() {
@@ -748,8 +748,8 @@ pub(crate) fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> 
 }
 
 /// A strip's own part slots: (part number key, maker key, article key, the project's maker key)
-/// of each terminal type (036 §7.2), each accessory (030 §4) and each link's own part (030 §5.6,
-/// which has no project default of its own).
+/// of each terminal type, each accessory and each jumper bar's own part
+/// (which has no project default of its own).
 fn strip_slots(props: &Properties) -> Vec<(String, String, String, Option<String>)> {
     let mut v: Vec<(String, String, String, Option<String>)> = crate::terminal_strips::terminal_blocks::TYPES
         .iter()

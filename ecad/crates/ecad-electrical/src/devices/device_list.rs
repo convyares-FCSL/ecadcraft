@@ -1,6 +1,6 @@
-//! The Devices tab's list (brief 016's Project panel, owner request of 2026-11-08): every device
+//! The Devices tab's list (the Project panel): every device
 //! grouped by its tag prefix, each with its symbols, page and column, and what a "go to" selects.
-//! Read only: edits go through `setprop` (brief 018's rules), never through here.
+//! Read only: edits go through `setprop`, never through here.
 //!
 //! Built from the tag index ([`ecad_model::Document::tagged`]) and each device's representations
 //! (the subject index), only when the project or the filter changed; nothing here runs per frame.
@@ -24,14 +24,14 @@ pub struct SymbolEntry {
     pub page: PageId,
     /// The page's number as shown ([`crate::references::cables::page_number`]).
     pub page_number: String,
-    /// Its frame column and row (brief 019), when it can be located.
+    /// Its frame column and row, when it can be located.
     pub column: Option<u32>,
     pub row: Option<u32>,
     /// Where it is, in the project's reference style (`105-C-4`), or `?`.
     pub place: String,
     /// `NO contact`, `Contactor / relay coil`, or `drawn` for a converted outline.
     pub name: String,
-    /// Brief 048 (design §8.4): its project symbol has a newer version.
+    /// Its project symbol has a newer version.
     pub update: bool,
 }
 
@@ -49,7 +49,7 @@ pub struct DeviceEntry {
     pub properties: Vec<Option<String>>,
     /// Its symbols, in page order, then column.
     pub symbols: Vec<SymbolEntry>,
-    /// What its tag is (brief 026, S6 #3): `F` after a fixed one, provisional in `ecad.provisional`.
+    /// What its tag is (S6 #3): `F` after a fixed one, provisional in `ecad.provisional`.
     pub tag_state: ecad_model::naming::tag::TagState,
 }
 
@@ -60,7 +60,7 @@ impl DeviceEntry {
     }
 }
 
-/// What a change could change in the Devices list (owner, 2026-11-08: act only on the ops that
+/// What a change could change in the Devices list (act only on the ops that
 /// matter): the devices whose row or symbol rows may differ, and whether page numbers moved.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceTouch {
@@ -194,7 +194,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
 }
 
 /// A tag's group (its prefix, or the whole tag when it has none) and its place in the group: its
-/// number; a provisional tag after every numbered one of its prefix (brief 026, design §9).
+/// number; a provisional tag after every numbered one of its prefix.
 pub(crate) fn group_and_number(t: &str, state: ecad_model::naming::tag::TagState) -> (String, u64) {
     match ecad_model::naming::tag::parse(t) {
         Some((p, n)) if state.is_provisional() => (p, ecad_model::naming::tag::MAX_TAG_NUMBER.saturating_add(n)),
@@ -233,4 +233,4 @@ pub fn position(doc: &Document, r: &ecad_model::Representation) -> Option<Pt> {
     r.connection_points.values().next().copied()
 }
 
-// The engine half (design 065 §3), at its old path until step 6 turns this into a facade.
+// The engine half, at its old path until step 6 turns this into a facade.

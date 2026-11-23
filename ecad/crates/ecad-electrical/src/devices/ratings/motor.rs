@@ -1,4 +1,4 @@
-//! Reading a motor's rating (design 072 §2.2, "Ratings"): its nameplate power, current, power
+//! Reading a motor's rating: its nameplate power, current, power
 //! factor, efficiency and starting.
 //!
 //! # Semantics

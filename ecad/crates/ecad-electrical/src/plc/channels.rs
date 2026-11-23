@@ -1,16 +1,16 @@
-//! Channels (design 045 §4, §6): channel points, pins, joining a card, Place Channels (the fence
+//! Channels: channel points, pins, joining a card, Place Channels (the fence
 //! and the rest) and `plcchannel`.
 //!
 //! # Semantics
 //! - A channel point is a `ConnectionPoint` of the card: its **label is the pin** (what is printed and
 //!   typed after the tag, `-A02:4`), its **key is `.<i>.<role>`** (the 0-based channel index and
-//!   the role, FP2). The channel number shown is `i + plc.channel.first`, so changing the first
+//!   the role). The channel number shown is `i + plc.channel.first`, so changing the first
 //!   number never rewrites a terminal.
 //! - A channel symbol's own points are keyed by role alone (`.in`, [`PointKey::Role`]); joining
-//!   a card gives each the channel's index ([`PointKey::Channel`], design 072 §3).
-//! - Pins come from the card's pin layout (`plc.pins`, §4.3) once, when drawn, and are never
+//!   a card gives each the channel's index ([`PointKey::Channel`]).
+//! - Pins come from the card's pin layout (`plc.pins`) once, when drawn, and are never
 //!   recomputed; `plcchannel {pins}` relabels them.
-//! - Spare and reserved are derived, never stored (§6).
+//! - Spare and reserved are derived, never stored.
 //!
 //! Every write (the commands, in ecad-engine's `cmd::plc`) is one transaction.
 
@@ -29,15 +29,15 @@ use crate::plc::card_type_of;
 use crate::plc::rack::{CardType, MAX_CHANNELS, channel_count};
 use crate::symbols::{Kind, Starter};
 
-/// The property prefix of a channel's own data (`plc.ch.<i>.text`, `plc.ch.<i>.address`; FP3).
+/// The property prefix of a channel's own data (`plc.ch.<i>.text`, `plc.ch.<i>.address`).
 pub(crate) const CH_PREFIX: &str = "plc.ch.";
-/// Most characters of a channel description (design 045 §4.6).
+/// Most characters of a channel description.
 pub const MAX_TEXT: usize = 80;
 /// Most characters of a typed address.
 pub(crate) const MAX_ADDRESS: usize = 32;
 /// Most characters of a pin.
 pub(crate) const MAX_PIN: usize = 16;
-/// Most wires one Place Channels line lands on (design 045 §4.5).
+/// Most wires one Place Channels line lands on.
 pub const MAX_FENCE: usize = 256;
 /// The highest channel index read from a key (larger keys are not channel points).
 pub const MAX_INDEX: u32 = 9_999;
@@ -110,7 +110,7 @@ fn drawn_words(doc: &Document, t: ConnectionPointId) -> String {
     }
 }
 
-/// The pins a new channel `i` of card `c` gets for `roles` (design 045 §4.3): from the pin layout,
+/// The pins a new channel `i` of card `c` gets for `roles`: from the pin layout,
 /// or the next free whole number when the computed one is taken (`used`, which gains them).
 pub fn pins_for(
     doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[ChannelRole], used: &mut BTreeSet<String>,
@@ -141,7 +141,7 @@ pub fn pins_for(
     out
 }
 
-/// What a channel symbol gets joining a card (design 045 §4.4).
+/// What a channel symbol gets joining a card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Join {
     pub index: u32,
@@ -149,12 +149,12 @@ pub struct Join {
     pub pins: Vec<(ChannelRole, String)>,
 }
 
-/// The channel and pins symbol `s` gets joining card `c` (design 045 §4.4): the channel numbered
+/// The channel and pins symbol `s` gets joining card `c`: the channel numbered
 /// `named` (as shown), else the lowest not drawn yet. `extra` are labels already given in the same
 /// transaction; `taken` indexes too.
 ///
 /// # Errors
-/// The refusals of §4.4, each with the way out.
+/// The refusals, each with the way out.
 pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>) -> Result<Join, CmdError> {
     let who = crate::devices::tags::tag_words(doc, c);
     let t = cell_type(s).ok_or(CmdError::refused("That symbol is not a PLC channel."))?;
@@ -202,7 +202,7 @@ pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra:
     Ok(Join { index, pins: roles.into_iter().zip(pins).collect() })
 }
 
-/// The pins `s` would get joining `c` (design 018's `join_labels` for [`Kind::Channel`]).
+/// The pins `s` would get joining `c` (`join_labels` for [`Kind::Channel`]).
 ///
 /// # Errors
 /// As [`join`].
@@ -219,7 +219,7 @@ pub struct Cell {
     pub item: ItemId,
 }
 
-/// Plan one channel symbol of `card` for channel `j` at `placement` (design 045 §4.4): its points
+/// Plan one channel symbol of `card` for channel `j` at `placement`: its points
 /// (label = pin, key = `.<i>.<role>`), the symbol and its representation with explicit connection
 /// points.
 #[allow(clippy::too_many_arguments)]
@@ -266,7 +266,7 @@ pub fn plan_cell(
     Ok(Cell { index: j.index, connection_points, representation, item })
 }
 
-/// A new card device for channel symbols of type `t` (design 045 §4.4 rule 2): prefix `A`, the
+/// A new card device for channel symbols of type `t`: prefix `A`, the
 /// body's name as its description, no rack.
 pub fn new_card_ops(
     ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::tags::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
@@ -406,8 +406,8 @@ pub fn landings(doc: &Document, s: &Starter, members: &[crate::cables::slash::Cr
     members.iter().map(|m| Landing { rotation: rotation(m), points: vec![(role, *m)] }).collect()
 }
 
-/// The ops landing a channel cell's point `t` on its route at `on` (design 045 §4.5, design 072
-/// §4.3). The route is split at the point as Place Terminals splits it (028 §3.1), but a cell has
+/// The ops landing a channel cell's point `t` on its route at `on`
+/// The route is split at the point as Place Terminals splits it, but a cell has
 /// one point, not a way through: a part whose far end lands on nothing (a free end, and no route
 /// landing on it) carries nothing past the cell, so it is not kept. The route ends at the point
 /// instead of running on through the cell box, where its wire's number label covered the channel
@@ -457,12 +457,12 @@ pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
-    // Brief 056 (FP1): a channel's PLC tag and safe state.
+    // A channel's PLC tag and safe state.
     let what = ["text", "address", crate::plc::signals::TAG, crate::plc::signals::SAFE].into_iter().find(|w| *w == what)?;
     Some((i, what))
 }
 
-/// The value check of a channel's text or address (design 045 §4.6).
+/// The value check of a channel's text or address.
 ///
 /// # Errors
 /// Too long, or a control character.
@@ -534,8 +534,8 @@ pub(crate) fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
     format!("{} channel {}", crate::devices::tags::tag_words(doc, c), i + first_number(doc, c))
 }
 
-/// The fence's refusal when two crossed wires are closer than a cell is wide (brief 051, design
-/// 051 §2.2): `Wires 24V-12 and 24V-13 are 10 mm apart; a DI cell is 20 mm wide. Space the wires
+/// The fence's refusal when two crossed wires are closer than a cell is wide (design
+/// `Wires 24V-12 and 24V-13 are 10 mm apart; a DI cell is 20 mm wide. Space the wires
 /// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
 pub(crate) fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::cables::slash::Crossing]) -> Option<String> {
     let (w, _) = crate::symbols::cells::cell_shape(s.key)?;

@@ -1,6 +1,6 @@
-//! The PLC sheets of the book (brief 051, design 051 §4): the I/O list as one ruled table per card,
-//! cards packed on sheets (§4.1), and the rack overview `plcrack` with the tiles of
-//! [`crate::plc::overview`] in ink (§4.2).
+//! The PLC sheets of the book: the I/O list as one ruled table per card,
+//! cards packed on sheets, and the rack overview `plcrack` with the tiles of
+//! [`crate::plc::overview`] in ink.
 //!
 //! # Semantics
 //! - [`pack`]: groups follow each other on a sheet with a gap; a group goes to the next sheet only
@@ -26,7 +26,7 @@ pub struct Area {
     pub scale: f64,
 }
 
-/// The I/O table's columns with their A3 widths (design 051 §4.1): Slot and Card are in the heading.
+/// The I/O table's columns with their A3 widths: Slot and Card are in the heading.
 pub const IO_COLUMNS: [(&str, f64); 8] =
     [("Ch", 12.0), ("Address", 26.0), ("Pins", 22.0), ("Description", 100.0), ("State", 18.0), ("Wired to", 80.0), ("Wire", 26.0), ("Place", 30.0)];
 
@@ -99,7 +99,7 @@ pub fn io_pack(plc: &Plc) -> Vec<Vec<Seg>> {
     pack(&rows, 2.0, 1.0, 1.0, rows_per_sheet() as f64)
 }
 
-/// `-A01 slot 2 · -A03 · DQ 16 · <part number> · 9 used, 1 reserved, 6 spare` (design 051 §4.1).
+/// `-A01 slot 2 · -A03 · DQ 16 · <part number> · 9 used, 1 reserved, 6 spare`.
 pub fn group_heading(doc: &Document, card: &CardData, rows: &[iolist::Row]) -> String {
     let (u, r, s) = iolist::summary(rows);
     let caption = match crate::plc::caption(doc, card.id) {
@@ -114,7 +114,7 @@ pub fn group_heading(doc: &Document, card: &CardData, rows: &[iolist::Row]) -> S
     parts.join(" \u{b7} ")
 }
 
-// ---------------------------------------------------------------- the rack sheet (§4.2)
+// ---------------------------------------------------------------- the rack sheet
 
 /// A tile's box, mm.
 pub const TILE_W: f64 = 40.0;
@@ -140,7 +140,7 @@ pub fn tiles_per_row(width: f64) -> usize {
 /// [`crate::pages::generated`] lays it out.
 fn page_area(doc: &Document, page: PageId) -> (f64, f64, f64, f64) {
     let spec = ecad_model::document::sheet::sheet_of(doc, page);
-    // Brief 055 (FP4): the frame's margins and its block's height.
+    // The frame's margins and its block's height.
     let m = ecad_model::document::sheet::margins_of(doc, page);
     (
         m.left + 5.0,
@@ -189,8 +189,8 @@ pub fn rack_heading(doc: &Document, plc: &Plc, rack: &crate::plc::RackData) -> S
 /// What the `plcrack` page says when the project has no PLC racks or cards.
 pub const NO_RACKS: &str = "No PLC racks.";
 
-/// Whether `effects` (just committed; `doc` is after them) move a place the `plcrack` sheet prints
-/// (review of #89, 3): a PLC card's or rack's symbol moved, or a page holding one renumbered,
+/// Whether `effects` (just committed; `doc` is after them) move a place the `plcrack` sheet prints:
+/// a PLC card's or rack's symbol moved, or a page holding one renumbered,
 /// resized, or any page moved in the book. Only the effects' own items and the pages they name are
 /// read.
 pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::document::effect::Effects<'_>) -> bool {
@@ -266,7 +266,7 @@ impl RackPlaces {
     }
 }
 
-// The release's PLC racks list (design 051 §4.2: in the release like the I/O list): one row per
+// The release's PLC racks list (in the release like the I/O list): one row per
 /// tile, racks by tag and then the cards in no rack. `None` when the project has no PLC racks or
 /// cards; the release then names [`NO_RACKS`].
 pub(crate) fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::reports::Table> {

@@ -1,9 +1,9 @@
-//! Cable references across pages (brief 010, design 010): where the drawing of a cable stops on
+//! Cable references across pages: where the drawing of a cable stops on
 //! one page, a reference end shows where it continues, live.
 //!
 //! # Semantics
 //! - A **reference end** is an ordinary drawn representation of the cable with role
-//!   [`ecad_model::Role::Reference`] and one Point item (design 010 §0). Nothing else is stored for it: no
+//!   [`ecad_model::Role::Reference`] and one Point item. Nothing else is stored for it: no
 //!   pairing, no text. A cable has at most two references in this version (one continuation).
 //! - Everything a reference **says** (the other end's page number and column, its partner, whether
 //!   it is an orphan) is derived on every draw by [`ecad_model::connectivity::derive::cable_references`] and never
@@ -11,9 +11,9 @@
 //! - [`markers_on_page`] is **the one function** that says what a reference end shows on a page:
 //!   its point, its derived text (`/<page>.<column>` of the other end, `/?` for an orphan), its
 //!   colour state and where the text sits. The projection draws its minimal marker from it, the
-//!   overlay rings it, the hover and `cablereferences` read the same derivation; brief 009's styled
+//!   overlay rings it, the hover and `cablereferences` read the same derivation; the styled
 //!   marker calls it too, so both briefs always show the same text.
-//! - [`plan_continue`] decides what `cablecontinue` draws (design 010 §5): its JSON form and its
+//! - [`plan_continue`] decides what `cablecontinue` draws: its JSON form and its
 //!   interactive preview both use it, so what is previewed is what is committed.
 //!
 //! This module has no UI and records nothing: the commands that use it commit through their JSON
@@ -45,7 +45,7 @@ pub const RING_PX: f32 = 12.0;
 /// `ecad.bold`, in screen pixels.
 pub const BOLD_PX: f32 = 2.0;
 
-/// Refusal of an edit of the derived text (design 010 §9).
+/// Refusal of an edit of the derived text.
 pub const TEXT_DERIVED: &str = "The reference text is derived; move the reference point instead.";
 
 /// Drawing-unit sizes of reference drawing, in the project's length unit.
@@ -61,7 +61,7 @@ pub fn sizes(doc: &Document) -> Sizes {
         LengthUnit::Millimetre => 1.0,
         LengthUnit::Inch => 1.0 / 25.4,
     };
-    // Brief 066d: reference text is the `Reference` text style, already in drawing units.
+    // Reference text is the `Reference` text style, already in drawing units.
     Sizes {
         text_height: crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Reference).height,
         spacing: STUB_SPACING_MM * k,
@@ -97,9 +97,9 @@ pub fn references_on_page(doc: &Document, page: PageId) -> Vec<CableReference> {
 }
 
 /// The references of the cables with a reference end on `page`, derived as [`all`] derives them
-/// (a reference's text reads only its own cable's references and routes; brief 014's
+/// (a reference's text reads only its own cable's references and routes;
 /// [`cable_references_of`]). Cost is in proportion to the page's representations and those
-/// cables, not to the document (brief 053: `wire` and `joinwires` derived every reference of the
+/// cables, not to the document (`wire` and `joinwires` derived every reference of the
 /// project to find a page's markers).
 fn page_cable_references(doc: &Document, page: PageId) -> Vec<CableReference> {
     let cables: BTreeSet<CableId> = doc
@@ -113,7 +113,7 @@ fn page_cable_references(doc: &Document, page: PageId) -> Vec<CableReference> {
     cable_references_of(doc, &cables)
 }
 
-/// What one reference end shows on its page (design 010 §6.1, §6.2). Call [`markers_on_page`].
+/// What one reference end shows on its page. Call [`markers_on_page`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Marker {
     /// The reference representation.
@@ -135,7 +135,7 @@ pub struct Marker {
     pub text_at: Pt,
     /// The text reads leftwards from `text_at` (right-aligned): the wires come from the right.
     pub right_aligned: bool,
-    /// The unit direction away from the wires (design 010 §6.2's u): the side brief 009's flag
+    /// The unit direction away from the wires (u): the side the flag
     /// takes.
     pub text_dir: Pt,
     /// Text height in drawing units.
@@ -143,7 +143,7 @@ pub struct Marker {
 }
 
 /// What every locatable reference end on `page` shows. **The** function both the minimal marker of
-/// this brief and brief 009's styled marker take their text from: one derivation, always live.
+/// this and the styled marker take their text from: one derivation, always live.
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
 /// out; `cablereferences` and the hover still list them with `/?`.
 pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
@@ -183,24 +183,24 @@ pub fn marker_text(doc: &Document, reference: RepresentationId) -> Option<(Strin
     marker_text_dir(doc, reference).map(|(text, orphan, _)| (text, orphan))
 }
 
-/// [`marker_text`] with the direction away from the wires (design 010 §6.2's u), which brief
-/// 009's flag points along.
+/// [`marker_text`] with the direction away from the wires (u), which the
+/// flag points along.
 ///
 /// Derives only the references of that end's cable (all a reference's text depends on), so a page
-/// with reference ends costs in proportion to their cables, not to the document (brief 014).
+/// with reference ends costs in proportion to their cables, not to the document.
 pub(crate) fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Option<(String, bool, Pt)> {
     let Some(Subject::Cable(cable)) = doc.representations().get(&reference).map(|r| r.subject) else { return None };
     cable_references_of(doc, &BTreeSet::from([cable])).into_iter().find(|r| r.reference == reference).map(|r| (r.text, r.orphan, r.text_dir))
 }
 
-// The marker of a reference end (flag and text) is drawn by brief 009's `draw.rs` only, with the
+// The marker of a reference end (flag and text) is drawn by `draw.rs` only, with the
 // text from [`marker_text`]; its text is mapped `Mapped::RefText`, so hover, Go to Reference and
 // erasing it act on the reference. The ends of member routes that leave for another page (design
-// 010 §6.4) show no loose-end square: `draw.rs` folds that rule into its `quiet` ends.
+// show no loose-end square: `draw.rs` folds that rule into its `quiet` ends.
 
 /// The reference end on `page` under `p`: the nearest reference point within `radius`, else a
 /// reference whose drawn text (its box, grown by `radius`) holds `p`. Used before the generic pick
-/// by Go to Reference and the hover (design 010 §4.5, §8), because a continued end's middle stub
+/// by Go to Reference and the hover, because a continued end's middle stub
 /// starts exactly on its reference point and would otherwise win the pick.
 ///
 /// `m` measures the flag's text (the C wrapper `reference_at` passes CADCraft's fonts).
@@ -218,9 +218,9 @@ pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m
     markers.iter().find(|x| text_box_holds(x, p, radius, h, m)).map(|x| x.reference)
 }
 
-/// Whether `p` lies in a marker's box (brief 009's flag) grown by `pad`.
+/// Whether `p` lies in a marker's box (the flag) grown by `pad`.
 fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics) -> bool {
-    // Brief 009 draws the marker: its flag around the text, at the reference point, on the side
+    // Draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
     let w = crate::cables::words::stroke_label_width(&crate::cables::words::shorten(&m.text, 64), h, metrics);
     let (lo, hi) = crate::cables::words::flag_box(m.at, w, crate::cables::words::FlagSide::away(m.text_dir), h);
@@ -233,7 +233,7 @@ pub fn route_pages(doc: &Document, conductor: WireId) -> Vec<PageId> {
     doc.page_order().iter().copied().filter(|p| on.contains(p)).collect()
 }
 
-/// The number a page is shown with (brief 019): its `number` property, else its position in book
+/// The number a page is shown with: its `number` property, else its position in book
 /// order (`1` first), else `?`. Every place that shows a page's number (the Project panel, the
 /// page window's title, reference texts' words) asks here.
 pub fn page_number(doc: &Document, page: PageId) -> String {
@@ -257,7 +257,7 @@ pub(crate) fn cable_words(doc: &Document, cable: CableId) -> String {
     format!("Cable {}", crate::cables::cable_title(doc, cable))
 }
 
-// ---------------------------------------------------------------- refusals (design 010 §4.4)
+// ---------------------------------------------------------------- refusals
 
 /// R1.
 pub(crate) fn already_here(doc: &Document, cable: CableId) -> String {
@@ -312,7 +312,7 @@ pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(
     Ok(())
 }
 
-// ---------------------------------------------------------------- continuation (design 010 §5)
+// ---------------------------------------------------------------- continuation
 
 /// Why a member does not continue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -333,7 +333,7 @@ impl Skip {
 
 /// One continued core: the source page's loose line it sits on, that line's free end (which lands
 /// on the core's named point there), its stub here and which of the stub's ends is free (the outer
-/// one; the other lands on the core's named point here). Design 072 §4.4, F4.
+/// one; the other lands on the core's named point here).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stub {
     /// The core's index in the cable.
@@ -348,7 +348,7 @@ pub struct Stub {
     pub free_end: End,
 }
 
-/// What `cablecontinue` draws (design 010 §2.2, §5).
+/// What `cablecontinue` draws.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     /// The cable's existing reference (on the source page), which this end will name.
@@ -365,12 +365,12 @@ fn in_range(p: Pt) -> bool {
     p.is_finite() && p.x.abs() <= crate::cables::words::MAX_COORD && p.y.abs() <= crate::cables::words::MAX_COORD
 }
 
-/// Plan the continuation of `cable` on `page` from `at` toward `toward` (design 010 §5): which
+/// Plan the continuation of `cable` on `page` from `at` toward `toward`: which
 /// members continue (`members` restricts and orders them), their stubs, and the slash. Pure: reads
 /// the document only. Bounded by the cable's members ([`crate::cables::slash::MAX_CABLE_MEMBERS`]).
 ///
 /// # Errors
-/// The refusals of design 010 §4.4 and §7.2 in words.
+/// The refusals in words.
 pub fn plan_continue(
     doc: &Document, page: PageId, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
 ) -> Result<Plan, CmdError> {
@@ -394,7 +394,7 @@ pub fn plan_continue(
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
-    // A core is named by its wire, or by its line while it has no wire yet (F4).
+    // A core is named by its wire, or by its line while it has no wire yet.
     let core_id = |m: &ecad_model::Core| m.wire().map(WireId::hex).or_else(|| m.route().map(RouteId::hex));
     let placed: Vec<(usize, String)> = c.cores.iter().enumerate().filter_map(|(i, m)| Some((i, core_id(m)?))).collect();
     let candidates: Vec<(usize, String)> = match members {
@@ -426,7 +426,7 @@ pub fn plan_continue(
         return Err(CmdError::refused(drawn_here(doc, cable)));
     }
     // Only a core on a loose line of the source page continues: its free end goes on through the
-    // reference. A wire already runs between two device points (design 072 §4.2).
+    // reference. A wire already runs between two device points.
     let mut going: Vec<(usize, RouteId, usize, Pt)> = Vec::new();
     let mut skipped = Vec::new();
     for (i, h) in &candidates {
@@ -480,10 +480,10 @@ pub fn plan_continue(
     Ok(Plan { source, source_page: s.page, stubs, skipped, slash })
 }
 
-/// The lines echoed after `cablecontinue` (design 010 §4.3).
+/// The lines echoed after `cablecontinue`.
 pub(crate) fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: RepresentationId) -> Vec<String> {
     // Both ends are of one cable, and a reference says only what its own cable's references give,
-    // so that cable's are derived, not the document's (lane D2: 32 ms on the large project).
+    // so that cable's are derived, not the document's.
     let (here, there) = (reference_of(doc, this), reference_of(doc, plan.source));
     let (here, there) = (here.as_ref(), there.as_ref());
     let cable = here.map(|r| r.cable).or(there.map(|r| r.cable));
@@ -511,8 +511,8 @@ pub(crate) fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: R
     out
 }
 
-/// The line added when a transaction left linked references without their other end (design 010
-/// §4.3): `before` are the references that were linked before it.
+/// The line added when a transaction left linked references without their other end
+/// `before` are the references that were linked before it.
 pub fn orphaned_line(doc: &Document, before: &BTreeSet<RepresentationId>) -> Option<String> {
     if before.is_empty() {
         return None;
@@ -540,9 +540,9 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
     cable_references(doc).into_iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
 }
 
-// ---------------------------------------------------------------- per commit (brief 014)
+// ---------------------------------------------------------------- per commit
 
-/// Style catalogues no cable reference reads (brief 053): a change of one reaches no reference.
+/// Style catalogues no cable reference reads: a change of one reaches no reference.
 const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
     &[ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location];
 
@@ -584,7 +584,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         Subject::Wire(w) => out.extend(doc.cables_of(w)),
         Subject::Device(_) | Subject::Route(_) | Subject::Aid(_) => {}
     };
-    // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
+    // A frame decides its pages' grids, so a frame choice
     // or a frame's sheet, margins or block height reaches the cables on those pages.
     match crate::title_blocks::frame_reach_of(doc, effect) {
         crate::title_blocks::Reach::NotFrame => {}
@@ -610,7 +610,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
                 note(r, out);
             }
         }
-        // Design 072 §4.3, §4.4 (F4): a line reaches the cables whose cores it carries (on the
+        // A line reaches the cables whose cores it carries (on the
         // line, or on the wire it draws) and the cables whose named points it lands on.
         Effect::Route { id, before, after } => {
             for r in before.iter().chain(after.iter()) {
@@ -620,7 +620,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         Effect::Wire { id, before: None, .. } if !doc.wires().contains_key(id) => {}
         // A wire made again in one transaction: any cable, as before.
         Effect::Wire { before: None, .. } => return Touch::All("a wire made again in one transaction may have been a core of any cable"), // all
-        // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
+        // A
         // conductor's cables only, never every cable.
         Effect::Wire { id, .. } | Effect::Prop { object: ObjectRef::Wire(id), .. } => out.extend(doc.cables_of(*id)),
         // A device record (made, removed or changed: its tag, location, function, definition)
@@ -629,15 +629,15 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         // removed component's connection points and representations go as effects of their own.
         Effect::Device { .. } => {}
         Effect::ConnectionPoint { id, before: None, .. } if !doc.connection_points().contains_key(id) => {}
-        // Brief 028: a relabelled connection point reaches only the cables of the wires on it.
+        // A relabelled connection point reaches only the cables of the wires on it.
         Effect::ConnectionPoint { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
         // A symbol definition, a device's definition or link and a layer are read by no reference
         // (a reference reads items' points, routes, pages and the settings below).
         Effect::Definition { .. } | Effect::DeviceDefinition { .. } | Effect::DeviceLink { .. } | Effect::Layer { .. } => {}
-        // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
+        // A device's properties (its tag) are drawn beside its symbols only, never
         // in a cable's drawing or reference texts.
         Effect::Prop { object: ObjectRef::Device(_), .. } => {}
-        // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
+        // A page's number or sheet changes what the references on it
         // say about themselves, so their cables (whose other ends show it).
         Effect::Page { id: p, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
             let ch = b.change(a);
@@ -645,7 +645,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
                 out.extend(cables_on(doc, *p));
             }
         }
-        // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
+        // A page type's sheet, on its pages only.
         Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
             if let Some((pages, true)) = crate::styles::page::touched_by_effect(doc, effect) {
                 for p in pages {
@@ -659,15 +659,15 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project, .. } => {}
         Effect::Page { .. } | Effect::Folder { .. } => {}
         Effect::Version { .. } => {}
-        // Brief 025 (design 025 §6): a cable op changes that cable's members only, so only its
-        // reference ends may be drawn differently. Brief 053: a cable's fields (its type, tag)
+        // A cable op changes that cable's members only, so only its
+        // reference ends may be drawn differently. A cable's fields (its type, tag)
         // are that cable's alone.
         Effect::Cable { id, .. } => {
             out.insert(*id);
         }
         Effect::Settings { before, after }
             if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
-        // Brief 053: the text, wire and location styles only change how things are drawn; no
+        // The text, wire and location styles only change how things are drawn; no
         // reference reads them. Any other catalogue (the frame, one added later) and a standard,
         // which may come to carry sheets, still reach every cable.
         Effect::Style { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
@@ -683,7 +683,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         Effect::Prop { object: ObjectRef::Standard, .. } => return Touch::All("a standard's registry value may be a sheet or grid"), // all
         Effect::Project { .. } => return Touch::All("the project record may carry the reference style or sheet"),                    // all
         Effect::Aid { .. } => return Touch::All("a drawing aid may stand where a reference does (design 072 §6.2)"),                 // all
-        // A loose part is drawn on no page and no reference reads it (design 072 §6.4).
+        // A loose part is drawn on no page and no reference reads it.
         Effect::LoosePart { .. } => {}
     }
     Touch::Cables
@@ -709,14 +709,14 @@ pub(crate) fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = Ca
 type MemberState = Vec<(ecad_model::CorePosition, Vec<PageId>, Option<[ConnectionPointId; 2]>)>;
 
 /// The references of some cables at one moment, and what their reference ends are drawn from, so
-/// that one commit derives them once before and once after (brief 014).
+/// that one commit derives them once before and once after.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
     /// The cables covered; `None` for every cable.
     scope: Option<BTreeSet<CableId>>,
     /// Their references, as [`cable_references`] derives them.
     references: Vec<CableReference>,
-    /// Per covered cable with a reference, its members' state (what brief 009's drawing at a
+    /// Per covered cable with a reference, its members' state (what the drawing at a
     /// reference end reads from other pages). Empty for a whole-document snapshot.
     members: BTreeMap<CableId, MemberState>,
 }
@@ -751,7 +751,7 @@ impl Snapshot {
         self.references.iter().filter(|r| !r.orphan).map(|r| r.reference).collect()
     }
 
-    /// The line of design 010 §4.3 for references linked in `self` (before a transaction) that
+    /// The line for references linked in `self` (before a transaction) that
     /// have no other end in `after` (taken with the same scope on `doc`, after it), exactly as
     /// [`orphaned_line`] gives it: references of cables outside the scope did not change.
     pub fn orphaned_line(&self, doc: &Document, after: &Snapshot) -> Option<String> {
@@ -764,7 +764,7 @@ impl Snapshot {
 
     /// The pages whose reference ends may be drawn differently in `after` than in `self`. `None`
     /// means every page: a whole-document snapshot with any reference before or after (as before
-    /// brief 014). Otherwise, the pages of the references of each covered cable whose references
+    /// Otherwise, the pages of the references of each covered cable whose references
     /// or member state changed.
     pub(crate) fn pages_changed(&self, after: &Snapshot) -> Option<BTreeSet<PageId>> {
         let Some(scope) = &self.scope else {
@@ -800,7 +800,7 @@ impl Snapshot {
     }
 }
 
-/// Hover lines for a reference end (design 010 §8).
+/// Hover lines for a reference end.
 pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<String>> {
     let references = cable_references(doc);
     let r = references.iter().find(|r| r.reference == reference)?;
@@ -838,7 +838,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
 /// `K2:1`: the connection point among `shown` (those on the other end's page) a conductor attaches to.
 fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPointId>, c: &ecad_model::Wire) -> Option<String> {
     let t = End::BOTH.into_iter().map(|e| c.end(e)).find(|t| shown.contains(t))?;
-    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    // A connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return Some(name);
     }
@@ -848,7 +848,7 @@ fn connection_point_on(doc: &Document, shown: &BTreeSet<ecad_model::ConnectionPo
     Some(format!("{comp}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t)))
 }
 
-/// The debugger's `Cable references` diagnostics (design 010 §8): one line per orphan, one per
+/// The debugger's `Cable references` diagnostics: one line per orphan, one per
 /// cable with more references than supported, or `No orphan references.`. Derived, never saved.
 pub fn diagnostics(doc: &Document) -> Vec<String> {
     let references = cable_references(doc);
@@ -887,7 +887,7 @@ pub fn title(doc: &Document, cable: CableId) -> String {
 /// Most wires a refusal names before `+n`.
 const MAX_NAMED: usize = 6;
 
-/// One core a slash with an existing cable's tag crosses on this page (design 072 §4.4, F5).
+/// One core a slash with an existing cable's tag crosses on this page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Continued {
     /// Where the core is: its wire, or the loose line it sits on.
@@ -896,9 +896,8 @@ pub struct Continued {
     pub core: Option<String>,
 }
 
-/// Plan `cableslash` with an existing cable's tag on `page` across `crossed` (design 072 §4.4,
-/// F5, superseding design 032 §3.3). Continuations and cable references are named points, so a
-/// core through them is one wire on every page it runs on: the slash shows `cable` where its wires
+/// Plan `cableslash` with an existing cable's tag on `page` across `crossed`. Continuations and cable references are
+/// named points, so a core through them is one wire on every page it runs on: the slash shows `cable` where its wires
 /// already run and adds no member. Each crossed core must be one of `cable`'s.
 ///
 /// # Errors
@@ -939,17 +938,17 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
     Ok(out)
 }
 
-/// Refused: a slash with `tag` on a page where none of the cable's wires runs (F5).
+/// Refused: a slash with `tag` on a page where none of the cable's wires runs.
 pub(crate) fn no_wire_here(tag: &str) -> String {
     format!(
         "{tag} has no wire on this page: a slash with its tag shows it where its wires run. Continue it here with Continue cable, or slash these wires with a new tag."
     )
 }
 
-/// 032 §3.5: what erasing cable slashes adds to a drawing edit. `erased` are the representations
+/// What erasing cable slashes adds to a drawing edit. `erased` are the representations
 /// the edit unlinks, read on the document before it. Erasing one of a cable's several slashes
 /// removes the members routed only on that slash's page; erasing its last slash keeps the cable
-/// and its members (design 004 §8).
+/// and its members.
 pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Representation)]) -> Vec<Op> {
     let gone: BTreeSet<RepresentationId> = erased.iter().map(|(id, _)| *id).collect();
     let mut by_cable: BTreeMap<CableId, BTreeSet<PageId>> = BTreeMap::new();
@@ -968,7 +967,7 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
             continue;
         }
         let only_there = |m: &ecad_model::Core| {
-            // A continued core runs on through its named points: it stays (F4).
+            // A continued core runs on through its named points: it stays.
             if !m.through.is_empty() {
                 return false;
             }
@@ -982,7 +981,7 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
     ops
 }
 
-/// The follow-ups of erasing cable references (design 072 §4.4, F4): their named points go, so
+/// The follow-ups of erasing cable references: their named points go, so
 /// each core forgets them and a line landing on one is left with a free end there.
 fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Representation)], ops: &mut Vec<Op>) {
     let removed: BTreeSet<RouteId> = erased
@@ -1028,7 +1027,7 @@ pub fn over_referenced(references: &[CableReference]) -> Vec<ecad_model::CableId
 }
 
 /// The cable references of `doc` as `cablereferences` and the snapshot's `checks.cable_references` list
-/// them (design 010 §7.4): one object per reference, in page order, then column, then ID.
+/// them: one object per reference, in page order, then column, then ID.
 pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
     Value::Array(
         references
@@ -1043,7 +1042,7 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
                     "page_title": doc.pages().get(&r.page).map(|p| p.title.to_string()).unwrap_or_default(),
                     "at": r.at.map(|p| json!([p.x, p.y])),
                     "column": r.column,
-                    // Brief 019: the frame's row and labels, and this end's own place.
+                    // The frame's row and labels, and this end's own place.
                     "row": r.row,
                     "column_label": r.column_label,
                     "row_label": r.row_label,

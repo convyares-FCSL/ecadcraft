@@ -1,4 +1,4 @@
-//! Brief 046's defaults (graphical terminal-strip pages, design 046 §7.2). Owned by lane U: append
+//! Defaults (graphical terminal-strip pages). Append
 //! `pub static` entries and list them in [`ENTRIES`].
 //!
 //! Read them through `crate::strip_page::Geometry::of` and `crate::strip_page::style_of`, not
@@ -27,8 +27,8 @@ const GROUP: &str = "Terminal strip pages";
 pub const TABLE: &str = "table";
 pub const GRAPHIC: &str = "graphic";
 
-/// `terminal_block.plan.style`: how a `connection_points` page draws, the table (028) or the strip graphic
-/// (design 046 §2). Page, then project, then `table`.
+/// `terminal_block.plan.style`: how a `connection_points` page draws, the table or the strip graphic.
+/// Page, then project, then `table`.
 pub static STYLE: Entry = Entry {
     key: "terminal_block.plan.style",
     label: "Terminal plan style",

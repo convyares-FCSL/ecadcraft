@@ -1,11 +1,11 @@
-//! The text style catalogue (`text`, design 050 §4.1).
+//! The text style catalogue (`text`).
 //!
-//! One built-in style per 031 text kind, with the kind's key word as ID, carrying exactly 031's
-//! and 040's built-in cap height and weight, so nothing on a page moves when 050a lands. Fields:
+//! One built-in style per text kind, with the kind's key word as ID, carrying the kind's
+//! built-in cap height and weight, so choosing a built-in style moves nothing on a page. Fields:
 //! `font` (`project` = the registry's `text.font`), `height` (cap height), `weight` and `colour`
-//! (046 Q8: `none` = ink; drawn on screen and in a colour print; a mono print is ink).
+//! (`none` = ink; drawn on screen and in a colour print; a mono print is ink).
 //!
-//! The wire label's height stays where 031 put it, `settings.wiring.label_height`, read as the
+//! The wire label's height stays where it always was, `settings.wiring.label_height`, read as the
 //! project field of the `wire_label` style (`project_field`).
 
 use ecad_model::geometry::units::Mm;
@@ -36,7 +36,7 @@ const fn style(id: &'static str, name: &'static str) -> Builtin {
     Builtin { id, name, slot: Slot::new() }
 }
 
-/// 031 §3.2 and 040: each kind's cap height and weight.
+/// Each kind's cap height and weight.
 static BUILTINS: [Builtin; 23] = [
     style("tag", "Tag"),
     style("point_label", "Connection point label"),
@@ -44,7 +44,6 @@ static BUILTINS: [Builtin; 23] = [
     style("part_number", "Part number"),
     style("continuation_name", "Continuation name"),
     style("reference", "Reference"),
-    // Brief 049 (design 049 §7).
     style("continuation_caption", "Continuation caption"),
     style("wire_label", "Wire label"),
     style("cable_text", "Cable text"),
@@ -60,13 +59,13 @@ static BUILTINS: [Builtin; 23] = [
     style("title_rev", "Title block revision"),
     style("table_heading", "Table heading"),
     style("cover", "Cover title"),
-    // Brief 051 (design 051 §5, FP1): the pack writes channel functions at about the tag's size
+    // The pack writes channel functions at about the tag's size
     // and addresses between pin and tag size.
     style("channel_text", "PLC channel text"),
     style("address", "PLC address"),
 ];
 
-/// The wire label style's height at project level: `settings.wiring.label_height` (031 §3.4),
+/// The wire label style's height at project level: `settings.wiring.label_height`,
 /// one value with one way to set it.
 fn project_field<'a>(doc: &'a Document, id: &StyleRef, field: &str) -> Option<Value<'a>> {
     match (id, field) {

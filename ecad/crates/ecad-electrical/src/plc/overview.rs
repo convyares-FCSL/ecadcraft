@@ -1,4 +1,4 @@
-//! The rack overview (brief 051, design 051 §3.3 and §4.2): one [`Tile`] per slot of a rack, shared
+//! The rack overview: one [`Tile`] per slot of a rack, shared
 //! by Lists ▸ PLC (screen m of the UI spec) and the generated `plcrack` sheet.
 //!
 //! # Semantics
@@ -23,14 +23,14 @@ use crate::plc::{CardData, PlcFix, RackData, kept::Plc};
 /// bounded here.
 pub const MAX_TILES: usize = 1_001;
 
-/// One channel square (design 051 §3.4).
+/// One channel square.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Square {
     /// On a net with another connection point.
     Used,
     /// No wire and no description.
     Spare,
-    /// A description and no wire yet (Q10).
+    /// A description and no wire yet.
     Reserved,
     /// A Checks row names this channel (wins over the others).
     Check,
@@ -83,14 +83,14 @@ pub struct Tile {
     pub place: Option<String>,
     /// Drawn: a card with channels has a channel cell on a page; any other tile has a drawing.
     pub drawn: bool,
-    /// Brief 056 (design 056 §3.2, §3.3): the kind words at line 1's right (`16 outputs, relay`),
+    /// The kind words at line 1's right (`16 outputs, relay`),
     /// and line 3: the card's description, else its type name (`Output card`).
     pub kind_words: String,
     pub title: String,
 }
 
 impl Tile {
-    /// `9 of 16 in use` (design 056 §3.2 line 6); empty for a tile with no channels.
+    /// `9 of 16 in use`; empty for a tile with no channels.
     pub fn in_use_words(&self) -> String {
         if self.squares.is_empty() {
             return String::new();
@@ -101,7 +101,7 @@ impl Tile {
 }
 
 impl Tile {
-    /// The element name's part for this tile (design 051 §3.8): `rack`, the slot, `free.<slot>`,
+    /// The element name's part for this tile: `rack`, the slot, `free.<slot>`,
     /// `norack.<tag>`.
     pub fn element(&self) -> String {
         match (self.kind, self.slot) {
@@ -121,7 +121,7 @@ impl Tile {
         }
     }
 
-    /// The tile's data as `plcracks` adds it to a slot (design 051 §7).
+    /// The tile's data as `plcracks` adds it to a slot.
     pub fn json(&self, doc: &Document) -> Value {
         json!({
             "pages": self.pages.iter().map(|p| crate::references::cables::page_number(doc, *p)).collect::<Vec<_>>(),
@@ -211,7 +211,7 @@ pub(crate) fn range_words(doc: &Document, plc: &Plc, card: &CardData) -> String 
         (None, None) => "\u{2014}".into(),
     }
 }
-/// A card's kind words (design 056 §3.3, design 072 §3): `16 inputs, 24 V`, `16 outputs, relay`,
+/// A card's kind words: `16 inputs, 24 V`, `16 outputs, relay`,
 /// `4 analogue in, 4–20 mA`, `CPU`, `power`, `comms, PROFINET, 2 ports`. The words after the comma
 /// are the module's signal, or a communication module's protocol and ports.
 pub fn kind_words(doc: &Document, card: &CardData) -> String {
@@ -245,7 +245,7 @@ pub fn kind_words(doc: &Document, card: &CardData) -> String {
     }
 }
 
-/// The card's type name (design 056 §3.2 line 3, when it has no description): `Output card`.
+/// The card's type name (when it has no description): `Output card`.
 pub fn type_name(t: CardType) -> &'static str {
     match t {
         CardType::Cpu => "CPU",
@@ -432,7 +432,7 @@ pub fn totals_words((n, used): (u64, u64)) -> String {
     format!("{n} {ch}, {used} in use")
 }
 
-/// One choice of Lists ▸ PLC's rack chips (design 051 §3.2).
+/// One choice of Lists ▸ PLC's rack chips.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chip {
     Rack(DeviceId, String),

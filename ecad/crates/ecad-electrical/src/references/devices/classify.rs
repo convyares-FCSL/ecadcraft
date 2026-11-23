@@ -1,17 +1,17 @@
-//! Which objects a representation belongs to and what it is in them (design 025 §3): groups, classes, devices and their drawn poles.
+//! Which objects a representation belongs to and what it is in them: groups, classes, devices and their drawn poles.
 
 use crate::symbols::{Kind, Starter, StarterKey as K};
 use ecad_model::objects::devices::PoleKind;
 use ecad_model::{CableId, DeviceId, Document, Form, PageId, Pt, Representation, RepresentationId, Subject};
 
-// ---------------------------------------------------------------- classes (design 025 §3)
+// ---------------------------------------------------------------- classes
 
 /// The objects whose representations may point at each other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Group {
     Cable(CableId),
     Device(DeviceId),
-    /// Brief 049 (FP4): the continuation arrows of one name, keyed by the lowest component ID
+    /// The continuation arrows of one name, keyed by the lowest component ID
     /// among them. Its edges are implicit: every member shows every other.
     Continuation(ecad_model::AidId),
 }
@@ -25,18 +25,18 @@ pub enum Class {
     Head,
     /// A symbol with contact poles.
     Child,
-    /// Brief 044 (design 044 §7, design 052 §3.4): a connector half's whole-half symbol. A
+    /// A connector half's whole-half symbol. A
     /// pin-only half has none.
     Half(crate::symbols::Side),
-    /// Brief 044: any other connector symbol, by the side it draws.
+    /// Any other connector symbol, by the side it draws.
     Pin(crate::symbols::Side),
-    /// Brief 049: a continuation arrow's symbol.
+    /// A continuation arrow's symbol.
     Arrow,
     /// Anything else (no edges).
     Other,
 }
 
-/// The poles a starter symbol carries (code, not format: design 025 §2).
+/// The poles a starter symbol carries (code, not format).
 pub(crate) fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
     match (s.key, s.kind) {
         (K::Power3, _) => vec![(PoleKind::No, true); 3],
@@ -79,7 +79,7 @@ pub struct DrawnPole {
 pub struct Device {
     pub component: DeviceId,
     /// Its head ([`crate::symbols::reps::head`]: the first head symbol in book order, then top-left; never
-    /// by ID or placement order, design 052 §3.4).
+    /// by ID or placement order).
     pub head: Option<RepresentationId>,
     /// Its children, in ID order.
     pub children: Vec<RepresentationId>,
@@ -87,7 +87,7 @@ pub struct Device {
     pub poles: Vec<DrawnPole>,
 }
 
-/// The anchor of a representation (design 025 §3.1): a symbol's insertion point, else the
+/// The anchor of a representation: a symbol's insertion point, else the
 /// middle of its connection points.
 pub fn anchor(doc: &Document, r: &Representation) -> Option<Pt> {
     if r.form == Form::Symbol {
@@ -125,14 +125,14 @@ pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) 
 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: DeviceId) -> Device {
-    // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
+    // The first head on a page with checks and references on.
     let head = crate::symbols::reps::heads(doc, c)
         .into_iter()
         .find(|h| doc.representations().get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
-        // Brief 054 (design 054 §3.4): a symbol on a Plain page has no references.
+        // A symbol on a Plain page has no references.
         if !ecad_model::document::sheet::page_checks(doc, r.page) {
             continue;
         }
@@ -155,17 +155,17 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
 /// The class of member `rid` of its group, as the index keeps it.
 pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)> {
     let r = doc.representations().get(&rid)?;
-    // Brief 049: a continuation arrow's symbol.
+    // A continuation arrow's symbol.
     if let Some(g) = crate::continuations::group_of_rep(doc, r) {
         return Some((g, Class::Arrow));
     }
-    // Brief 044: a connector's members.
+    // A connector's members.
     if let Subject::Device(c) = r.subject
         && crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating)
     {
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
     }
-    // Brief 054 (design 054 §3.4): a symbol on a Plain page is in no device's group.
+    // A symbol on a Plain page is in no device's group.
     if matches!(r.subject, Subject::Device(_)) && !ecad_model::document::sheet::page_checks(doc, r.page) {
         return None;
     }

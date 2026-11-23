@@ -1,12 +1,12 @@
-//! The references view (design 064 §4.1, `ReferencesView`): the kept reference index
+//! The references view (`ReferencesView`): the kept reference index
 //! ([`crate::references::devices::index::RefIndex`]), and per commit the pages whose references changed (cable
 //! references, contact texts and mirror tables, connector halves and pins, continuation arrows)
 //! and the line about references left without another end.
 //!
 //! # Update map
-//! Its scope is a [`crate::references::devices::watch::Watch`] (design 025 §6, the table in [`crate::references::devices`]). Before the
-//! commit, for the ops given to `begin`, each effect looked up on the document before them; after
-//! it, for the transaction as recorded, on the document after:
+//! Its scope is a [`crate::references::devices::watch::Watch`] (the table in [`crate::references::devices`]). Before
+//! the commit, for the ops given to `begin`, each effect looked up on the document before them; after it, for the
+//! transaction as recorded, on the document after:
 //! - The cables (before only, [`crate::references::cables::cables_touched_by`]): a reference
 //!   representation or item, a member's route, wire or connection point, a cable, a page's
 //!   number, sheet, type or book position, a page type's sheet, a frame's grid. A device, strip
@@ -15,7 +15,7 @@
 //!   a reason in [`crate::references::cables::Touch::All`] (a frame or standard, the sheet,
 //!   length unit or reference style, the project record, a drawing aid).
 //!   Their reference ends' pages when their texts changed, and the orphaned-reference line
-//!   (design 010 §4.3) for the command line.
+//!   for the command line.
 //! - The devices: items, representations, wires at their ends, connection points, a device made
 //!   or removed or its definition switched, `contacts` and `mirror`, definitions; the devices with
 //!   a member on a page whose number, sheet, type, book position, type's sheet or frame changed.
@@ -31,7 +31,7 @@
 //! - Every other effect changes nothing.
 //!
 //! What the last commit derived for its devices is kept and is the next commit's "before" (brief
-//! 025): every change of the document goes through the pipeline or a rebuild, so it is never
+//! every change of the document goes through the pipeline or a rebuild, so it is never
 //! stale; verify mode checks each reuse against a fresh derivation, and the index against a
 //! build ([`ReferencesView::check`]). Open, reload and branch switch build it whole
 //! ([`ReferencesView::build`]).

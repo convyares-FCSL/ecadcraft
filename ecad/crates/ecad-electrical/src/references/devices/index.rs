@@ -1,4 +1,4 @@
-//! The general reference index (design 025 §3.3): each member's group and class, each group's members and edges.
+//! The general reference index: each member's group and class, each group's members and edges.
 
 use crate::CmdError;
 use ecad_model::document::effect::{Effect, Effects};
@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::classify::{Class, Group, raw_class};
 
-// ---------------------------------------------------------------- the index (design 025 §3.3)
+// ---------------------------------------------------------------- the index
 
 /// The general reference index: each member's group and class, each group's members, and its
 /// edges both ways. Derived, never saved.
@@ -42,13 +42,13 @@ impl RefIndex {
         for (g, list) in groups {
             idx.insert_group(g, list);
         }
-        // Brief 044: connectors' members and edges (design 044 §7).
+        // Connectors' members and edges.
         for c in doc.devices().keys() {
             if crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
                 idx.insert_connector(doc, *c);
             }
         }
-        // Brief 049 (FP4): one group per continuation name, one pass over the name index.
+        // One group per continuation name, one pass over the name index.
         let names: BTreeSet<&str> = doc.continuation_names().map(|(k, _)| k).collect();
         for k in names {
             if let Some((g, list)) = crate::continuations::group_named(doc, k) {
@@ -58,7 +58,7 @@ impl RefIndex {
         idx
     }
 
-    /// Add connector `c`'s group (design 044 §7): its halves and pins, and their edges.
+    /// Add connector `c`'s group: its halves and pins, and their edges.
     fn insert_connector(&mut self, doc: &Document, c: DeviceId) {
         let list = crate::connectors::ref_classes(doc, c);
         if list.is_empty() {
@@ -104,7 +104,7 @@ impl RefIndex {
     /// Put group `g` back from `doc` (after [`RefIndex::remove`]): its members, classes and edges.
     /// O(group).
     fn make(&mut self, doc: &Document, g: Group) {
-        // Brief 049: a continuation group is made from its name; its key may have changed (the
+        // A continuation group is made from its name; its key may have changed (the
         // lowest arrow deleted or renamed), so it goes in under the key `doc` gives it.
         if let Group::Continuation(c) = g {
             let Some(name) = crate::continuations::name_of(doc, c) else { return };
@@ -129,7 +129,7 @@ impl RefIndex {
             Group::Device(c) => {
                 let mut head_seen = false;
                 doc.representations_of(Subject::Device(c))
-                    // Brief 054 (design 054 §3.4): no references to or from a Plain page.
+                    // No references to or from a Plain page.
                     .filter(|(_, r)| ecad_model::document::sheet::page_checks(doc, r.page))
                     .filter_map(|(id, r)| match raw_class(doc, r) {
                         Class::Head if !head_seen => {
@@ -171,7 +171,7 @@ impl RefIndex {
                     }
                 }
             }
-            // Brief 049 (FP4): implicit, never stored ([`RefIndex::targets`]).
+            // Implicit, never stored ([`RefIndex::targets`]).
             Group::Continuation(_) => {}
         }
         for (r, c) in &list {
@@ -215,7 +215,7 @@ impl RefIndex {
             Subject::Device(c) => {
                 out.insert(Group::Device(c));
             }
-            // Design 072 §6.2: a continuation's name group.
+            // A continuation's name group.
             Subject::Aid(a) => {
                 let key = doc.aids().get(&a).and_then(ecad_model::Aid::continuation_name).map(|n| ecad_model::connectivity::name_key(n.as_str()));
                 out.extend(key.filter(|k| !k.is_empty()).and_then(|k| crate::continuations::group_key(doc, &k)));
@@ -258,7 +258,7 @@ impl RefIndex {
             | Effect::Aid { .. }
             | Effect::LoosePart { .. } => {}
         }
-        // Brief 049 (design 049 §8.1): the name groups the effect names, as `doc` keys them.
+        // The name groups the effect names, as `doc` keys them.
         let mut names = BTreeSet::new();
         crate::continuations::names_named_by(doc, effect, &mut names);
         for n in names {
@@ -276,7 +276,7 @@ impl RefIndex {
         self.members.get(&g).into_iter().flatten().copied()
     }
 
-    /// The other members of `r`'s continuation group (brief 049: its implicit edges, both ways).
+    /// The other members of `r`'s continuation group (its implicit edges, both ways).
     fn implicit(&self, r: RepresentationId) -> impl Iterator<Item = RepresentationId> + '_ {
         let group = match self.member.get(&r) {
             Some((g @ Group::Continuation(_), _)) => self.members.get(g),
@@ -317,7 +317,7 @@ impl RefIndex {
         (self.member.len(), self.members.len(), self.targets.values().map(BTreeSet::len).sum::<usize>().saturating_add(implicit))
     }
 
-    /// The pages that hold a continuation arrow (brief 049: the wide case's pages).
+    /// The pages that hold a continuation arrow (the wide case's pages).
     pub(crate) fn arrow_pages(&self, doc: &Document) -> BTreeSet<PageId> {
         self.members
             .iter()

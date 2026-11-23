@@ -1,13 +1,13 @@
-//! The kinds of object a person can point at on a page (brief 041; design 065 §3, cut 13): what
+//! The kinds of object a person can point at on a page: what
 //! the wheel and the action table are keyed by. Shared by the engine's hover (`interact::kind`)
 //! and the app's action table.
 
-/// The kinds of thing a wheel is for (spec §5).
+/// The kinds of thing a wheel is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ObjectKind {
     /// A device's symbol (a tagged or untagged component, not a terminal strip).
     Device,
-    /// A drawing aid (design 072 §6.2): a continuation arrow or a location box.
+    /// A drawing aid: a continuation arrow or a location box.
     Aid,
     /// A wire, away from its ends.
     Wire,

@@ -1,13 +1,13 @@
-//! What a field shows (design 055 §7).
+//! What a field shows.
 //!
 //! | Source | Keys | Value |
 //! | --- | --- | --- |
 //! | `project` | `title`, `customer`, `drawing_number`, `status`, `company`, any key | The project property |
-//! | `page` | `title`, `number`, `next`, `total`, `function`, `location` | As 019's frame |
+//! | `page` | `title`, `number`, `next`, `total`, `function`, `location` | As in the frame |
 //! | `revision` | `rev` (with the pending marker), `date`, `description`, `drawn`, `checked`, `approved`, any revision column field | The newest issued revision |
 //! | `print` | `sheet` | The page's sheet |
 //!
-//! Each source carries its own typed key (design 072 §5.4), so every binding that reads can be
+//! Each source carries its own typed key, so every binding that reads can be
 //! filled: an unknown source or key is a read error, not a field drawn empty.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,11 +18,11 @@ use ecad_model::objects::title_block::{Binding, IfEmpty, PageField, PrintField, 
 
 use crate::pages::frames::FrameInput;
 
-/// The project keys the palette names (design 055 §4.3).
+/// The project keys the palette names.
 pub const PROJECT_KEYS: [&str; 5] = ["title", "customer", "drawing_number", "status", "company"];
-/// Longest free project key, in characters (design 055 §4.3: `a-z 0-9 _`, 1–32).
+/// Longest free project key, in characters (`a-z 0-9 _`, 1–32).
 pub const MAX_KEY_CHARS: usize = ecad_model::objects::title_block::MAX_PROJECT_KEY;
-/// The missing mark (033's `?`).
+/// The missing mark (`?`).
 pub const MISSING: &str = "?";
 
 /// Whether `key` is a project key a field may name: 1–32 characters of `a-z 0-9 _ .`.
@@ -53,7 +53,7 @@ pub fn keys(layout: &TitleBlockLayout) -> (BTreeSet<String>, BTreeSet<String>) {
 /// input: every key read is present (empty when unset), so a change to it is seen.
 pub fn read(doc: &Document, layout: &TitleBlockLayout) -> (BTreeMap<String, String>, BTreeMap<String, String>) {
     let (pk, rk) = keys(layout);
-    // Brief 052: a function or location is an entry key of the project's list, shown by its code.
+    // A function or location is an entry key of the project's list, shown by its code.
     let project = pk
         .into_iter()
         .map(|k| {

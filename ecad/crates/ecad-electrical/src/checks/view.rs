@@ -1,4 +1,4 @@
-//! The Checks list's view (design 064 §4.2, `ChecksView`): the kept [`Checks`], built on first
+//! The Checks list's view (`ChecksView`): the kept [`Checks`], built on first
 //! show and then kept from each commit's effects.
 //!
 //! # Update map
@@ -38,7 +38,7 @@ impl ChecksView {
         &self.model
     }
 
-    /// The cover's rows again (brief 054b): the cover changed, or a cover page came or went.
+    /// The cover's rows again: the cover changed, or a cover page came or went.
     pub fn set_cover(&mut self, doc: &Document) {
         self.model.set_cover(doc);
     }

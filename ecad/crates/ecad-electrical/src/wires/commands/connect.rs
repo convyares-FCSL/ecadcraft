@@ -1,4 +1,4 @@
-//! The rules of `connect` and `disconnect` (brief 004, design 072 §4.3): land a route's end on a
+//! The rules of `connect` and `disconnect`: land a route's end on a
 //! connection point (moving the route's end onto it), or let it go. Each returns the ops to
 //! commit; the commit's rewrite makes the wires follow.
 //!

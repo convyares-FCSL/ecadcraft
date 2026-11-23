@@ -1,4 +1,4 @@
-//! The report lists (brief 024, design 024 §3.5; briefs 047, 059): `bom`, `wirelist` and `cablelist`
+//! The report lists: `bom`, `wirelist` and `cablelist`
 //! read the kept report models and answer a page of rows, or write the CSV. Their parameters, the
 //! paging, each row's ids and each column's JSON key sit here; the commands are generic
 //! ([`crate::commands::run`]). Excludes the Print Book, which is the engine's.
@@ -23,7 +23,7 @@ pub fn bom_group(word: Option<&str>) -> Result<Group, CmdError> {
     }
 }
 
-/// `bom`'s `columns` for this call (brief 047, design 047 §7.4): whether the article column is
+/// `bom`'s `columns` for this call: whether the article column is
 /// shown (`None`: as the project's report settings say).
 ///
 /// # Errors
@@ -62,24 +62,24 @@ impl Paging {
 }
 
 /// The ids of each `bom` row (`group`, kits `nested`): its devices, an accessory's item and strip
-/// (brief 030, design 030 §10) and what the row counts (brief 047).
+/// and what the row counts.
 pub(crate) fn bom_ids_json(o: &ReportModels, group: Group, nested: bool) -> Vec<Value> {
     o.bom_with(group, nested)
         .iter()
         .map(|r| {
             let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
-            // Brief 030 (design 030 §10): an accessory row names its item and its strip.
+            // An accessory row names its item and its strip.
             if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
                 v["accessory"] = json!(a);
                 v["strip"] = json!(c.hex());
             }
-            // Brief 047: what the row counts.
+            // What the row counts.
             let entries: Vec<Value> = r
                 .entries
                 .iter()
                 .filter_map(|(c, n)| o.entry(*c, *n))
                 .map(|e| {
-                    // Design 072 §6.4: an item is a loose part, named by its own id.
+                    // An item is a loose part, named by its own id.
                     let mut x = match e.owner {
                         reports::Owner::Device(c) => json!({"component": c.hex(), "line": e.line}),
                         reports::Owner::Loose(l) => json!({"item": l.hex()}),
@@ -124,8 +124,8 @@ pub(crate) fn wire_ids_json(o: &ReportModels) -> Vec<Value> {
 
 /// The ids of each `cablelist` row (the cables not drawn too when `include`).
 ///
-/// Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the offer
-/// is unknown) and the devices at each end; these keys are 027's CSV columns.
+/// `used` (a count), `spare` (the spare cores, or null when the offer
+/// is unknown) and the devices at each end; these keys are the CSV columns.
 pub(crate) fn cable_ids_json(o: &ReportModels, include: bool) -> Vec<Value> {
     o.cables()
         .iter()
@@ -179,7 +179,7 @@ fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: Paging, what: &str
 /// The file a report writes.
 const CSV: Io = Io { reads: &[], writes: &["path"] };
 
-/// How `bom` lists a kit's lines (brief 047).
+/// How `bom` lists a kit's lines.
 #[derive(Deserialize, JsonSchema, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Lines {
@@ -228,7 +228,7 @@ limit?: n (500, max 5000), after?: n} (columns and lines override the project's 
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let group = bom_group(self.group.as_deref())?;
-        // Brief 047 (design 047 §7.4): the report settings for this call only.
+        // The report settings for this call only.
         let columns = bom_columns(self.columns.as_deref())?;
         let lines = self.lines.map(|l| l == Lines::Nested);
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
@@ -293,7 +293,7 @@ pub struct CablelistParams {
     /// Skip this many rows (the `next` a previous call gave).
     #[serde(default)]
     after: Option<u64>,
-    /// Also the cables not drawn (default true; brief 059).
+    /// Also the cables not drawn (default true).
     #[serde(default)]
     include_not_drawn: Option<bool>,
 }
@@ -309,7 +309,7 @@ impl Generic for CablelistParams {
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
-        // Brief 059 (design 059 §4.5, Q3): the cables not drawn are listed unless this run says not.
+        // The cables not drawn are listed unless this run says not.
         let include = self.include_not_drawn.unwrap_or(true);
         let o = cx.derived.reports(cx.doc);
         let t = o.cable_table_with(include);

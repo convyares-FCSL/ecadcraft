@@ -1,8 +1,8 @@
-//! Placing a wire on a route: tagless runs, hits and splits (§3).
+//! Placing a wire on a route: tagless runs, hits and splits.
 
 use super::*;
 
-/// A planned continuation (a drawing aid, design 072 §6.2).
+/// A planned continuation (a drawing aid).
 #[derive(Debug, Clone)]
 pub struct Tagless {
     pub ops: Vec<Op>,
@@ -133,7 +133,7 @@ pub struct Split {
     pub new_item: ItemId,
 }
 
-/// Plan splitting route `on.route` at `on.at` (design 028 §3.1, design 072 §4.3): the route keeps
+/// Plan splitting route `on.route` at `on.at`: the route keeps
 /// its first end and ends on `first` (an end and the point it is drawn to); a new route starts on
 /// `second` and keeps the old last end. Routes landing on the second part land on the new route.
 ///

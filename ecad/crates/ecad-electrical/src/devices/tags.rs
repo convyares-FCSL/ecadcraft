@@ -1,4 +1,4 @@
-//! Tag numbering and the words about a device (§2).
+//! Tag numbering and the words about a device.
 
 use super::*;
 
@@ -8,15 +8,15 @@ use super::*;
 /// Built from the ledger's log on first use and then only from transactions added since
 /// ([`TagHigh::catch_up`]), so its cost follows the change. Every tag a transaction wrote or
 /// removed counts, undone ones included, so the next automatic number is never one a device has
-/// had (owner, 2026-11-08: highest + 1, deleted tags are not reused).
+/// had (highest + 1, deleted tags are not reused).
 #[derive(Debug, Clone, Default)]
 pub struct TagHigh {
     seen: usize,
     high: BTreeMap<String, u64>,
-    /// The high-water mark at the ledger's base (a version 2 snapshot carries it, brief 021): the
+    /// The high-water mark at the ledger's base (a version 2 snapshot carries it): the
     /// history before the base is never read for it.
     base: tag::HighWater,
-    /// Provisional numbers given out since the last transaction (brief 026), so two new devices of
+    /// Provisional numbers given out since the last transaction, so two new devices of
     /// one edit never share one; cleared when a transaction is read.
     prov: BTreeMap<String, u64>,
 }
@@ -48,7 +48,7 @@ impl TagHigh {
         &self.high
     }
 
-    /// The next automatic tag for `prefix` (brief 026): provisional (`-K?3`) when the project has
+    /// The next automatic tag for `prefix`: provisional (`-K?3`) when the project has
     /// provisional tags on, else [`TagHigh::next`].
     ///
     /// # Errors
@@ -144,7 +144,7 @@ impl TagHigh {
         // Bounded: a hostile file may hold many tags above the highest the log shows.
         for n in (first..=tag::MAX_TAG_NUMBER).take(10_000) {
             let t = tag::format(&prefix, n, crate::defaults::print::tag_style(doc));
-            // Devices and cables share one namespace (brief 026).
+            // Devices and cables share one namespace.
             if !doc.tag_taken(&t) {
                 return Ok((prefix, n, t));
             }
@@ -224,7 +224,7 @@ pub fn holder_of(doc: &Document, k: &tag::Key, except: Option<DeviceId>) -> Opti
     doc.components_with(k).into_iter().find(|c| Some(*c) != except)
 }
 
-/// What holds a tag: a device or a cable (brief 026, one namespace).
+/// What holds a tag: a device or a cable (one namespace).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Holder {
     Device(DeviceId),
@@ -266,12 +266,12 @@ pub(crate) fn holder_words_of(doc: &Document, h: Holder) -> String {
     }
 }
 
-/// The prefix of new cable tags: the project's `cable_prefix`, else `W` (brief 026, design 072 F5).
+/// The prefix of new cable tags: the project's `cable_prefix`, else `W`.
 pub fn cable_prefix(doc: &Document) -> String {
     doc.settings().cable_prefix.as_ref().map_or_else(|| "W".to_string(), |p| p.to_string())
 }
 
-/// The tag a new cable gets (brief 026, design §6): `typed` as stored (normalised; `-W?` is the next
+/// The tag a new cable gets: `typed` as stored (normalised; `-W?` is the next
 /// provisional), else the next automatic one (`-W01`, or `-W?1` with provisional tags on).
 ///
 /// # Errors

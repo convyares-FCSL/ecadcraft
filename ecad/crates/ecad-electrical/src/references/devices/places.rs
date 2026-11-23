@@ -48,7 +48,7 @@ impl<'a> Places<'a> {
         self.page(page).1.clone()
     }
 
-    /// Brief 049 (design 049 §2.2): where `at` on `page` sorts, by book position, then column,
+    /// Where `at` on `page` sorts, by book position, then column,
     /// then row, and its text; `None` (shown `?`, sorted last) when it cannot be located. The book
     /// is built at most once per `Places`.
     pub fn sorted(&mut self, page: PageId, at: Option<Pt>) -> Option<((usize, u32, u32), String)> {

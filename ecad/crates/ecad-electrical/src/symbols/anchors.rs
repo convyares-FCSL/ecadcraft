@@ -1,4 +1,4 @@
-//! Text anchors of a starter (design 034 §10).
+//! Text anchors of a starter.
 
 use super::*;
 
@@ -10,9 +10,9 @@ pub enum TextRole {
     Rating,
     /// The rating of a fuse bank's fuse, by its label (`rating.<n>`).
     RatingOf(String),
-    /// Brief 045 (design 045 §7.2): a card body's caption (`-A01 slot 2`), under the body.
+    /// A card body's caption (`-A01 slot 2`), under the body.
     Caption,
-    /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description.
+    /// A channel cell's channel number, address and description.
     ChannelNo,
     Address,
     ChannelText,
@@ -34,7 +34,7 @@ pub enum VAlign {
     Top,
 }
 
-/// The first place lane T tries for one text of a symbol, in the symbol's local frame (it rotates
+/// The first place the text placement tries for one text of a symbol, in the symbol's local frame (it rotates
 /// and mirrors with the symbol); `rotation` in degrees.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Anchor {
@@ -45,12 +45,12 @@ pub struct Anchor {
     pub rotation: f64,
 }
 
-/// The gap between a symbol's box and its text, and one line's step, in millimetres (design 034
-/// §10). Geometry of the anchor rule, not a text size: lane T decides sizes.
+/// The gap between a symbol's box and its text, and one line's step, in millimetres.
+/// Geometry of the anchor rule, not a text size: the text styles decide sizes.
 const ANCHOR_GAP: f64 = 2.0;
 const ANCHOR_LINE: f64 = 4.0;
 
-/// The text anchors of `s` (design 034 §10): the default rule from its box, with the overrides of
+/// The text anchors of `s`: the default rule from its box, with the overrides of
 /// fuse banks, RCBO and RCDs, card bodies and connectors. A tagless symbol has none.
 ///
 /// # Semantics
@@ -74,12 +74,12 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             a(TextRole::Rating, lo.x - ANCHOR_GAP, mid - ANCHOR_LINE, HAlign::Right, VAlign::Top),
             a(TextRole::Description, lo.x - ANCHOR_GAP, mid - 2.0 * ANCHOR_LINE, HAlign::Right, VAlign::Top),
         ],
-        // Brief 045 (design 045 §7.1): a channel cell's texts in the cell's frame.
+        // A channel cell's texts in the cell's frame.
         K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol => {
             let h = cell_shape(s.key).map_or(5.0, |(w, _)| w / 2.0);
             vec![
                 tag,
-                // Brief 051 (design 051 §2.5): the mark band's top line, and outside the frame.
+                // The mark band's top line, and outside the frame.
                 a(TextRole::ChannelNo, -h + 1.0, CELL_TOP - HEADER_BAND - 1.0, HAlign::Left, VAlign::Top),
                 a(TextRole::Address, 0.0, CELL_TOP - HEADER_BAND - 1.0, HAlign::Centre, VAlign::Top),
                 Anchor {
@@ -92,14 +92,14 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
             ]
         }
         // Card bodies: the tag above, the description inside under the header.
-        // Brief 045 (design 045 §7.2): and the caption under the body.
+        // And the caption under the body.
         K::Plccpu | K::Plcps | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol | K::Plcim | K::Plcpm | K::Plccm => vec![
             a(TextRole::Tag, lo.x, hi.y + ANCHOR_GAP, HAlign::Left, VAlign::Bottom),
             a(TextRole::Description, -13.0, 12.0, HAlign::Left, VAlign::Top),
             rating,
             a(TextRole::Caption, lo.x, lo.y - ANCHOR_GAP, HAlign::Left, VAlign::Top),
         ],
-        // Brief 044 (design 044 §3.2): a pin shows its half's tag only, beside it.
+        // A pin shows its half's tag only, beside it.
         K::Pinpair | K::Pins | K::Pinp => vec![a(TextRole::Tag, -2.5, 0.0, HAlign::Right, VAlign::Middle)],
         K::Socket2
         | K::Socket3

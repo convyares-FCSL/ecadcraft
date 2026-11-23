@@ -59,7 +59,7 @@ impl ReportModels {
         }
     }
 
-    /// The location rows of the Checks list (design 024 §8.3).
+    /// The location rows of the Checks list.
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.box_checks.values().flatten().cloned().collect();
         out.extend(self.continuation.iter().cloned());
@@ -80,7 +80,7 @@ impl ReportModels {
             let which = if n == 1 { "1 device has no location".to_string() } else { format!("{n} devices have no location") };
             out.push(Check { kind: Kind::NoLocation, page: None, at: None, object: Object::None, which, fix: Some(Fix::ShowReports) });
         }
-        // Brief 052 (design 052 §6): `function-none`, as `location-none`.
+        // `function-none`, as `location-none`.
         let n = self.no_function;
         if n > 0 && n < self.devices.len() {
             let which = if n == 1 { "1 device has no function".to_string() } else { format!("{n} devices have no function") };
@@ -91,11 +91,11 @@ impl ReportModels {
         out
     }
 
-    /// The Checks rows of brief 028 (design 028 §8), from the kept strip and cable rows.
+    /// The Checks rows, from the kept strip and cable rows.
     pub fn strip_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         for s in self.strips.strips.values() {
-            // Brief 036 (§7.1): per type; with no type codes, 028's row for the whole strip.
+            // Per type; with no type codes, the row for the whole strip.
             for (tc, offered) in s.over_offer() {
                 let legacy = s.offer.is_some_and(|o| o.counts.iter().skip(2).all(|n| *n == 0)) && s.types.iter().all(|t| t.ty.legacy());
                 let hi = if legacy { s.highest() } else { s.highest_of(tc.ty) };
@@ -116,7 +116,7 @@ impl ReportModels {
             for (label, t) in &s.twice {
                 let row = s.row_of(*t);
                 let go = row.and_then(|r| r.go);
-                // Brief 036: a level of a multi-level position drawn twice goes to the next free one.
+                // A level of a multi-level position drawn twice goes to the next free one.
                 let multi = row.is_some_and(|r| r.ty.multi() || r.ty.breaks);
                 out.push(Check {
                     kind: if multi { Kind::LevelTwice } else { Kind::TerminalBlockTwice },
@@ -163,7 +163,7 @@ impl ReportModels {
             }
             out.extend(accessory_checks(s));
         }
-        // Brief 036 (§8): fuse terminals that are devices of their own, and fuse positions with no
+        // Fuse terminals that are devices of their own, and fuse positions with no
         // rating: one Info row each.
         let fuses = self.strips.fuse_devices.len();
         if fuses > 0 {
@@ -200,7 +200,7 @@ impl ReportModels {
         for r in self.cables.values() {
             let tag = r.tag.clone().unwrap_or_else(|| "?".into());
             let Some(offer) = &r.count.offer else {
-                // Brief 059 (design 059 §6): `cable-not-drawn` covers a cable not drawn yet.
+                // `cable-not-drawn` covers a cable not drawn yet.
                 unknown += usize::from(r.drawn);
                 for i in &r.count.twice {
                     out.push(self.core_twice(r, &tag, *i));
@@ -249,7 +249,7 @@ impl ReportModels {
         }
     }
 
-    /// Brief 047 (design 047 §9): the BOM rows of the Checks list, from the kept counts and sets.
+    /// The BOM rows of the Checks list, from the kept counts and sets.
     pub fn bom_checks(&self) -> Vec<Check> {
         let mut out = Vec::new();
         let n = self.items_no_part;
@@ -314,13 +314,13 @@ impl ReportModels {
         out
     }
 
-    /// Uncovered fuses, counted only once the project lists any fuse insert (design 047 §9, Q11).
+    /// Uncovered fuses, counted only once the project lists any fuse insert.
     pub(super) fn fuse_gap_count(&self) -> usize {
         if self.inserts.is_empty() { 0 } else { self.fuse_gaps.values().sum() }
     }
 
     /// The check rows by severity: (errors, warnings, info), as [`ReportModels::checks`] would give
-    /// them. O(1): kept by every change (brief 027's badge).
+    /// them. O(1): kept by every change (the badge).
     pub fn check_counts(&self) -> (usize, usize, usize) {
         let info = self.box_counts[1]
             + usize::from(self.strips.acc_no_part > 0)
@@ -331,7 +331,7 @@ impl ReportModels {
             + usize::from(self.no_location > 0 && self.no_location < self.devices.len())
             + usize::from(self.no_function > 0 && self.no_function < self.devices.len())
             + usize::from(self.cable_checks[2] > 0);
-        // Brief 028: the strips' and cables' rows, kept with them.
+        // The strips' and cables' rows, kept with them.
         let warnings = self.box_counts[0]
             + self.strips.check_warnings
             + self.cable_checks[0]

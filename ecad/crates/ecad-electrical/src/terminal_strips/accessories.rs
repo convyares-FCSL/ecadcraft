@@ -1,17 +1,17 @@
-//! Terminal strip accessories and jumper bars (brief 030, design 030 §2, §4, §5, §7): end stops, end
+//! Terminal strip accessories and jumper bars: end stops, end
 //! plates, partitions, strip labels and markers placed by the user, jumper bars (jumpers) owned by the
-//! strip, and their part data. Everything is an ordinary property (FP1–FP3, FP5, FP6); this
+//! strip, and their part data. Everything is an ordinary property; this
 //! module reads and checks them and derives a strip's places, jumper bars, BOM rows and checks.
 //!
 //! # Semantics
-//! - Places (FP1): `acc.start`, `acc.end`, `acc.after.<label>` hold gap items (`end_stop`,
+//! - Places: `acc.start`, `acc.end`, `acc.after.<label>` hold gap items (`end_stop`,
 //!   `end_plate`, `partition`, `strip_label`), `acc.on.<label>` holds `marker`; a comma list,
 //!   stored canonical (`end_plate,end_stop`), at most [`MAX_ITEMS`]. Nothing is placed by a rule.
-//! - Part data (FP2, FP3, FP6): the strip's `<item>.<field>` first, then the project's
+//! - Part data: the strip's `<item>.<field>` first, then the project's
 //!   `strip_<item>_<field>` ([`project_key`]), then unknown.
-//! - Jumper bars (FP5): `jumper_bar.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per jumper bar `ceil(span / bar)`, bar from
-//!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
-//! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
+//! - Jumper bars: `jumper_bar.<n>` ([`ecad_model::connectivity::jumper_bars`]); bars per jumper bar
+//!   `ceil(span / bar)`, bar from `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
+//! - Nothing here refuses because of a check; orphans and crossings are Checks rows.
 //!
 //! This module excludes drawing (`jumper_bar_lines`) and commands (`ecad_engine::terminal_strips::commands`).
 
@@ -41,9 +41,9 @@ pub(crate) const BAR_KEY: &str = "jumper.bar";
 pub(crate) const MIN_BAR: u32 = 2;
 pub(crate) const MAX_BAR: u32 = 50;
 pub(crate) const DEFAULT_BAR: usize = 10;
-/// The items with part data (FP2, FP6).
+/// The items with part data.
 pub const PART_ITEMS: [&str; 7] = ["end_stop", "end_plate", "end_plate_pe", "partition", "marker", "strip_label", "jumper"];
-/// A part's fields (brief 047, design 047 §5: and its article number).
+/// A part's fields, and its article number.
 pub const FIELDS: [&str; 4] = ["part_number", "maker", "description", crate::reports::bom::ARTICLE_KEY];
 
 /// An accessory placed on a strip.
@@ -82,7 +82,7 @@ impl Acc {
         }
     }
 
-    /// The BOM description when none is given (§4).
+    /// The BOM description when none is given.
     pub fn description(self) -> &'static str {
         match self {
             Acc::EndStop => "End stop",
@@ -93,7 +93,7 @@ impl Acc {
         }
     }
 
-    /// The mark in a plan's Terminal cell (design 030 §7.3, as text).
+    /// The mark in a plan's Terminal cell (as text).
     pub fn mark(self) -> &'static str {
         match self {
             Acc::EndStop => "\u{2016}",
@@ -232,13 +232,13 @@ pub fn acc_value(spot: &Spot, value: Option<&str>) -> Result<Option<String>, Cmd
     Ok((!items.is_empty()).then(|| items_text(&items)))
 }
 
-/// The project key standing for a strip key (FP3): `end_stop.part_number` →
+/// The project key standing for a strip key: `end_stop.part_number` →
 /// `strip_end_stop_part_number`.
 pub fn project_key(strip_key: &str) -> String {
     format!("strip_{}", strip_key.replace('.', "_"))
 }
 
-/// Every strip part key (FP2, FP6), in table order.
+/// Every strip part key, in table order.
 pub fn part_keys() -> Vec<String> {
     let mut v: Vec<String> = PART_ITEMS.iter().flat_map(|i| FIELDS.iter().map(move |f| format!("{i}.{f}"))).collect();
     v.push(PER_CARD_KEY.into());
@@ -255,7 +255,7 @@ pub(crate) fn is_part_key(key: &str) -> bool {
 }
 
 /// Whether a strip part key is an article number (`end_stop.article_number`,
-/// `jumper_bar.3.article_number`): checked as 047's article numbers are.
+/// `jumper_bar.3.article_number`): checked as article numbers are.
 fn is_article_key(key: &str) -> bool {
     key.rsplit_once('.').is_some_and(|(_, f)| f == crate::reports::bom::ARTICLE_KEY)
 }
@@ -296,9 +296,9 @@ pub fn part_value(doc: &Document, strip_key: &str, value: Option<&str>) -> Resul
     }
 }
 
-/// The rule for a project property `strip_*` (FP3, FP6): `None` when `key` is not one.
+/// The rule for a project property `strip_*`: `None` when `key` is not one.
 pub(crate) fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    // Brief 047 (design 047 §5): a terminal type's article number, checked as every other.
+    // A terminal type's article number, checked as every other.
     if is_type_article_project_key(key) {
         return Some(crate::reports::bom::article_value(value));
     }
@@ -306,8 +306,8 @@ pub(crate) fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Op
     Some(part_value(doc, &sk, value))
 }
 
-/// Whether `key` is a strip's own terminal type article number, `article_number.<code>` (design
-/// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::reports::bom::setprop_rule`]).
+/// Whether `key` is a strip's own terminal type article number, `article_number.<code>`.
+/// Feed-through's `article_number` is the BOM's own key, checked by [`crate::reports::bom::setprop_rule`]).
 fn is_type_article_key(key: &str) -> bool {
     key.strip_prefix(crate::reports::bom::ARTICLE_KEY)
         .and_then(|r| r.strip_prefix('.'))
@@ -350,7 +350,7 @@ pub(crate) fn jumper_bar_value(doc: &Document, c: DeviceId, value: Option<&str>)
 /// # Errors
 /// Fewer than 2 positions.
 pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdError> {
-    // Brief 036: a cross-level jumper bar joins levels of one position (`1.1-1.3`).
+    // A cross-level jumper bar joins levels of one position (`1.1-1.3`).
     if p.crosses_levels() {
         return Ok(p.text());
     }
@@ -359,7 +359,7 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
     if sel.len() + missing.len() < 2 {
         return Err(CmdError::refused("A jumper bar joins at least 2 positions. Write positions like 1-4 or 7, 9, 11."));
     }
-    // Brief 036: a jumper bar on one level keeps its level (`1.2-8.2`); a cross-level jumper bar, or one
+    // A jumper bar on one level keeps its level (`1.2-8.2`); a cross-level jumper bar, or one
     // whose items name different levels, stays as written.
     Ok(match (missing.is_empty(), p.crosses_levels(), p.level(), p.point()) {
         (true, false, Some(n), Some(pt)) => crate::terminal_strips::terminal_blocks::jumper_bar_text(&sel, order, n, pt),
@@ -367,7 +367,7 @@ pub fn jumper_bar_text(p: &Positions, order: &[String]) -> Result<String, CmdErr
     })
 }
 
-/// A jumper bar value without the items written as `drop` (brief 036: **Drop missing levels**); empty
+/// A jumper bar value without the items written as `drop` (**Drop missing levels**); empty
 /// when nothing is left.
 pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
     let Ok(p) = jumper_bars::parse(text) else { return text.to_string() };
@@ -382,7 +382,7 @@ pub(crate) fn drop_items(text: &str, drop: &[String]) -> String {
     kept.join(", ")
 }
 
-/// The `setprop` rule for strip keys (FP1, FP2, FP5, FP6): `Ok(None)` when `key` is not one of
+/// The `setprop` rule for strip keys: `Ok(None)` when `key` is not one of
 /// them (or a part key on another device, which stays free text), else the value to store.
 ///
 /// # Errors
@@ -407,7 +407,7 @@ pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option
         if !strip {
             return Err(not_strip());
         }
-        // Brief 036 (§5.1): level names typed (`1.N-3.N`) are stored as numbers.
+        // Level names typed (`1.N-3.N`) are stored as numbers.
         let named = value.map(|v| crate::terminal_strips::terminal_blocks::jumper_bar_names_to_numbers(doc, c, v));
         return jumper_bar_value(doc, c, named.as_deref()).map(Some);
     }
@@ -435,7 +435,7 @@ pub(crate) fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option
     Ok(None)
 }
 
-// ---------------------------------------------------------------- derived (§7, §11)
+// ---------------------------------------------------------------- derived
 
 /// One jumper bar of a strip, resolved against its positions.
 #[derive(Debug, Clone, PartialEq)]
@@ -454,15 +454,15 @@ pub struct JumperBarInfo {
     pub part_number: Option<String>,
     pub maker: Option<String>,
     pub description: Option<String>,
-    /// Brief 047 (design 047 §5): from the level its part number came from.
+    /// From the level its part number came from.
     pub article_number: Option<String>,
     /// Labels it names that the strip does not have (`jumper-bar-orphan`).
     pub missing: Vec<String>,
     /// Partitions inside its span, by the label they follow (`jumper-bar-across-partition`).
     pub crosses: Vec<String>,
-    /// Brief 036: the level it runs on (`None` for a cross-level jumper bar).
+    /// The level it runs on (`None` for a cross-level jumper bar).
     pub level: Option<u32>,
-    /// Brief 036: a cross-level jumper bar's levels (one position, `1.1-1.3`).
+    /// A cross-level jumper bar's levels (one position, `1.1-1.3`).
     pub cross: Option<(u32, u32)>,
 }
 
@@ -491,12 +491,11 @@ pub struct AccBom {
     pub description: String,
     pub part_number: Option<String>,
     pub maker: Option<String>,
-    /// Brief 047 (design 047 §5).
     pub article_number: Option<String>,
     pub qty: usize,
 }
 
-/// A strip's accessories and jumper bars (design 030 §7, §11.1).
+/// A strip's accessories and jumper bars.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StripAcc {
     pub start: Vec<Acc>,
@@ -518,7 +517,7 @@ pub struct StripAcc {
     /// The part number each placed gap item shows (`end_plate_pe` when an end plate follows a PE
     /// position and that part is known).
     pub parts: BTreeMap<&'static str, String>,
-    /// The maker each placed gap item shows (review of PR #57, 5).
+    /// The maker each placed gap item shows.
     pub makers: BTreeMap<&'static str, String>,
 }
 
@@ -608,7 +607,7 @@ impl Parts<'_> {
         let own_part = self.own(&format!("{item}.part_number")).is_some();
         let pn = self.get(&format!("{item}.part_number"));
         let article_key = format!("{item}.{}", crate::reports::bom::ARTICLE_KEY);
-        // Brief 047 (design 047 §5): the article number comes from the level the part number came
+        // The article number comes from the level the part number came
         // from, so a strip's own part never shows the project's article number.
         let article = if own_part || pn.is_none() { self.own(&article_key) } else { self.get(&article_key) };
         (pn, self.get(&format!("{item}.maker")), self.get(&format!("{item}.description")), article)
@@ -618,7 +617,7 @@ impl Parts<'_> {
 /// A strip's accessories on `doc`, from its properties and its plan rows (label order).
 pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripAcc {
     let mut a = StripAcc::default();
-    // Brief 036: one entry per position (rows are levels; plan order).
+    // One entry per position (rows are levels; plan order).
     let mut order: Vec<String> = Vec::with_capacity(rows.len());
     for r in rows {
         if order.last() != Some(&r.label) {
@@ -684,7 +683,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
     let mut infos: Vec<JumperBarInfo> = Vec::new();
     let keys: Vec<Vec<(u8, u128, String)>> = if found.is_empty() { Vec::new() } else { order.iter().map(|l| jumper_bars::natural_key(l)).collect() };
     for (n, p, text) in found {
-        // Brief 036: a jumper bar runs on one level (positions without it are skipped); a cross-level
+        // A jumper bar runs on one level (positions without it are skipped); a cross-level
         // jumper bar joins levels of one position and is one bridge.
         let cross = p.spans().into_iter().find_map(|sp| match sp {
             jumper_bars::Span::Levels { lo, hi, .. } => Some((lo, hi)),
@@ -737,7 +736,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             cross,
         });
     }
-    // Lanes: greedy by first position, then jumper bar number (stable); per level (brief 036: jumper bars on
+    // Lanes: greedy by first position, then jumper bar number (stable); per level (jumper bars on
     // different levels run through different symbols), cross-level jumper bars in lane 0.
     let mut by_first: Vec<usize> = (0..infos.len()).collect();
     by_first.sort_by_key(|i| infos.get(*i).map(|l| (l.level, l.first, l.n)));
@@ -765,7 +764,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
         }
     }
     a.jumper_bars = infos;
-    // BOM rows: per accessory part, only what is placed (§7.4).
+    // BOM rows: per accessory part, only what is placed.
     let pe_at = |label: Option<&str>| label.and_then(|l| last_row.get(l)).is_some_and(|r| r.pe);
     let mut plates: [usize; 2] = [0, 0];
     let mut count_plates = |items: &[Acc], pe: bool| {
@@ -816,7 +815,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             push(&mut bom, &mut no_part, acc.key(), n, p, acc.description());
         }
     }
-    // Brief 036 (Q10): one marker per level of a marked position.
+    // One marker per level of a marked position.
     let markers: usize = a.markers.iter().map(|l| levels_at.get(l.as_str()).map_or(1, BTreeSet::len)).sum();
     if markers > 0 {
         let p = parts.part("marker");
@@ -834,7 +833,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
             }
         }
     }
-    // Jumper bars, summed per part (§5.6).
+    // Jumper bars, summed per part.
     let mut jumpers: Vec<AccBom> = Vec::new();
     for l in &a.jumper_bars {
         if l.bars == 0 {
@@ -862,7 +861,7 @@ pub(crate) fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) ->
     a
 }
 
-// ---------------------------------------------------------------- renumbering (§6, FP4, FP7)
+// ---------------------------------------------------------------- renumbering
 
 /// The ops that keep a strip's accessories and jumper bars on their terminals when `ops` (a renumber
 /// plan: `RemoveConnectionPoint` + `AddConnectionPoint` of one ID) relabel them, and the preview lines
@@ -942,7 +941,7 @@ fn renumber_strip(
             ));
         }
         // Two places landing on one key (a terminal moved onto a spare position that already
-        // had items) merge, never lose items (review of PR #57, 1).
+        // had items) merge, never lose items.
         match now.get(&nk).cloned() {
             Some(prev) => {
                 let on = nk.starts_with(ON_PREFIX);
@@ -962,7 +961,7 @@ fn renumber_strip(
             }
         }
     }
-    // Brief 036 (FP7): a level's own label moves with its position. The rest of the
+    // A level's own label moves with its position. The rest of the
     // position-keyed list (`acc.*` above, with its merge rule).
     for prefix in crate::terminal_strips::terminal_blocks::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
         for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
@@ -984,7 +983,7 @@ fn renumber_strip(
             now.insert(nk, v.clone());
         }
     }
-    // Design 072 §2.5: a fuse position's rating (the strip's field) moves with its position; one
+    // A fuse position's rating (the strip's field) moves with its position; one
     // `ModifyDevice` on the strip as the plan leaves it, before its property ops.
     if let Some(d) = base.filter(|d| crate::terminal_strips::terminal_blocks::fuses_move(d, map)) {
         let (after, moves) = crate::terminal_strips::terminal_blocks::moved_fuses(d, map);
@@ -1004,7 +1003,7 @@ fn renumber_strip(
     let mut new_order: Vec<String> = old_order.iter().map(|l| moved(l)).collect();
     new_order.sort_by_key(|l| jumper_bars::natural_key(l));
     new_order.dedup();
-    // Spare positions a relabelled terminal now takes (review of PR #57, 1): a jumper bar naming
+    // Spare positions a relabelled terminal now takes: a jumper bar naming
     // one would silently join that terminal's net, so the position leaves the jumper bar.
     let drawn_before: BTreeSet<String> = crate::terminal_strips::drawn_connection_points(doc, c)
         .into_iter()
@@ -1014,7 +1013,7 @@ fn renumber_strip(
     for (n, p) in jumper_bars::of(props) {
         let key = jumper_bars::key(n);
         let Some(before) = props.get(&key).cloned() else { continue };
-        // Brief 036 (review 036, 1): a jumper bar that is not on one level and one point (a
+        // A jumper bar that is not on one level and one point (a
         // cross-level jumper bar, items on different levels or points) is rewritten span by span,
         // each on its own level and point, both ends of each range kept.
         let (Some(level), Some(point), false) = (p.level(), p.point(), p.crosses_levels()) else {

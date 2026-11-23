@@ -1,12 +1,12 @@
-//! The connector index view (design 064 §4.1, `ConnectorsView`): the kept
+//! The connector index view (`ConnectorsView`): the kept
 //! [`crate::connectors::Index`] (which connectors each page shows, and which inherit each naming
 //! key from the project), and the pages a project naming or description default redraws.
 //!
 //! # No update map
-//! A full build takes 0.4 ms on the large project (end-gate review, 2026-11-21), under the ~5 ms
+//! A full build takes 0.4 ms on the large project, under the ~5 ms
 //! bar, so the index is built again from scratch after every commit. Its note only collects the
-//! project `connector.` naming and description keys written, whose inheritors' pages redraw
-//! (design 044 §11.1), worked out on the rebuilt index.
+//! project `connector.` naming and description keys written, whose inheritors' pages redraw,
+//! worked out on the rebuilt index.
 
 use std::collections::BTreeSet;
 
@@ -51,7 +51,7 @@ impl ConnectorsView {
     }
 }
 
-/// Whether `key` is a project key whose inheritors' pages redraw (design 044 §11.1).
+/// Whether `key` is a project key whose inheritors' pages redraw.
 fn redraws_inheritors(key: ecad_model::document::effect::Key<'_>) -> bool {
     key.area == ecad_model::naming::keys::Area::Connector
         && (crate::defaults::connectors::is_naming_key(key.raw) || key.raw.ends_with(".description"))

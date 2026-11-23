@@ -1,4 +1,4 @@
-//! The contact grammar and ordering rules of device references (design 025 §2, FP1, FP2).
+//! The contact grammar and ordering rules of device references.
 
 use ecad_electrical::references::devices::parse::{Placement, parse_mirror, parse_offer, table_of_typed};
 use ecad_electrical::references::devices::read::table_text_key;

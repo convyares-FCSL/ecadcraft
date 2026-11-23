@@ -1,11 +1,11 @@
-//! A subject's results as Checks rows (design 057 §7).
+//! A subject's results as Checks rows.
 
 use super::kept::*;
 use super::*;
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 
-/// Whether `k` is one of lane 057's kinds.
+/// Whether `k` is one of the rated kinds.
 pub(crate) fn is_rating_kind(k: CheckKind) -> bool {
     matches!(
         k,
@@ -44,7 +44,7 @@ pub(super) fn place(doc: &Document, s: RatedSubject) -> (Option<ecad_model::Page
     }
 }
 
-/// A subject's own rows (design 057 §7); the count kinds are left to [`summary_rows`].
+/// A subject's own rows; the count kinds are left to [`summary_rows`].
 pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
     let s = r.subject;
     let (page, at, object) = place(doc, s);
@@ -117,7 +117,7 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                 let used = i_n.map(|x| format!("; {} A ({a}) used", crate::devices::ratings::dataset::fmt_num(x))).unwrap_or_default();
                 row(CheckKind::RatingTwoDevices, format!("{who} is fed by {a} and {b}{used}"), None);
             }
-            // F6 (§4.2 step 3): the bound, said in words.
+            // F6: the bound, said in words.
             Issue::NoDevice(true) => {
                 row(CheckKind::RatingNoDevice, format!("{who}: trace stopped after {} nets; set Protected by", trace::MAX_TRACE_NETS), show)
             }
@@ -148,7 +148,7 @@ pub(super) fn plural(n: usize, one: &str, many: &str) -> String {
     if n == 1 { format!("1 {one}") } else { format!("{n} {many}") }
 }
 
-/// The project-wide rows (design 057 §7): the count kinds, each unread device once, and the
+/// The project-wide rows: the count kinds, each unread device once, and the
 /// rating table's own rows. Built from [`Kept`]'s tallies; nothing is rescanned.
 pub(crate) fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     let t = k.tally_now();
@@ -169,7 +169,7 @@ pub(crate) fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
             Some(Fix::ShowRatedWires),
         );
     }
-    // §7, check 13: rated subjects lacking a value, and protected wires with no rating data.
+    // Rated subjects lacking a value, and protected wires with no rating data.
     let no_data = t.no_data + k.unrated();
     if no_data > 0 {
         row(
@@ -202,7 +202,7 @@ pub(crate) fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
         });
     }
     for (c, loc, v) in k.bad_boxes() {
-        // Brief 052: the box stores an entry key; the row names the entry's code.
+        // The box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
         let (page, at) =
             ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));

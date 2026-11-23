@@ -1,4 +1,4 @@
-//! The pre-release check plan (brief 027, design 027; moved out of the engine by brief 074): the
+//! The pre-release check plan: the
 //! check's groups ([`GROUPS`]) and counts, `checks.csv`, the file stem and folder names, and the
 //! words of the refusals and stops a release gives, and the generated lists of the folder
 //! ([`LISTS`]).
@@ -27,7 +27,7 @@ pub(crate) const MAX_STEM: usize = 80;
 pub const DEFAULT_ROWS: usize = 50;
 pub const MAX_ROWS: usize = 2000;
 
-/// Said by 028's slots for a project with no strips or no cables (design 027 §7.2, Q7).
+/// Said by the slots for a project with no strips or no cables.
 pub const NO_STRIPS: &str = "No terminal strips in this project.";
 pub(crate) const NO_CABLES: &str = "No cables in this project.";
 /// Said for a project that was never saved.
@@ -72,7 +72,7 @@ impl Group {
     }
 }
 
-/// Which kinds each group shows (by their JSON names, so 026's kinds are placed before they
+/// Which kinds each group shows (by their JSON names, so the numbering kinds are placed before they
 /// exist). Errors take every error-severity kind; a kind in no row is in [`Group::Other`].
 pub const GROUPS: &[(Group, &[&str])] = &[
     (Group::OpenEnds, &["open-end", "loose-wire", "no-wire-yet", "drawn-away", "looks-connected", "unconnected"]),
@@ -100,7 +100,7 @@ pub fn grouped(rows: &[Check]) -> BTreeMap<Group, Vec<&Check>> {
 }
 
 /// Counts by severity in the release check: (errors, warnings, info). A cable not drawn yet counts
-/// as a warning here (brief 059, Q2).
+/// as a warning here.
 pub fn counts(rows: &[Check]) -> (usize, usize, usize) {
     rows.iter().fold((0, 0, 0), |(e, w, i), c| match c.release_severity() {
         Severity::Error => (e + 1, w, i),
@@ -122,7 +122,7 @@ pub fn folder_name(rev: &str) -> String {
     format!("Rev {rev}")
 }
 
-/// `checks.csv` (design 027 §7.2): `Severity, Group, Kind, Where, What, Accepted`.
+/// `checks.csv`: `Severity, Group, Kind, Where, What, Accepted`.
 pub fn checks_table(doc: &Document, rows: &[Check], accepted: bool) -> Table {
     let cell = |t: &str| Cell { text: t.to_string(), flag: None };
     let mut out: Vec<(Group, Vec<Cell>)> = rows
@@ -137,12 +137,12 @@ pub fn checks_table(doc: &Document, rows: &[Check], accepted: bool) -> Table {
     Table { headers: vec!["Severity", "Group", "Kind", "Where", "What", "Accepted"], rows: out.into_iter().map(|(_, r)| r).collect() }
 }
 
-/// Whether `params` choose 026's Finalise numbering.
+/// Whether `params` choose the Finalise numbering.
 pub fn finalising(params: &Value) -> bool {
     params.get("provisional").and_then(Value::as_str).is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"))
 }
 
-/// The refusal for errors in `rows` without `accept: "errors"` (design 027 §4.3), placed in `doc`.
+/// The refusal for errors in `rows` without `accept: "errors"`, placed in `doc`.
 pub fn errors_refusal(doc: &Document, rows: &[Check]) -> Option<String> {
     let (errors, _, _) = counts(rows);
     if errors == 0 {
@@ -178,7 +178,7 @@ pub fn provisional_count(rows: &[Check]) -> usize {
 }
 
 /// `Nothing has changed since Rev A.` when every step after the last issue up to `head` only
-/// edited revision fields (design 027 §6, Q11): a warning, never a refusal. `tx` reads a step of
+/// edited revision fields: a warning, never a refusal. `tx` reads a step of
 /// the ledger; it stops at the first other step.
 pub fn unchanged_since<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option<&'a Transaction>) -> Option<ecad_model::Rev> {
     let last = crate::releases::revisions::issued(doc).into_iter().next()?;
@@ -208,7 +208,7 @@ pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option
     Some(format!("Nothing has changed since Rev {}.", doc.project().rev_scheme.show(rev)))
 }
 
-// ---------------------------------------------------------------- slots (design 027 §7.2)
+// ---------------------------------------------------------------- slots
 
 /// A generated list of the folder.
 pub struct Slot {
@@ -229,11 +229,11 @@ fn wires(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> 
 fn cables(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     Some(o.cable_table())
 }
-/// Brief 028's terminal plan, when the project has strips.
+/// Terminal plan, when the project has strips.
 fn terminal_block_plan(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     (!o.strips.is_empty()).then(|| o.terminal_block_plan_csv())
 }
-/// Brief 028's cable schedule, when the project has cables.
+/// Cable schedule, when the project has cables.
 fn cable_schedule(_: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     (o.cable_count() > 0).then(|| o.cable_schedule_csv())
 }
@@ -245,24 +245,24 @@ pub const LISTS: [Slot; 7] = [
     Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
     Slot { id: "terminal-block-plan", suffix: " terminal plan.csv", build: terminal_block_plan, missing_why: NO_STRIPS },
     Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
-    // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
-    // Brief 051 (design 051 §4.2): the rack overview, before the I/O list in the book.
+    // ` IO list.csv` (a `/` cannot be in a file name).
+    // The rack overview, before the I/O list in the book.
     Slot { id: "plc-racks", suffix: " PLC racks.csv", build: plc_racks, missing_why: crate::plc::sheets::NO_RACKS },
     Slot { id: "io-list", suffix: " IO list.csv", build: io_list, missing_why: crate::plc::iolist::NO_CARDS },
 ];
 
-/// Brief 051's PLC racks list, when the project has a rack or a card.
+/// PLC racks list, when the project has a rack or a card.
 fn plc_racks(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     crate::plc::sheets::rack_csv(doc, &o.plc)
 }
 
-/// Brief 045's I/O list, when the project has a card with channels.
+/// I/O list, when the project has a card with channels.
 fn io_list(doc: &Document, o: &crate::reports::kept::ReportModels) -> Option<Table> {
     crate::plc::iolist::csv_table(doc, &o.plc)
 }
 
 /// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
-/// brief 028's lists only when the project has strips or cables.
+/// Lists only when the project has strips or cables.
 pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
     match slot.id {
         "terminal-block-plan" => doc.devices().keys().any(|c| crate::terminal_strips::strip_of(doc, *c).is_some()),

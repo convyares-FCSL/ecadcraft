@@ -1,4 +1,4 @@
-//! Style catalogues (brief 050a, design 050 §2 and §4): named styles that objects refer to by a
+//! Style catalogues named styles that objects refer to by a
 //! stable ID, so changing a style changes every object that uses it.
 //!
 //! # Semantics
@@ -15,7 +15,7 @@
 //! - Bounds (`ecad_model::objects::styles::MAX_*`): records past them are kept, ignored here and reported
 //!   by Checks.
 //!
-//! # Update map (design 050 §10)
+//! # Update map
 //! [`pages_touched`] says which pages an op changes the look of: a style change marks the pages
 //! of its explicit users (through the document's style-choice index) and, when the project's
 //! choice resolves to it, every page. Nothing here rescans the project on an ordinary commit;
@@ -50,10 +50,10 @@ pub struct Field {
     /// Words for tables and messages: `Cap height`.
     pub label: &'static str,
     pub kind: Kind,
-    /// The value when no level sets one (step 5 of design 050 §2.4), read from the data files'
-    /// `[fields.<catalogue>]` on first use ([`Field::builtin`], brief 066).
+    /// The value when no level sets one, read from the data files'
+    /// `[fields.<catalogue>]` on first use ([`Field::builtin`]).
     pub slot: Slot<Value<'static>>,
-    /// The object property that overrides it (050b: a conductor's own `colour`), if any.
+    /// The object property that overrides it (a conductor's own `colour`), if any.
     pub over: Option<&'static str>,
 }
 
@@ -63,7 +63,7 @@ pub struct Builtin {
     pub id: &'static str,
     pub name: &'static str,
     /// The field values it sets, read from the data files' `[styles.<catalogue>.<id>]` on first
-    /// use ([`Builtin::values`], brief 066).
+    /// use ([`Builtin::values`]).
     pub slot: Slot<Vec<(&'static str, Value<'static>)>>,
 }
 
@@ -80,7 +80,7 @@ impl Builtin {
 }
 
 impl Field {
-    /// The field's built-in value, from the data (brief 066): read once, then a field read. A
+    /// The field's built-in value, from the data: read once, then a field read. A
     /// missing or damaged one gives the kind's safe value, never a crash.
     pub fn builtin(&self) -> Value<'static> {
         *self.slot.get_or_init(|| defaults::data::field_builtin(self))
@@ -88,7 +88,7 @@ impl Field {
 }
 
 /// A project-level value read from somewhere other than the style record (the wire label height
-/// in `settings.wiring`, design 050 §4.1): `(doc, style, field)` → the value, or `None`.
+/// in `settings.wiring`): `(doc, style, field)` → the value, or `None`.
 pub type ProjectField = for<'a> fn(&'a Document, &StyleRef, &str) -> Option<Value<'a>>;
 
 /// One kind of style.
@@ -123,7 +123,7 @@ impl Catalogue {
     }
 }
 
-/// Every catalogue: one line each (a later catalogue, 050b's `wire`, 2.6, 2.7, adds a line).
+/// Every catalogue: one line each (a new catalogue adds a line).
 #[rustfmt::skip]
 pub static CATALOGUES: &[&Catalogue] = &[
     &text::CATALOGUE,
@@ -202,7 +202,7 @@ pub fn exists(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> bool 
         || record(doc, StyleLayer::Standard, catalogue, id).is_some()
 }
 
-/// The value of field `f` of style `id` (design 050 §2.4): `over`'s property when the field names
+/// The value of field `f` of style `id`: `over`'s property when the field names
 /// one, the project's record, the standard's, the built-in style's, the field's built-in. Never
 /// fails; allocates nothing.
 pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, over: Option<&'a Properties>) -> Resolved<'a> {
@@ -303,7 +303,7 @@ pub fn name(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> String 
     }
 }
 
-/// The styles of `cat` (design 050 §7.2): built-in first (in the catalogue's order), then the
+/// The styles of `cat`: built-in first (in the catalogue's order), then the
 /// standard's own, then the project's own, each group by name. An own style the standard holds is
 /// listed once, as the standard's, also when the project overrides fields of it.
 pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
@@ -358,7 +358,7 @@ pub fn words() -> String {
     CATALOGUES.iter().map(|c| c.catalogue.word()).collect::<Vec<_>>().join(", ")
 }
 
-/// How many objects use a style (design 050 §2.5).
+/// How many objects use a style.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Count {
     /// Objects whose own choice names it.
@@ -375,7 +375,7 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
     let cat = crate::styles::catalogue(catalogue);
     let value = id.text();
     let mut c = Count::default();
-    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
+    // A cable's type is its field (cables have no registry level).
     if cat.catalogue == StyleCatalogue::Cable {
         c.explicit = doc.style_users(cable::CABLE_TYPE, &value).count();
     }
@@ -387,8 +387,8 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
     c
 }
 
-/// The location boxes whose own style is `id` (brief 050a; a box is a drawing aid, design 072
-/// §6.2, so it is not in the document's style-choice index). Empty for other catalogues. Boxes
+/// The location boxes whose own style is `id` (a box is a drawing aid, so it is not
+/// in the document's style-choice index). Empty for other catalogues. Boxes
 /// are few: one pass over the aids.
 pub fn box_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Vec<ecad_model::AidId> {
     if catalogue != StyleCatalogue::Location {
@@ -404,7 +404,7 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
     match cat.catalogue {
         ecad_model::StyleCatalogue::Frame => doc.pages().iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
-        // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
+        // Pages with no own type whose generated kind (or none) gives `id`.
         ecad_model::StyleCatalogue::Page => doc
             .pages()
             .values()
@@ -414,7 +414,7 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
         ecad_model::StyleCatalogue::Location if project == *id => {
             doc.aids().iter().filter(|(a, x)| x.as_box().is_some() && location::own_style(doc, **a).is_none()).count()
         }
-        // 050b: conductors whose resolved category is `id` and that have none of their own.
+        // Conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let draws = wire::WireDraws::new(doc);
             doc.wires()
@@ -437,7 +437,7 @@ pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) 
     let cat = crate::styles::catalogue(catalogue);
     let value = id.text();
     let mut out = Vec::new();
-    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
+    // A cable's type is its field (cables have no registry level).
     if cat.catalogue == StyleCatalogue::Cable {
         out.extend(doc.style_users(cable::CABLE_TYPE, &value).map(|o| (cable::CABLE_TYPE, o)));
     }
@@ -460,7 +460,7 @@ fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
     }
 }
 
-/// The pages a style op changes the look of (design 050 §10), or `None` for every page. `None`
+/// The pages a style op changes the look of, or `None` for every page. `None`
 /// for an op this module does not cover.
 pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
     match op {
@@ -468,7 +468,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
         Op::SetStandard { .. } => Some(BTreeSet::new()),
         Op::SetStyle { catalogue, id, .. } => {
             let cat = crate::styles::catalogue(*catalogue);
-            // Brief 054 (design 054 §10.2): a page type reaches its pages only.
+            // A page type reaches its pages only.
             if let Some((pages, _)) = page::touched_by(doc, op) {
                 return Some(pages.into_iter().collect());
             }
@@ -481,7 +481,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                 return None;
             }
             let mut out = BTreeSet::new();
-            // A box drawn in its own style (brief 050a): that style's boxes, or the boxes whose own
+            // A box drawn in its own style: that style's boxes, or the boxes whose own
             // style labels with this text style.
             for (a, x) in doc.aids() {
                 let Some(b) = x.as_box() else { continue };
@@ -494,7 +494,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                     out.extend(doc.representations_of(Subject::Aid(*a)).map(|(_, r)| r.page));
                 }
             }
-            // 050b: a category that is (or becomes, or was) a potential's default reaches every
+            // A category that is (or becomes, or was) a potential's default reaches every
             // net of that potential, on any page (there is no potential index): every page.
             if cat.catalogue == ecad_model::StyleCatalogue::Wire {
                 let names_potential = |r: &Option<StyleRecord>| r.as_ref().and_then(|r| r.body.wire()).is_some_and(|w| w.potential.is_some());
@@ -517,7 +517,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
     }
 }
 
-/// Whether record `r` may be written as `(layer, catalogue, id)` (design 050 §3.2): a name that is
+/// Whether record `r` may be written as `(layer, catalogue, id)`: a name that is
 /// none or 1–64 characters, at most [`MAX_FIELDS_PER_STYLE`] fields of at most
 /// [`MAX_FIELD_CHARS`] characters, and room in the layer for a new style.
 ///
@@ -530,12 +530,12 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     if r.catalogue() != cat.catalogue {
         return Err(CmdError::refused(format!("A {} record is not a {}.", r.catalogue(), cat.one.to_lowercase())));
     }
-    // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
+    // A rating's reference temperature is below the conductor's
     // maximum.
     if let Some(why) = crate::circuits::check_style(cat.catalogue, r) {
         return Err(CmdError::refused(why));
     }
-    // 050b (design 050 §5.4): one category per potential.
+    // One category per potential.
     if let Some(p) = r.body.wire().and_then(|w| w.potential.as_ref()).map(|p| p.as_str())
         && let Some(other) = wire::WireDraws::new(doc).for_potential(p).filter(|o| *o != id)
     {
@@ -551,7 +551,7 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     Ok(())
 }
 
-/// The record a `style` command writes for `fields` set or cleared on `before` (design 050 §6.2),
+/// The record a `style` command writes for `fields` set or cleared on `before`,
 /// in catalogue `catalogue`. The values are as [`crate::styles::commands::styles::fields`] checked them.
 ///
 /// # Errors
@@ -577,7 +577,7 @@ pub(crate) fn with_fields(
     Ok(r)
 }
 
-/// Whether `s` is a colour a style field takes (design 050 §4.1): `none`, one IEC 60757 code
+/// Whether `s` is a colour a style field takes: `none`, one IEC 60757 code
 /// (`RD`, `BLU`), or `#rrggbb`.
 pub(crate) fn is_colour(s: &str) -> bool {
     let t = s.trim();
@@ -607,7 +607,7 @@ mod tests {
         for c in CATALOGUES {
             assert!(ms::is_word(c.catalogue.word()), "{}", c.catalogue);
             for f in c.fields {
-                // 050b (design 050 §5.3): an empty built-in is "no value" (potential, part number).
+                // An empty built-in is "no value" (potential, part number).
                 let empty = matches!(f.builtin(), Value::Text(""));
                 assert!(empty || defaults::accepts(f.kind, &f.builtin()), "{}.{} built-in", c.catalogue, f.key);
             }
@@ -621,9 +621,9 @@ mod tests {
             }
             for e in (c.choices)() {
                 assert!(matches!(e.kind, Kind::Style(w) if w == c.catalogue), "{}", e.key);
-                // 050b: the category choice's built-in is `none`, no category.
+                // The category choice's built-in is `none`, no category.
                 let b = StyleRef::parse(&builtin_word(e));
-                // 057: no cable type and no rating table, either.
+                // No cable type and no rating table, either.
                 let none = matches!(
                     c.catalogue,
                     ecad_model::StyleCatalogue::Wire | ecad_model::StyleCatalogue::Cable | ecad_model::StyleCatalogue::RatingTable

@@ -1,4 +1,5 @@
-//! The kept results and their update map (design 057 §10): what an op reaches ([`Touch`]), and the results and indexes [`Kept`] re-evaluates.
+//! The kept results and their update map: what an op reaches ([`Touch`]), and the results and indexes [`Kept`]
+//! re-evaluates.
 
 use super::*;
 
@@ -98,7 +99,7 @@ impl Touch {
             }
             // A page's properties are read by no rating row; a cable is written whole.
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
-            // Brief 052: a location entry's code changed (or the entry came or went): the rows
+            // A location entry's code changed (or the entry came or went): the rows
             // naming it are worded again.
             Effect::Project { before, after } => {
                 self.locations.extend(crate::locations::designations::changed_codes(before, after, crate::locations::designations::Aspect::Location));
@@ -133,7 +134,7 @@ impl Touch {
                     self.box_pages(doc, *id);
                 }
             }
-            // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
+            // A box's temperature reaches the wires at its location; its new
             // location the wires at both locations and those of the devices on its pages.
             Effect::Aid { id, before, after } => {
                 let loc = |a: &ecad_model::Aid| {
@@ -148,13 +149,13 @@ impl Touch {
                     self.locations.extend([b, a].into_iter().flatten());
                 }
             }
-            // Lane 072 B: a device's description, part or type text is read by no rating row.
+            // A device's description, part or type text is read by no rating row.
             Effect::Device { before: Some(before), after: Some(after), .. } if before.only_text_differs(after) => {}
-            // Design 072 §2.2: a device's rating reaches only the subjects it protects.
+            // A device's rating reaches only the subjects it protects.
             Effect::Device { id, before: Some(before), after: Some(after) } if before.only_rating_differs(after) => {
                 self.devices.insert(*id);
             }
-            // Design 072 §6.3: a box's new location reaches the wires at both locations; a
+            // A box's new location reaches the wires at both locations; a
             // device's own location its wires only.
             Effect::Device { id, before: Some(before), after: Some(after) } if before.only_place_differs(after) => {
                 if before.location != after.location {
@@ -209,7 +210,7 @@ impl Touch {
     }
 }
 
-/// The kept results and indexes (design 057 §10).
+/// The kept results and indexes.
 #[derive(Debug, Clone, Default)]
 pub struct Kept {
     pub results: BTreeMap<RatedSubject, Rating>,
@@ -224,11 +225,11 @@ pub struct Kept {
     /// The rating table's own rows.
     table_rows: Vec<Issue>,
     /// How many subjects the last build or update evaluated, and re-traced (the update map's
-    /// counters, design 057 §11 check 16).
+    /// counters).
     pub evaluated: usize,
     pub retraced: usize,
     /// Bumped by every build and update; with [`Kept::last`], a view that copied the results
-    /// at epoch `n` patches only `last` at `n + 1` (design 057 §10: tables patch the re-checked
+    /// at epoch `n` patches only `last` at `n + 1` (tables patch the re-checked
     /// rows only).
     pub epoch: u64,
     /// The subjects the last update re-checked.
@@ -239,9 +240,9 @@ pub struct Kept {
     table: Option<std::sync::Arc<ratingtable::Table>>,
     /// Location boxes that set a temperature (read again only when an op reaches one).
     boxes: BTreeMap<ecad_model::AidId, BoxTemp>,
-    /// location → the wires whose ends are there (design 057 §10, `at`).
+    /// location → the wires whose ends are there (`at`).
     at: BTreeMap<String, BTreeSet<RatedSubject>>,
-    /// Panel wires a device protects that have no rating data (`rating-no-data`, §7 and check 13),
+    /// Panel wires a device protects that have no rating data (`rating-no-data`),
     /// kept while the project rates anything.
     unrated: BTreeSet<WireId>,
 }
@@ -347,7 +348,7 @@ impl Kept {
         self.forget(s);
         if !rated {
             // A protected panel wire with no rating data, counted while the project rates
-            // anything (§7, check 13).
+            // anything.
             if let RatedSubject::Wire(c) = s
                 && !self.results.is_empty()
                 && is_panel_wire(doc, c)
@@ -421,7 +422,7 @@ impl Kept {
     pub fn update(&mut self, doc: &Document, touch: &Touch) -> BTreeSet<RatedSubject> {
         self.evaluated = 0;
         self.retraced = 0;
-        // The rating table is parsed again only when an op reaches it (FP8).
+        // The rating table is parsed again only when an op reaches it.
         let fresh = touch.table || touch.all_results;
         // Location boxes reached are read again (D1); the rest are kept.
         for c in &touch.boxes {
@@ -546,7 +547,7 @@ impl Kept {
     }
 }
 
-/// The rating table's own rows: bad rows, odd pairs (§5.2, §5.4).
+/// The rating table's own rows: bad rows, odd pairs.
 pub(super) fn table_issues(ctx: &Context) -> Vec<Issue> {
     let Some(t) = &ctx.table else { return Vec::new() };
     let mut v = Vec::new();

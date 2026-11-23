@@ -1,5 +1,5 @@
-//! The Pages tree feed (design 064 §4.1, `TreeFeed`): whether a commit could change the Pages
-//! list and tree (design 019 §9), so the change log tells the panel to read it again.
+//! The Pages tree feed (`TreeFeed`): whether a commit could change the Pages
+//! list and tree, so the change log tells the panel to read it again.
 //!
 //! # Update map
 //! - A page added, removed, or removed and added again (a rename or move): the tree changes.

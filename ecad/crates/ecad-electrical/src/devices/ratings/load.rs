@@ -1,4 +1,4 @@
-//! Reading a load's rating (design 072 §2.2, "Ratings"): its rated power.
+//! Reading a load's rating: its rated power.
 //!
 //! # Semantics
 //! - `3 kW`, `3000 W` and `3kW` are the rated power; `0,5 kW` reads as `0.5 kW` (a decimal comma).

@@ -1,4 +1,4 @@
-//! A PLC card on the page (brief 051, design 051 §2): its **runs** (cells and the card body of one
+//! A PLC card on the page: its **runs** (cells and the card body of one
 //! card, abutting on one top line, in one rotation) and each run's derived **frame**: its sides
 //! (slanted **break edges** where the card continues), its bottom edge, the **name block** (tag,
 //! caption, maker, part number) and the **type text**. Nothing here is stored.
@@ -6,11 +6,11 @@
 //! # Semantics
 //! - Runs are found per page from the page's representations of PLC cells and card bodies, at
 //!   rotation 0° (points on the top edge, the frame below) or 180° (points on the bottom edge, the
-//!   frame above, design 051 §2.7). Other rotations get no frame.
+//!   frame above). Other rotations get no frame.
 //! - Band depths: header and mark bands are geometry ([`crate::symbols::cells::HEADER_BAND`],
 //!   [`crate::symbols::cells::MARK_BAND`]); the name band is at least [`crate::symbols::cells::NAME_BAND`] and
 //!   grows with the name block's text styles, rounded up to 2.5 mm.
-//! - The parts are 025's cross-reference parts ([`crate::references::devices::table::Part`]) of the run's first
+//! - The parts are the cross-reference parts ([`crate::references::devices::table::Part`]) of the run's first
 //!   representation, indexed from [`INDEX_BASE`]: derived, left out of an edit with other objects,
 //!   an edit of one alone refused.
 //!
@@ -30,13 +30,13 @@ use crate::symbols::cells::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
 pub(crate) const INDEX_BASE: u32 = 1 << 20;
-/// Most representations of one card on one page that form runs (045's bound is 256 channels).
+/// Most representations of one card on one page that form runs (at most 256 channels).
 const MAX_PER_CARD: usize = 512;
 /// How far a break edge's bottom end lies out from its top, mm.
 pub(crate) const SLANT: f64 = 5.0;
 /// Gap between two abutting symbols' edges still counted as one run, mm.
 const ABUT: f64 = 0.5;
-/// Top lines this close are one line, mm (031's `text.run.align`).
+/// Top lines this close are one line, mm (`text.run.align`).
 const ALIGN: f64 = 1.0;
 /// Inset of the name block and type text from the frame's sides and bottom, mm.
 const INSET_X: f64 = 2.0;
@@ -231,14 +231,14 @@ pub fn type_text(doc: &Document, c: DeviceId) -> String {
     }
 }
 
-/// The name band's depth for a name block of these lines (design 051 §2.5).
+/// The name band's depth for a name block of these lines.
 pub(crate) fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
     let h: f64 = lines.iter().map(|(_, k)| text_style(doc, *k).height).sum::<f64>() + LINE_GAP * lines.len().saturating_sub(1) as f64;
     let band = (h + 2.0 * INSET_Y).max(NAME_BAND);
     (band / BAND_STEP).ceil() * BAND_STEP
 }
 
-/// Every frame part on `page` (design 051 §2.6), its texts measured with `m` (ecad-engine's
+/// Every frame part on `page`, its texts measured with `m` (ecad-engine's
 /// `parts_on_page` passes CADCraft's fonts).
 pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let mut out = Vec::new();
@@ -337,7 +337,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Par
     }
 }
 
-/// The refusal of an edit of a frame part alone (review of #89, 2).
+/// The refusal of an edit of a frame part alone.
 pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's cells instead.";
 
 /// Whether representation `rid` is a PLC cell or card body (so a derived part mapped to it is a
@@ -348,14 +348,14 @@ pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
 }
 
 /// Whether representation `r` (id `rid`) of `c` is in a framed run that is drawn: its own tag
-/// block and caption are then the frame's name block (design 051 §2.6, "tags once per card"). A
+/// block and caption are then the frame's name block. A
 /// cell or body that makes no run (turned 90°, a cell whose channel cannot be read) keeps its
-/// ordinary tag block (review of #89, 1).
+/// ordinary tag block.
 pub fn framed(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Representation) -> bool {
     frame_shown(doc, c) && piece(doc, c, rid, r).is_some()
 }
 
-// ---------------------------------------------------------------- Checks (design 051 §2.5, §2.8)
+// ---------------------------------------------------------------- Checks
 
 /// The runs of card `c` on `page`, reading only `c`'s representations.
 pub fn runs_of_card(doc: &Document, c: DeviceId, page: PageId) -> Vec<Run> {
@@ -403,7 +403,7 @@ fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
     (run.left, run.right, run.top.min(bottom), run.top.max(bottom))
 }
 
-/// `wire-through-card` rows of card `c` (design 051 §2.8): a wire attached to one of the card's
+/// `wire-through-card` rows of card `c`: a wire attached to one of the card's
 /// points whose route goes on into the card's frame and is attached at both ends (kept by the
 /// fence because it reaches something; connectivity is never changed silently).
 pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
@@ -477,7 +477,7 @@ pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut V
     }
 }
 
-/// `plc-text-wide` rows of card `c` (design 051 §2.5): one per run whose addresses are wider than
+/// `plc-text-wide` rows of card `c`: one per run whose addresses are wider than
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
 pub(crate) fn wide_checks(
@@ -515,4 +515,4 @@ pub(crate) fn wide_checks(
     }
 }
 
-// The engine half (design 065 §3), at its old path until step 6 turns this into a facade.
+// The engine half, at its old path until step 6 turns this into a facade.

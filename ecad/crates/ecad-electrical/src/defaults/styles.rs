@@ -1,9 +1,9 @@
-//! Lane D's style choices (brief 050a, design 050 §4, FP5): registry entries whose value is a
+//! Style choices: registry entries whose value is a
 //! style ID. Which style an object uses resolves through the levels like any entry; what the style
 //! says is [`crate::styles::field`].
 //!
 //! - `text.<kind>.style`: S P O (object: the component or conductor owning the text). No page
-//!   level (owner answer 4: a page picks no text style).
+//!   level (a page picks no text style).
 //! - `location.style`: S P O (object: the location box).
 //! - `print.frame.style`: S P G (a frame belongs to the sheet).
 
@@ -33,7 +33,7 @@ pub static DESCRIPTION: Entry = text("text.description.style", "Description styl
 pub static PART_NUMBER: Entry = text("text.part_number.style", "Part number style");
 pub static CONTINUATION_NAME: Entry = text("text.continuation_name.style", "Continuation name style");
 pub static REFERENCE: Entry = text("text.reference.style", "Reference style");
-/// Brief 049's continuation caption (design 049 §7), a built-in text style since 050a.
+/// Continuation caption, a built-in text style.
 pub static CONTINUATION_CAPTION: Entry = text("text.continuation_caption.style", "Continuation caption style");
 pub static WIRE_LABEL: Entry = text("text.wire_label.style", "Wire label style");
 pub static CABLE_TEXT: Entry = text("text.cable_text.style", "Cable text style");
@@ -49,7 +49,6 @@ pub static TITLE_PAGE: Entry = text("text.title_page.style", "Title block page n
 pub static TITLE_REV: Entry = text("text.title_rev.style", "Title block revision style");
 pub static TABLE_HEADING: Entry = text("text.table_heading.style", "Table heading style");
 pub static COVER: Entry = text("text.cover.style", "Cover title style");
-// Brief 051 (design 051 §5, FP1).
 pub static CHANNEL_TEXT: Entry = text("text.channel_text.style", "PLC channel text style");
 pub static ADDRESS: Entry = text("text.address.style", "PLC address style");
 
@@ -104,7 +103,7 @@ pub static FRAME: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// A conductor's wire category (brief 050b, FP5): S P O; the built-in `none` is no category.
+/// A conductor's wire category: S P O; the built-in `none` is no category.
 pub static WIRE_CATEGORY: Entry = Entry {
     key: "wire.category",
     label: "Wire category",

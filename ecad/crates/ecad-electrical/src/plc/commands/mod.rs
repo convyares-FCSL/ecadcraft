@@ -1,4 +1,4 @@
-//! The rules of the PLC commands (briefs 045, 051 and 056): a card's slot (`plcslot`), its type
+//! The rules of the PLC commands: a card's slot (`plcslot`), its type
 //! (`plccardtype`), its channels on the page (`plcchannels`, `plcchannel`), its page (`plcpage`),
 //! the addresses (`plcaddress`) and the tags (`plcmaketags`). Each function reads the document and
 //! returns the ops to commit and what to report. The generic commands built on them are declared in
@@ -62,7 +62,7 @@ pub(crate) fn slot_given(out: bool, slot: Option<&str>) -> Result<Option<u32>, C
     Ok(slot)
 }
 
-/// `plcslot` (design 045 §2.5): the card named `card` and the ops that put it in `slot` of `rack`
+/// `plcslot`: the card named `card` and the ops that put it in `slot` of `rack`
 /// (swapping with the card there when `swap`), or take it out of its rack.
 ///
 /// # Errors
@@ -115,9 +115,9 @@ pub(crate) fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, 
     if from == to {
         return Ok(CardTypePlan { card: c, ops: Vec::new(), message: format!("{who} is {} already.", with_article(to)) });
     }
-    // No signal may be left on a channel the new type does not have (overseer's look check of
-    // 2026-11-14): a channel in use, named or drawn at or past the new count refuses it.
-    // The new type's function, with the project's channel count for it (design 072 §3).
+    // No signal may be left on a channel the new type does not have:
+    // a channel in use, named or drawn at or past the new count refuses it.
+    // The new type's function, with the project's channel count for it.
     let new_type = crate::plc::types::new_type(doc, &crate::plc::types::of_card(to));
     let ecad_model::DeviceType::PlcModule(new_module) = &new_type else { return Err(CmdError::refused("That type is not a module.")) };
     let room = new_module.channel_count();
@@ -260,7 +260,7 @@ pub(crate) struct AddressPlan {
     pub ops: Vec<Op>,
 }
 
-/// `plcaddress {rack | card, …}` (design 045 §5.3): a rack's address style and starts (and
+/// `plcaddress {rack | card, …}`: a rack's address style and starts (and
 /// pinning or unpinning every card), or a card's pinned start and size.
 ///
 /// # Errors
@@ -279,7 +279,7 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
         let r = rack_named(doc, rv)?;
         let before = snapshot(doc, r);
         if let Some(v) = &input.style {
-            // The station's own style (design 072 §3); none follows the project's.
+            // The station's own style; none follows the project's.
             let style = match word(v).filter(|x| !x.is_empty()) {
                 None => None,
                 Some(x) => Some(
@@ -408,7 +408,7 @@ pub struct ChannelsPlan {
     pub pins: Vec<String>,
 }
 
-/// `plcchannels {card?, type?, first?, point?, from, to}` (design 045 §4.5): one channel cell on
+/// `plcchannels {card?, type?, first?, point?, from, to}`: one channel cell on
 /// each wire the line crosses, in order, of card `card` (or a new card of type `ty`).
 ///
 /// # Errors
@@ -440,7 +440,7 @@ pub fn plan_channels(
         None => None,
     };
     let landings = landings(doc, starter, &found.members, point_role);
-    // Brief 051 (design 051 §2.2, Q1): cells are one width apart at least, or they overlap.
+    // Cells are one width apart at least, or they overlap.
     let anchors: Vec<crate::cables::slash::Crossing> = landings.iter().filter_map(|l| l.points.first().map(|x| x.1)).collect();
     if let Some(e) = spacing_refusal(doc, starter, t, &anchors) {
         return Err(CmdError::refused(e));
@@ -498,7 +498,7 @@ pub fn plan_channels(
     Ok(ChannelsPlan { ops, card, tag, ty: t, starter: starter.key, placed, first, pins: all_pins })
 }
 
-/// The rest (design 045 §4.5): every channel of `c` not drawn yet, as cells in a row to the right
+/// The rest: every channel of `c` not drawn yet, as cells in a row to the right
 /// of its last cell on `page`, or at `at`. No wires.
 ///
 /// # Errors
@@ -581,7 +581,7 @@ pub(crate) struct ChannelPlan {
 }
 
 /// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, terminal?}` (design
-/// 045 §4.6): one channel's data. `move_to` (a Checks fix) gives the points of one drawn copy of
+/// One channel's data. `move_to` (a Checks fix) gives the points of one drawn copy of
 /// the channel (`connection_point`, or the last-drawn copy) the channel numbered `move_to`.
 ///
 /// # Errors
@@ -603,11 +603,11 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
     for (what, given) in &input.values {
         let value = match given {
             None => None,
-            // Brief 056 (design 056 §4.4): the safe state by the card's type.
+            // The safe state by the card's type.
             Some(x) if *what == signals::SAFE => signals::safe_value(Some(t), Some(x))?,
             Some(x) => ch_value(what, Some(x))?,
         };
-        // Brief 056 (design 056 §4.3): a tag is unique in its PLC, compared without case.
+        // A tag is unique in its PLC, compared without case.
         if *what == signals::TAG
             && let Some(tag) = &value
             && let Some(holder) = signals::tag_holder(doc, c, i, tag)
@@ -683,10 +683,10 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
 
 // ---------------------------------------------------------------- a card's page
 
-/// The first cell's distance from the left of the drawing area, mm (design 051 §3.6).
+/// The first cell's distance from the left of the drawing area, mm.
 pub const LEFT_MM: f64 = 40.0;
 /// From one row of cells to the next, mm: a card's frame (about 40 deep) and 30 clear under it for
-/// its rotated channel texts (design 051 §3.6, "30 apart").
+/// its rotated channel texts.
 pub const ROW_PITCH_MM: f64 = 70.0;
 /// Most characters of a page number `after` names (longer cannot be a page).
 const MAX_AFTER: usize = 64;
@@ -717,7 +717,7 @@ fn body_drawn(doc: &Document, c: DeviceId) -> bool {
         .any(|(_, r)| crate::devices::tags::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()))
 }
 
-/// What a card's page shows (design 051 §3.6).
+/// What a card's page shows.
 #[derive(Debug, Clone)]
 pub struct PageCard {
     pub card: DeviceId,
@@ -788,7 +788,7 @@ pub fn after_page(doc: &Document, book: &Book, card: DeviceId, after: Option<&st
 }
 
 /// The cells and body of card page `id` (not yet in the document; `ops` add it), appended to
-/// `ops` (design 051 §3.6): cells start [`LEFT_MM`] from the left of the drawing area at 60 % of
+/// `ops`: cells start [`LEFT_MM`] from the left of the drawing area at 60 % of
 /// its height (outputs at 180°, at 40 %); a row wider than the drawing area wraps into further rows
 /// [`ROW_PITCH_MM`] apart; the body goes after the last cell, its points on the cells' line.
 ///
@@ -803,7 +803,7 @@ pub fn plan_page_contents(
     // The drawing area, in model units.
     let spec = ecad_model::document::sheet::sheet_of(doc, id);
     let k = ecad_model::document::sheet::unit_scale(doc.settings().length_unit);
-    // Brief 055 (FP4): the frame's margins and its block's height.
+    // The frame's margins and its block's height.
     let m = ecad_model::document::sheet::margins_of(doc, id);
     let (l, b, r, t) = (
         m.left + 5.0,

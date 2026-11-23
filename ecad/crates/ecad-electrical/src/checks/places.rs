@@ -41,7 +41,7 @@ pub(super) fn route_words(doc: &Document, r: RouteId) -> String {
 
 /// Where a connection point is shown first (book order).
 pub(super) fn connection_point_place(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>) {
-    // A device's point or a drawing aid's (a continuation's, design 072 §6.2).
+    // A device's point or a drawing aid's (a continuation's).
     let Some(owner) = doc.connection_points().get(&t).map(|x| x.owner.subject()) else { return (None, None) };
     for page in doc.page_order() {
         let shown = doc.representations_of(owner).any(|(_, r)| r.page == *page);

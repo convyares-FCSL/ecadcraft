@@ -9,7 +9,7 @@ impl ReportModels {
         self.numbers_moved = numbers;
         let before = self.generated_sheets(doc);
         self.update_rows(doc, Rows { scope: rows, late, plc, placed, positions }, m);
-        // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
+        // Right after the strips, also when no row was in scope.
         self.strip_pages.update(doc, strips, &self.strips);
         if numbers || self.generated_sheets(doc) != before {
             self.refresh_continuation(doc);
@@ -19,10 +19,10 @@ impl ReportModels {
 
     pub(super) fn update_rows(&mut self, doc: &Document, rows: Rows, m: &dyn TextMetrics) {
         let Rows { mut scope, late, plc, placed, positions } = rows;
-        // What this update changes, for the generated pages that depend on it (brief 028).
+        // What this update changes, for the generated pages that depend on it.
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
-        // Brief 045: the PLC model is built again after every commit (no update map since 0.2.3).
+        // The PLC model is built again after every commit (no update map since 0.2.3).
         if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
@@ -59,7 +59,7 @@ impl ReportModels {
             scope.loose.extend(self.from_none.iter().copied());
         }
         scope.wires.extend(late.wires);
-        // Brief 044 (design 044 §11.1): a connector naming or description default reaches the
+        // A connector naming or description default reaches the
         // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
         for k in &scope.connector_keys {
             let naming = crate::defaults::connectors::is_naming_key(k);
@@ -106,7 +106,7 @@ impl ReportModels {
                 }
             }
         }
-        // Page positions and numbers only when a wire is in scope (review of PR #51, finding 3).
+        // Page positions and numbers only when a wire is in scope.
         let mut cx = if scope.wires.is_empty() { None } else { Some(PageCx::of(doc)) };
         for (w, cx) in scope.wires.iter().zip(std::iter::repeat_with(|| cx.as_ref()).flatten()) {
             self.set_wire(doc, *w, cx);
@@ -120,7 +120,7 @@ impl ReportModels {
         for p in &scope.pages {
             self.set_box_checks(doc, *p);
         }
-        // Brief 028: the strips these rows touch (design 028 §11.1).
+        // The strips these rows touch.
         let mut pages = scope.route_pages.clone();
         pages.extend(positions.changed(doc));
         let mut strips = std::mem::take(&mut self.strips);
@@ -147,11 +147,11 @@ impl ReportModels {
             let cx = cx.get_or_insert_with(|| PageCx::of(doc));
             strips.recompute(doc, &which, self, cx);
         }
-        // Brief 030: a project default reaches only its inheriting strips' accessories.
+        // A project default reaches only its inheriting strips' accessories.
         if !acc_only.is_empty() {
             strips.recompute_acc(doc, &acc_only);
         }
-        // Brief 028's strip Checks rows read from the strips just recomputed (brief 027's key).
+        // Strip Checks rows read from the strips just recomputed.
         if !strips.last_changed.is_empty() {
             self.checks_changed += 1;
         }
@@ -160,11 +160,11 @@ impl ReportModels {
         self.revision += 1;
     }
 
-    /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
+    /// Verify mode: the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
         let built = crate::terminal_strips::strip_model::Strips::build(doc, self, &PageCx::of(doc));
-        // Brief 046: the graphic pages' kept data is built from the kept strips after every
+        // The graphic pages' kept data is built from the kept strips after every
         // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
             return None;
@@ -172,7 +172,7 @@ impl ReportModels {
         let work = self.strips.last_work;
         self.strips = built;
         self.strips.last_work = work;
-        // The page layout follows the rebuilt strips (review of 046, finding 2).
+        // The page layout follows the rebuilt strips.
         self.strip_pages.adopt(crate::terminal_strips::pages::StripPages::build(doc, &self.strips));
         Some("the terminal strip model was out of step; rebuilt".to_string())
     }
@@ -185,7 +185,7 @@ impl ReportModels {
         self.no_function -= usize::from(old.function.key.is_none());
     }
 
-    /// Brief 047: take every entry of `c` (a device, or an item) out of the rows and counts.
+    /// Take every entry of `c` (a device, or an item) out of the rows and counts.
     pub(super) fn remove_entries(&mut self, c: Owner) {
         if let Owner::Loose(id) = c {
             self.from_project.remove(&id);
@@ -251,7 +251,7 @@ impl ReportModels {
         if has_lines { pk.alone((e.owner, 0)) } else { pk.clone() }
     }
 
-    /// Brief 047: put entry `e` into the rows and counts.
+    /// Put entry `e` into the rows and counts.
     pub(super) fn add_entry(&mut self, e: Entry) {
         let (sort, pk, lk) = (e.sort(), e.part_key(), e.loc_key());
         let group = self.by_location.entry((lk.clone(), pk.clone())).or_default();
@@ -293,7 +293,7 @@ impl ReportModels {
         self.entries.insert((e.owner, e.line), e);
     }
 
-    /// Brief 047: the entries of device `c` (its main part and part lines), and its fuse coverage.
+    /// The entries of device `c` (its main part and part lines), and its fuse coverage.
     pub(super) fn set_entries(&mut self, doc: &Document, c: DeviceId, main: Option<Entry>) {
         let Some(comp) = doc.devices().get(&c) else { return };
         let (lines, bad) = bom::lines(&comp.properties);
@@ -305,7 +305,7 @@ impl ReportModels {
             Some(d) => (d.tag.clone(), d.location.value.clone()),
             None => (String::new(), None),
         };
-        // Brief 044 (design 044 §8.3): a connector's lines go under a half (`part.<n>.half`, else
+        // A connector's lines go under a half (`part.<n>.half`, else
         // its first drawn half), with that half's tag and location.
         let halves = crate::connectors::half_rows(doc, c, &mut BoxCache::default());
         // Sub-items only where `for` can name some or fuses can be uncovered.
@@ -357,14 +357,14 @@ impl ReportModels {
         }
     }
 
-    /// Brief 047: an item's entry and location (its own, else the project's; design 047 §3). An
-    /// item is a loose part (design 072 §6.4), read through [`ecad_model::objects::loose_part::Bom`].
+    /// An item's entry and location (its own, else the project's). An
+    /// item is a loose part, read through [`ecad_model::objects::loose_part::Bom`].
     pub(super) fn set_loose(&mut self, doc: &Document, id: LoosePartId) {
         use crate::locations::designations::{Aspect, code_of, default_key};
         use ecad_model::objects::loose_part::{Bom, ItemUnit};
         self.remove_entries(Owner::Loose(id));
         let Some(p) = doc.loose_parts().get(&id) else { return };
-        // Brief 052: stored values are entry keys of the project's list; shown by their codes.
+        // Stored values are entry keys of the project's list; shown by their codes.
         let location = match p.location {
             Some(l) => code_of(doc, Aspect::Location, &l.hex()),
             None => match default_key(doc.project(), Aspect::Location) {
@@ -400,7 +400,7 @@ impl ReportModels {
     pub(super) fn set_device(&mut self, doc: &Document, c: DeviceId, cache: &mut BoxCache) {
         self.remove_device(c);
         self.remove_entries(Owner::Device(c));
-        // Review of PR #57, 4: a link key on a device that is not a strip.
+        // A link key on a device that is not a strip.
         let misplaced = crate::terminal_strips::strip_of(doc, c).is_none()
             && doc
                 .devices()
@@ -439,15 +439,15 @@ impl ReportModels {
             function: locations::resolve_function(doc, c),
             goto,
         };
-        // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
-        // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
+        // A connector has one BOM row per drawn half, kept apart;
+        // its part lines are entries, each under its half (`part.<n>.half`).
         let connector = crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating);
         if connector {
             let rows = connector_rows(doc, c, cache);
             self.set_connector(c, rows);
         }
-        // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
-        // part lines are entries like a device's (brief 047).
+        // A strip has one BOM row per terminal type, from the strip model; its
+        // part lines are entries like a device's.
         let main = (crate::terminal_strips::strip_of(doc, c).is_none() && !connector).then(|| Entry {
             owner: Owner::Device(c),
             line: 0,
@@ -488,7 +488,7 @@ impl ReportModels {
                 let label = crate::terminal_strips::terminal_blocks::connection_point_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tags::tag_shown_of(doc, c)).unwrap_or_else(|| "?".into());
-                // Brief 044: a connector pin's end is named by its half (`-X10.S:3`).
+                // A connector pin's end is named by its half (`-X10.S:3`).
                 let name = crate::connectors::pin_name(doc, t).unwrap_or_else(|| format!("{tag}:{label}"));
                 let location = match device {
                     Some(d) => d.location.value.clone(),
@@ -499,7 +499,7 @@ impl ReportModels {
         }
     }
 
-    /// The cell of conductor end `t` drawn at `at` (brief 028: a terminal's far end).
+    /// The cell of conductor end `t` drawn at `at` (a connection point's far end).
     pub(crate) fn end_cell_of(&self, doc: &Document, t: Option<ConnectionPointId>, at: Option<(PageId, Pt)>, cx: &PageCx) -> EndCell {
         self.end_cell(doc, t, at, cx)
     }
@@ -533,7 +533,7 @@ impl ReportModels {
         let conn = doc.connectivity();
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::connectivity::wiring::net_potential(doc, n));
-        // Brief 050b: the wire's category gives what the wire has none of its own.
+        // The wire's category gives what the wire has none of its own.
         let draw = crate::styles::wire::wire_draw(doc, w);
         let cross_section = draw.cross_section.as_ref().map(|v| v.0.clone());
         let colour = draw.colour.as_ref().map(|v| v.0.to_string());
@@ -562,7 +562,7 @@ impl ReportModels {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        // Brief 028 (design 028 §9.2): a wire between two terminals of one strip is a bridge.
+        // A wire between two terminals of one strip is a bridge.
         let cable = match crate::terminal_strips::bridge_of(doc, w) {
             Some(strip) if cable.is_empty() => format!("Bridge {}", crate::devices::tags::tag_shown_of(doc, strip).unwrap_or_else(|| "?".into())),
             _ => cable,
@@ -599,7 +599,7 @@ impl ReportModels {
             let rows = |r: Option<&CableRow>| -> [usize; 3] {
                 r.map_or([0, 0, 0], |r| {
                     let known = r.count.offer.is_some();
-                    // Brief 059 (design 059 §6): a cable not drawn has no core-count row.
+                    // A cable not drawn has no core-count row.
                     [usize::from(known && !r.count.over.is_empty()), r.count.twice.len(), usize::from(!known && r.drawn)]
                 })
             };
@@ -619,12 +619,12 @@ impl ReportModels {
             return;
         };
         let p = |key: &str| clean(cab.get(key));
-        // Brief 032 §3.5: cores are counted by chain; each chain is shown by its first member,
+        // Cores are counted by chain; each chain is shown by its first member,
         // with the first stored label along it.
         let (heads, tails) = chain_heads(doc, k, cab);
         let mut locs: BTreeSet<(LocKey, String)> = BTreeSet::new();
         let mut missing = false;
-        // Brief 028: the devices at the cores' ends, per location.
+        // The devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
         for m in &cab.cores {
             let Some(cond) = m.wire().and_then(|w| doc.wires().get(&w)) else { continue };
@@ -705,7 +705,7 @@ impl ReportModels {
 }
 
 impl ReportModels {
-    /// Keep connector `c`'s half rows and their groups (review of #81, 2). `set_device` has taken
+    /// Keep connector `c`'s half rows and their groups. `set_device` has taken
     /// the old ones out.
     pub(super) fn set_connector(&mut self, c: DeviceId, rows: Vec<BomRow>) {
         for r in &rows {

@@ -6,7 +6,7 @@ use ecad_model::Document;
 
 use crate::devices::device_list::*;
 
-/// The Devices tab's list kept up to date (owner, 2026-11-08): every device, built whole once (on
+/// The Devices tab's list kept up to date: every device, built whole once (on
 /// open, reload or first show), then refreshed only for the devices each change touched (`crate::views::DevicesFeed`, through
 /// the project's change log), and renumbered when pages moved. A change that touches no
 /// device does nothing.

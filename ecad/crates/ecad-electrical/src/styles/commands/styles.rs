@@ -1,4 +1,4 @@
-//! The style commands' rules (brief 050a, design 050 §6): the project's standard (`standard`), a
+//! The style commands' rules: the project's standard (`standard`), a
 //! style's fields, name and copies (`setstyle`), deleting a style and moving its users
 //! (`deletestyle`), and moving a style or a value to the standard (`promote`). Each function reads
 //! the document and returns the ops to commit and what to report; reading another project's file
@@ -76,7 +76,7 @@ pub fn layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError>
     }
 }
 
-/// What field `f` takes, in the registry's words (design 050 §6.2).
+/// What field `f` takes, in the registry's words.
 pub(crate) fn field_rule(f: &styles::Field) -> String {
     match f.kind {
         Kind::Length { min, max } if f.key == "height" => format!("{} is {min} to {max} mm (cap height)", f.key),
@@ -194,7 +194,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
 pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
     let mut out = Vec::new();
     let mut put = |o: ObjectRef, key: &str| {
-        // Design 072 §4.6: a wire's own type is its field.
+        // A wire's own type is its field.
         if let ObjectRef::Wire(w) = o
             && key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         {
@@ -205,7 +205,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
             }
             return;
         }
-        // Design 072 §4.5: a cable's type is its field.
+        // A cable's type is its field.
         if let ObjectRef::Cable(k) = o
             && key == styles::cable::CABLE_TYPE
         {
@@ -234,7 +234,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
             put(ObjectRef::Standard, e.key);
         }
     }
-    // Brief 050a: a location box's own style is its field (design 072 §6.2).
+    // A location box's own style is its field.
     for a in styles::box_users(doc, cat.catalogue, id) {
         out.extend(crate::continuations::commands::box_op(doc, a, |b| b.style = Some(to.clone())));
     }
@@ -319,7 +319,7 @@ pub(crate) struct StandardPlan {
 }
 
 /// The ops removing the standard: its values, its records, then its header (so undo restores
-/// them, design 050 §3.1).
+/// them).
 fn clear_standard(doc: &Document) -> Vec<Op> {
     let Some(s) = &doc.standard() else { return Vec::new() };
     let mut ops = Vec::new();
@@ -344,7 +344,7 @@ fn standard_name(name: &str) -> Result<&str, CmdError> {
     Some(name.trim()).filter(|n| is_name(n)).ok_or(CmdError::refused(NEEDS_NAME))
 }
 
-/// A `standard` change (design 050 §6.1): `None` when a rename keeps the name.
+/// A `standard` change: `None` when a rename keeps the name.
 ///
 /// # Errors
 /// A name that does not read, a second standard, no standard to rename or remove, or a user of
@@ -399,7 +399,7 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
         StandardChange::Remove(replace_with) => {
             let cur = doc.standard().ok_or(CmdError::refused(STANDARD_FIRST))?;
             let mut ops = Vec::new();
-            // Explicit users of a standard-only own style need a replacement (design 050 §6.1).
+            // Explicit users of a standard-only own style need a replacement.
             for cat in styles::CATALOGUES {
                 for (id, _) in styles::records(doc, StyleLayer::Standard, cat.catalogue) {
                     if cat.builtin(id).is_some() || styles::record(doc, StyleLayer::Project, cat.catalogue, id).is_some() {
@@ -475,7 +475,7 @@ pub(crate) struct StylePlan {
     pub label: String,
 }
 
-/// A `setstyle` change (design 050 §6.2): a new style, or a style's fields and name.
+/// A `setstyle` change: a new style, or a style's fields and name.
 ///
 /// # Errors
 /// A layer, field or name that does not read, a name another style has, a built-in renamed,
@@ -490,7 +490,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         if styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(&name)) {
             return Err(CmdError::refused(format!("A {} is already called {name:?}; choose another name.", cat.one.to_lowercase())));
         }
-        // Brief 057: a catalogue with no built-in styles (cable types, rating tables) starts an
+        // A catalogue with no built-in styles (cable types, rating tables) starts an
         // empty style.
         let from = match copy_of {
             Some(t) => Some(styles::find(doc, cat.catalogue, &t)?),
@@ -500,7 +500,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         let mut copied: Vec<(String, Option<String>)> = Vec::new();
         for f in cat.fields {
             let Some(from) = &from else { break };
-            // 050b: a copy is no potential's default (one type per potential).
+            // A copy is no potential's default (one type per potential).
             if cat.catalogue == ecad_model::StyleCatalogue::Wire && f.key == "potential" {
                 continue;
             }
@@ -557,7 +557,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
             ops.push(Op::SetStyle { layer: l, catalogue: cat.catalogue, id: id.clone(), before, after });
         }
     }
-    // Design 050 §3.5: history names the style and the fields that changed
+    // History names the style and the fields that changed
     // (`Text style Tag: colour none → RD`).
     let changes: Vec<String> = fields
         .iter()
@@ -586,7 +586,7 @@ pub(crate) struct DeletePlan {
     pub moved: usize,
 }
 
-/// Delete own style `id` (design 050 §6.3); its users move to `replace_with`.
+/// Delete own style `id`; its users move to `replace_with`.
 ///
 /// # Errors
 /// A built-in style, or a used style with no (or the same) replacement.
@@ -600,7 +600,7 @@ pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace
     let mut ops = Vec::new();
     if !users.is_empty() || boxes > 0 || chosen_by_levels(doc, cat, &id) {
         let Some(w) = replace_with.map(str::trim) else {
-            // Design 072 §4.5: a cable type in use names its cables.
+            // A cable type in use names its cables.
             if cat.catalogue == ecad_model::StyleCatalogue::Cable {
                 return Err(CmdError::refused(cables_using(doc, &users, &name)));
             }
@@ -641,7 +641,7 @@ pub(crate) fn needs_standard(doc: &Document) -> Result<&Standard, CmdError> {
 }
 
 /// The ops moving the project's own value of `entry` to the standard, before the project's value
-/// is reset, and that value as text (design 050 §6.4). The caller checks first that the entry may
+/// is reset, and that value as text. The caller checks first that the entry may
 /// be set at standard level.
 ///
 /// # Errors
@@ -665,7 +665,7 @@ pub(crate) fn promote_value(doc: &Document, entry: &Entry) -> Result<(Vec<Op>, S
     Ok((ops, text))
 }
 
-/// The ops moving project-only style `id` to the standard, and its name (design 050 §6.4).
+/// The ops moving project-only style `id` to the standard, and its name.
 ///
 /// # Errors
 /// No standard, a built-in style, a style already in the standard, or not a project style.
@@ -688,7 +688,7 @@ pub(crate) fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef)
     Ok((ops, name))
 }
 
-/// The standard as `standard {}` returns it (design 050 §6.1).
+/// The standard as `standard {}` returns it.
 pub(crate) fn standard_json(doc: &Document) -> Value {
     match &doc.standard() {
         None => json!({"name": IEC, "id": null}),
@@ -726,7 +726,7 @@ pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, use
     if row.overridden {
         v["overridden"] = json!(true);
     }
-    // Design 072 §8: a record holds only its catalogue's typed fields; none is unknown.
+    // A record holds only its catalogue's typed fields; none is unknown.
     if users {
         let c = styles::users(doc, cat.catalogue, &row.id);
         v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
@@ -751,7 +751,7 @@ pub(crate) fn value_json(r: &defaults::Resolved<'_>) -> Value {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::commands::run; design 050 §6)
+// The commands (generic: crate::commands::run)
 
 /// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
 /// catalogues this build does not know are listed apart (a newer file opens in an older build).
@@ -766,7 +766,7 @@ pub struct StylesParams {
     users: Option<bool>,
 }
 
-/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}` (design 050 §6.1): no
+/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}`: no
 /// field reads the standard; the first given of `new`, `name`, `from` and `remove` is done.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -789,7 +789,7 @@ pub struct StandardParams {
     replace_with: Option<BTreeMap<String, String>>,
 }
 
-/// `setstyle {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}` (design 050 §6.2): a
+/// `setstyle {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}`: a
 /// new style, or a style's fields and name, as one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -819,7 +819,7 @@ pub struct SetstyleParams {
     layer: Option<String>,
 }
 
-/// `deletestyle {catalogue, id|name, replace_with?}` (design 050 §6.3): an own style deleted; its
+/// `deletestyle {catalogue, id|name, replace_with?}`: an own style deleted; its
 /// users move to `replace_with`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -837,7 +837,7 @@ pub struct DeletestyleParams {
     replace_with: Option<String>,
 }
 
-/// `promote {catalogue, id|name}` or `promote {key}` (design 050 §6.4): a project-only style, or
+/// `promote {catalogue, id|name}` or `promote {key}`: a project-only style, or
 /// the project's own value of a default, moves to the standard.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

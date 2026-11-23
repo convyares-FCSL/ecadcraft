@@ -1,10 +1,10 @@
-//! Reading the numbers a rating rests on (design 057 §4.1 and §6.1). Every input is hostile: a
+//! Reading the numbers a rating rests on. Every input is hostile: a
 //! parser reads at most [`MAX_CHARS`] characters (the device rating [`MAX_RATING_CHARS`]), never
 //! indexes, and returns `None` for anything not finite or out of range.
 
-/// Most characters a value parser reads (design 057 §6.1).
+/// Most characters a value parser reads.
 pub(crate) const MAX_CHARS: usize = 32;
-/// Most characters of a device's `rating` text scanned for its current (design 057 §4.1).
+/// Most characters of a device's `rating` text scanned for its current.
 pub(crate) const MAX_RATING_CHARS: usize = 64;
 /// The largest current anything here accepts, in amperes.
 pub const MAX_AMPS: f64 = 6300.0;
@@ -63,7 +63,7 @@ pub fn current(text: &str) -> Option<f64> {
     decimal(strip_unit(t, &["A"])).filter(|x| *x > 0.0 && *x <= MAX_AMPS)
 }
 
-/// A length in metres (028's `length`): `12`, `12 m`, `12.5m`, `1200 mm`; 0 < x ≤ 10 000 m.
+/// A length in metres (a `length`): `12`, `12 m`, `12.5m`, `1200 mm`; 0 < x ≤ 10 000 m.
 pub fn length_m(text: &str) -> Option<f64> {
     let t = bounded(text, MAX_CHARS)?;
     let mm = strip_unit(t, &["mm"]);
@@ -90,7 +90,7 @@ pub fn ambient(text: &str) -> Option<f64> {
 
 use ecad_model::objects::wire::Bundling;
 
-/// Read a bundling input (design 057 §2.1): a factor 0.30–1.00, or a circuit count 1–20 written
+/// Read a bundling input: a factor 0.30–1.00, or a circuit count 1–20 written
 /// `3 bunched` (or `3 circuits`); the stored type is the model's [`Bundling`].
 pub fn bundling(text: &str) -> Option<Bundling> {
     let t = bounded(text, MAX_CHARS)?;
@@ -124,7 +124,7 @@ pub fn percent(text: &str) -> Option<f64> {
     decimal(strip_unit(t, &["%"])).filter(|x| (0.5..=20.0).contains(x))
 }
 
-/// The rated current a protective device's free `rating` text gives (design 057 §4.1): the first
+/// The rated current a protective device's free `rating` text gives: the first
 /// number directly followed by `A` (spaces allowed; not `mA` or `kA`), else a curve letter
 /// `B C D K Z` directly followed by a number (`C16`), else `None`. A bare number is not read.
 /// Finite, > 0 and ≤ 6300 A. At most the first 64 characters are scanned.

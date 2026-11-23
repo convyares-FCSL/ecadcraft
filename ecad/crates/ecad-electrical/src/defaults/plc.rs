@@ -1,16 +1,15 @@
-//! Brief 045's defaults (PLC racks and cards, design 045 §12): area `plc`, group "PLC". Owned by
-//! lane D.
+//! Defaults (PLC racks and cards): area `plc`, group "PLC". Owned by
 //!
 //! # Semantics
 //! - Rack entries (`plc.slots`, `plc.slot.first`) may be overridden on the rack device (object
 //!   level), card entries (`plc.text.caption.show`) on the card device.
 //! - `plc.<type>.channels`: how many channels a new card of that type gets; from then on the count
-//!   is the module's own (design 072 §3).
+//!   is the module's own.
 //! - `plc.address.style`: the project's; a station may store its own.
 //! - `plc.card.caption`: the caption under a card body when the card is in a rack; `{rack}` is the
 //!   rack's tag, `{slot}` the slot number, `{slot:02}` the slot padded to two digits. Nothing else
 //!   in braces is accepted, so a stored pattern can never name something the code does not fill.
-//! - `plc.<key>.prefix`: the tag prefix of this brief's new starters (034's pattern, project level
+//! - `plc.<key>.prefix`: the tag prefix of the PLC starters (the symbol pattern, project level
 //!   in the project's `tag_prefixes`, keyed by starter key).
 //!
 //! Hostile-input bounds (999 slots, 256 channels) are constants beside the code they guard
@@ -346,7 +345,7 @@ pub static REFERENCE_TABLE: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-// ---------------------------------------------------------------- Brief 051 (design 051 §6)
+// ----------------------------------------------------------------
 
 /// Whether `t` is a page-title pattern: text whose only `{…}` parts are `{tag}`, `{type}`,
 /// `{channels}`, `{rack}`, `{slot}` and `{slot:02}`, with no stray brace.
@@ -389,7 +388,7 @@ pub static PAGE_TITLE: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Brief 056 (design 056 §4.4, §11): what a digital output does when the PLC stops.
+/// What a digital output does when the PLC stops.
 pub static SAFE_DQ: Entry = Entry {
     key: "plc.safe.dq",
     label: "Safe state of a digital output",
@@ -401,7 +400,7 @@ pub static SAFE_DQ: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Brief 056: what an analogue output does when the PLC stops: `hold`, `min`, `max` or a value.
+/// What an analogue output does when the PLC stops: `hold`, `min`, `max` or a value.
 pub static SAFE_AO: Entry = Entry {
     key: "plc.safe.ao",
     label: "Safe state of an analogue output",
@@ -428,7 +427,6 @@ pub static ENTRIES: &[&Entry] = &[
     &PLCIM,
     &PLCPM,
     &PLCCM,
-    // Brief 045b.
     &CHANNEL_FIRST,
     &PINS,
     &ADDRESS_STYLE,
@@ -447,10 +445,8 @@ pub static ENTRIES: &[&Entry] = &[
     &CHAO,
     &CHRTD,
     &CHIOL,
-    // Brief 051.
     &FRAME_SHOW,
     &PAGE_TITLE,
-    // Brief 056.
     &SAFE_DQ,
     &SAFE_AO,
 ];

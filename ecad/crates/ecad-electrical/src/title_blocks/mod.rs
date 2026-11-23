@@ -1,9 +1,9 @@
-//! Title blocks (brief 055, design 055): a frame style's block turned into frame parts, the
+//! Title blocks: a frame style's block turned into frame parts, the
 //! values its fields show, the built-in house block, and DXF import.
 //!
 //! # Semantics
 //! - A page's frame is its resolved `print.frame.style` (`ecad_model::document::sheet::frame_style`). An own
-//!   frame draws the block its record holds (FP1); the built-in `sheet` draws [`house::house`],
+//!   frame draws the block its record holds; the built-in `sheet` draws [`house::house`],
 //!   computed for the page's frame width, so it fits any sheet.
 //! - Fields show values read when the frame's input is worked out ([`crate::pages::frames::FrameInput`]):
 //!   project properties and the newest issued revision's fields only for the keys the block
@@ -51,8 +51,8 @@ pub(crate) fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins:
     }
 }
 
-/// What an op can change of the pages' grids and keep-out strips through their frames (brief 055,
-/// FP4): what the kept references and place indexes must follow (review of #110, 1).
+/// What an op can change of the pages' grids and keep-out strips through their frames:
+/// what the kept references and place indexes must follow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Reach {
     /// Not a frame op: the index's own rules apply.

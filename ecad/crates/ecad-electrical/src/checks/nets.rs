@@ -60,8 +60,8 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
         });
     }
     // A continuation name that is neither in the potentials table nor the net's own number (a
-    // pair placed by Merge the nets): a warning, never a refusal (owner, 2026-11-09). Only names
-    // in the table give a net its potential (design 022 §6 rule 2).
+    // pair placed by Merge the nets): a warning, never a refusal. Only names
+    // in the table give a net its potential.
     for key in &net.names {
         let numbered = net.numbers.keys().any(|n| name_key(n) == *key);
         if doc.settings().wiring.potential(key).is_some() || numbered {
@@ -83,18 +83,18 @@ pub(crate) fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check
     out
 }
 
-// 032: the Looks connected row's words and fix (design 032 §2.7): free route ends that meet are
+// The Looks connected row's words and fix: free route ends that meet are
 // joined (`joinwires`): merged, or landed on the route (a T).
 pub(super) fn looks_connected_words() -> &'static str {
     "Looks connected"
 }
 
-// 032: see `looks_connected_words`.
+// See `looks_connected_words`.
 pub(super) fn looks_connected_fix(at: Pt) -> Fix {
     Fix::Join(at)
 }
 
-/// The checks of route `r` (design 072 §4.3): an open end (one free end), a loose route (no end
+/// The checks of route `r`: an open end (one free end), a loose route (no end
 /// on a connection point or another route), a line with no wire yet (any free end), a free end
 /// that looks connected, an end drawn away from its connection point.
 pub(crate) fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) -> Vec<Check> {
@@ -115,7 +115,7 @@ pub(crate) fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) ->
         }
         _ => {}
     }
-    // A line with a free end carries no wire yet (owner, 2026-11-18): at its first free end.
+    // A line with a free end carries no wire yet: at its first free end.
     if let Some(end) = loose.first().copied() {
         let (page, at) = route_place(doc, r, Some(end));
         out.push(Check { kind: Kind::NoWireYet, page, at, object: Object::Route(r), which: which.clone(), fix: None });
@@ -158,7 +158,7 @@ pub(crate) fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
         return out;
     }
     let which = conductor_words(doc, c);
-    // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
+    // A colour code the app cannot draw is drawn in ink and listed as information.
     if let Some(code) = crate::cables::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
         let (page, at) = conductor_place(doc, c, None);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
@@ -166,7 +166,7 @@ pub(crate) fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
     out
 }
 
-/// The checks of `page` as a whole: brief 040's dash budget ([`crate::cables::words::dash_budget`]).
+/// The checks of `page` as a whole: the dash budget ([`crate::cables::words::dash_budget`]).
 pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
     let left = crate::cables::words::dash_budget(doc, page).left_out;
     if left.is_empty() {
@@ -177,7 +177,7 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
     vec![Check { kind: Kind::DashesLeftOut, page: Some(page), at: None, object: Object::None, which, fix: None }]
 }
 
-/// Whether connection point `t` is one its symbol marks quiet (brief 034, design 034 §11): a
+/// Whether connection point `t` is one its symbol marks quiet: a
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
 pub(super) fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
@@ -193,7 +193,7 @@ pub(super) fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
     })
 }
 
-/// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
+/// The checks of connection point `t`: more wires than it accepts (`-X1:3 takes
 /// 2 conductors; 3 are connected`); a device point with nothing attached.
 pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Check> {
     let Some(term) = doc.connection_points().get(&t) else { return Vec::new() };
@@ -220,9 +220,9 @@ pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Chec
     out
 }
 
-/// The checks of drawing aid `a` (design 072 §6.2): a continuation with no partner (the row
+/// The checks of drawing aid `a`: a continuation with no partner (the row
 /// points at its connection point); a location box whose function or location is no longer in
-/// the list (design 052 §6).
+/// the list.
 pub(crate) fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
     if let Some(b) = crate::locations::box_values(doc, a) {
         return box_checks(doc, a, b);

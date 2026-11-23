@@ -1,4 +1,4 @@
-//! What one commit changed, as the pipeline reports it to the engine (design 064 §5): [`Changes`].
+//! What one commit changed, as the pipeline reports it to the engine: [`Changes`].
 //!
 //! The record is engine-free: page and object ids, flags and lines. ecad-engine's
 //! `Project::apply_changes` turns it into the change log entry, the redraw and the echo.
@@ -16,7 +16,7 @@ pub struct Changes {
     /// Pages whose drawing could have changed.
     pub pages: PageSet,
     /// Pages the ops name directly (added, removed, or drawn on): an undo or redo brings one of
-    /// them to the front (design 016 §4.3).
+    /// them to the front.
     pub named: BTreeSet<PageId>,
     /// What the Devices list and symbol search must read again.
     pub devices: DeviceTouch,

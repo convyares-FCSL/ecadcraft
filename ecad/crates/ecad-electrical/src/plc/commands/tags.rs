@@ -1,4 +1,4 @@
-//! `plcmaketags` (brief 056): make the PLC tags of the channels. The rules are
+//! `plcmaketags`: make the PLC tags of the channels. The rules are
 //! [`crate::plc::signals`]; the command is generic ([`crate::commands::run`]).
 
 use schemars::JsonSchema;
@@ -10,7 +10,7 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::plc::signals::make_tags_ops;
 
-/// `plcmaketags {card | rack}` (design 056 §4.3): fill the empty tags of a card's (or a rack's
+/// `plcmaketags {card | rack}`: fill the empty tags of a card's (or a rack's
 /// cards') used and reserved channels from their descriptions, in one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -1,4 +1,4 @@
-//! Reading an indicator's rating (design 072 §2.2, "Ratings"): its colour, how it signals, its
+//! Reading an indicator's rating: its colour, how it signals, its
 //! rated voltage and its power.
 //!
 //! # Semantics

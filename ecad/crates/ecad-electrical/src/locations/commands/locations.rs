@@ -1,4 +1,4 @@
-//! The rules of brief 052's commands (design 052 §5.5–§5.9): what `setlocation`, `setfunction`
+//! The rules of the commands: what `setlocation`, `setfunction`
 //! (and `setprop` of an aspect property) write, the proposals a box's new value makes for the
 //! devices inside, and what `conflicts` moves. A typed code is stored as its entry's key in the
 //! project's list ([`crate::locations::designations`]); an unknown code adds its entry in the same
@@ -19,7 +19,7 @@ use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect};
 use crate::symbols::proposals::{self, Conflict};
 
-/// Most components one `setlocation` names (tester 052: a list over it is refused before any
+/// Most components one `setlocation` names (a list over it is refused before any
 /// work).
 pub(crate) const MAX_DEVICES: usize = 10_000;
 
@@ -31,7 +31,7 @@ pub(crate) const ASPECT_WORDS: &str = "`aspect` is \"location\" or \"function\""
 pub(crate) const ANSWER_WORDS: &str = "`answer` is \"move\", \"half\" or \"leave\"";
 
 /// The property `key` names when it is an aspect property, with the retired connector half key
-/// `half.<s|p>.location` read as the override `location.socket` / `location.plug` (FP4).
+/// `half.<s|p>.location` read as the override `location.socket` / `location.plug`.
 pub(crate) fn aspect_property(key: &str) -> Option<String> {
     let key = key.trim();
     match key {
@@ -66,7 +66,7 @@ pub(crate) fn property_for(a: Aspect, ty: Option<&str>) -> Result<String, CmdErr
     }
 }
 
-/// The components named, each once, in the order first named (tester 052, finding 4: a device
+/// The components named, each once, in the order first named (a device
 /// named twice is set once, not refused): `devices` when given, else `component`.
 ///
 /// # Errors
@@ -121,7 +121,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
         }
     }
     let a = Aspect::of_property(prop).ok_or(CmdError::refused("not a function or location property"))?;
-    // A location box is a drawing aid (design 072 §6.2): named, not "no such device".
+    // A location box is a drawing aid: named, not "no such device".
     if let Some(c) = objects.iter().find(|c| !doc.devices().contains_key(c) && crate::locations::box_values(doc, AidId(c.0)).is_some()) {
         return Err(CmdError::refused(format!("{} is a location box; edit it with setprop {{aids}}", c.hex())));
     }
@@ -136,7 +136,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
             ));
         }
         if prop == a.property() {
-            // A typed value is set by hand: fixed (design 072 §6.3).
+            // A typed value is set by hand: fixed.
             let after = designations::with_device_key(comp, a, key.as_deref(), true);
             if after != *comp {
                 out.ops.push(Op::ModifyDevice { id: *c, before: comp.clone(), after });
@@ -179,8 +179,7 @@ pub(crate) fn aspect_of(prop: &str) -> Result<Aspect, CmdError> {
     .ok_or(CmdError::refused("not a function or location property"))
 }
 
-/// A set with its follow-ups: the box's proposals for the devices inside (brief 052d, design 052
-/// §5.6).
+/// A set with its follow-ups: the box's proposals for the devices inside
 #[derive(Debug, Default)]
 pub(crate) struct SetPlan {
     pub planned: Planned,
@@ -208,10 +207,10 @@ pub(crate) fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceI
 /// The refusal of an aid that is not a location box.
 pub(crate) const NOT_A_BOX: &str = "That is not a location box.";
 
-/// `setprop {aids, key: function | location, value}` (design 072 §6.2): location boxes `aids`
+/// `setprop {aids, key: function | location, value}`: location boxes `aids`
 /// take the code `text` of aspect `a` (`None` clears it), one `ModifyAid` per box that changes.
 /// When one box takes another entry, the devices inside are proposed it: unset ones take it in
-/// the same transaction; those at the box's old value are asked (design 052 §5.6).
+/// the same transaction; those at the box's old value are asked.
 ///
 /// # Errors
 /// An aid that is not a box, a box left with neither value, or a code that is not valid.
@@ -427,7 +426,7 @@ pub struct SetfunctionParams {
     r#type: Option<String>,
 }
 
-/// `conflicts {answer?, components?, aspect?}` (design 052 §5.5): the waiting conflicts; Move,
+/// `conflicts {answer?, components?, aspect?}`: the waiting conflicts; Move,
 /// Half or Leave. `devices` and `aspect` choose rows (Choose: one row is one device and one
 /// aspect). Move and Half act only on the rows that still hold (an undo may have taken them away).
 #[derive(Deserialize, JsonSchema)]

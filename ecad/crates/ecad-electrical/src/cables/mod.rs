@@ -1,4 +1,4 @@
-//! The cable planning model (design 059 §2; design 065 §3, cut 2): the fields a cable stores, their
+//! The cable planning model: the fields a cable stores, their
 //! bounds, and the reads over them (planned ends, glands, shield, part values, drawn pages and
 //! ends, off-plan ends and value checks). Pure rules over the document; the commands that write
 //! them are `ecad_engine::commands::cable`.
@@ -25,7 +25,7 @@ pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
     }
 }
 
-/// A cable end: `From` is the cabinet end, `To` the field end (057's sides).
+/// A cable end: `From` is the cabinet end, `To` the field end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Side {
     From,
@@ -138,7 +138,7 @@ impl CableField {
 
 use ecad_model::objects::styles::cable::Shield;
 
-/// Where a shown value comes from (design 059 §2.2): the hint `set here`, `from type`,
+/// Where a shown value comes from: the hint `set here`, `from type`,
 /// `from notation`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
@@ -157,7 +157,7 @@ impl Source {
     }
 }
 
-/// Most characters of a value a refusal echoes (tester 059a, rule 7): longer text ends with `…`.
+/// Most characters of a value a refusal echoes: longer text ends with `…`.
 pub(crate) const MAX_ECHO: usize = 40;
 
 /// Most characters of a whole refusal.
@@ -216,7 +216,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
     }
 }
 
-/// The fields of §2.1 a file holds out of bounds (a file made elsewhere): `cable-bad-value`.
+/// The fields a file holds out of bounds (a file made elsewhere): `cable-bad-value`.
 pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
     let Some(c) = doc.cables().get(&k) else { return Vec::new() };
     let checked = [
@@ -241,7 +241,7 @@ pub(crate) fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)
 }
 
 /// Whether cable `k` is drawn: a core on a line, or a representation (FD1). Its stored unplaced
-/// cores (design 072 §4.5) do not draw it.
+/// cores do not draw it.
 pub fn is_drawn(doc: &Document, k: CableId) -> bool {
     doc.cables().get(&k).is_some_and(|c| c.cores.iter().any(|m| m.position != ecad_model::CorePosition::Unplaced))
         || doc.representations_of(Subject::Cable(k)).next().is_some()
@@ -293,7 +293,7 @@ fn own_or_type(doc: &Document, k: CableId, field: CableField, type_key: &str) ->
     cable::type_text(doc, &id, type_key).map(|v| (v, Source::Type))
 }
 
-/// Cable `k`'s gland at `side`: its own, else its cable type's (Q5, option B).
+/// Cable `k`'s gland at `side`: its own, else its cable type's.
 pub fn gland(doc: &Document, k: CableId, side: Side) -> Option<(String, Source)> {
     own_or_type(doc, k, CableField::Gland(side), cable::TYPE_GLAND).filter(|(g, _)| cable::is_gland(g))
 }
@@ -307,7 +307,7 @@ pub fn shield(doc: &Document, k: CableId) -> Option<(Shield, Source)> {
     cable::type_text(doc, &id, cable::TYPE_SHIELD).and_then(|w| <Shield as ecad_model::naming::words::Word>::parse(&w)).map(|s| (s, Source::Type))
 }
 
-/// Cable `k`'s maker, part number or description: its own, else its cable type's (Q8).
+/// Cable `k`'s maker, part number or description: its own, else its cable type's.
 pub fn part_value(doc: &Document, k: CableId, field: CableField) -> Option<(String, Source)> {
     let type_key = match field {
         CableField::Maker => "maker",
@@ -366,7 +366,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
 
 /// One end of a drawn cable as drawn: the functions and locations (codes) of the devices at that
 /// end of its cores. The cabinet end is where each core chain starts (its first wire's end A), the
-/// field end where it finishes (its last wire's end B), as 057's core table reads them. Wire-only
+/// field end where it finishes (its last wire's end B), as the core table reads them. Wire-only
 /// items (`wires::kind_of`) do not count.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DrawnEnd {
@@ -390,7 +390,7 @@ impl DrawnEnd {
 /// member bound.
 pub(crate) fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
-    // Each core is one wire, through any named points (design 072 §4.4, F5).
+    // Each core is one wire, through any named points.
     let wires: Vec<ecad_model::WireId> = doc.cables().get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
     for w in wires.iter().take(MAX_CABLE_MEMBERS) {
         let ends = doc.wires().get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
@@ -413,7 +413,7 @@ pub(crate) fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     out
 }
 
-/// A drawn end away from that same end's plan (design 059 §6, Q4; tester 059a).
+/// A drawn end away from that same end's plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OffPlan {
     pub side: Side,
@@ -441,8 +441,8 @@ pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
     out
 }
 
-/// The value rows of cable `k` (design 059 §6): `cable-bad-value` always; `cable-end-off-plan` and
-/// `no-gland` (059d) once drawn.
+/// The value rows of cable `k`: `cable-bad-value` always; `cable-end-off-plan` and
+/// `no-gland` once drawn.
 pub(crate) fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
     let mut out = Vec::new();
     if !doc.cables().contains_key(&k) {
@@ -480,7 +480,7 @@ pub(crate) fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check
             fix: Some(Fix::UseDrawing(k, side)),
         });
     }
-    // 059d (design 059 §6): a drawn end with no gland size, its own or its cable type's.
+    // A drawn end with no gland size, its own or its cable type's.
     for side in Side::BOTH {
         if gland(doc, k, side).is_none() {
             out.push(Check {

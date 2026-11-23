@@ -1,21 +1,21 @@
-//! How a cable looks on a page (brief 009, design 005 and 009), computed over the document: the
+//! How a cable looks on a page, computed over the document: the
 //! restyled fan (label box, thick trunk and spines, curved bends, thin tails with core labels and
 //! wire numbers), the marker drawn at a cable's reference end, core labels at the slash crossings
-//! in traditional view, and whether a cable is offered fan view (brief 005).
+//! in traditional view, and whether a cable is offered fan view.
 //!
 //! # Semantics
 //! - Everything here is computed from the document every time a page is projected and is never
-//!   stored (design 005 rule 3). It reads the members' `core`, the cable's `tag`, `designation`
+//!   stored. It reads the members' `core`, the cable's `tag`, `designation`
 //!   and `type`, the conductors' `tag`, the routes, the slashes and the cable's `reference`
-//!   representations (brief 010's model: one Point item each).
+//!   representations (one Point item each).
 //! - Sizes are drawing units, laid out from the `CableText` text style's height ([`label_height`],
-//!   brief 066d). Text widths are measured by the `measure` function passed in (per unit of
-//!   height): the engine passes the drafting font CADCraft draws text with.
+//!   the cable look has no text size of its own). Text widths are measured by the `measure` function passed in (per
+//!   unit of height): the engine passes the drafting font CADCraft draws text with.
 //! - Hostile values never panic: any value that is not finite makes the fan fall back to the
 //!   traditional drawing on that page, and text is shortened before it is measured.
 //!
 //! This module excludes measuring text with fonts and drawing: the engine's `draw` turns
-//! [`Part`]s into entities (brief 074 moved the computation here).
+//! [`Part`]s into entities.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -165,7 +165,7 @@ pub struct Member {
     pub path: Vec<Pt>,
 }
 
-/// The cable's two sides on the page (design 005 §5 steps 1 and 2): the reference member's index
+/// The cable's two sides on the page: the reference member's index
 /// and, per member in order, its (r₀-side, r₁-side) ends.
 pub fn sides(members: &[Member]) -> Option<(usize, Vec<(Pt, Pt)>)> {
     let reference = members.len().checked_sub(1)? / 2;
@@ -200,12 +200,12 @@ pub fn key(p: CorePosition) -> CorePosition {
     }
 }
 
-// ---------------------------------------------------------------- tokens (design §12)
+// ---------------------------------------------------------------- tokens
 
 /// `ecad.label-gap`: between the bend and the first label, between labels, after the last.
 pub const LABEL_GAP: f64 = 1.0;
 /// Between a core label and the wire number after it: one text height `h`, so the two never read
-/// as one (overseer decision on the brief 009 review, `W4 4` not `W44`).
+/// as one (`W4 4` not `W44`).
 pub fn label_spacing(h: f64) -> f64 {
     h
 }
@@ -225,12 +225,12 @@ pub(crate) fn box_pad(h: f64) -> f64 {
 pub const CABLE_WEIGHT: u16 = 70;
 /// Wire numbers and label box lines longer than this are drawn shortened.
 pub(crate) const MAX_SHOWN_CHARS: usize = 24;
-/// The text a reference end shows when brief 010 cannot derive one (a hostile file): an orphan.
+/// The text a reference end shows when it cannot derive one (a hostile file): an orphan.
 pub const REFERENCE_PLACEHOLDER: &str = "/?";
 /// `ecad.orphan`: a reference end with no other end shows its text in red.
 pub const ORPHAN_ACI: u8 = crate::references::cables::ORPHAN_ACI;
 
-/// The text a reference end shows (design 009 §7.4): brief 010's live reference (`/2.3`), or
+/// The text a reference end shows: the live reference (`/2.3`), or
 /// `/?` for an orphan. The one function both the marker and the hover take it from.
 pub fn reference_text(doc: &Document, reference: RepresentationId) -> String {
     reference_marker(doc, reference).0
@@ -242,7 +242,7 @@ pub(crate) fn reference_marker(doc: &Document, reference: RepresentationId) -> (
     (text, orphan)
 }
 
-/// [`reference_marker`] with the side its flag sits on (brief 010's direction away from the wires).
+/// [`reference_marker`] with the side its flag sits on (the direction away from the wires).
 fn reference_marker_side(doc: &Document, reference: RepresentationId) -> (String, bool, FlagSide) {
     match crate::references::cables::marker_text_dir(doc, reference) {
         Some((text, orphan, dir)) => (text, orphan, FlagSide::away(dir)),
@@ -332,13 +332,13 @@ pub enum FanState {
     NotAsked,
     /// Drawn as a fan.
     Drawn,
-    /// Fewer than two of its wires on this page: drawn traditional here (design §4.1).
+    /// Fewer than two of its wires on this page: drawn traditional here.
     TooFew,
     /// A route of no length, or a value that is not finite: drawn traditional here.
     Failed,
 }
 
-/// Which end of the cable on a page a reference end stops (design §7.3).
+/// Which end of the cable on a page a reference end stops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MarkerEnd {
     /// The side of the reference member's first point (r₀), shown as "A side".
@@ -402,7 +402,7 @@ impl Marker {
         let f = self.shape();
         add(f.lo, mul(sub(f.hi, f.lo), 0.5))
     }
-    /// The flag (pointing away from the wires, design 009 §7.2) and its attach point M.
+    /// The flag (pointing away from the wires) and its attach point M.
     fn flag(&self) -> (Vec<Pt>, Pt) {
         let f = self.shape();
         (f.outline, f.attach)
@@ -429,7 +429,7 @@ fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn
         .collect()
 }
 
-/// One fanned end's spine (design §4.2, with the owner's movable join): origin O (the reference
+/// One fanned end's spine (with a movable join): origin O (the reference
 /// member's end), `u` towards the spine (snapped to an axis), `v` along it, the spine on the line
 /// a = `c`, and the cores' range `tmin..=tmax` along `v`. The trunk joins the spine somewhere in
 /// that range.
@@ -498,7 +498,7 @@ struct Frame {
     h: f64,
 }
 
-/// The frame of one fanned end (design §4.2 steps 1 to 5). `ends`: each member's end on this side.
+/// The frame of one fanned end. `ends`: each member's end on this side.
 #[allow(clippy::too_many_arguments)]
 fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Option<Frame> {
     let g = LABEL_GAP;
@@ -545,7 +545,7 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
     (c.is_finite() && spine.middle().is_finite()).then_some(Frame { spine, t, rho, labels, h })
 }
 
-/// One fanned end joined at `join` (a point on its spine; design §4.2 steps 6 to 9, with the
+/// One fanned end joined at `join` (a point on its spine; with the
 /// owner's movable join). Each core bends from the spine towards its tail, away from the join;
 /// a core level with the join leaves the spine straight.
 fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Option<FannedEnd> {
@@ -578,7 +578,7 @@ fn fan_end(f: &Frame, members: &[Member], ends: &[Pt], join: Pt, tol: f64) -> Op
         if !start.near(*e, tol) {
             parts.push(Part::new(Role::Tail, Shape::Path { points: vec![start, *e], closed: false }, Weight::Wire).of_core(m.position));
         }
-        // Labels at the tail start, reading left to right or bottom to top (design §4.5).
+        // Labels at the tail start, reading left to right or bottom to top.
         let second = if l.core.is_some() { g + l.core_w + label_spacing(h) } else { g };
         let lift = 0.3 * h;
         let (core_at, wire_at, rotation) = if r.x > 0.5 {
@@ -615,7 +615,7 @@ fn shape_finite(s: &Shape) -> bool {
     }
 }
 
-/// The trunk between two fanned ends (design §4.3).
+/// The trunk between two fanned ends.
 fn trunk_between(a: &FannedEnd, b: &FannedEnd, tol: f64) -> Vec<Pt> {
     let (j0, d0, j1, d1) = (a.junction, a.outward, b.junction, b.outward);
     let same = |p: Pt, q: Pt| p.near(q, 1e-9);
@@ -649,7 +649,7 @@ fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
     }
 }
 
-/// The label box on the trunk (design §4.4): its parts and the trunk clipped by it.
+/// The label box on the trunk: its parts and the trunk clipped by it.
 fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<Part> {
     let cab = doc.cables().get(&cable);
     let get = |k: &str| cab.and_then(|c| c.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
@@ -684,7 +684,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
     parts
 }
 
-/// Core labels just past the slash crossings (design §6).
+/// Core labels just past the slash crossings.
 fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
     let Some(c) = doc.cables().get(&cable) else { return Vec::new() };
     let core_of: BTreeMap<CorePosition, String> = c
@@ -760,7 +760,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         None => [Vec::new(), Vec::new()],
     };
     let cents = [centroid(&side_ends[0]), centroid(&side_ends[1])];
-    // Which end each reference stops (design §7.3).
+    // Which end each reference stops.
     let mut ends_of: BTreeMap<RepresentationId, MarkerEnd> = markers.iter().map(|m| (m.id, MarkerEnd::Extra)).collect();
     let mut stopped: [Option<usize>; 2] = [None, None];
     if let (Some(c0), Some(c1)) = (cents[0], cents[1]) {
@@ -783,7 +783,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         }
     }
     // Each marker's flag and attach point: pointing away from the wires that leave its point, the
-    // flat side facing them (brief 010's direction, the same rule on every side).
+    // flat side facing them (the same rule on every side).
     let flags: Vec<(Vec<Pt>, Pt)> = markers.iter().map(Marker::flag).collect();
     let mut out = CableDrawing { markers: ends_of, ..CableDrawing::default() };
     let mut fanned: Option<(Vec<Part>, Vec<ItemId>, [Option<Pt>; 2])> = None;
@@ -827,7 +827,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         }
         None => out.parts = slash_labels(doc, idx, cable, tol),
     }
-    // Stored fan joins are not drawn: the trunk shows where the cable joins (owner request).
+    // Stored fan joins are not drawn: the trunk shows where the cable joins.
     out.hidden.extend(idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ecad_model::Role::FanAnchor).flat_map(|(_, r)| r.items.iter().copied()));
     for (m, (flag, _)) in markers.iter().zip(&flags) {
         out.parts.push(Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id));
@@ -836,7 +836,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         text.color = m.orphan.then_some(ORPHAN_ACI);
         out.parts.push(text);
     }
-    // Brief 010 §6.4, folded in: at each reference end (at most two per cable), the end of each
+    // At each reference end (at most two per cable), the end of each
     // member route here that leaves for another page (the end nearer the reference point) shows
     // no loose-end square, in either view.
     for m in markers.iter().take(MAX_REFERENCES_PER_CABLE) {
@@ -911,7 +911,7 @@ fn fan_parts(
     Some((parts, hidden, m))
 }
 
-/// The stored fan join of each fanned end (design: owner request): each `fan-anchor`
+/// The stored fan join of each fanned end: each `fan-anchor`
 /// representation of `cable` on the page, with the point of its first Point item, goes to the
 /// fanned end whose spine is nearest (one per end; the nearest pair first, then the other end).
 /// Each entry: representation, item, point.
@@ -1035,7 +1035,7 @@ pub fn cables_on_page(
         .collect()
 }
 
-/// What one page shows, indexed once per projection (brief 009 review S4): each wire's line on the
+/// What one page shows, indexed once per projection: each wire's line on the
 /// page (the route running straight between its two points, else the first route carrying it, as
 /// [`crate::wires::routes::route_of_wire_on`] picks it), the lines carrying it and their representations,
 /// and each cable's representations. Every cable is then drawn without scanning the whole
@@ -1048,7 +1048,7 @@ pub(crate) struct PageIndex<'a> {
 }
 
 impl<'a> PageIndex<'a> {
-    /// One pass over the representations on `page` (through the page index, brief 014).
+    /// One pass over the representations on `page` (through the page index).
     pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
         let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), lines: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
@@ -1071,7 +1071,7 @@ impl<'a> PageIndex<'a> {
                             idx.routes.insert(at, (x, p));
                         }
                     }
-                    // A loose line (no wire yet) carries its cores itself (owner ruling 2026-11-18).
+                    // A loose line (no wire yet) carries its cores itself.
                     let at = key(ecad_model::connectivity::wire_order::core_position(doc, x));
                     if at.route().is_some() {
                         idx.prims.entry(at).or_default().extend(r.items.iter().filter_map(prim));
@@ -1103,14 +1103,14 @@ impl<'a> PageIndex<'a> {
     }
 }
 
-// ---------------------------------------------------------------- the cable view (brief 005)
+// ---------------------------------------------------------------- the cable view
 
 /// `Cable C1 now shown in fan view.`, for the view named `view_name`.
 pub fn switched(doc: &Document, cable: CableId, view_name: &str) -> String {
     format!("Cable {} now shown in {view_name} view.", crate::cables::cable_title(doc, cable))
 }
 
-/// Whether `cable` may be switched to fan view: it has two or more members (owner answer Q4).
+/// Whether `cable` may be switched to fan view: it has two or more members.
 pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
     doc.cables().get(&cable).is_some_and(|c| c.cores.len() >= 2)
 }

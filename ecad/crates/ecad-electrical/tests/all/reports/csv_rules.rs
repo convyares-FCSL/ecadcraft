@@ -1,4 +1,4 @@
-//! The rules of a report's CSV (design 024 §10): RFC 4180 quoting and Excel-safe prefixes.
+//! The rules of a report's CSV: RFC 4180 quoting and Excel-safe prefixes.
 
 use ecad_electrical::reports::{Cell, Table, csv};
 

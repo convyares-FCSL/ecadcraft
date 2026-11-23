@@ -1,15 +1,15 @@
-//! Addressing (design 045 §5): live addresses by slot and channel, pinned starts, typed overrides,
+//! Addressing: live addresses by slot and channel, pinned starts, typed overrides,
 //! and `plcaddress`.
 //!
 //! # Semantics
 //! - Per rack, cards in slot order; one input and one output byte counter, starting at the rack's
-//!   `plc.address.start.input` / `.output`. Each card takes a block (§5.1's sizes; a card's
+//!   `plc.address.start.input` / `.output`. Each card takes a block (a card's
 //!   `plc.addr.size` overrides its size); its block starts at its pinned `plc.addr.start` when set,
 //!   else at the counter, and the counter then moves to the end of that block if that is further.
-//! - Formats by the rack's `plc.address.style` (§5.2): `byte.bit`, `iec`, `slot`, `none`.
-//! - A typed `plc.ch.<i>.address` wins everywhere (§5.4).
+//! - Formats by the rack's `plc.address.style`: `byte.bit`, `iec`, `slot`, `none`.
+//! - A typed `plc.ch.<i>.address` wins everywhere.
 //! - Checked arithmetic: a block passing byte 65 535 has no address (`address-overflow`), never a
-//!   panic (§5.5).
+//!   panic.
 //!
 //! Every write (the commands, in ecad-engine's `cmd::plc`) is one transaction.
 
@@ -20,21 +20,21 @@ use ecad_model::{DeviceId, Document};
 use crate::defaults::{self, Scope};
 use crate::plc::rack::{self, CardType, Direction, RackRef};
 
-/// The `setprop` name of a module's pinned start byte (FP3).
+/// The `setprop` name of a module's pinned start byte.
 pub(crate) const START_KEY: &str = "plc.addr.start";
-/// The `setprop` name of a module's own block size in bytes (FP3).
+/// The `setprop` name of a module's own block size in bytes.
 pub(crate) const SIZE_KEY: &str = "plc.addr.size";
 /// The highest byte an address may use.
 pub const MAX_BYTE: u32 = ecad_model::objects::plc::MAX_BYTE;
 /// The largest block size a card may set.
 pub const MAX_SIZE: u32 = ecad_model::objects::plc::MAX_SIZE;
 
-/// An address style (design 045 §5.2).
+/// An address style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Style {
     ByteBit,
     Iec,
-    /// Brief 056 (Q5): `%I0.0`, `%Q2.2`, `%IW64`.
+    /// `%I0.0`, `%Q2.2`, `%IW64`.
     Percent,
     Slot,
     None,
@@ -108,7 +108,7 @@ pub(crate) fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
     if n.is_finite() && n >= 1.0 { (n as u32).min(32) } else { 2 }
 }
 
-/// Card `c`'s (input, output) block size in bytes for `n` channels (design 045 §5.1).
+/// Card `c`'s (input, output) block size in bytes for `n` channels.
 pub fn sizes(doc: &Document, c: DeviceId, ty: CardType, n: u32) -> (u32, u32) {
     let own = crate::plc::edit::module_of(doc, c).and_then(|m| m.address.size).filter(|s| (1..=MAX_SIZE).contains(s));
     let digital = n.div_ceil(8);
@@ -141,7 +141,7 @@ pub struct Block {
 /// One card of a rack for the counters: (card, type, channel count, slot).
 pub type Member = (DeviceId, CardType, u32, u32);
 
-/// The blocks of a rack's cards, `members` in slot order (design 045 §5.1).
+/// The blocks of a rack's cards, `members` in slot order.
 pub fn blocks(doc: &Document, r: DeviceId, members: &[Member]) -> BTreeMap<DeviceId, Block> {
     let at = Scope { component: Some(r), ..Scope::project() };
     let start = |e: &defaults::Entry| {
@@ -176,7 +176,7 @@ pub fn blocks(doc: &Document, r: DeviceId, members: &[Member]) -> BTreeMap<Devic
     out
 }
 
-/// The automatic address of channel `i` of a card (design 045 §5.2): `None` with style `none`, no
+/// The automatic address of channel `i` of a card: `None` with style `none`, no
 /// block, or past the block.
 #[allow(clippy::too_many_arguments)]
 pub fn automatic(style: Style, ty: CardType, block: &Block, slot: u32, i: u32, shown: u32, word: u32, output: bool) -> Option<String> {
@@ -244,7 +244,7 @@ pub(crate) fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
         .collect()
 }
 
-/// What has a PLC address (design 072 §2.4, A10): a module's block is its own method, so the
+/// What has a PLC address: a module's block is its own method, so the
 /// Checks, the I/O list and the overview read it rather than work it out again.
 pub trait Addressed {
     /// Module `id`'s address block in its station; `None` when it is in no station's slot.
@@ -259,7 +259,7 @@ impl Addressed for ecad_model::objects::plc::PlcModule {
     }
 }
 
-/// A station's own reads (design 072 §3): its modules, from the index's station → modules map.
+/// A station's own reads: its modules, from the index's station → modules map.
 pub trait Station {
     /// Station `id`'s modules with their slots, by slot then tag.
     fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)>;
@@ -302,7 +302,7 @@ pub(crate) fn of_channel(
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
     let Some(ty) = crate::plc::card_type_of(doc, c) else { return (None, None) };
-    // The kept model's blocks when there is one (review of #84, 3); a walk otherwise, once per rack.
+    // The kept model's blocks when there is one; a walk otherwise, once per rack.
     let b = match kept {
         Some(p) => p.blocks.get(&c).copied(),
         None => cache.entry(r).or_insert_with(|| blocks(doc, r, &members_of(doc, r))).get(&c).copied(),

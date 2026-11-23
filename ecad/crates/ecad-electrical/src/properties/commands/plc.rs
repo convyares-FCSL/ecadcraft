@@ -1,4 +1,4 @@
-//! Lane 072 C's rows of `setprop` (design 072 §3, brief 072 "Lanes"): a PLC station's and a
+//! The rows of `setprop` for a PLC station's and a
 //! module's keys. Each key that became a [`ecad_model::objects::plc::PlcRack`] or
 //! [`ecad_model::objects::plc::PlcModule`] field builds one `ModifyDevice`; the registry's object-level
 //! `plc.*` entries stay values of their own (`crate::plc::setprop_rule`).

@@ -1,5 +1,5 @@
-//! Reading a power supply's or a transformer's rating (design 072 §2.2 row 1, overseer rulings
-//! 2026-11-18): its input and output voltages, a power supply's output current and power, a
+//! Reading a power supply's or a transformer's rating:
+//! its input and output voltages, a power supply's output current and power, a
 //! transformer's VA.
 //!
 //! # Semantics

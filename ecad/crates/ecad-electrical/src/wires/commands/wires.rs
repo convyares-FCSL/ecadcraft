@@ -1,4 +1,4 @@
-//! The wire commands' rules (brief 022, design 022 §10; brief 032 §2; brief 050b): nets and their
+//! The wire commands' rules: nets and their
 //! numbers, potentials and categories, the wiring settings, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
@@ -46,7 +46,7 @@ pub(crate) struct CategoryName {
     pub name: String,
 }
 
-/// A net as `nets` and `net` show it (design 022 §10, design 050 §5.6).
+/// A net as `nets` and `net` show it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NetView {
     pub number: Option<String>,
@@ -459,7 +459,7 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 }
 
 /// The ops giving `conductors` category `value` (`None`: clear their own), with the potential
-/// rule of design 050 §5.4: a conductor on a net with no potential also gets the category's
+/// rule: a conductor on a net with no potential also gets the category's
 /// potential; a net that has another potential keeps it. Returns the ops and what to say.
 ///
 /// # Errors
@@ -514,7 +514,7 @@ pub(crate) struct Categorised {
     pub message: Option<String>,
 }
 
-/// `category` (brief 050b, design 050 §6.9): the wires' own category `value` (an ID or a name;
+/// `category`: the wires' own category `value` (an ID or a name;
 /// `None` clears it).
 ///
 /// # Errors
@@ -560,7 +560,7 @@ pub(crate) struct WireSettingsChange {
     pub label_height: Option<f64>,
     pub label_rule: Option<String>,
     pub label_min_length: Option<f64>,
-    /// Design 072 F40: what one wire number counts, `net` or `conductor`.
+    /// What one wire number counts, `net` or `conductor`.
     pub number_by: Option<String>,
     pub unclassified_prefix: Option<String>,
     /// The whole table.
@@ -590,7 +590,7 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
         w.label_height =
             Some(Some(hv).filter(|x| wiring::LABEL_HEIGHTS.contains(x)).ok_or(CmdError::input("`label_height` must be 0.5 to 10 (millimetres)"))?);
     }
-    // Brief 032 §4: the label rule and the shortest labelled wire.
+    // The label rule and the shortest labelled wire.
     if let Some(r) = &change.label_rule {
         let r = r.trim().to_ascii_lowercase();
         if r != wiring::LABEL_RULE_NET && r != wiring::LABEL_RULE_EACH {
@@ -616,7 +616,7 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
         let mut rows = Vec::new();
         let mut names = BTreeSet::new();
         for r in table {
-            // Brief 050b (FP6): colours and cross-sections are wire categories' now.
+            // Colours and cross-sections are wire categories' now.
             if r.colours {
                 return Err(CmdError::refused(msg::CATEGORY_COLOURS));
             }
@@ -661,12 +661,12 @@ pub enum Joined {
     Tee { ops: Vec<Op>, route: RouteId, landed: usize, at: Pt },
 }
 
-/// `joinwires` (design 032 §2.5, design 072 §4.3): two free route ends that meet at `at` become
+/// `joinwires`: two free route ends that meet at `at` become
 /// one route; free ends on a route's middle, or three or more ends, land on one route there (a
 /// T). `quiet` ends are never joined.
 ///
 /// # Errors
-/// Nothing to join there; a join that is too long or not sensible (§2.2).
+/// Nothing to join there; a join that is too long or not sensible.
 pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points: usize) -> Result<Joined, CmdError> {
     let loose = wires::joining::joinable_ends_at(doc, page, at, quiet);
     let through = wires::joining::interior_route_at(doc, page, at);
@@ -697,7 +697,7 @@ pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points
     Ok(Joined::Tee { ops: edits.ops(), route, landed: landing.len(), at: place })
 }
 
-/// `wire` (design 032 §2.3): the plan for drawing `input`, with `category` (an ID or a name), when
+/// `wire`: the plan for drawing `input`, with `category` (an ID or a name), when
 /// given, on the wires the drawn route carries.
 ///
 /// # Semantics
@@ -725,15 +725,15 @@ pub fn wire(
     Ok(plan)
 }
 
-/// The `setprop` rules of brief 022 for a conductor or a continuation: `Ok(Some(value))` to write
-/// (checked), `Err` to refuse; `Ok(None)` when the key is not one of brief 022's.
+/// The `setprop` rules for a conductor or a continuation: `Ok(Some(value))` to write
+/// (checked), `Err` to refuse; `Ok(None)` when the key is not one of those.
 ///
 /// # Errors
 /// A wire number or potential (they belong to the whole net), a tool-made device's kind, or a
-/// caption on a device (a continuation's is `setprop {aids}`, design 072 §6.2).
+/// caption on a device (a continuation's is `setprop {aids}`).
 pub(crate) fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
-        // Brief 049 (design 049 §3.1): a caption only on a continuation (`setprop {aid}`).
+        // A caption only on a continuation (`setprop {aid}`).
         ObjectRef::Device(_) if key == crate::continuations::CAPTION_KEY => {
             Err(CmdError::refused("Only continuation arrows have a caption; that is a device."))
         }
@@ -777,7 +777,7 @@ pub(crate) fn settings_json(doc: &Document) -> Value {
     })
 }
 
-/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
+/// Whether `wire` joins ends that meet other wires when `join` is not given:
 /// the registered default `wire.join`.
 pub fn join_by_default(doc: &Document) -> bool {
     crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()

@@ -1,15 +1,15 @@
-//! Project symbols (brief 048) and the symbol search.
+//! Project symbols and the symbol search.
 
 use super::*;
 
-/// The library ID of symbols made in a project (design 048 §2.2, FP3): one fixed ID, so a project
+/// The library ID of symbols made in a project: one fixed ID, so a project
 /// symbol pasted into another project stays a project symbol there.
 pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000_0000_0001);
 
-/// Most characters of a project symbol's key (design 048 §2.4).
+/// Most characters of a project symbol's key.
 pub(crate) const MAX_KEY: usize = 16;
 
-/// How a project symbol joins a device (design 048 §5.2).
+/// How a project symbol joins a device.
 pub use ecad_model::Join;
 
 /// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
@@ -17,7 +17,7 @@ pub fn is_project_symbol(d: &Definition) -> bool {
     d.origin.as_ref().is_some_and(|o| o.library == PROJECT_SYMBOLS)
 }
 
-/// The part a symbol of kind `k` plays in its device (design 072 §4.4), with no poles of its own.
+/// The part a symbol of kind `k` plays in its device, with no poles of its own.
 pub(super) fn part_of_kind(k: Kind) -> PartRole {
     match k {
         Kind::Fixed { exclusive: true } => PartRole::Head,
@@ -30,9 +30,9 @@ pub(super) fn part_of_kind(k: Kind) -> PartRole {
     }
 }
 
-/// A project symbol's part in its device (design 072 §4.4, F3′), declared when the symbol is
-/// made: its derived starter's kind, else a head unless its defaults join it as a part (design 048
-/// §5.2). A project symbol carries no poles of its own.
+/// A project symbol's part in its device, declared when the symbol is
+/// made: its derived starter's kind, else a head unless its defaults join it as a part.
+/// A project symbol carries no poles of its own.
 pub(crate) fn project_part_role(d: &Definition) -> PartRole {
     let kind = match d.derived_from.as_ref().and_then(starter_of_origin) {
         Some(s) => s.kind,
@@ -51,7 +51,7 @@ pub fn starter_of_origin(o: &Origin) -> Option<&'static Starter> {
     (o.library == STARTER_LIBRARY).then(|| STARTERS.iter().find(|s| s.id == o.definition)).flatten()
 }
 
-/// Whether `key` is a valid symbol key (design 048 §2.4): 1 to [`MAX_KEY`] letters, digits, `-`
+/// Whether `key` is a valid symbol key: 1 to [`MAX_KEY`] letters, digits, `-`
 /// and `_`, starting with a letter or digit.
 pub(crate) fn valid_key(key: &str) -> bool {
     (1..=MAX_KEY).contains(&key.len())
@@ -129,7 +129,7 @@ pub(crate) fn has_project_key(doc: &Document, key: &str) -> bool {
     project_versions(doc).any(|v| v.key().is_some_and(|x| x.eq_ignore_ascii_case(k)))
 }
 
-/// The op that keeps the project's tag prefixes on project symbols (design 072 F5) true after
+/// The op that keeps the project's tag prefixes on project symbols true after
 /// `ops`: a prefix whose key no version holds any more moves to the new key of the symbol that had
 /// it (a rename), or is cleared (its versions removed). `None` when nothing changes.
 ///
@@ -173,15 +173,15 @@ pub fn registry_key(d: &Definition) -> Option<String> {
     d.defaults.key.as_ref().map(|k| k.to_string())
 }
 
-/// Whether `d` is a brief-044 connector half or pin: a connector starter whose bridges join the
+/// Whether `d` is a connector half or pin: a connector starter whose bridges join the
 /// side keys.
 pub fn is_mating(d: &Definition) -> bool {
     of_definition(d).is_some_and(|s| matches!(s.kind, Kind::ConnectorHalf { .. }))
         && d.bridges.iter().any(|g| g.contains(&SOCKET_KEY) && g.contains(&PLUG_KEY))
 }
 
-/// Whether bridge key `k` of definition `d` is one a placement can write (overseer condition on
-/// FP2): one of the definition's own terminal keys, a side key on a connector half, or a level
+/// Whether bridge key `k` of definition `d` is one a placement can write:
+/// one of the definition's own terminal keys, a side key on a connector half, or a level
 /// key of its multi-level terminal type.
 pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
     if d.connection_points.iter().any(|t| t.key == *k) {
@@ -197,7 +197,7 @@ pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
 /// Most characters of a search query that are used.
 pub const MAX_QUERY: usize = 60;
 
-/// The symbols matching `query` (design 018 §5.1): a substring of the key, name or an alias, or the
+/// The symbols matching `query`: a substring of the key, name or an alias, or the
 /// tag prefix with or without `-`. An empty query lists every symbol, in table order.
 pub fn search(query: &str) -> Vec<&'static Starter> {
     let q: String = query.trim().chars().take(MAX_QUERY).collect::<String>().to_lowercase();

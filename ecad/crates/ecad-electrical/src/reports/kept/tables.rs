@@ -9,7 +9,7 @@ impl ReportModels {
         self.bom_table_with(group, self.view, false)
     }
 
-    /// The BOM as a table in `view`. `csv` (design 047 §6.4): `Qty` a plain number and a `Unit`
+    /// The BOM as a table in `view`. `csv`: `Qty` a plain number and a `Unit`
     /// column, a `Line` column in the nested layout; otherwise `Qty` reads `5.6 m`.
     pub fn bom_table_with(&self, group: Group, view: BomView, csv: bool) -> Table {
         let first = if group == Group::Location { "Location" } else { "Locations" };
@@ -96,7 +96,7 @@ impl ReportModels {
                 end_loc(&r.from),
                 Cell::opt(&r.to.text(style), || "Loose end.".into()),
                 end_loc(&r.to),
-                // Brief 050b (design 050 §5.6): the wire's own value or its category's.
+                // The wire's own value or its category's.
                 Cell::opt(&r.cross_section, || "No cross-section, and its category gives none.".into()),
                 Cell::opt(&r.colour.as_deref().map(|c| ecad_model::connectivity::wiring::colour_text(self.colour_style, c)), || {
                     "No colour, and its category gives none.".into()
@@ -111,14 +111,14 @@ impl ReportModels {
     }
 
     /// The cable report as a table; `Maker`, `Length` and `Designation` follow when any cable
-    /// has them. Brief 059: cables not drawn are listed (design 059 §4.5, Q3); see
+    /// has them. Cables not drawn are listed; see
     /// [`ReportModels::cable_table_with`].
     pub fn cable_table(&self) -> Table {
         self.cable_table_with(true)
     }
 
     /// The optional columns of the cable report, in order: `Maker`, `Length` and `Designation`
-    /// when any listed cable has them (brief 059, design 059 §4.5), then `Glands`, `Shield`,
+    /// when any listed cable has them, then `Glands`, `Shield`,
     /// `Planned from` and `Planned to` when any has them, and `Drawn` when one is not drawn.
     pub fn cable_columns(&self, include_not_drawn: bool) -> Vec<CableColumn> {
         let mut rows = self.cables();
@@ -128,7 +128,7 @@ impl ReportModels {
         CableColumn::ALL.into_iter().filter(|c| c.shown(&rows)).collect()
     }
 
-    /// The cable report, with or without the cables not drawn yet (brief 059, Q3: the choice made
+    /// The cable report, with or without the cables not drawn yet (the choice made
     /// when the report is generated). Its optional columns are [`ReportModels::cable_columns`]; a
     /// planned end reads `(planned)`.
     pub fn cable_table_with(&self, include_not_drawn: bool) -> Table {
@@ -165,12 +165,12 @@ impl ReportModels {
 
 impl ReportModels {
     /// The terminal plan as a table (Reports ▸ Terminals, CSV): every strip, or `strip` only;
-    /// one line per position and conductor (design 028 §5.1), with where each line goes.
+    /// one line per position and conductor, with where each line goes.
     pub fn terminal_block_table(&self, strip: Option<DeviceId>) -> (Table, Vec<Option<(PageId, Pt)>>) {
         self.terminal_block_table_with(strip, true)
     }
 
-    /// [`ReportModels::terminal_block_table`], with or without the accessory gap rows (brief 030: the
+    /// [`ReportModels::terminal_block_table`], with or without the accessory gap rows (the
     /// Terminals tab's Accessories check box; view only).
     pub fn terminal_block_table_with(&self, strip: Option<DeviceId>, accessories: bool) -> (Table, Vec<Option<(PageId, Pt)>>) {
         let style = self.style;
@@ -203,7 +203,7 @@ impl ReportModels {
                     }
                 };
                 let marker = if s.acc.markers.contains(&r.label) { " \u{25ad}" } else { "" };
-                // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+                // A PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
                 let pe_mark = r.pe && !r.ty.multi();
                 if r.connection_point.is_none() {
                     let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(r.state()), Cell::default()];
@@ -247,9 +247,9 @@ impl ReportModels {
         (t, go)
     }
 
-    /// The terminal plan as the release writes it (027's `terminal-block-plan` slot): one line per
-    /// position and conductor of every strip in tag order, columns named by `stripplan`'s keys
-    /// (design 028 §10); an absent value is an empty cell.
+    /// The terminal plan as the release writes it (the `terminal-block-plan` slot): one line per
+    /// position and conductor of every strip in tag order, columns named by `stripplan`'s keys;
+    /// an absent value is an empty cell.
     pub fn terminal_block_plan_csv(&self) -> Table {
         let style = self.style;
         let mut t = Table {
@@ -268,7 +268,6 @@ impl ReportModels {
                 "core",
                 "outside_target",
                 "place",
-                // Brief 030 (design 030 §9.3).
                 "kind",
                 "accessory",
                 "gap",
@@ -330,7 +329,7 @@ impl ReportModels {
         t
     }
 
-    /// The cable schedule as the release writes it (027's `cable-schedule` slot): every cable in
+    /// The cable schedule as the release writes it (the `cable-schedule` slot): every cable in
     /// tag order with its cores (`cablecores`' keys: `label`, `state`, `wire`, `from`, `to`), an
     /// over core after the offered ones; an absent value is an empty cell.
     pub fn cable_schedule_csv(&self) -> Table {
@@ -354,7 +353,7 @@ impl ReportModels {
         t
     }
 
-    /// Brief 032 §3.5: the From and To of core `i` of cable row `r` (a core chain runs from its
+    /// The From and To of core `i` of cable row `r` (a core chain runs from its
     /// first member's outer end to its last member's), in reference style `style`.
     pub fn chain_ends(&self, r: &CableRow, i: usize, style: ecad_model::ReferenceStyle) -> (Option<String>, Option<String>) {
         let w = r.members.get(i).and_then(|w| self.wires.get(w));
@@ -373,7 +372,7 @@ impl ReportModels {
         }
     }
 
-    /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
+    /// One cable's core list: core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
         self.core_rows(k).0

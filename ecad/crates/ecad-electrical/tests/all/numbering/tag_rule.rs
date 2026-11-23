@@ -1,5 +1,5 @@
-//! Tag rule (brief 029, FP1): a cable tag deleted before a snapshot written by a build before brief
-//! 026 (whose cached marks did not count cable tags) is not handed out again after opening.
+//! Tag rule: a cable tag deleted before a snapshot written by an older build (whose cached marks did not
+//! count cable tags) is not handed out again after opening.
 
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};

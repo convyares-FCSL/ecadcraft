@@ -1,14 +1,12 @@
-//! Lane S's defaults (034, component library). Owned by lane S: append `pub static` entries and list them in
-//! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
+//! The component library defaults: append `pub static` entries and list them in
+//! [`ENTRIES`].
 //!
 //! # Semantics
-//! One entry per tagged symbol: its built-in tag prefix, `symbol.<key>.prefix` (design 034 §2.7,
-//! overseer rulings 2026-11-12). The project level is the project's `tag_prefixes` setting, keyed
-//! by symbol key as Tag Settings writes it: one project path, never a project property too. This
-//! table is the only place a symbol's built-in prefix is written;
-//! [`crate::symbols::Starter::prefix`] reads it. Ratings have no default (ruling: nothing is
-//! registered until a family needs a real value). Labels, quiet points and text anchors are
-//! catalogue code in [`crate::symbols`], not entries.
+//! One entry per tagged symbol: its built-in tag prefix, `symbol.<key>.prefix`. The project level is the project's
+//! `tag_prefixes` setting, keyed by symbol key as Tag Settings writes it: one project path, never a project property
+//! too. This table is the only place a symbol's built-in prefix is written; [`crate::symbols::Starter::prefix`] reads
+//! it. Ratings have no default: nothing is registered until a family needs a real value. Labels, quiet points
+//! and text anchors are catalogue code in [`crate::symbols`], not entries.
 
 use ecad_model::{Document, ProjectSettings};
 
@@ -56,8 +54,8 @@ macro_rules! prefixes {
         pub fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
             match key {
                 $(crate::symbols::StarterKey::$var => Some(&$name),)*
-                // Brief 036: the multi-level terminal starters register theirs as `terminal_block.<key>.prefix`.
-                // Brief 045: its new starters register theirs as `plc.<key>.prefix`.
+                // The multi-level terminal starters register theirs as `terminal_block.<key>.prefix`.
+                // Its new starters register theirs as `plc.<key>.prefix`.
                 _ => crate::defaults::terminal_blocks::prefix_entry(key).or_else(|| crate::defaults::plc::prefix_entry(key)),
             }
         }
@@ -136,7 +134,7 @@ prefixes! {
     RJ45 = Rj45 "rj45", "RJ45 bulkhead";
     USBA = Usba "usba", "USB-A bulkhead";
     USBB = Usbb "usbb", "USB-B bulkhead";
-    // Brief 044 (design 044 §10): the connector pins, 034's pattern.
+    // The connector pins.
     PINPAIR = Pinpair "pinpair", "Connector pin pair";
     PINS = Pins "pins", "Connector socket pin";
     PINP = Pinp "pinp", "Connector plug pin";
@@ -150,9 +148,9 @@ prefixes! {
     PLCIOL = Plciol "plciol", "PLC IO-Link master";
 }
 
-// ---------------------------------------------------------------- the builder (brief 048)
+// ---------------------------------------------------------------- the builder
 
-/// The point grid connection points of a new symbol snap to (design 048 §7.1, owner answer 6):
+/// The point grid connection points of a new symbol snap to:
 /// 5 mm, 2.5 mm allowed for dense pin rows. The key uses `_`, as every registry key (the key rule).
 pub static POINT_GRID: Entry = Entry {
     key: "symbol.point_grid",
@@ -165,7 +163,7 @@ pub static POINT_GRID: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Brief 048's entries (listed in [`crate::defaults::all`]).
+/// Entries (listed in [`crate::defaults::all`]).
 pub static BUILDER_ENTRIES: &[&Entry] = &[&POINT_GRID];
 
 /// The point grid of `doc`, millimetres.
@@ -173,9 +171,9 @@ pub fn point_grid(doc: &Document) -> f64 {
     crate::defaults::resolve(doc, &POINT_GRID, Scope::project()).number()
 }
 
-// ---------------------------------------------------------------- family entries (brief 048, FP6)
+// ---------------------------------------------------------------- family entries
 
-/// A field of a symbol's family entries, `symbol.<key>.<field>` (design 048 §7.1): one entry per
+/// A field of a symbol's family entries, `symbol.<key>.<field>`: one entry per
 /// symbol the project can place. A starter's prefix is its static entry above; the other fields,
 /// and every field of a project symbol, resolve through [`resolve_for`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,7 +207,7 @@ impl Field {
         }
     }
 
-    /// Most characters of a value (design 048 §2.4).
+    /// Most characters of a value.
     pub fn max_chars(self) -> usize {
         match self {
             Field::Prefix => crate::devices::MAX_PREFIX_LETTERS + 1,
@@ -284,12 +282,12 @@ pub fn family_json(doc: &Document, symbol: &str, field: Field) -> serde_json::Va
 }
 
 /// The project property a family entry's project level is stored under (description and rating);
-/// a prefix is stored in `settings.tag_prefixes[key]` (one project path, as 034).
+/// a prefix is stored in `settings.tag_prefixes[key]` (one project path).
 pub fn family_property(symbol: &str, field: Field) -> Option<String> {
     matches!(field, Field::Description | Field::Rating).then(|| family_key(symbol, field))
 }
 
-/// The value of `symbol`'s `field` and where it came from (design 048 §7.1): the project's
+/// The value of `symbol`'s `field` and where it came from: the project's
 /// override, else the definition's own value of a project symbol ([`Source::Definition`](crate::defaults::Source::Definition)),
 /// else a starter's built-in (its prefix, its name as description). `None` when nothing gives one.
 /// A hostile stored value counts as absent.
@@ -341,7 +339,7 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
     own.map(|x| (x, crate::defaults::Source::Definition))
 }
 
-/// The tag prefix a new device of project symbol `key` gets (brief 048): the project's override,
+/// The tag prefix a new device of project symbol `key` gets: the project's override,
 /// else the symbol's own; empty when neither gives one.
 pub fn project_prefix(doc: &Document, key: &str) -> String {
     resolve_for(doc, key, Field::Prefix).map(|(p, _)| p).unwrap_or_default()
@@ -377,8 +375,8 @@ mod tests {
         for s in STARTERS {
             let e = prefix_entry(s.key);
             assert_eq!(e.is_some(), s.kind != SymbolKind::Tagless, "{}", s.key);
-            // Brief 036 (overseer ruling): its starters' prefixes are in the `connection_point` area.
-            // Brief 045: its new starters' prefixes are in the `plc` area.
+            // Its starters' prefixes are in the `connection_point` area.
+            // Its new starters' prefixes are in the `plc` area.
             let plc = crate::defaults::plc::prefix_entry(s.key).is_some();
             let area = if crate::terminal_strips::terminal_blocks::is_level_starter(s.key) {
                 "terminal_block"

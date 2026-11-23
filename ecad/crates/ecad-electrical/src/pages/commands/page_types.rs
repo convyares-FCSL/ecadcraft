@@ -1,4 +1,4 @@
-//! The rules of the page type and folder commands (brief 054, design 054): a folder's start number
+//! The rules of the page type and folder commands: a folder's start number
 //! (`folderprops`), the page numbers `renumberpages` writes, and which generated pages
 //! `deletepage` removes. The numbering rules themselves are [`crate::pages::page_types`]; the engine
 //! crate's shims bring the reports up to date, open the page shown, commit the ops and answer in
@@ -167,7 +167,7 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
         ops.push(Op::RemovePage { id: *page, page: x.clone(), index: *index });
     }
     words.reverse();
-    // The page shown moves to the page before it when it goes (design 016 §4.3).
+    // The page shown moves to the page before it when it goes.
     let show = if set.contains(&active) {
         let at = doc.page_order().iter().position(|p| *p == active).unwrap_or(0);
         let earlier = doc.page_order().get(..at).unwrap_or_default().iter().rev().find(|p| !set.contains(p)).copied();
@@ -189,7 +189,7 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
 pub struct FolderpropsParams {
     /// The folder.
     folder: FolderId,
-    /// The start number ("100"), or null to clear it.
+    /// The start number, or null to clear it.
     #[serde(default, deserialize_with = "nullable")]
     start: Option<Option<String>>,
 }

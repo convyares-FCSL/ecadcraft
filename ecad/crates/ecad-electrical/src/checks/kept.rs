@@ -21,19 +21,19 @@ pub struct Checks {
     grid: Grid,
     /// Nets with conductors and no number (for the one Unnumbered row).
     unnumbered: BTreeSet<NetKey>,
-    /// Provisional tags are on (brief 026): the Unnumbered row is a warning, `… provisional`.
+    /// Provisional tags are on: the Unnumbered row is a warning, `… provisional`.
     provisional: bool,
     /// Bumped on every change, for views that copy the rows.
     pub revision: u64,
-    /// Rows by severity (errors, warnings, info), kept by [`Checks::set`] (brief 027's badge reads
+    /// Rows by severity (errors, warnings, info), kept by [`Checks::set`] (the badge reads
     /// them; nothing recounts the rows).
     counts: [usize; 3],
     /// Bumped only when some row actually changed (an update that re-checked subjects and found
     /// the same rows leaves it), for views that show the rows themselves (the Release dialog).
     pub changed: u64,
-    /// Brief 054: the pages whose type has checks and references off.
+    /// The pages whose type has checks and references off.
     off: BTreeSet<PageId>,
-    /// Brief 057: the kept rating results and their indexes (design 057 §10).
+    /// The kept rating results and their indexes.
     pub rating: crate::circuits::kept::Kept,
 }
 
@@ -62,7 +62,7 @@ impl Checks {
         for t in doc.connection_points().keys() {
             ch.set(Key::ConnectionPoint(*t), connection_point_checks(doc, *t));
         }
-        // One drawing order for the pass: the book is built at most once (review of #105, 1).
+        // One drawing order for the pass: the book is built at most once.
         let mut places = Places::new(doc);
         for c in doc.devices().keys() {
             ch.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
@@ -80,7 +80,6 @@ impl Checks {
         for s in PROJECT_SOURCES {
             ch.set(s.key(), s.checks(doc));
         }
-        // Brief 057.
         ch.rating = crate::circuits::kept::Kept::build(doc);
         let rows: Vec<(crate::circuits::RatedSubject, Vec<Check>)> =
             ch.rating.results.values().map(|r| (r.subject, crate::circuits::rows::rows(doc, r))).collect();
@@ -93,14 +92,14 @@ impl Checks {
         ch
     }
 
-    /// Brief 054b: work out the cover's rows again (after a change the cover's map names).
+    /// Work out the cover's rows again (after a change the cover's map names).
     pub fn set_cover(&mut self, doc: &Document) {
         self.set(Key::Cover, crate::pages::front::CoverRows.checks(doc));
         self.revision += 1;
     }
 
     fn set(&mut self, key: Key, mut v: Vec<Check>) {
-        // Brief 054 (design 054 §3.4): no electrical row on a page with checks and references off.
+        // No electrical row on a page with checks and references off.
         if !self.off.is_empty() && !PROJECT_SOURCES.iter().any(|s| s.key() == key && s.kept_on_pages_off()) {
             v.retain(|c| c.page.is_none_or(|p| !self.off.contains(&p)));
         }
@@ -170,7 +169,7 @@ impl Checks {
         self.by_key.is_empty()
     }
 
-    /// The rows sorted in book order (design 022 §8).
+    /// The rows sorted in book order.
     pub fn sorted(&self, doc: &Document) -> Vec<Check> {
         sort(doc, self.rows().cloned().collect())
     }
@@ -254,7 +253,7 @@ impl Checks {
         for k in &scope.cables {
             self.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
         }
-        // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
+        // The dash budget of the pages the re-checked wires are on, and of the pages
         // that had a row (a wire removed or recoloured there).
         let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
         for c in &scope.wires {
@@ -265,7 +264,7 @@ impl Checks {
             let rows = if doc.pages().contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);
         }
-        // Brief 057 (design 057 §10): the subjects the ops reach, and the count rows.
+        // The subjects the ops reach, and the count rows.
         let touched = self.rating.update(doc, &scope.rating);
         if !touched.is_empty() || scope.rating.any() {
             for s in touched {

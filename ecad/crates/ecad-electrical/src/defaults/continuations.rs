@@ -1,7 +1,7 @@
-//! Brief 049's defaults (continuation cross-references, design 049 §7): area `continuation`.
+//! Defaults (continuation cross-references): area `continuation`.
 //!
 //! Read them through [`crate::continuations`], not by key. The caption text's size, weight, font
-//! and visibility are lane T's text kind `continuation_caption` (`defaults/text.rs`).
+//! and visibility are the text kind `continuation_caption` (`defaults/text.rs`).
 
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 

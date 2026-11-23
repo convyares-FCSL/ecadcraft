@@ -1,8 +1,8 @@
-//! The label rule (brief 032 §4).
+//! The label rule.
 
 use super::*;
 
-/// Which routes on a page get a label (design 032 §4.1).
+/// Which routes on a page get a label.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum LabelRule {
     /// One label per net (and label text) per page.
@@ -23,7 +23,7 @@ pub(crate) struct LabelCandidate {
     pub longest: f64,
 }
 
-/// The candidates (by index) that get a label under `rule` (design 032 §4.2): with
+/// The candidates (by index) that get a label under `rule`: with
 /// [`LabelRule::Net`] one per (net, label text), on the route whose longest segment is longest
 /// (ties: lower conductor ID, then lower representation ID); with [`LabelRule::Each`] every route
 /// long enough. In both, every net drawn on the page is labelled at least once. The result keeps
@@ -93,7 +93,7 @@ pub fn label_min_length(doc: &Document) -> f64 {
     crate::defaults::resolve(doc, &crate::defaults::wires::WIRING_LABEL_MIN_LENGTH, crate::defaults::Scope::project()).number()
 }
 
-/// The project's label rule (design 032 §4.1).
+/// The project's label rule.
 pub(crate) fn label_rule(doc: &Document) -> LabelRule {
     if label_rule_word(doc) == ecad_model::connectivity::wiring::LABEL_RULE_EACH { LabelRule::Each(label_min_length(doc)) } else { LabelRule::Net }
 }

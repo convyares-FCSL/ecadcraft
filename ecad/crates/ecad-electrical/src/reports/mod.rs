@@ -1,4 +1,4 @@
-//! The report models of brief 024 (design 024 §6, §8, §9): the BOM, the wire report and the cable
+//! The report models: the BOM, the wire report and the cable
 //! report, the device locations they show, and the location rows of the Checks list.
 //!
 //! # Semantics
@@ -7,28 +7,27 @@
 //!   (`kept::ReportModels::build_with`, by `derived::ReportsView`); after that `kept::ReportModels::update`
 //!   recomputes only the rows a transaction's effects could change. Nothing here is stored or recorded.
 //! - Wires never appear on the BOM; cable cores are conductors and appear on the wire report with
-//!   their cable (owner answer Q10). Cables are not on the BOM (Q6). A terminal device counts once
-//!   (Q11).
+//!   their cable. Cables are not on the BOM. A terminal device counts once.
 //! - A missing value is `None` and shown as `?`; it is flagged and counted, never refused.
 //!
-//! # Update map (design 024 §9)
+//! # Update map
 //! | Op (kind, target) | Recomputed |
 //! | --- | --- |
 //! | `CreateDevice` / `DeleteDevice` / `SetProperty` / terminal and representation ops of a device, its items moved | that device; the conductors at its connection points; their cables |
-//! | the same of a location box on page P | P's box checks only: a device's location is stored, never derived from a box (brief 052, design 052 §8.3) |
+//! | the same of a location box on page P | P's box checks only: a device's location is stored, never derived from a box |
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
-//! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
+//! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list) | the devices, connectors and items storing that key (the one wide case, by intent) |
 //! | `CreateWire` / `DeleteWire` / `SetProperty` conductor (the commit's wire rewrite included) / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / `ModifyCable` | that cable; its cores |
-//! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
+//! | `SetProperty` of a continuation's `name` | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
 //! | `SetProjectSettings` changing colour style or reference style | no row: rows keep codes and places, tables format them |
-//! | Brief 047: `SetProperty(Device c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
-//! | Brief 047: `CreateDevice` / `DeleteDevice` / `SetProperty` of an item | that item's entry |
-//! | Brief 047: `SetProperty(Project, location)` | also the items whose location is the project's |
-//! | Brief 047: `SetProperty(Project, bom.*)` | no row: the tables and page re-read the view (`BomView`); the sheet count switches to the other kept count |
+//! | `SetProperty(Device c, part.<n>.* / article_number)`, c a device or strip | c's entries (its main part and part lines) move between rows; the article index of their part keys; c's uncovered fuses |
+//! | `CreateDevice` / `DeleteDevice` / `SetProperty` of an item | that item's entry |
+//! | `SetProperty(Project, location)` | also the items whose location is the project's |
+//! | `SetProperty(Project, bom.*)` | no row: the tables and page re-read the view (`BomView`); the sheet count switches to the other kept count |
 //! | anything else | nothing |
 //!
 //! This module reads the document; it changes nothing.
@@ -75,7 +74,7 @@ impl PageCx {
         ecad_model::connectivity::derive::place_on(&ecad_model::document::sheet::Grid::of(doc, p), number, at)
     }
 
-    /// The number page `p` is shown with (brief 028: a terminal's Place, with its grid kept by
+    /// The number page `p` is shown with (a connection point's Place, with its grid kept by
     /// the caller).
     pub(crate) fn number(&self, p: PageId) -> Option<&str> {
         self.pages.get(&p).map(|x| x.1.as_str())
@@ -97,11 +96,11 @@ pub struct DeviceRow {
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
-    /// Brief 047: its main part's article number.
+    /// Its main part's article number.
     pub article_number: Option<String>,
-    /// Its stored location (brief 052: never derived from boxes or pages).
+    /// Its stored location (never derived from boxes or pages).
     pub location: Located,
-    /// Its stored function (brief 052).
+    /// Its stored function.
     pub function: Located,
     /// Where go-to lands ([`crate::symbols::reps::goto`]: its head, else its first symbol in drawing
     /// order): the symbol, its page and its anchor. Display only: it is in no scope.
@@ -114,7 +113,7 @@ fn tag_key(t: &str) -> (String, u64, String) {
     (p, n, t.to_string())
 }
 
-/// What a BOM entry belongs to (design 072 §6.4): a device (or strip), or a loose part (an
+/// What a BOM entry belongs to: a device (or strip), or a loose part (an
 /// item). Devices sort first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Owner {
@@ -143,7 +142,7 @@ impl Owner {
 }
 
 /// The key an entry is grouped by on the BOM (part): maker, part number, description, compared
-/// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
+/// case-insensitively, and the unit (pieces and metres never add up); an entry with no
 /// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct PartKey(String, String, String, Option<(Owner, u8)>, bool);
@@ -155,7 +154,7 @@ impl PartKey {
     }
 }
 
-/// Brief 047 (design 047 §4.1): one BOM entry, a line of a part set or an item.
+/// One BOM entry, a line of a part set or an item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     /// The device or the loose part it lists.
@@ -247,7 +246,7 @@ pub struct EndCell {
     pub device: Option<DeviceId>,
     /// (page position, column, row) of the end, for the From/To order.
     pub order: (usize, u32, u32),
-    /// Brief 032: the end is a continuation (a core chain's inner end, design 032 §3.2).
+    /// The end is a continuation (a core chain's inner end).
     pub continuation: bool,
 }
 
@@ -269,12 +268,12 @@ pub struct WireRow {
     /// The colour as stored (IEC code or free text); the table writes it in the colour style.
     pub colour: Option<String>,
     pub potential: Option<String>,
-    /// Brief 050b: its wire category (ID and name), and whether its colour and cross-section are
+    /// Its wire category (ID and name), and whether its colour and cross-section are
     /// its own (overriding the category's).
     pub category: Option<(ecad_model::StyleRef, String)>,
     pub colour_own: bool,
     pub cross_section_own: bool,
-    /// Brief 050b (design 050 §5.6): the category's BOM part (part number, maker, description,
+    /// The category's BOM part (part number, maker, description,
     /// allowance in metres per wire), when the category has a part number.
     pub part: Option<(String, Option<String>, Option<String>, f64)>,
     pub cable: String,
@@ -299,26 +298,26 @@ pub struct CableRow {
     pub length: Option<String>,
     pub designation: Option<String>,
     pub go: Option<(PageId, Pt)>,
-    /// Brief 028: how its members meet its core offer (design 028 §6.2).
+    /// How its members meet its core offer.
     pub count: crate::terminal_strips::cores::CoreCount,
-    /// The first member of each core chain (design 032 §3.2; one member per chain without
+    /// The first member of each core chain (one member per chain without
     /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<WireId>,
     /// Their stored core labels, in member order.
     pub member_cores: Vec<Option<String>>,
-    /// Brief 032: the last member of each core chain (its To), aligned with `members`.
+    /// The last member of each core chain (its To), aligned with `members`.
     pub tails: Vec<WireId>,
-    /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
+    /// The devices and strips at its cores' ends in its From and To locations.
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
-    /// Brief 059: whether it is drawn (it has members or a representation); a cable built in
+    /// Whether it is drawn (it has members or a representation); a cable built in
     /// Project ▸ Cables is not drawn until assigned.
     pub drawn: bool,
-    /// Brief 059: each end's planned function and location as shown (`=PUMP +CAB1`), from, to.
+    /// Each end's planned function and location as shown (`=PUMP +CAB1`), from, to.
     pub planned: [Option<String>; 2],
-    /// Brief 059 (059d): each end's gland, its own or its cable type's, from, to.
+    /// Each end's gland, its own or its cable type's, from, to.
     pub glands: [Option<String>; 2],
-    /// Brief 059: its shield word, its own or its cable type's (`none` shown as absent).
+    /// Its shield word, its own or its cable type's (`none` shown as absent).
     pub shield: Option<String>,
 }
 
@@ -329,7 +328,7 @@ impl CableRow {
     }
 }
 
-/// BOM grouping (design 024 §6.1).
+/// BOM grouping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Group {
     #[default]
@@ -352,7 +351,7 @@ impl Group {
 pub struct BomRow {
     /// By location: the location (`None`: `?`). By part: `+CP1 ×2, +FIELD ×1`.
     pub location: Option<String>,
-    /// Brief 047: a count, or metres when `metres`.
+    /// A count, or metres when `metres`.
     pub qty: Qty,
     pub metres: bool,
     /// The sum overflowed (never a panic): `qty` is its last good value, flagged.
@@ -362,19 +361,19 @@ pub struct BomRow {
     pub description: Option<String>,
     pub maker: Option<String>,
     pub part_number: Option<String>,
-    /// Brief 047: the article number its entries share (the most common one when they differ,
+    /// The article number its entries share (the most common one when they differ,
     /// with `article_flag` saying which differ).
     pub article_number: Option<String>,
     pub article_flag: Option<String>,
-    /// Brief 047: the entries counted, `(component, line)`; empty for strip terminal and
+    /// The entries counted, `(component, line)`; empty for strip terminal and
     /// accessory rows.
     pub entries: Vec<(Owner, u8)>,
-    /// Brief 047: the row lists items only.
+    /// The row lists items only.
     pub item: bool,
-    /// Brief 047, nested layout: the part line this row lists under its device, and its kit.
+    /// Nested layout: the part line this row lists under its device, and its kit.
     pub line: Option<u8>,
     pub kit: Option<String>,
-    /// Brief 030: the accessory a strip's row counts (`end_stop`, `jumper`…); `None` for devices
+    /// The accessory a strip's row counts (`end_stop`, `jumper`…); `None` for devices
     /// and terminals.
     pub accessory: Option<&'static str>,
 }
@@ -391,7 +390,7 @@ impl BomRow {
         }
     }
 
-    /// Brief 050b (design 050 §5.6): a wire row whose category has no allowance has no Qty (an
+    /// A wire row whose category has no allowance has no Qty (an
     /// empty cell, never "0 m"); its note gives the count of wires.
     pub fn no_qty(&self) -> bool {
         self.metres && self.qty.0 == 0 && self.tags.is_empty() && self.devices.is_empty()
@@ -408,7 +407,7 @@ impl BomRow {
     }
 }
 
-/// Brief 047: the BOM's report settings (`bom.column.article`, `bom.lines`).
+/// The BOM's report settings (`bom.column.article`, `bom.lines`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BomView {
     pub article: bool,
@@ -459,14 +458,14 @@ impl Table {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Scope {
     devices: BTreeSet<DeviceId>,
-    /// Design 072 §6.4: loose parts made, changed or removed (their BOM entries).
+    /// Loose parts made, changed or removed (their BOM entries).
     loose: BTreeSet<LoosePartId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     project_location: bool,
-    /// Brief 052: entry keys of the project's list whose code changed.
+    /// Entry keys of the project's list whose code changed.
     renamed: BTreeSet<String>,
     /// Potentials (lower case; `""`: none) whose table row changed.
     potentials: BTreeSet<String>,
@@ -474,13 +473,13 @@ pub struct Scope {
     sheet: bool,
     /// Colour or reference style changed (no row work).
     styles: bool,
-    /// Brief 030: project `strip_*` keys that changed (the strips inheriting them).
+    /// Project `strip_*` keys that changed (the strips inheriting them).
     strip_keys: BTreeSet<String>,
-    /// Brief 044: project `connector.*` keys that changed (the connectors inheriting them).
+    /// Project `connector.*` keys that changed (the connectors inheriting them).
     connector_keys: BTreeSet<String>,
-    /// Brief 047: a `bom.*` report setting changed (no row work: the view is re-read).
+    /// A `bom.*` report setting changed (no row work: the view is re-read).
     bom_view: bool,
-    /// Brief 050b: the project's or standard's wire category choice, or a category it resolves
+    /// The project's or standard's wire category choice, or a category it resolves
     /// to, changed: every wire row.
     all_wires: bool,
 }
@@ -563,10 +562,10 @@ impl Scope {
             }
             // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
-            // No check or report reads a device link yet (design 072 §2.6).
+            // No check or report reads a device link yet.
             Effect::DeviceLink { .. } => {}
-            // Design 072 §6.2: a box's values are its pages' context; a continuation renamed
-            // joins or breaks its name groups' cable core chains (032, design 032 §8.4).
+            // A box's values are its pages' context; a continuation renamed
+            // joins or breaks its name groups' cable core chains.
             Effect::Aid { id, before, after } => {
                 self.aid(doc, *id, before.iter().chain(after.iter()).copied());
                 if let (Some(b), Some(a)) = (before, after)
@@ -575,47 +574,47 @@ impl Scope {
                     self.cables.extend(continuation_group_cables(doc, *id));
                 }
             }
-            // Design 072 §6.4: a loose part is an item on the BOM (its entry only).
+            // A loose part is an item on the BOM (its entry only).
             Effect::LoosePart { id, .. } => {
                 self.loose.insert(*id);
             }
             Effect::Project { before, after } => {
                 use crate::locations::designations::{Aspect, changed_codes, default_key};
-                // Brief 047: an item without its own location shows the project's.
+                // An item without its own location shows the project's.
                 if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
                     self.project_location = true;
                 }
-                // Brief 052: a rename in the project's list re-keys its users' rows.
+                // A rename in the project's list re-keys its users' rows.
                 for a in Aspect::ALL {
                     for k in changed_codes(before, after, a) {
-                        // Brief 059: the cables planning an end there show its new code.
+                        // The cables planning an end there show its new code.
                         self.cables.extend(crate::cables::planning(doc, &k));
                         self.renamed.insert(k);
                     }
                 }
             }
-            // Brief 050a: a standard's value of a registry key reaches the same views.
+            // A standard's value of a registry key reaches the same views.
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
                 let area = key.area;
                 let key = key.raw;
-                // Brief 050b: the project's or standard's wire category reaches every wire row.
+                // The project's or standard's wire category reaches every wire row.
                 if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
                     self.all_wires = true;
                 }
-                // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
+                // The registry's `terminal.*` defaults reach strips the same way.
                 if area == ecad_model::naming::keys::Area::TerminalBlock {
                     self.strip_keys.insert(key.to_string());
                 }
-                // Brief 044: the registry's `connector.*` defaults reach connectors.
+                // The registry's `connector.*` defaults reach connectors.
                 if area == ecad_model::naming::keys::Area::Connector {
                     self.connector_keys.insert(key.to_string());
                 }
-                // Brief 047 (design 047 §10): the BOM's report settings.
+                // The BOM's report settings.
                 if area == ecad_model::naming::keys::Area::Bom {
                     self.bom_view = true;
                 }
             }
-            // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
+            // A wire category reaches the rows of the conductors
             // resolving to it: its explicit users, the wires of the potentials it names (before
             // and after), and every wire when it is the project's or standard's choice.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Wire, id, before, after, .. } => {
@@ -636,7 +635,7 @@ impl Scope {
                     self.all_wires = true;
                 }
             }
-            // Brief 059 (design 059 §8): a cable type's cores, shield and gland reach its users' rows.
+            // A cable type's cores, shield and gland reach its users' rows.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Cable, id, .. } => {
                 self.cables.extend(crate::styles::cable::users(doc, id));
             }
@@ -644,7 +643,7 @@ impl Scope {
             Effect::Style { .. } | Effect::Standard { .. } => {}
             Effect::ConnectionPoint { id, before, after } => {
                 self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
-                // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
+                // A relabelled terminal (Remove + Add of one ID) renames its wires' ends.
                 self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
             }
             Effect::Rep { before, after, .. } => {
@@ -657,12 +656,12 @@ impl Scope {
                     self.subject(doc, r.subject, r.page);
                 }
             }
-            // A cable is made or deleted with its cores (design 072 §4.5): their wires' rows.
+            // A cable is made or deleted with its cores: their wires' rows.
             Effect::Cable { id, before, after } => {
                 self.cables.insert(*id);
                 self.wires.extend(before.iter().chain(after.iter()).flat_map(|c| c.cores.iter()).filter_map(|m| m.wire()));
             }
-            // Design 072 §4.3: a route moved, added or removed moves where the wires at the
+            // A route moved, added or removed moves where the wires at the
             // points it lands on are drawn.
             Effect::Route { before, after, .. } => {
                 for t in before.iter().chain(after.iter()).flat_map(|r| r.points_landed()) {
@@ -686,7 +685,7 @@ impl Scope {
                 self.sheet |= before.sheet != after.sheet;
                 self.styles |= before.reference_style != after.reference_style || before.wiring.colour_style() != after.wiring.colour_style();
             }
-            // Design 072 §5.1: a page changed in place; its number and title are where rows say
+            // A page changed in place; its number and title are where rows say
             // they are.
             Effect::Page { id, before: Some(before), after: Some(after), index_before: None, index_after: None } => {
                 if before.title != after.title || before.folder != after.folder {
@@ -707,9 +706,9 @@ impl Scope {
     }
 
     /// Note what one effect names that only the state after reads (`doc`; call it there, after
-    /// [`Scope::note`]). Brief 036 (tester 036 j, o): a level's label, or a separator or level
+    /// [`Scope::note`]). A level's label, or a separator or level
     /// names a strip reads, set on a strip changes the wire rows ending on its terminals (only the
-    /// position named by a `term_label.<p>.<n>` key). Brief 044: a connector naming key set on a
+    /// position named by a `term_label.<p>.<n>` key). A connector naming key set on a
     /// mating connector changes its pins' wire rows.
     pub fn note_after(&mut self, doc: &Document, effect: &Effect<'_>) {
         let Effect::Prop { object: ObjectRef::Device(c), key, .. } = effect else { return };
@@ -731,7 +730,7 @@ impl Scope {
 
     /// After the effects: their wires' net mates, and the users of renamed entries.
     pub fn close(&mut self, doc: &Document) {
-        // Net mates: a wire's number and potential are its net's (brief 022).
+        // Net mates: a wire's number and potential are its net's.
         let conn = doc.connectivity();
         let mut mates = BTreeSet::new();
         for w in &self.wires {
@@ -740,7 +739,7 @@ impl Scope {
             }
         }
         self.wires.extend(mates);
-        // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
+        // The users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
             for (c, x) in doc.devices() {
                 if crate::locations::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
@@ -756,7 +755,7 @@ impl Scope {
     }
 }
 
-/// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
+/// The cables with a member attached to a continuation of `c`'s name group,
 /// `c` included, read on `doc` (called on the state before and after a rename, so both the old
 /// and the new group): their core chains may join or break.
 fn continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<CableId> {
@@ -780,7 +779,7 @@ fn continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<C
 
 /// The members standing for `cable`'s cores, in member order, each with its stored label, and
 /// each core's last member: the same wire, since a core through continuations or cable references
-/// is one wire (design 072 §4.4, F5).
+/// is one wire.
 fn chain_heads(_doc: &Document, _k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::Core>, Vec<WireId>) {
     let heads: Vec<ecad_model::Core> = cab.cores.iter().filter_map(|m| Some(ecad_model::Core::on_wire(m.wire()?, m.label.clone()))).collect();
     let tails = heads.iter().filter_map(|m| m.wire()).collect();
@@ -818,7 +817,7 @@ fn subs_has(subs: &bom::Subs, s: &str) -> bool {
 }
 
 /// Whether `page` exists and is drawn from the report models.
-/// A half row's group (design 024 §6.1 as for devices): maker, part number, description, compared
+/// A half row's group (as for devices): maker, part number, description, compared
 /// without case; a half with no part number is a group of its own (its connector and tag).
 type HalfKey = (String, String, String, Option<(DeviceId, String)>);
 
@@ -828,8 +827,8 @@ fn half_key(r: &BomRow) -> HalfKey {
     (low(&r.maker), low(&r.part_number), low(&r.description), own)
 }
 
-/// Connector `c`'s BOM rows, one per drawn half (design 044 §8.1), each at its half's stored
-/// location (design 052 §5.2).
+/// Connector `c`'s BOM rows, one per drawn half, each at its half's stored
+/// location.
 fn connector_rows(doc: &Document, c: DeviceId, cache: &mut BoxCache) -> Vec<BomRow> {
     let halves = crate::connectors::half_rows(doc, c, cache);
     halves
@@ -847,7 +846,7 @@ fn connector_rows(doc: &Document, c: DeviceId, cache: &mut BoxCache) -> Vec<BomR
         .collect()
 }
 
-/// Half rows grouped as device rows are (design 024 §6.1): by location and part, or by part with
+/// Half rows grouped as device rows are: by location and part, or by part with
 /// their locations counted; a half with no part number is a row of its own.
 fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec<BomRow> {
     let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
@@ -879,7 +878,7 @@ fn needs_reports(doc: &Document, page: PageId) -> bool {
     doc.page_order().contains(&page) && crate::pages::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_reports)
 }
 
-/// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).
+/// A cable end as the schedule shows it: `+CP1 -X01`.
 fn ends_text(location: &Option<String>, devices: &[String]) -> String {
     let mut parts: Vec<String> = location.iter().cloned().collect();
     parts.extend(devices.iter().cloned());
@@ -905,7 +904,7 @@ fn crossing(a: &[Pt], b: &[Pt]) -> Option<Pt> {
     None
 }
 
-// ---------------------------------------------------------------- CSV (design 024 §6.3)
+// ---------------------------------------------------------------- CSV
 
 /// A table as CSV: UTF-8 with a byte-order mark, comma separator, CRLF, RFC 4180 quoting. With
 /// `excel_safe`, a cell starting with `=`, `+`, `-`, `@`, tab or CR (or the full-width `＝ ＋ － ＠`,
@@ -947,7 +946,7 @@ pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
                     (true, _) => Value::Null,
                     (false, "qty" | "cores") => match c.text.parse::<u64>() {
                         Ok(n) => json!(n),
-                        // Brief 047: metres (`5.6`).
+                        // Metres (`5.6`).
                         Err(_) => c.text.parse::<f64>().ok().filter(|x| x.is_finite()).map_or_else(|| json!(c.text), |x| json!(x)),
                     },
                     (false, _) => json!(c.text),
@@ -972,7 +971,7 @@ pub(crate) fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &s
     }
 }
 
-/// Brief 030's Checks rows of one strip (design 030 §8): orphan places, links across partitions,
+/// Checks rows of one strip: orphan places, links across partitions,
 /// links naming missing positions. The go-to is the strip's last terminal, or the link's first
 /// drawn terminal.
 pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
@@ -1024,7 +1023,7 @@ pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripDat
     out
 }
 
-/// The JSON forms that carry out a brief 030 fix, one per button: (button words, command,
+/// The JSON forms that carry out a fix, one per button: (button words, command,
 /// params), each one transaction (**Move to end**, **Remove**; **Split link at 4**, **Remove
 /// partition**; **Drop missing positions**, **Delete link**). Empty when the strip or key is gone.
 pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, &'static str, serde_json::Value)> {
@@ -1057,7 +1056,6 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             ("Drop missing positions".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "drop_missing": true})),
             ("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
-        // Brief 036 (design 036 §8).
         Fix::MoveToNextFree(t) => {
             vec![("Move to next free".to_string(), "terminalblocklabel", json!({"connection_point": t.hex(), "move_to": "next"}))]
         }
@@ -1078,9 +1076,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             out.push(("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})));
             out
         }
-        // Brief 045 (design 045 §9).
         Fix::Plc(c, f) => o.plc.fix_commands(c, f),
-        // Brief 047 (design 047 §9).
         Fix::UseArticle(c, n) => {
             let Some(e) = o.entry(c, n) else { return Vec::new() };
             let Some(best) = o.article_values(c, n).into_iter().next() else { return Vec::new() };
@@ -1104,7 +1100,6 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
                 (format!("Make {tag} a strip position"), "toposition", json!({"device": d.hex()}))
             })
             .collect(),
-        // Brief 044 (design 044 §6.3).
         Fix::ConnectorNextPin(t) => vec![("Move to next free".to_string(), "pinlabel", json!({"connection_point": t.hex(), "to": "next"}))],
         Fix::SetPins(c, n) => {
             vec![(format!("Set pins to {n}"), "setprop", json!({"component": c.hex(), "key": crate::connectors::PINS_KEY, "value": n.to_string()}))]

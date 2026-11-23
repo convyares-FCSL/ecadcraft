@@ -1,4 +1,4 @@
-//! Changing a PLC device's typed data (design 072 §3) inside a transaction being built: every
+//! Changing a PLC device's typed data inside a transaction being built: every
 //! change of a station's or module's fields is one [`Op::ModifyDevice`] recording the whole device
 //! before and after.
 //!

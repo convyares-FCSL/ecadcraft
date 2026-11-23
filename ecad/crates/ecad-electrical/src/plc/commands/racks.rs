@@ -1,4 +1,4 @@
-//! `plcslot`, `plcracks` and `plccardtype` (brief 045, design 045 §3): cards in racks. The rules
+//! `plcslot`, `plcracks` and `plccardtype`: cards in racks. The rules
 //! are [`crate::plc::rack`] and [`super`]; each command is generic ([`crate::commands::run`]).
 
 use schemars::JsonSchema;
@@ -11,7 +11,7 @@ use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 use crate::plc::rack::*;
 
-/// `plcslot {card, rack?, slot?, swap?}` (design 045 §2.5): put a card in a slot, move it, swap it
+/// `plcslot {card, rack?, slot?, swap?}`: put a card in a slot, move it, swap it
 /// with the card there (`swap: true`), or take it out (`rack: null`). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -68,7 +68,7 @@ impl Generic for PlcslotParams {
     }
 }
 
-/// `plcracks {rack?}` (design 045 §2.5): each rack with its slots in order, and the cards in no
+/// `plcracks {rack?}`: each rack with its slots in order, and the cards in no
 /// rack; read only, from the kept model.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

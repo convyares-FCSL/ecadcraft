@@ -1,4 +1,4 @@
-//! `plcchannel` (brief 045, design 045 §4.6): one channel's data. The rules are
+//! `plcchannel`: one channel's data. The rules are
 //! [`super::plan_channel`]; the command is generic ([`crate::commands::run`]).
 
 use std::collections::BTreeMap;
@@ -13,8 +13,8 @@ use crate::commands::input::{TextOrNumber, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 
-/// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, connection_point?}`
-/// (design 045 §4.6): one channel's data in one transaction. `move_to` (a Checks fix) gives the
+/// `plcchannel {card, channel, text?, address?, tag?, safe?, pins?, move_to?, connection_point?}`:
+/// one channel's data in one transaction. `move_to` (a Checks fix) gives the
 /// points of one drawn copy of the channel (`connection_point`, or the last-drawn copy) the channel
 /// numbered `move_to`.
 #[derive(Deserialize, JsonSchema)]

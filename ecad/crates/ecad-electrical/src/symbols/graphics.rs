@@ -51,7 +51,7 @@ fn dashed(x0: f64, x1: f64, y: f64) -> Vec<Primitive> {
     out
 }
 
-/// A vertical mechanical link drawn dashed, as [`dashed`] along y (design 034 §2.1).
+/// A vertical mechanical link drawn dashed, as [`dashed`] along y.
 fn dashed_v(x: f64, y0: f64, y1: f64) -> Vec<Primitive> {
     let mut out = Vec::new();
     let mut y = y0;
@@ -62,7 +62,7 @@ fn dashed_v(x: f64, y0: f64, y1: f64) -> Vec<Primitive> {
     out
 }
 
-/// A closed ellipse of `n` segments (no arcs in definitions, design 034 §2.1).
+/// A closed ellipse of `n` segments (no arcs in definitions).
 fn ellipse(c: (f64, f64), rx: f64, ry: f64, n: usize) -> Primitive {
     let v: Vec<(f64, f64)> = (0..n)
         .map(|k| {
@@ -73,7 +73,7 @@ fn ellipse(c: (f64, f64), rx: f64, ry: f64, n: usize) -> Primitive {
     poly(&v, true)
 }
 
-/// A change-over contact, common on top (design 034 §3).
+/// A change-over contact, common on top.
 fn contact_co() -> Vec<Primitive> {
     vec![
         line((0.0, 10.0), (0.0, 4.0)),
@@ -84,7 +84,7 @@ fn contact_co() -> Vec<Primitive> {
     ]
 }
 
-/// A residual-current toroid and release, the release `dx` right of the RCBO's (design 034 §3).
+/// A residual-current toroid and release, the release `dx` right of the RCBO's.
 fn rcd_release(toroid_x: f64, half_width: f64, dx: f64, link_from: f64) -> Vec<Primitive> {
     let mut g =
         vec![ellipse((toroid_x, -7.0), half_width, 1.5, 12), line((13.0 + dx, -7.0), (16.0 + dx, -7.0)), rect((16.0 + dx, -8.5), (19.0 + dx, -5.5))];
@@ -93,13 +93,13 @@ fn rcd_release(toroid_x: f64, half_width: f64, dx: f64, link_from: f64) -> Vec<P
     g
 }
 
-/// A key for an interlock switch, at the left of its dashed link (design 034 §4).
+/// A key for an interlock switch, at the left of its dashed link.
 fn key_mark() -> Vec<Primitive> {
     vec![circle((-12.0, 0.5), 1.0), line((-11.0, 0.5), (-8.0, 0.5)), line((-9.0, 0.5), (-9.0, -0.5))]
 }
 
 /// A contact (`make`: NO) operated through a dashed link by a lever ending at `lever_to` with a
-/// circle of radius `r` at `mark_y` (float and roller switches, design 034 §4).
+/// circle of radius `r` at `mark_y` (float and roller switches).
 fn levered(make: bool, lever_to: f64, r: f64, mark_y: f64) -> Vec<Primitive> {
     let x = if make { -8.0 } else { -6.0 };
     let mut g = if make { contact_no() } else { contact_nc() };
@@ -121,7 +121,7 @@ fn half_circle_up(c: (f64, f64), r: f64, n: usize) -> Primitive {
     poly(&v, false)
 }
 
-/// The pin pitch of connector bodies, in millimetres (design 034 §5).
+/// The pin pitch of connector bodies, in millimetres.
 const PIN_PITCH: f64 = 5.0;
 
 /// What a connector key names: its pin count and form.
@@ -325,7 +325,7 @@ impl Connector {
     }
 }
 
-/// A PLC card body as the card's power end (brief 051, design 051 §2.4): on each side that has
+/// A PLC card body as the card's power end: on each side that has
 /// points, an edge through them and dividers between neighbouring points and at both ends, down
 /// (or up) the header band; width the points' span plus 10, at least 20. The type word is the
 /// frame's type text now, not graphics.
@@ -355,7 +355,7 @@ fn pin_x(i: usize, pitch: f64) -> f64 {
     pitch * i.saturating_sub(1) as f64
 }
 
-/// A fuse bank of `n` ways (design 034 §3).
+/// A fuse bank of `n` ways.
 fn fuse_bank(n: usize) -> Vec<Primitive> {
     let xn = pin_x(n, 10.0);
     let mut g = vec![
@@ -391,12 +391,12 @@ fn sized_connection_points(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> Connec
     Connector::of(key).map(|c| c.connection_points(t)).unwrap_or_default()
 }
 
-/// A socket pin (brief 044): its lead from (0, 5) and 034's cup, open downwards, centre (0, 0).
+/// A socket pin: its lead from (0, 5) and a cup, open downwards, centre (0, 0).
 fn socket_pin() -> Vec<Primitive> {
     vec![line((0.0, 5.0), (0.0, 1.5)), half_circle_up((0.0, 0.0), 1.5, 6)]
 }
 
-/// A plug pin (brief 044): its lead from (0, −5) and the pin.
+/// A plug pin: its lead from (0, −5) and the pin.
 fn plug_pin() -> Vec<Primitive> {
     vec![line((0.0, -5.0), (0.0, -1.5)), rect((-0.5, -1.5), (0.5, 1.0))]
 }
@@ -423,7 +423,7 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
     g
 }
 
-/// The graphics of starter `key` (brief 036: `terminalblockfuse` draws `fuseterminalblock`'s).
+/// The graphics of starter `key` (`terminalblockfuse` draws `fuseterminalblock`'s).
 pub(crate) fn graphics_of(key: StarterKey) -> Vec<Primitive> {
     graphics(key)
 }
@@ -504,15 +504,15 @@ pub(super) fn graphics(key: StarterKey) -> Vec<Primitive> {
             ]
         }
         K::TerminalBlock => vec![circle((0.0, 0.0), 1.5)],
-        // Our own earth mark to the right of the ring (design 028 §2).
+        // Our own earth mark to the right of the ring.
         K::TerminalBlockPe => {
             vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))]
         }
-        // An arrow pointing away from its wire (design 022 §3.2).
+        // An arrow pointing away from its wire.
         K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
         K::Do => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DO"), line((0.0, -2.5), (0.0, -10.0))],
-        // ---- Brief 034 stage 1 (design 034 §3).
+        // ---- Contacts and protection.
         K::Co => contact_co(),
         K::Swco => {
             let mut g = contact_co();
@@ -557,7 +557,7 @@ pub(super) fn graphics(key: StarterKey) -> Vec<Primitive> {
             g
         }
         K::Fuseterminalblock => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
-        // ---- Brief 034 stage 2 (design 034 §4).
+        // ---- Sensors and field devices.
         K::Prox3 => vec![
             rect((-10.0, -5.0), (10.0, 5.0)),
             poly(&[(-7.0, 0.0), (-5.0, 2.0), (-3.0, 0.0), (-5.0, -2.0)], true),
@@ -621,14 +621,14 @@ pub(super) fn graphics(key: StarterKey) -> Vec<Primitive> {
             line((0.0, 6.0), (0.0, 10.0)),
             line((0.0, -6.0), (0.0, -10.0)),
         ],
-        // ---- Brief 034 stage 3b (design 034 §6).
+        // ---- PLC card bodies.
         K::Plcps => card_body(&[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
         K::Plccm => card_body(&[(-5.0, -25.0), (5.0, -25.0)]),
         K::Plccpu | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol | K::Plcim | K::Plcpm => {
             card_body(&[(-5.0, 25.0), (5.0, 25.0)])
         }
         k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_graphics(k),
-        // ---- Brief 044 (design 044 §3.2): connector pins, 034's cup and pin, no body.
+        // ---- Connector pins: a cup and a pin, no body.
         K::Pinpair => {
             let mut g = socket_pin();
             g.extend(plug_pin());
@@ -711,7 +711,7 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
         K::TerminalBlock | K::TerminalBlockPe => vec![t("1", 0.0, 0.0)],
         // No label: a continuation shows no connection point name.
         K::Continuation => vec![ConnectionPointDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
-        // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
+        // A channel symbol's point is keyed by its role; the label is what it shows.
         K::Di => vec![ConnectionPointDef {
             key: PointKey::Role(ecad_model::ChannelRole::In),
             label: Some("I0.0".into()),
@@ -724,7 +724,7 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
             at: p(0.0, -10.0),
             accepts: Default::default(),
         }],
-        // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
+        // ---- Contacts: definition order is common, NC, NO.
         K::Co | K::Swco => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
         K::Power4 => vec![
             t("1", -15.0, 10.0),
@@ -749,18 +749,18 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
         ],
         K::Ssrin => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::Ssrout | K::Fuseterminalblock | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
-        // ---- Brief 034 stage 2: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
+        // ---- Sensors: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
         K::Prox3 => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
         K::Valve => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::Valve2 => vec![t("A1", -10.0, 10.0), t("A2", -10.0, -10.0), t("B1", 10.0, 10.0), t("B2", 10.0, -10.0)],
         K::Tc => vec![t("+", -5.0, 10.0), t("-", 5.0, 10.0)],
-        // ---- Brief 034 stage 3b.
+        // ---- PLC card bodies.
         K::Plcps => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
         K::Plccpu | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
-        // ---- Brief 045 (design 045 §3.1).
+        // ---- PLC head, power and communication modules.
         K::Plcim | K::Plcpm => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
         K::Plccm => vec![t("P1", -5.0, -25.0), t("P2", 5.0, -25.0)],
-        // Brief 045 (design 045 §4.1, FP2): a cell's points are keyed by role; the pin is the
+        // A cell's points are keyed by role; the pin is the
         // label given when it joins a card.
         k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_shape(k)
             .map(|(_, pts)| {
@@ -777,7 +777,7 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
                     .collect()
             })
             .unwrap_or_default(),
-        // ---- Brief 044: a pin's definition keys are its side keys.
+        // ---- A pin's definition keys are its side keys.
         K::Pinpair => vec![side(SOCKET_KEY, 0.0, 5.0), side(PLUG_KEY, 0.0, -5.0)],
         K::Pins => vec![side(SOCKET_KEY, 0.0, 5.0)],
         K::Pinp => vec![side(PLUG_KEY, 0.0, -5.0)],
@@ -874,10 +874,10 @@ pub fn bounds(d: &Definition) -> (Pt, Pt) {
     (lo, hi)
 }
 
-/// The point grid of the builder, the default of `symbol.point_grid` (design 048 §7.1, Q6).
+/// The point grid of the builder, the default of `symbol.point_grid`.
 pub const POINT_GRID_MM: f64 = 5.0;
 
-/// Whether placed copy `rep` shows an older version than its lineage's newest (design 048 §8.4).
+/// Whether placed copy `rep` shows an older version than its lineage's newest.
 pub fn update_available(doc: &Document, rep: ecad_model::RepresentationId) -> Option<(DefinitionId, u64, u64)> {
     let r = doc.representations().get(&rep)?;
     let (d, _) = crate::devices::tags::rep_definition(doc, r)?;
@@ -899,7 +899,7 @@ pub fn side_word(side: Side) -> &'static str {
 mod tests {
     use super::*;
 
-    /// Overseer ruling 4: `dashed` draws what it drew before brief 034, and `dashed_v` is the same
+    /// `dashed` draws the original line pattern, and `dashed_v` is the same
     /// pattern along y.
     #[test]
     fn dashed_links_are_unchanged_and_the_vertical_one_matches() {

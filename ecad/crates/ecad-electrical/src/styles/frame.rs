@@ -1,11 +1,10 @@
-//! The title block and frame style catalogue (`frame`, design 050 §4.3; brief 055, design 055
-//! §1.4).
+//! The title block and frame style catalogue (`frame`).
 //!
-//! The built-in `sheet` ("Schematic sheet") is the house block (brief 055, FP3): the frame at
+//! The built-in `sheet` ("Schematic sheet") is the house block: the frame at
 //! 0.5 mm, inner lines and grid at 0.25 mm, in ink, with grid labels on all four sides and centre
 //! marks. Its title block is computed for the page's sheet (`crate::title_blocks::house`). An own
-//! frame carries its block as the record's body (FP1) and may set the sheet it is drawn for, and
-//! its margins (FP2): `ecad_model::document::sheet` reads those, so every page, reference and zone agrees.
+//! frame carries its block as the record's body and may set the sheet it is drawn for, and
+//! its margins: `ecad_model::document::sheet` reads those, so every page, reference and zone agrees.
 //! The title block's texts keep their own text-style choices.
 
 use ecad_model::document::sheet::{Margins, parse_frame_sheet, parse_margins};
@@ -41,8 +40,8 @@ static FIELDS: [Field; 8] = [
         over: None,
     },
     Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(), over: None },
-    // Brief 055 (FP2): the sheet the frame is drawn for (`page`: the page's own), its margins,
-    // its centre marks and where its block sits. 050a's `title_block` choice is retired (FP3): a
+    // The sheet the frame is drawn for (`page`: the page's own), its margins,
+    // its centre marks and where its block sits. The old `title_block` choice is retired: a
     // stored value is listed as unknown.
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, slot: Slot::new(), over: None },
     Field { key: "margins", label: "Margins", kind: Kind::Parsed { max_chars: 48, parse: margins_ok }, slot: Slot::new(), over: None },
@@ -78,13 +77,13 @@ pub struct FrameDraw {
     /// `none` (ink), an IEC code or `#rrggbb`.
     pub colour: String,
     pub grid_labels: bool,
-    /// Brief 055: a short mark at the middle of each side.
+    /// A short mark at the middle of each side.
     pub centre_marks: bool,
-    /// Brief 055: where the block sits.
+    /// Where the block sits.
     pub block: BlockAt,
-    /// Brief 055: the frame's distance from the paper edge (as `ecad_model::document::sheet::margins_of`).
+    /// The frame's distance from the paper edge (as `ecad_model::document::sheet::margins_of`).
     pub margins: Margins,
-    /// Brief 055 (overseer ruling): zone ticks and labels drawn; off when the page type turns
+    /// Zone ticks and labels drawn; off when the page type turns
     /// zones off, whatever the frame says.
     pub zones: bool,
 }
@@ -126,7 +125,7 @@ pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
         colour: f("line_colour").map_or_else(|| "none".to_string(), |r| r.text()),
         grid_labels: f("grid_labels").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false)),
         centre_marks: f("centre_marks").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false)),
-        // Own frames are drawn for one sheet, as made (design 055 §1.4).
+        // Own frames are drawn for one sheet, as made.
         block: if id.is_builtin() && f("block").and_then(|r| <BlockAt as ecad_model::Word>::parse(r.word())) != Some(BlockAt::BottomRight) {
             BlockAt::BottomFull
         } else {

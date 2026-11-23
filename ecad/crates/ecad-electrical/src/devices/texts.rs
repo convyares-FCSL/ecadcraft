@@ -1,4 +1,4 @@
-//! Derived texts (§2.4).
+//! Derived texts.
 
 use super::*;
 
@@ -7,20 +7,20 @@ use super::*;
 pub enum TextOf {
     Tag,
     ConnectionPoint(ConnectionPointId),
-    /// A continuation's name (brief 022).
+    /// A continuation's name.
     Name,
-    /// A continuation's other places (brief 022).
+    /// A continuation's other places.
     Places,
-    /// A device's description under its tag (brief 031, hidden by default).
+    /// A device's description under its tag (hidden by default).
     Description,
-    /// A device's part number under its tag (brief 031, hidden by default).
+    /// A device's part number under its tag (hidden by default).
     PartNumber,
-    /// Another device text a project symbol's text slot places (brief 048, design §2.3): its
+    /// Another device text a project symbol's text slot places: its
     /// index in the definition's `texts`.
     Slot(u8),
-    /// Brief 045 (design 045 §7.2): a PLC card body's caption, its rack and slot.
+    /// A PLC card body's caption, its rack and slot.
     Caption,
-    /// Brief 045 (design 045 §7.1): a channel cell's channel number, address and description
+    /// A channel cell's channel number, address and description
     /// (written turned 90° when `rotated`).
     ChannelNo,
     Address,
@@ -41,7 +41,7 @@ pub struct DerivedText {
     pub valign: VAlign,
     /// A colour of its own (ACI), else ByLayer.
     pub aci: Option<u8>,
-    /// Brief 050a: the object's own text style (its `text.<kind>.style`), drawn instead of the
+    /// The object's own text style (its `text.<kind>.style`), drawn instead of the
     /// kind's project style; `None` for the kind's.
     pub own: Option<crate::styles::text_style::OwnStyle>,
 }
@@ -64,7 +64,7 @@ pub(crate) fn vertical(pl: &Placement) -> bool {
     q < std::f64::consts::FRAC_PI_4 || q > 3.0 * std::f64::consts::FRAC_PI_4
 }
 
-/// The sizes of a symbol's tag and connection point labels in a project (design 031 §3.2, §6.2):
+/// The sizes of a symbol's tag and connection point labels in a project:
 /// heights from the style table, the gap between the box and the tag as `text.tag.gap` × the
 /// tag height.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,7 +84,7 @@ impl TagSizes {
     }
 }
 
-/// The kind of text (design 031 §3.1) a derived text is.
+/// The kind of text a derived text is.
 pub fn kind_of(of: TextOf) -> crate::styles::text_style::TextKind {
     use crate::styles::text_style::TextKind;
     match of {
@@ -93,7 +93,7 @@ pub fn kind_of(of: TextOf) -> crate::styles::text_style::TextKind {
         TextOf::Name => TextKind::ContinuationName,
         TextOf::Places => TextKind::Reference,
         TextOf::Description => TextKind::Description,
-        // Brief 051 (design 051 §5): the card's caption is a name-block line; channel functions
+        // The card's caption is a name-block line; channel functions
         // and addresses have text styles of their own.
         TextOf::Caption => TextKind::PartNumber,
         TextOf::ChannelText { .. } => TextKind::ChannelText,
@@ -145,15 +145,15 @@ pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
     all_texts_measured(doc, page, None, m).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
 }
 
-/// A derived text and whether it is shown (design 031 §5): hidden texts are still data, listed by
+/// A derived text and whether it is shown: hidden texts are still data, listed by
 /// `pagetexts` and drawn dimmed by Show Hidden Text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageText {
     pub text: DerivedText,
     pub shown: bool,
-    /// Its place is stored (Move Text, design 031 §6.4).
+    /// Its place is stored (Move Text).
     pub moved: bool,
-    /// Its tag block found no free candidate (§6.3).
+    /// Its tag block found no free candidate.
     pub overlaps: bool,
 }
 
@@ -168,10 +168,10 @@ pub fn text_passes(page: PageId) -> u64 {
     TEXT_PASSES.with(|c| c.borrow().get(&page).copied().unwrap_or(0))
 }
 
-/// The run rule of a symbol (design 031 §5.3), from its starter kind.
+/// The run rule of a symbol, from its starter kind.
 pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style::RunRule {
     use crate::styles::text_style::RunRule;
-    // Brief 044 (design 044 §5.2): a connector's pins show their half's tag once per run.
+    // A connector's pins show their half's tag once per run.
     if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Pin {
         return RunRule::Strip;
     }
@@ -185,10 +185,10 @@ pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::tex
 /// Every derived text on `page`, shown or hidden: for each symbol representation of a component,
 /// its device's tag block (the tag, then its description and part number when they have values)
 /// and its terminals' labels; a continuation's name and other places. Visibility follows design
-/// 031 §5.2 (symbol, device, page, project, built-in) and a tag set to once per run is shown on
-/// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
-/// for that representation. PLC addresses are read from the kept model `plc` when there is one
-/// (brief 045, review of #84, 3), and `m` measures the texts (the C wrappers
+/// (symbol, device, page, project, built-in) and a tag set to once per run is shown on
+/// the first symbol of its run only. Hostile values (non-finite placements) give nothing
+/// for that representation. PLC addresses are read from the kept model `plc` when there is one,
+/// and `m` measures the texts (the C wrappers
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
 pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
@@ -196,11 +196,11 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     use crate::styles::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in connection_point_positions(doc, page) {
-        // Brief 044: a pin pair shows its pin name once, beside the socket point.
+        // A pin pair shows its pin name once, beside the socket point.
         if doc.representations().get(&rid).is_some_and(|r| crate::connectors::hides_label(doc, r, t)) {
             continue;
         }
-        // Brief 044: a connector pin's label on the page is its pin name (`3`), beside its half's
+        // A connector pin's label on the page is its pin name (`3`), beside its half's
         // tag; elsewhere it is named `-X10.S:3`.
         if crate::connectors::side_of(doc, t).is_some() {
             if let Some(label) = doc.connection_points().get(&t).and_then(|x| x.label.clone()) {
@@ -208,7 +208,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             }
             continue;
         }
-        // Brief 036: a strip level shows its shown label (`1.L`), not its position.
+        // A strip level shows its shown label (`1.L`), not its position.
         if let Some(label) = crate::terminal_strips::terminal_blocks::shown_label(doc, t) {
             by_rep.entry(rid).or_default().push((TextOf::ConnectionPoint(t), label, at));
         }
@@ -218,18 +218,18 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     let draw = crate::styles::text_style::fonts::DrawStyles::with(doc, m);
     let pitch = crate::defaults::resolve(doc, &crate::defaults::text::LINE_PITCH, crate::defaults::Scope::project()).number();
     let firsts = crate::styles::text_style::run_firsts(doc, page);
-    // Location prefixes (brief 024, design 024 §3.3) read this page's boxes once.
+    // Location prefixes read this page's boxes once.
     let mut boxes = crate::locations::BoxCache::default();
-    // Brief 045: the racks' address blocks, worked out once per draw.
+    // The racks' address blocks, worked out once per draw.
     let mut plc_blocks = std::collections::BTreeMap::new();
-    // Tag blocks wait for placement (design 031 §6), after every fixed text is known.
+    // Tag blocks wait for placement, after every fixed text is known.
     struct Pending {
         block: Block,
         lines: Vec<(TextOf, String, f64, bool, Option<u8>)>,
     }
     let mut pending: Vec<Pending> = Vec::new();
     let mut fixed: Vec<crate::styles::text_style::TextBox> = Vec::new();
-    // Brief 050a (design 050 §4.1): a device's own text style for a kind (its
+    // A device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
     let own = |c: DeviceId, kind: TextKind| -> Option<crate::styles::text_style::OwnStyle> {
         let props = &doc.devices().get(&c)?.properties;
@@ -244,8 +244,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         if !pl.is_valid() {
             continue;
         }
-        // A continuation (a drawing aid, design 072 §6.2) shows its name and its other places
-        // instead (brief 022), in the project's styles for those kinds (design 031 §7.1).
+        // A continuation (a drawing aid) shows its name and its other places
+        // instead, in the project's styles for those kinds.
         if let Subject::Aid(a) = r.subject {
             let target = TextTarget { page: Some(page), component: None, representation: Some(rid), conductor: None, run: run_rule(doc, r) };
             for mut t in crate::wires::labels::continuation_texts(doc, a, rid, &pl).unwrap_or_default() {
@@ -268,7 +268,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             Shown::Off => false,
             Shown::First => firsts.contains(&rid),
         };
-        // Connection point labels keep their fixed rule (or a stored place, §6.4) and are obstacles.
+        // Connection point labels keep their fixed rule (or a stored place) and are obstacles.
         let labels_shown = shown(TextKind::PointLabel);
         let label_style = text_style(doc, TextKind::PointLabel);
         let props = doc.devices().get(&c).map(|x| &x.properties);
@@ -295,30 +295,30 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
                 overlaps: false,
             });
         }
-        // Brief 051 (design 051 §2.6): a framed PLC cell or body has its tag and caption in its
+        // A framed PLC cell or body has its tag and caption in its
         // frame's name block, not beside it.
         let framed = crate::plc::draw::framed(doc, c, rid, r);
-        // Brief 045 (design 045 §7.2): a card body's caption at its anchor, under the body.
+        // A card body's caption at its anchor, under the body.
         if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
             out.push(text);
         }
-        // Brief 045 (design 045 §7.1): a channel cell's number, address and description.
+        // A channel cell's number, address and description.
         out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
         if framed {
             continue;
         }
-        // Brief 048 (design 048 §2.3): a symbol with text slots places each device text at its
+        // A symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
             out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &draw, m, &mut fixed));
             continue;
         }
-        // The tag block (design 031 §6.1): the tag, then the description and part number.
+        // The tag block: the tag, then the description and part number.
         let Some((lo, hi)) = placed_box(def, &pl) else { continue };
-        // Brief 026: a provisional tag is drawn in `ecad.provisional`.
+        // A provisional tag is drawn in `ecad.provisional`.
         let prov = doc.devices().get(&c).is_some_and(ecad_model::Device::is_provisional);
         let mut lines: Vec<(TextOf, String, f64, bool, Option<u8>)> = Vec::new();
-        // Brief 044 (design 044 §5.2): a connector symbol shows its half's tag and fields.
+        // A connector symbol shows its half's tag and fields.
         let half = crate::connectors::rep_side(doc, r);
         let tag_text = match half {
             Some(side) => Some(crate::connectors::half_tag(doc, c, side)),
@@ -395,9 +395,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     out
 }
 
-/// The texts a project symbol's slots place for representation `rid` of device `c` (brief 048,
-/// design §2.3): the tag where its show rule says, every other slot's text whenever the device
-/// has a value for it. Each is an obstacle for the page's tag blocks.
+/// The texts a project symbol's slots place for representation `rid` of device `c`: the tag where its show rule says,
+/// every other slot's text whenever the device has a value for it. Each is an obstacle for the page's tag blocks.
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
@@ -429,7 +428,7 @@ fn slot_texts(
         };
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
-        // Brief 050a: the device's own text style of this kind, font included.
+        // The device's own text style of this kind, font included.
         let own =
             doc.devices().get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
         let height = match &own {
@@ -457,7 +456,7 @@ fn slot_texts(
     out
 }
 
-/// The key a connection point label's stored place is kept under (design 031 §6.4):
+/// The key a connection point label's stored place is kept under:
 /// `text.<rep>.point_label.<terminal key>.at`, the terminal key being its definition key, else its
 /// label.
 pub(crate) fn point_label_key(doc: &Document, rep: RepresentationId, t: ConnectionPointId) -> String {

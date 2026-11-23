@@ -1,4 +1,4 @@
-//! Reading a switching device's rating (design 072 §2.2, "Ratings"): a coil's or SSR input's
+//! Reading a switching device's rating: a coil's or SSR input's
 //! control voltage and power, and the AC-3 rating.
 //!
 //! # Semantics

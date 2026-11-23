@@ -1,4 +1,4 @@
-//! Brief 054's registry entries (design 054 §2.3, §6.4, FP5): a page's type (page level only)
+//! Registry entries: a page's type (page level only)
 //! and the cover's block toggles (standard and project).
 
 use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
@@ -13,7 +13,7 @@ const fn toggle(key: &'static str, label: &'static str) -> Entry {
     Entry { key, label, group: "Cover", brief: BRIEF, kind: SWITCH, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
-/// The cover's block toggles (design 054 §6.4), standard and project only (Q8).
+/// The cover's block toggles, standard and project only.
 pub static NOTES: Entry = toggle("front.cover.notes", "Notes");
 pub static WIRE_COLOURS: Entry = toggle("front.cover.wire_colours", "Wire colours");
 pub static SYMBOL_LEGEND: Entry = toggle("front.cover.symbol_legend", "Symbol legend");
@@ -23,7 +23,7 @@ pub static CUSTOMER_SITE: Entry = toggle("front.cover.customer_site", "Customer 
 /// What an empty cover heading is stored as: the cover shows the title alone.
 pub const NO_HEADING: &str = "none";
 
-/// The words after the project's title in the cover heading (Q12); empty (stored as
+/// The words after the project's title in the cover heading; empty (stored as
 /// [`NO_HEADING`]) leaves the title alone.
 pub static HEADING: Entry = Entry {
     key: "front.cover.heading",

@@ -1,4 +1,4 @@
-//! Lane U's BOM defaults (brief 047, design 047 §8). Owned by lane U: append `pub static` entries
+//! The BOM defaults: append `pub static` entries
 //! and list them in [`ENTRIES`].
 //!
 //! Read them through `bom::article_column`, `bom::lines_nested` and `bom::item_unit_metres`, not
@@ -26,8 +26,8 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
-/// `bom.column.article`: the Article number column of the BOM window, BOM page and CSV (owner UI
-/// answer 12: off until the user adds it).
+/// `bom.column.article`: the Article number column of the BOM window, BOM page and CSV:
+/// off until the user adds it.
 pub static COLUMN_ARTICLE: Entry = entry("bom.column.article", "Article number column", Kind::Flag);
 
 /// `bom.lines`: part lines merged with equal parts (`flat`) or listed under their device

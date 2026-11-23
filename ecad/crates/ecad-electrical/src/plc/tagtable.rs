@@ -1,4 +1,4 @@
-//! Tag tables (brief 056, design 056 §7): the format layer and its one format in 056, the generic
+//! Tag tables: the format layer and its one format, the generic
 //! CSV tag table.
 //!
 //! # Semantics
@@ -8,7 +8,7 @@
 //!   and comment lengths. Only tags with an I/O address are kept ([`normalise`]); memory,
 //!   data-block and timer tags, rows with a bad address, too long a name and an address given twice
 //!   are skipped and counted in [`Read`].
-//! - Addresses are compared normalised (design 056 §6.3): `%`, spaces and `:P` removed, the German
+//! - Addresses are compared normalised: `%`, spaces and `:P` removed, the German
 //!   mnemonics `E`/`A` (and `PE`/`PA`) read as `I`/`Q`, the IEC bit letter `X` dropped, upper case:
 //!   `%IX0.0`, `E0.0` and `I0.0` are all `I0.0`; `%IW64` is `IW64`.
 //! - Writing puts addresses in `%` form (`%Q2.2`). Fields are quoted per RFC 4180 when they hold a
@@ -29,7 +29,7 @@ pub struct TagRow {
     pub address: String,
     pub data_type: String,
     pub comment: String,
-    /// Export-only columns (design 056 §7.3), ignored on import.
+    /// Export-only columns, ignored on import.
     pub extra: Option<Extra>,
 }
 
@@ -43,7 +43,7 @@ pub struct Extra {
     pub page: String,
 }
 
-/// The limits every reader keeps (design 056 §6.2).
+/// The limits every reader keeps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Caps {
     /// Most bytes read.
@@ -115,7 +115,7 @@ fn plural<'a>(n: usize, one: &'a str, many: &'a str) -> &'a str {
     if n == 1 { one } else { many }
 }
 
-/// A tag table format (design 056 §7.2).
+/// A tag table format.
 pub trait TagFormat: Sync {
     /// Its ID in `plcexport {format}` and `plcimport {format}`.
     fn id(&self) -> &'static str;
@@ -135,20 +135,20 @@ pub trait TagFormat: Sync {
     /// # Errors
     /// A row the format cannot hold.
     fn write(&self, rows: &[TagRow]) -> Result<Vec<u8>, CmdError>;
-    /// Whether the format can hold this name (design 056 §7.4); a name it cannot is left out of an
+    /// Whether the format can hold this name; a name it cannot is left out of an
     /// export and counted.
     fn name_ok(&self, name: &str) -> bool {
         !name.is_empty() && name.chars().count() <= crate::plc::signals::MAX_TAG && !name.chars().any(char::is_control)
     }
 }
 
-/// The generic CSV tag table (design 056 §7.3).
+/// The generic CSV tag table.
 pub struct GenericCsv;
 
 /// The formats, in the order the path dialog lists them.
 pub(crate) static FORMATS: &[&dyn TagFormat] = &[&GenericCsv];
 
-/// Said when no format reads a file (design 056 §7.1).
+/// Said when no format reads a file.
 pub const UNKNOWN: &str = "Only the generic CSV tag table can be read yet (name, address, type, comment).";
 
 /// The format of ID `id`.
@@ -207,7 +207,7 @@ impl TagFormat for GenericCsv {
         if t.contains('\0') {
             return false;
         }
-        // A name or an address column: the read then says which of them is missing (tester 056, F2).
+        // A name or an address column: the read then says which of them is missing.
         let (h, _) = header(t);
         h.iter().any(|f| f == "name" || f == "address")
     }
@@ -308,7 +308,7 @@ impl TagFormat for GenericCsv {
     }
 }
 
-/// The characters a spreadsheet takes as the start of a formula (the review of #112, 3).
+/// The characters a spreadsheet takes as the start of a formula.
 const FORMULA_START: [char; 6] = ['=', '+', '-', '@', '\u{ff20}', '\t'];
 
 /// A field a spreadsheet would run as a formula, with a leading `'` (shown as text, not run).
@@ -416,7 +416,7 @@ pub enum Address {
     Bad,
 }
 
-/// Normalise an address (design 056 §6.3).
+/// Normalise an address.
 pub fn normalise(raw: &str) -> Address {
     let mut s: String = raw.chars().filter(|c| !c.is_whitespace() && *c != '%').collect::<String>().to_ascii_uppercase();
     if s.is_empty() || s.len() > 32 {
@@ -478,7 +478,7 @@ pub fn normalise(raw: &str) -> Address {
     }
 }
 
-/// The normalised form of an ECAD address (any 045 style but `slot` and `none`), if it is I/O.
+/// The normalised form of an ECAD address (any address style but `slot` and `none`), if it is I/O.
 pub fn key_of(address: &str) -> Option<String> {
     match normalise(address) {
         Address::Io(a) => Some(a),

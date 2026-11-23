@@ -1,33 +1,33 @@
-//! The Properties feed (design 064 §4.1, `PropsFeed`): the objects whose shown properties a
+//! The Properties feed (`PropsFeed`): the objects whose shown properties a
 //! commit could change, so the change log tells the Properties palette (ecad-engine's
 //! `props::PropsView`, which names the objects its rows read) whether to read them again.
 //!
 //! # Update map
 //! Before the ops (each looked up on the document before them):
 //! - A page changed in place (`ModifyPage`): that page's own properties.
-//! - A property written (every area): its object; on a location box (brief 024) also the pages
+//! - A property written (every area): its object; on a location box also the pages
 //!   its symbols are on, whose devices inherit its location.
 //! - A device created, deleted or changed, its definition switched, or a connection point of it
 //!   added or removed: that device.
 //! - A wire made, removed or changed: that wire; made or removed, also the devices at its ends,
-//!   which show its net (brief 022).
+//!   which show its net.
 //! - A cable made, removed or changed: that cable and the wires of its cores, before and after.
 //! - A route drawn, removed or changed: the devices it lands on, before and after (a route has no
-//!   properties, design 072 F31).
+//!   properties).
 //! - An item changed in place or removed: the subject its representation shows (a location box's
 //!   also its page). An item added: nothing (it is shown through its representation).
 //! - A representation linked, unlinked or changed: its subjects; linked or unlinked on a location
 //!   box (or with the location-box role), also its page.
 //! - A version named or unnamed, a style record or the standard: the project.
-//! - A project symbol's version embedded or removed (brief 048): the subjects of every item using
+//! - A project symbol's version embedded or removed: the subjects of every item using
 //!   one of its versions ("update available").
 //! - A layer: nothing.
 //! - A page added, removed or moved, any folder effect, the settings, the project's own data
-//!   (design 072 §5.3: a renamed code shows on every object storing it) or a device link: any
+//!   (a renamed code shows on every object storing it) or a device link: any
 //!   object (`None`).
 //!
 //! After the commit, the effects past those the Before phase saw (the transaction's extension: the
-//! wire rewrite, design 072 §4.4, and the numbering pass, brief 022), each looked up on the
+//! wire rewrite, and the numbering pass), each looked up on the
 //! document after them: a property written, its object; a wire made, removed or changed, that
 //! wire and the devices at its ends (after the change). Nothing else.
 //!
@@ -102,15 +102,15 @@ fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = ConnectionPointI
     ends.filter_map(|t| doc.connection_points().get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
 }
 
-/// The object a subject's properties are kept on (a route has none, design 072 F31; nor has an
-/// aid, §6.2).
+/// The object a subject's properties are kept on (a route has none; nor has an
+/// aid).
 fn subject_ref(s: Subject) -> Option<ObjectRef> {
     match s {
         Subject::Device(c) => Some(ObjectRef::Device(c)),
         Subject::Wire(c) => Some(ObjectRef::Wire(c)),
         Subject::Cable(c) => Some(ObjectRef::Cable(c)),
         Subject::Route(_) => None,
-        // An aid has no properties panel yet (design 072 §6.2).
+        // An aid has no properties panel yet.
         Subject::Aid(_) => None,
     }
 }
@@ -137,7 +137,7 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
         }
         Effect::Wire { id, before, after } => {
             out.insert(ObjectRef::Wire(*id));
-            // The devices at its ends: a wire's net (brief 022) is shown through them.
+            // The devices at its ends: a wire's net is shown through them.
             let ends = before.iter().chain(after.iter()).flat_map(|w| w.ends.iter().copied());
             out.extend(devices_at(doc, ends));
         }
@@ -145,7 +145,7 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
             out.insert(ObjectRef::Cable(*id));
             out.extend(before.iter().chain(after.iter()).flat_map(|c| c.cores.iter()).filter_map(|m| m.wire()).map(ObjectRef::Wire));
         }
-        // A route has no properties (design 072 F31); the devices it lands on show its net.
+        // A route has no properties; the devices it lands on show its net.
         Effect::Route { before, after, .. } => {
             let landed = before.iter().chain(after.iter()).flat_map(|r| r.points_landed());
             out.extend(devices_at(doc, landed));
@@ -168,17 +168,17 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
         Effect::Rep { before, after, .. } => {
             for rep in before.iter().chain(after.iter()) {
                 out.extend(subject_ref(rep.subject));
-                // A location box (brief 024) changes the location its page's devices inherit.
+                // A location box changes the location its page's devices inherit.
                 if matches!(rep.subject, Subject::Aid(_)) && rep.role == ecad_model::Role::LocationBox {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
         }
-        // Brief 050a: styles and the standard show in the property views of the project.
+        // Styles and the standard show in the property views of the project.
         Effect::Version { .. } | Effect::Style { .. } | Effect::Standard { .. } => {
             out.insert(ObjectRef::Project);
         }
-        // Brief 048 (design §8.4): a project symbol's new or removed version changes whether the
+        // A project symbol's new or removed version changes whether the
         // devices showing its lineage read "update available".
         Effect::Definition { before, after, .. } => {
             for d in before.iter().chain(after.iter()) {
@@ -193,15 +193,15 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
                 }
             }
         }
-        // A loose part is never selected and has no `ObjectRef` (design 072 §6.4): no panel
+        // A loose part is never selected and has no `ObjectRef`: no panel
         // shows it.
         Effect::Layer { .. } | Effect::LoosePart { .. } => {}
         Effect::Page { .. }
         | Effect::Folder { .. }
         | Effect::Settings { .. }
-        // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
+        // A code renamed in the project's list shows on every object storing it.
         | Effect::Project { .. }
-        // An aid has no `ObjectRef` (design 072 §6.2): the panel reads its selection again.
+        // An aid has no `ObjectRef`: the panel reads its selection again.
         | Effect::Aid { .. }
         | Effect::DeviceLink { .. } => *objects = None,
     }
@@ -215,7 +215,7 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<ObjectRef>)
         }
         Effect::Wire { id, before, after } => {
             out.insert(ObjectRef::Wire(*id));
-            // The devices at its ends show its net (brief 022).
+            // The devices at its ends show its net.
             if let Some(w) = after.or(*before) {
                 out.extend(devices_at(doc, w.ends.iter().copied()));
             }

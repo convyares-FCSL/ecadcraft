@@ -1,5 +1,5 @@
-//! The generated pages' view (design 064 §4.1, `GeneratedView`): which generated pages a commit
-//! redraws, by kind, through one exhaustive match ([`changed`], design 064 §4.2). It keeps the
+//! The generated pages' view (`GeneratedView`): which generated pages a commit
+//! redraws, by kind, through one exhaustive match ([`changed`]). It keeps the
 //! wire categories in use while the book has a cover ([`crate::pages::front::Uses`]).
 //!
 //! # Update map
@@ -81,7 +81,7 @@ struct Kinds {
     revisions: bool,
 }
 
-/// Whether a generated page of `kind` must be drawn again (design 064 §4.2). No `_` arm: a new
+/// Whether a generated page of `kind` must be drawn again. No `_` arm: a new
 /// kind does not compile until it says how it redraws.
 fn changed(kind: GenKind, k: Kinds) -> bool {
     match kind {
@@ -109,7 +109,7 @@ impl<'i> DerivedView<Inputs<'i>> for GeneratedView {
         {
             scope.cover_page |= before.iter().chain(after.iter()).any(|p| p.kind.generated_kind() == Some(GenKind::Cover));
         }
-        // Brief 054b (design 054 §10): the cover's maps run only while a cover is kept; a new
+        // The cover's maps run only while a cover is kept; a new
         // cover is drawn and its categories read whole.
         if self.uses.is_some() {
             scope.cover.note(cx.doc, effect);
@@ -120,7 +120,7 @@ impl<'i> DerivedView<Inputs<'i>> for GeneratedView {
     fn update(&mut self, doc: &Document, scope: GeneratedScope, cx: &Inputs<'i>) -> Outcome {
         let GeneratedScope { contents, revisions, cover, uses, cover_page } = scope;
         let has_cover = doc.page_order().iter().any(|p| kind_of(doc, *p) == Some(GenKind::Cover));
-        // Brief 054b (design 054 §10.1): the legend redraws only when a category's count crosses
+        // The legend redraws only when a category's count crosses
         // zero.
         let wires = match (&mut self.uses, has_cover) {
             (Some(u), true) => u.apply(doc, uses),

@@ -1,10 +1,10 @@
-//! Devices and tags (brief 018, design 018).
+//! Devices and tags.
 //!
 //! A *device* is a component with a tag. By the concept spec a tag is an identity: the same tag
 //! anywhere means the same device ([`ecad_model::naming::tag`]). A device may be drawn by several symbols
 //! (a coil and its contacts), each a symbol representation; the first is its own definition's,
 //! the others carry their terminal positions as connection points in their definition's local
-//! frame (I14 as relaxed, decision 2026-11-08).
+//! frame.
 //!
 //! # Semantics
 //! - Automatic tags: the symbol's prefix (IEC 81346 by default, see [`prefix_for`]) and the
@@ -12,7 +12,7 @@
 //!   deleted tag is not reused. Numbers are padded ([`padding`], 2 by default).
 //! - A duplicate tag is never a dead end: placing with an existing tag adds the symbol to that
 //!   device, and renaming a device to an existing tag merges it, when asked ([`plan_merge`]).
-//! - Joining labels follow design 018 §3.1 ([`join_labels`]).
+//! - Joining labels follow the joining rules ([`join_labels`]).
 //! - Tag texts and terminal labels are derived on every draw, never stored (`texts_on_page`).
 //!
 //! This module builds ops and words; it commits nothing and holds no UI.
@@ -42,7 +42,7 @@ use ecad_model::{
 };
 use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
-/// `t` as a device's stored tag (design 072 §2.1): refused when it is not 1 to 40 printable
+/// `t` as a device's stored tag: refused when it is not 1 to 40 printable
 /// characters.
 ///
 /// # Errors
@@ -92,7 +92,7 @@ fn planned_device_on(doc: &Document, base: &[Op], ops: &[Op], id: DeviceId) -> O
     d
 }
 
-/// Change device `id`'s typed fields with `f` within the planned `ops` (design 072: one
+/// Change device `id`'s typed fields with `f` within the planned `ops` (one
 /// `ModifyDevice` records the whole device): folded into the `CreateDevice` or `ModifyDevice` of
 /// it already in `ops` when no property op on it follows that one, else a new `ModifyDevice`.
 /// Returns whether anything changed (`false` also when the device does not exist).
@@ -121,7 +121,7 @@ pub(crate) fn edit_planned_on(doc: &Document, base: &[Op], ops: &mut Vec<Op>, id
     true
 }
 /// After device `c`'s symbol is swapped for `definition` (a `SetDeviceDefinition` already in the
-/// plan), the op giving it the type that symbol declares (design 072 §2.3): `None` while the group
+/// plan), the op giving it the type that symbol declares: `None` while the group
 /// stays, so the data the device has is kept.
 ///
 /// # Semantics
@@ -140,20 +140,20 @@ use serde_json::{Value, json};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::{self, Kind, Starter, StarterKey as K};
 
-/// Reserved layer of tag texts and terminal labels (design 018 §2.4).
+/// Reserved layer of tag texts and terminal labels.
 pub const TAG_LAYER: &str = "ECAD-TAGS";
-/// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
+/// `ecad.provisional`: ACI 30, orange, for provisional tags and wire numbers.
 pub const PROVISIONAL_ACI: u8 = 30;
 /// Most letters in a tag prefix a project may set.
 pub const MAX_PREFIX_LETTERS: usize = ecad_model::naming::prefix::MAX_PREFIX_LETTERS;
 /// Refusal of an edit of a derived tag text or terminal label.
 pub const TAG_DERIVED: &str = "The tag text is derived: change the tag with Device Properties, or move it with Move Text.";
-/// Most characters in a property value (design 018 §6.1).
+/// Most characters in a property value.
 pub const MAX_PROPERTY_CHARS: usize = 200;
 /// Most devices a JSON list returns.
 pub const MAX_LISTED: usize = 500;
 
-/// The device properties, as stored and as shown (design 018 §6.1).
+/// The device properties, as stored and as shown.
 pub const PROPERTIES: [(&str, &str); 6] = [
     ("tag", "Tag"),
     ("description", "Description"),
@@ -175,7 +175,7 @@ pub(crate) fn valid_prefix(text: &str) -> Option<String> {
     ecad_model::naming::prefix::TagPrefix::typed(text).map(|p| p.to_string())
 }
 
-/// Set (with `None` remove) the project's prefix of symbol `of` in `s` (design 072 F5): a
+/// Set (with `None` remove) the project's prefix of symbol `of` in `s`: a
 /// starter's own built-in prefix, or text that is not a prefix, is stored as none.
 pub(crate) fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::naming::prefix::PrefixOf, prefix: Option<&str>) {
     let builtin = match &of {

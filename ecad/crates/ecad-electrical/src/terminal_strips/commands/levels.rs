@@ -1,6 +1,6 @@
-//! The rules of brief 036's commands (design 036 §3.5, §4.2): `terminalblocklabel` (relabel a position, set
-//! or clear one level's own label, move a level to another position) and `toposition` (turn a brief
-//! 034 fuse terminal device into a fuse position of a strip). Each function reads the document and
+//! The rules of the commands: `terminalblocklabel` (relabel a position, set
+//! or clear one level's own label, move a level to another position) and `toposition` (turn a
+//! fuse terminal device into a fuse position of a strip). Each function reads the document and
 //! returns the ops to commit and what to report; both commands are generic ([`crate::commands::run`]).
 
 use std::collections::BTreeMap;
@@ -19,7 +19,7 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::terminal_strips::terminal_blocks as tt;
 
-// ---------------------------------------------------------------- terminalblocklabel (§4.2)
+// ---------------------------------------------------------------- terminalblocklabel
 
 /// Whether `l` is a position label `terminalblocklabel` accepts.
 fn position_ok(l: &str) -> Result<(), CmdError> {
@@ -54,7 +54,7 @@ pub(crate) enum MoveTo {
     New,
 }
 
-/// What `terminalblocklabel` is asked to change (design 036 §4.2).
+/// What `terminalblocklabel` is asked to change.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TerminalblocklabelInput {
     /// A terminal of the position (and its level).
@@ -85,7 +85,7 @@ pub(crate) struct Terminalblocklabel {
     pub lines: Vec<String>,
 }
 
-/// Plan `terminalblocklabel` (design 036 §4.2).
+/// Plan `terminalblocklabel`.
 ///
 /// # Errors
 /// No such terminal, not a strip, a position or level the strip lacks, a label that does not read.
@@ -124,7 +124,7 @@ pub(crate) fn plan_terminal_block_label(doc: &Document, input: Terminalblocklabe
     let mut ops = Vec::new();
     let mut lines = Vec::new();
     let mut message = String::new();
-    // Move one level (or another type's levels) to another position (Checks fixes, §8).
+    // Move one level (or another type's levels) to another position (Checks fixes).
     if let Some(m) = move_to {
         let who: Vec<ConnectionPointId> = match (m, connection_point) {
             (MoveTo::Next, Some(t)) => {
@@ -197,7 +197,7 @@ pub(crate) fn plan_terminal_block_label(doc: &Document, input: Terminalblocklabe
     Ok(Terminalblocklabel { ops, label, message, lines })
 }
 
-// ---------------------------------------------------------------- toposition (§3.5)
+// ---------------------------------------------------------------- toposition
 
 /// What `toposition` would do: the ops, the strip and position, and what goes with the device.
 #[derive(Debug, Clone)]
@@ -227,7 +227,7 @@ impl ToPosition {
     }
 }
 
-/// Plan `toposition` (design 036 §3.5).
+/// Plan `toposition`.
 ///
 /// # Errors
 /// Not a fuse terminal device, more than one symbol, no strip on its page, an unknown strip.
@@ -358,10 +358,10 @@ pub(crate) fn plan_toposition(
     }
     let props = comp.properties.clone();
     let keep: [&str; 0] = [];
-    // Everything else goes with the device and is listed (review M1: no silent loss), its own
+    // Everything else goes with the device and is listed (no silent loss), its own
     // text placements included.
     let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
-    // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
+    // The fuse's typed rating becomes the position's. A note is no fuse
     // rating and a position has no note: it goes with the device and is listed.
     let typed = match &comp.device_type {
         ecad_model::DeviceType::Protection(
@@ -381,7 +381,7 @@ pub(crate) fn plan_toposition(
     } else if comp.rating_shown().is_some() {
         lost.push(ecad_model::objects::devices::RATING_KEY.into());
     }
-    // Design 072 §2.1: the tag is a field of the device, and goes with it too.
+    // The tag is a field of the device, and goes with it too.
     if !comp.tag.is_none() {
         lost.push(ecad_model::naming::tag::TAG_KEY.into());
     }
@@ -413,7 +413,7 @@ enum MoveToParam {
     New,
 }
 
-/// `terminalblocklabel {terminal | strip + at, level?, position?, text?, move_to?}` (design 036 §4.2):
+/// `terminalblocklabel {terminal | strip + at, level?, position?, text?, move_to?}`:
 /// relabel a position, set or clear one level's own label, or move a level to another position.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -468,9 +468,9 @@ impl Generic for TerminalblocklabelParams {
     }
 }
 
-// ---------------------------------------------------------------- toposition (§3.5)
+// ---------------------------------------------------------------- toposition
 
-/// `toposition {device, strip?, position?}` (design 036 §3.5): the fuse terminal device becomes a
+/// `toposition {device, strip?, position?}`: the fuse terminal device becomes a
 /// fuse position of the strip, wires and rating kept; one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

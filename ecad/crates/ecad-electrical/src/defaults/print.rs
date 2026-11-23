@@ -1,7 +1,7 @@
-//! Lane P's defaults (033, print and project). Owned by lane P: append `pub static` entries and list them in
-//! [`ENTRIES`]. Lane T created this file empty (design 031 §3.5) and does not edit it again.
+//! The print and project defaults: append `pub static` entries and list them in
+//! [`ENTRIES`].
 //!
-//! The tag style's defaults are `pub const` in `ecad_model::naming::tag` (overseer ruling 2), which
+//! The tag style's defaults are `pub const` in `ecad_model::naming::tag`, which
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
 use crate::CmdError;
@@ -46,18 +46,18 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
-/// How a generated page's continuation sheets are numbered (design 033 §5.1): `sequence` is the
+/// How a generated page's continuation sheets are numbered: `sequence` is the
 /// trailing digits plus one (`400, 401`), else `N2`, `N3`.
 pub static CONTINUATION_NUMBERS: Entry =
     entry("print.continuation_numbers", "Continuation sheet numbers", Kind::Choice(<ContinuationNumbers as ecad_model::Word>::WORDS));
 
-/// How a missing value in a generated table is marked (design 033 §3.1): `boxed` is `?` in a box.
+/// How a missing value in a generated table is marked: `boxed` is `?` in a box.
 pub static MISSING_MARK: Entry = entry("print.missing_mark", "Missing value mark", Kind::Choice(<MissingMark as ecad_model::Word>::WORDS));
 
 /// `ecad.missing-box`: how far the box round a missing value is inset into its cell.
 pub static MISSING_BOX_INSET: Entry = entry("print.missing_box_inset", "Missing value box inset", Kind::Length { min: 0.0, max: 2.0 });
 
-/// Where an automatic contact table goes when it would meet the title block (design 033 §4.1):
+/// Where an automatic contact table goes when it would meet the title block:
 /// right of its head, else lifted.
 pub static CONTACT_TABLE_FALLBACK: Entry =
     entry("print.contact_table_fallback", "Contact table clear of the title block", Kind::Choice(<ContactTableFallback as ecad_model::Word>::WORDS));
@@ -66,7 +66,7 @@ pub static CONTACT_TABLE_FALLBACK: Entry =
 pub static CONTACT_TABLE_CLEARANCE: Entry =
     entry("print.contact_table_clearance", "Contact table gap above the title block", Kind::Length { min: 0.0, max: 20.0 });
 
-/// Tags are written with a leading `-` (design 033 §8.1, FP1).
+/// Tags are written with a leading `-`.
 pub static TAG_DASH: Entry = Entry {
     key: ecad_model::naming::tag::DASH_KEY,
     label: "Leading - on tags",
@@ -78,7 +78,7 @@ pub static TAG_DASH: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Tags are written in upper case, or as typed (design 033 §8.1, FP1).
+/// Tags are written in upper case, or as typed.
 pub static TAG_CASE: Entry = Entry {
     key: ecad_model::naming::tag::CASE_KEY,
     label: "Tag case",
@@ -90,7 +90,7 @@ pub static TAG_CASE: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// The revision table's columns (design 033 §7.1, FP2): `field[:Header][@width], …`, widths in
+/// The revision table's columns: `field[:Header][@width], …`, widths in
 /// millimetres on A3; Description takes the rest.
 pub static REVISION_COLUMNS: Entry = Entry {
     key: crate::releases::revisions::COLUMNS_KEY,
@@ -103,7 +103,7 @@ pub static REVISION_COLUMNS: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// The width of a custom revision column that does not give one (design 033 §7.1).
+/// The width of a custom revision column that does not give one.
 pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     key: "revisions.custom_width",
     label: "Custom revision column width",
@@ -115,7 +115,7 @@ pub static REVISION_CUSTOM_WIDTH: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// How the title block marks changes since the newest issue (design 033 §6.2, FP3).
+/// How the title block marks changes since the newest issue.
 pub static REVISION_PENDING: Entry = Entry {
     key: crate::releases::revisions::PENDING_KEY,
     label: "Pending changes marker",
@@ -127,7 +127,7 @@ pub static REVISION_PENDING: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// The project's tag style (design 033 §8): its padding, and the dash and case resolved through
+/// The project's tag style: its padding, and the dash and case resolved through
 /// this registry ([`TAG_DASH`], [`TAG_CASE`]). The same as `ecad_model::naming::tag::Style::of`, which
 /// `ecad-model` reads without the registry (a test keeps them equal).
 pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::naming::tag::Style {
@@ -141,7 +141,7 @@ pub fn tag_style(doc: &ecad_model::Document) -> ecad_model::naming::tag::Style {
     }
 }
 
-/// Brief 040 (owner answer 1): whether prints are `mono` (black, with the colour code in the wire
+/// Whether prints are `mono` (black, with the colour code in the wire
 /// label; the built-in default) or `colour` (wires in their colours, two-colour wires with the
 /// second colour's dashes, everything else in ink). A print command's own `colour` wins.
 pub static COLOUR: Entry = Entry {

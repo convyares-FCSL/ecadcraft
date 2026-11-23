@@ -1,4 +1,4 @@
-//! What a commit changes in the device references (design 025 §6): the devices to compare and the texts to redraw.
+//! What a commit changes in the device references: the devices to compare and the texts to redraw.
 
 use crate::styles::text_style::fonts::TextMetrics;
 use ecad_model::document::effect::Effect;
@@ -11,7 +11,7 @@ use super::places::Places;
 use super::read::{contacts_changed, table_text_key};
 use super::table::{Part, shown};
 
-// ---------------------------------------------------------------- per commit (design 025 §6)
+// ---------------------------------------------------------------- per commit
 
 /// What a commit's effects could change in the device references: the devices to compare, or every
 /// page with a device member (`wide`).
@@ -19,7 +19,7 @@ use super::table::{Part, shown};
 pub(super) struct Scope {
     devices: BTreeSet<DeviceId>,
     wide: bool,
-    /// Brief 049 (design 049 §8.1): the continuation names whose arrows' texts and caption runs
+    /// The continuation names whose arrows' texts and caption runs
     /// are compared, or every page with an arrow (`arrows_wide`).
     names: BTreeSet<String>,
     arrows_wide: bool,
@@ -73,7 +73,7 @@ impl Scope {
             Effect::Device { id, before: None, .. } | Effect::Device { id, after: None, .. } | Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
             }
-            // Design 072 B: a device's contacts or its contact table (typed fields).
+            // A device's contacts or its contact table (typed fields).
             Effect::Device { id, before: Some(b), after: Some(a) } if contacts_changed(b, a) => {
                 self.devices.insert(*id);
             }
@@ -84,7 +84,7 @@ impl Scope {
                     self.name_pages.insert(*p);
                 }
             }
-            // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
+            // A page type's sheet changes its pages' grids.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
                 if let Some((pages, true)) = crate::styles::page::touched_by_effect(doc, effect) {
                     self.device_pages.extend(pages.iter().copied());
@@ -93,11 +93,11 @@ impl Scope {
             }
             Effect::Page { .. } | Effect::Folder { .. } => {}
             Effect::Definition { id, .. } => self.devices.extend(doc.components_using(*id)),
-            // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
+            // The table text's size or the font sizes every table.
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key.raw) => {
                 self.wide = true;
             }
-            // Brief 050a: a change of the text style the table text uses (its height, weight).
+            // A change of the text style the table text uses (its height, weight).
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
                 if **id
                     == crate::styles::text_style::style_of(doc, crate::styles::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
@@ -127,7 +127,7 @@ impl Scope {
             | Effect::LoosePart { .. }
             | Effect::Project { .. } => {}
         }
-        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
+        // A frame decides its pages' grids and the free
         // area above the block, so its pages' devices, tables and arrows follow it.
         match crate::title_blocks::frame_reach_of(doc, effect) {
             crate::title_blocks::Reach::Pages(ps) => {
@@ -140,7 +140,7 @@ impl Scope {
             }
             crate::title_blocks::Reach::NotFrame | crate::title_blocks::Reach::Unchanged => {}
         }
-        // Brief 049: what continuation arrows the effect could change.
+        // What continuation arrows the effect could change.
         match effect {
             Effect::Settings { before, after }
                 if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
@@ -190,7 +190,7 @@ impl Scope {
     }
 }
 
-/// What a commit could change in the references (design 025 §6, the references view's scope):
+/// What a commit could change in the references (the references view's scope):
 /// noted effect by effect on the document before the commit ([`Watch::note`]), derived on it
 /// ([`Watch::take`]), noted again on the document after it, and finished ([`Watch::finish`]):
 /// the cable references ([`crate::references::cables::Snapshot`], scoped per cable) and the touched
@@ -205,12 +205,12 @@ pub(crate) struct Watch {
     before: BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
     wide_pages: BTreeSet<PageId>,
-    /// Brief 049: what the named continuations showed before, by page, and the pages with an
+    /// What the named continuations showed before, by page, and the pages with an
     /// arrow before (the wide case).
     before_names: BTreeMap<PageId, Vec<Part>>,
     arrow_pages: BTreeSet<PageId>,
     groups: BTreeSet<Group>,
-    /// Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
+    /// A page moved to or from a type with checks off changes the
     /// groups of every device on it: the index is made again ([`Watch::rebuilds`]).
     rebuild: bool,
     /// The book positions before the commit, compared with the book after it once
@@ -226,7 +226,7 @@ pub(crate) struct Watch {
 pub struct Outcome {
     /// Pages whose references changed; `None` for every page.
     pub pages: Option<BTreeSet<PageId>>,
-    /// Design 010 §4.3's line about references left without another end.
+    /// The line about references left without another end.
     pub orphaned: Option<String>,
     /// The texts and tables of the devices it looked at, after the commit: the next commit's
     /// "before" when nothing has changed in between ([`Watch::take`]).
@@ -352,7 +352,7 @@ impl Watch {
         };
         if let Some(p) = &mut pages {
             p.extend(device_pages);
-            // Brief 049 (design 049 §8.1): the pages whose continuation texts or caption runs
+            // The pages whose continuation texts or caption runs
             // changed, or every page with an arrow before and after.
             if self.scope.arrows_wide {
                 p.extend(std::mem::take(&mut self.arrow_pages));

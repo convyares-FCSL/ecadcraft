@@ -1,4 +1,4 @@
-//! What a page's frame and title block show (design 019, 033, 055; design 065 §3, cut 10): the
+//! What a page's frame and title block show: the
 //! frame's input read from the document, its text styles, the update map of what can change it, and
 //! fitting a value in its box. Drawing it is `frame`.
 
@@ -26,16 +26,16 @@ pub const FRAME_WEIGHT: u16 = 50;
 /// `ecad.wire-weight`.
 pub const THIN_WEIGHT: u16 = 25;
 
-/// Refusal of an edit of the frame (design 019 §3.2).
+/// Refusal of an edit of the frame.
 pub const DERIVED: &str = "The sheet frame is derived; change it in Project settings or the page's Sheet.";
 
-/// Most issued revisions the title block lists (owner answer Q12).
+/// Most issued revisions the title block lists.
 pub const TABLE_ROWS: usize = 7;
 
 /// Project property keys the title block shows.
 pub const TITLE: &str = "title";
 
-/// The text project property `key` holds: a field of the project's info (design 072 §5.3:
+/// The text project property `key` holds: a field of the project's info:
 /// `title`, `drawing_number`, `customer`, `site`, `status`, `cover.notes`), else the free
 /// property. The one reader of both.
 pub fn project_text(doc: &Document, key: &str) -> Option<String> {
@@ -81,23 +81,23 @@ pub struct FrameInput {
     pub next: String,
     pub total: String,
     /// Newest issued first, at most [`TABLE_ROWS`]: each row's values in [`Self::rev_columns`]
-    /// order (brief 033).
+    /// order.
     pub revisions: Vec<Vec<String>>,
-    /// The project's revision columns (design 033 §7).
+    /// The project's revision columns.
     pub rev_columns: Vec<crate::releases::revisions::Column>,
-    /// Whether the drawing changed since the newest issue (design 033 §6): set by the project,
+    /// Whether the drawing changed since the newest issue: set by the project,
     /// which keeps the flag; `of` leaves it off.
     pub pending: bool,
-    /// The frame's text styles, from lane T's getter (design 033 §1.2).
+    /// The frame's text styles, from the style getter.
     pub text: FrameText,
-    /// Brief 050a: the page's frame style (line weights, colour, grid labels).
+    /// The page's frame style (line weights, colour, grid labels).
     pub draw: crate::styles::frame::FrameDraw,
-    /// Brief 055: the block the frame draws (its own, or the house block for this sheet).
+    /// The block the frame draws (its own, or the house block for this sheet).
     pub block: crate::title_blocks::Block,
-    /// Brief 055: the project properties the block's fields read, by key (empty when unset): the
-    /// block's bound key set (design 055 §10.1).
+    /// The project properties the block's fields read, by key (empty when unset): the
+    /// block's bound key set.
     pub project: BTreeMap<String, String>,
-    /// Brief 055: the newest issued revision's fields the block's fields read (besides `rev`).
+    /// The newest issued revision's fields the block's fields read (besides `rev`).
     pub newest: BTreeMap<String, String>,
 }
 
@@ -110,7 +110,7 @@ pub struct TextDraw {
     pub weight: Option<u16>,
 }
 
-/// The frame's text styles (design 033 §1.2): grid labels, box captions, values and revision rows,
+/// The frame's text styles: grid labels, box captions, values and revision rows,
 /// Project and Page title, the Page number box, the Rev box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameText {
@@ -120,13 +120,13 @@ pub struct FrameText {
     pub main: TextDraw,
     pub page: TextDraw,
     pub rev: TextDraw,
-    /// Brief 055: the lineweight bold is drawn with in the title fonts, for a block's bold texts
+    /// The lineweight bold is drawn with in the title fonts, for a block's bold texts
     /// when the main style is not bold itself.
     pub bold_weight: Option<u16>,
 }
 
 impl TextDraw {
-    /// Whether its style is bold (the CADCraft style name of a bold weight; brief 066d: a block
+    /// Whether its style is bold (the CADCraft style name of a bold weight; a block
     /// item's `bold` comes from its kind's style, never a literal).
     pub fn bold(&self) -> bool {
         self.style.ends_with("BOLD")
@@ -136,8 +136,8 @@ impl TextDraw {
     pub fn of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
         let s = draw.style(kind);
         let mm = height_mm(s.height, unit);
-        // Lane T's per-kind fonts decide whether bold is drawn as a heavier stroke (design 031
-        // §2.2), as the engine's `DrawApply::apply` does.
+        // The per-kind fonts decide whether bold is drawn as a heavier stroke
+        // as the engine's `DrawApply::apply` does.
         let weight = match s.weight {
             Weight::Bold => draw.fonts_for(kind).bold_lineweight,
             Weight::Regular => None,
@@ -211,11 +211,11 @@ impl FrameInput {
         let issued = crate::releases::revisions::issued(doc);
         let rev_columns = crate::releases::revisions::columns(doc);
         let next_page = book.next(page);
-        // Checked there, so the frame and the references always use the same sheet (brief 055:
-        // the frame's own sheet first).
+        // Checked there, so the frame and the references always use the same sheet:
+        // the frame's own sheet first.
         let sheet = ecad_model::document::sheet::sheet_of(doc, page);
         let draw = crate::styles::frame::frame_draw(doc, page);
-        // The block may be borrowed from another frame (overseer ruling: page, page type, frame).
+        // The block may be borrowed from another frame (page, page type, frame).
         let id = ecad_model::document::sheet::title_block_style(doc, page);
         let block = crate::title_blocks::block_of(doc, &id, &sheet, &draw.margins, &text);
         let (project, newest) = crate::title_blocks::bind::read(doc, &block.layout);
@@ -239,7 +239,7 @@ impl FrameInput {
             drawing_number: prop(DRAWING_NUMBER),
             status: prop(STATUS),
             page_title: doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default(),
-            // Brief 052: stored as entry keys of the project's list; the title block shows codes.
+            // Stored as entry keys of the project's list; the title block shows codes.
             function: crate::locations::designations::shown_text(
                 doc,
                 crate::locations::designations::Aspect::Function,
@@ -268,7 +268,7 @@ impl FrameInput {
 }
 
 impl FrameInput {
-    /// This input with the project's pending flag (design 033 §6): the Rev box marked as the
+    /// This input with the project's pending flag: the Rev box marked as the
     /// project's `revisions.pending` says.
     pub fn with_pending(mut self, doc: &Document, pending: bool) -> FrameInput {
         self.pending = pending;
@@ -276,7 +276,7 @@ impl FrameInput {
         self
     }
 
-    /// Brief 055 (FP4): the keep-out strip at the bottom of the frame, mm: the block's height
+    /// The keep-out strip at the bottom of the frame, mm: the block's height
     /// (the built-in's 40 mm), never more than the frame's height. As
     /// `ecad_model::document::sheet::keep_out`.
     pub fn keep_out(&self) -> f64 {
@@ -292,8 +292,8 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
     ecad_model::document::effect::Effects::of(ops).iter().any(|e| touched_by(e, page, shown))
 }
 
-/// Whether `effect` can change the frame of `page`, whose frame last showed `shown` (design 019
-/// §9, the frame and title block rows; design 064 §4.1, `FrameView`). Every effect not listed
+/// Whether `effect` can change the frame of `page`, whose frame last showed `shown`
+/// the frame and title block rows, `FrameView`). Every effect not listed
 /// changes nothing there.
 pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageId, shown: &FrameInput) -> bool {
     use ecad_model::document::effect::Effect;
@@ -301,23 +301,22 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
         Effect::DeviceLink { .. } => false,
         Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
-        // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).
+        // A text size or the font (the `text.` keys).
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::styles::text_style::is_reserved_key(key.raw) => true,
-        // Brief 050a: the frame style choice, and any frame or text style record (the frame's
+        // The frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::FRAME.key => true,
-        // Brief 054: a page type's sheet, frame, title block or zones.
+        // A page type's sheet, frame, title block or zones.
         Effect::Style { catalogue, .. } => {
             *catalogue == ecad_model::StyleCatalogue::Frame
                 || *catalogue == ecad_model::StyleCatalogue::Text
                 || *catalogue == ecad_model::StyleCatalogue::Page
         }
-        // Review of #110, 2: switching one standard for another may change its frame records and
+        // Switching one standard for another may change its frame records and
         // its `print.frame.style`.
         Effect::Standard { before, after } => before != after,
-        // Design 072 §5.3: an issue (the Rev box and the table), the project's info, the project's
-        // default, or a code the block shows renamed (brief 052, design 052 §8.2a, tester 052
-        // finding 1).
+        // An issue (the Rev box and the table), the project's info, the project's
+        // default, or a code the block shows renamed
         Effect::Project { before, after } if crate::releases::revisions::issue_changed(before, after) || before.info != after.info => true,
         Effect::Project { before, after } => crate::locations::designations::Aspect::ALL.into_iter().any(|a| {
             let field = match a {
@@ -330,8 +329,8 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
                     old.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
                 })
         }),
-        // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
-        // set), and the revision settings (brief 033, design 033 §9.1); any other key redraws
+        // A project key the block's fields read (its bound key
+        // set), and the revision settings; any other key redraws
         // nothing.
         Effect::Prop { object: ObjectRef::Project, key, .. } => {
             shown.project.contains_key(key.raw)
@@ -339,7 +338,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
                 || key.raw == crate::releases::revisions::PENDING_KEY
         }
         Effect::Prop { object: ObjectRef::Page(p), .. } => *p == page,
-        // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
+        // A page changed in place; a folder move changes the book order (Next,
         // the numbers of unnumbered pages), a number the Next box of the page before it.
         Effect::Page { id, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
             let ch = b.change(a);
@@ -371,7 +370,7 @@ const CHAR_WIDTH: f64 = 0.8;
 /// The narrowest width factor a title-block text is squeezed to before it is cut.
 const MIN_WIDTH_FACTOR: f64 = 0.6;
 
-/// `value` fitted in `room` mm at `height` (design 019 §4): narrowed down to
+/// `value` fitted in `room` mm at `height`: narrowed down to
 /// `MIN_WIDTH_FACTOR`, then cut with `…`.
 pub fn fit(value: &str, height: f64, room: Option<f64>) -> (String, f64) {
     let Some(room) = room.filter(|r| *r > 0.0) else { return (value.to_string(), 1.0) };

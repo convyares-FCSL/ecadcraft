@@ -1,4 +1,4 @@
-//! `terminalblocks` (Place Terminals, design 028 §3.2, brief 036 §3.2): one terminal block, or one
+//! `terminalblocks` (Place Terminals): one terminal block, or one
 //! level, on each wire a fence line crosses. The rules are
 //! [`crate::terminal_strips::commands::terminal_strips`]; the command is generic
 //! ([`crate::commands::run`]) and keeps the last placement for the click tool's defaults.
@@ -58,7 +58,7 @@ impl Generic for TerminalBlocksParams {
         let done = plan_terminal_blocks(cx.ledger, cx.ids, cx.tag_high, page, cx.plain.clone(), input, cx.tolerance)?;
         let f = done.fence;
         // The wire numbers on the crossed lines before: a half that ends up in another net (a fuse
-        // position) does not keep its number (design 072 §4.4), which is said.
+        // position) does not keep its number, which is said.
         let before: Vec<Option<WireNumber>> = f
             .placed
             .iter()

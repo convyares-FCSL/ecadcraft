@@ -1,4 +1,4 @@
-//! The kept PLC model (design 045 §11.1), built from scratch after every commit (see [`super`]). The rules that measure text
+//! The kept PLC model, built from scratch after every commit (see [`super`]). The rules that measure text
 //! (an address wider than its cell) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
 //! `crate::plc::Plc` wraps this with today's signatures, passing CADCraft's fonts.
 
@@ -19,7 +19,7 @@ pub struct Touch {
     rows: BTreeSet<DeviceId>,
 }
 
-/// The kept PLC model (design 045 §11.1).
+/// The kept PLC model.
 #[derive(Debug, Clone, Default)]
 pub struct Plc {
     pub racks: BTreeMap<DeviceId, RackData>,
@@ -30,13 +30,13 @@ pub struct Plc {
     checks: BTreeMap<Group, Vec<Check>>,
     /// Cards in no rack (the `unracked` count row).
     unracked: BTreeSet<DeviceId>,
-    /// Brief 045b: each racked card's address block (design 045 §5.1), worked out per rack.
+    /// Each racked card's address block, worked out per rack.
     pub blocks: BTreeMap<DeviceId, address::Block>,
     /// Used channels without an address, by rack (the `no-address` count row).
     no_address: BTreeMap<Group, usize>,
     /// The racks and cards that read differently after the last update.
     pub last_changed: BTreeSet<DeviceId>,
-    /// Brief 045c: the cards whose I/O rows the last update may have changed (their own data, a
+    /// The cards whose I/O rows the last update may have changed (their own data, a
     /// moved block, a target renamed, a wire renumbered): the I/O page and list patch these only.
     pub rows_changed: BTreeSet<DeviceId>,
     /// How many updates the model has had: a view that missed one rebuilds instead of patching.
@@ -127,7 +127,7 @@ impl Plc {
             Effect::Prop { object: ObjectRef::Wire(w), .. } | Effect::Wire { id: w, before: Some(_), after: Some(_) } => {
                 out.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
             }
-            // Review of #84, 2: a terminal relabelled (renumber, `terminalblocklabel`) or added, on the
+            // A terminal relabelled (renumber, `terminalblocklabel`) or added, on the
             // nets it is on.
             Effect::ConnectionPoint { id, after: Some(_), .. } => {
                 out.extend(iolist::cards_on_nets_of_connection_points(doc, self, &[*id]));
@@ -281,7 +281,7 @@ impl Plc {
         let mut out = Vec::new();
         if let Some(card) = self.cards.get(&g) {
             self.channel_checks(doc, card, &mut out);
-            // Brief 051 (design 051 §2.5, §2.8): the card on its pages.
+            // The card on its pages.
             draw::through_checks(doc, card.id, &card.tag, &mut out);
             draw::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
         }
@@ -342,7 +342,7 @@ impl Plc {
         out
     }
 
-    /// Brief 045b's rows of one card (design 045 §9): a channel drawn twice, beyond the count, or by a
+    /// Rows of one card: a channel drawn twice, beyond the count, or by a
     /// symbol of another type.
     fn channel_checks(&self, doc: &Document, card: &CardData, out: &mut Vec<Check>) {
         let first = channels::first_number(doc, card.id);
@@ -400,7 +400,7 @@ impl Plc {
         }
     }
 
-    /// Brief 045b's rows of one rack (design 045 §9): blocks that overlap or overflow, an address
+    /// Rows of one rack: blocks that overlap or overflow, an address
     /// given twice.
     fn address_checks(&self, doc: &Document, rack: &RackData, out: &mut Vec<Check>) {
         let style = address::Style::of(doc, rack.id);
@@ -482,7 +482,7 @@ impl Plc {
         }
     }
 
-    /// Every PLC Checks row (design 045 §9), from the kept rows.
+    /// Every PLC Checks row, from the kept rows.
     pub fn checks(&self) -> Vec<Check> {
         let mut out: Vec<Check> = self.checks.values().flatten().cloned().collect();
         let n = self.unracked.len();
@@ -513,7 +513,7 @@ impl Plc {
         out
     }
 
-    /// Brief 056's rows (design 056 §9, after the owner's change of 2026-11-14): a tag two channels
+    /// Rows: a tag two channels
     /// of one PLC share (possible after a merge or a raw `setprop`), and a tag an export leaves
     /// out. Worked out from the kept model when asked; bounded by its channels.
     fn signal_checks(&self) -> Vec<Check> {
@@ -561,7 +561,7 @@ impl Plc {
     }
 
     /// The buttons of a PLC Checks row's fix, each a label, a command and its parameters (design
-    /// 045 §9). Empty when the row's card is gone.
+    /// Empty when the row's card is gone.
     pub(crate) fn fix_commands(&self, c: DeviceId, fix: PlcFix) -> Vec<(String, &'static str, Value)> {
         let tag = self.tag_of(c);
         match fix {
@@ -644,13 +644,13 @@ impl Plc {
     }
 
     /// How many sheets the I/O page needs at `per` lines a sheet, from the kept row counts (no rows
-    /// made): brief 051's packing (design 051 §4.1), [`sheets::pack`].
+    /// made): the packing, [`sheets::pack`].
     pub fn iolist_sheets(&self, per: usize) -> usize {
         let rows: Vec<usize> = iolist::cards_in_order(self).iter().map(|c| c.rows).collect();
         sheets::pack(&rows, 2.0, 1.0, 1.0, per.max(3) as f64).len().max(1)
     }
 
-    /// Brief 051: the Checks rows about device `c` (a card or a rack), from its own group and its
+    /// The Checks rows about device `c` (a card or a rack), from its own group and its
     /// rack's group (slot rows sit there).
     pub(crate) fn checks_naming(&self, c: DeviceId) -> impl Iterator<Item = &Check> {
         let rack = self.cards.get(&c).and_then(|x| match x.rack {
@@ -687,7 +687,7 @@ impl Plc {
     /// One card as `plcracks` lists it.
     pub(crate) fn card_json(&self, doc: &Document, c: DeviceId) -> Value {
         let Some(card) = self.cards.get(&c) else { return Value::Null };
-        // Brief 051 (design 051 §7): the tile's data.
+        // The tile's data.
         let tile = overview::card_tile(doc, self, card, String::new());
         let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
@@ -705,7 +705,7 @@ impl Plc {
             "used": card.chans.values().filter(|x| x.used).count(),
             "reserved": card.chans.values().filter(|x| !x.used && x.mark().is_some()).count(),
             "spare": card.channels.saturating_sub(u32::try_from(card.chans.values().filter(|x| x.used || x.mark().is_some()).count()).unwrap_or(0)),
-            // Brief 056 (design 056 §10): the tile's kind words and channels in use.
+            // The tile's kind words and channels in use.
             "kind_words": overview::kind_words(doc, card),
             "in_use": card.chans.iter().filter(|(i, x)| **i < card.channels && (x.used || x.mark().is_some())).count(),
             "inputs": self.blocks.get(&c).and_then(|b| b.input).map(|(s, n)| json!([s, s.saturating_add(n).saturating_sub(1)])),

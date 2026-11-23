@@ -1,4 +1,4 @@
-//! The generated cover (brief 054b, design 054 §6; UI rev 4 board 1.16): a heading, the customer
+//! The generated cover: a heading, the customer
 //! and site, typed notes, a wire-colour legend, a symbol legend of only the symbols used, the last
 //! revisions and the structure codes, above the page's own title block.
 //!
@@ -12,7 +12,7 @@
 //! - On screen only, each derived block has a dashed outline with its source caption, and the
 //!   notes block its own; they are drawn on a layer that does not print.
 //!
-//! # Update map (design 054 §10.2)
+//! # Update map
 //! [`touches`] says which committed ops change the cover. A symbol placed or removed changes the
 //! legend only when its definition's count of placed copies crosses zero (the document's
 //! definition index); a cable only when the project's first one comes or its last goes.
@@ -25,7 +25,7 @@ use crate::CmdError;
 use crate::pages::frames::FrameInput;
 use crate::styles::text_style::TextKind;
 
-/// The project property holding the cover's notes (FP4), and its bounds (design 054 §6.4): at most
+/// The project property holding the cover's notes, and its bounds: at most
 /// [`MAX_NOTES`] of [`MAX_NOTE_CHARS`] characters.
 pub const NOTES_KEY: &str = "cover.notes";
 pub const MAX_NOTES: usize = 40;
@@ -42,7 +42,7 @@ const CELL_W_MM: f64 = 18.0;
 const CELL_H_MM: f64 = 13.0;
 const CELL_ROW_MM: f64 = 17.0;
 /// Most legend columns; the cells spread evenly over the rows they need (8 cells: two rows of 4),
-/// so no row is left half empty (owner, review of 054).
+/// so no row is left half empty.
 const LEGEND_COLUMNS: usize = 5;
 
 /// The cover's notes as stored, cut to the bounds: (notes, whether anything was cut).
@@ -79,7 +79,7 @@ pub fn check_notes(text: &str) -> Result<(), CmdError> {
 }
 
 /// The project properties holding the person's rows of the wire-colour legend and the symbol
-/// legend (design 054 §8.1a): one row per line, `<key>\t<shown 1|0>\t<label>`.
+/// legend: one row per line, `<key>\t<shown 1|0>\t<label>`.
 pub const WIRE_ROWS_KEY: &str = "cover.wire_colours";
 pub const LEGEND_ROWS_KEY: &str = "cover.symbol_legend";
 /// Most rows, and most characters of a label.
@@ -194,7 +194,7 @@ fn arrange(generated: Vec<(String, String)>, ov: &[RowOverride]) -> Vec<(usize, 
     out
 }
 
-/// The cover's blocks that can be turned off, in the Page tab's order (design 054 §6.4).
+/// The cover's blocks that can be turned off, in the Page tab's order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
     Notes,
@@ -227,7 +227,7 @@ impl Block {
     }
 }
 
-/// The colour words of colours `c` (design 054 §6.2): `BK` black, `GN/YE` green / yellow, from
+/// The colour words of colours `c`: `BK` black, `GN/YE` green / yellow, from
 /// [`ecad_model::geometry::colour::ConductorColour::forms`].
 pub fn colour_words(c: &ecad_model::objects::wire::Colours) -> String {
     c.list().iter().map(|x| x.shown(ecad_model::geometry::colour::ColourWords::Name).to_lowercase()).collect::<Vec<_>>().join(" / ")
@@ -279,7 +279,7 @@ pub fn wire_lines(doc: &Document) -> Vec<WireLine> {
     wire_rows(doc).into_iter().filter(|(_, r)| r.shown).map(|(l, _)| l).collect()
 }
 
-/// Every generated wire-colour line with the person's overrides (design 054 §8.1a): their
+/// Every generated wire-colour line with the person's overrides: their
 /// order, whether each is shown, its label.
 pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
     let lines = generated_wire_lines(doc);
@@ -293,7 +293,7 @@ pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
         .collect()
 }
 
-/// The wire-colour legend as generated (design 054 §6.2): one line per wire category in use, in
+/// The wire-colour legend as generated: one line per wire category in use, in
 /// category table order, categories with equal colour and cross-section sharing a line.
 fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
     let draws = crate::styles::wire::WireDraws::new(doc);
@@ -359,14 +359,14 @@ pub fn legend_cells(doc: &Document) -> Vec<Cell> {
     legend_rows(doc).into_iter().filter(|(_, r)| r.shown).map(|(c, _)| c).collect()
 }
 
-/// Every generated legend cell with the person's overrides (design 054 §8.1a).
+/// Every generated legend cell with the person's overrides.
 pub fn legend_rows(doc: &Document) -> Vec<(Cell, EditedRow)> {
     let cells = generated_cells(doc);
     let rows = arrange(cells.iter().map(|c| (c.key(), c.name().to_string())).collect(), &overrides(doc, LEGEND_ROWS_KEY));
     rows.into_iter().filter_map(|(i, r)| Some((cells.get(i)?.clone(), r))).collect()
 }
 
-/// The symbol legend's cells as generated (design 054 §6.3): each definition with a placed copy
+/// The symbol legend's cells as generated: each definition with a placed copy
 /// (through the definition index), in definition order, then the marks in use.
 fn generated_cells(doc: &Document) -> Vec<Cell> {
     let mut out: Vec<Cell> = doc
@@ -384,8 +384,8 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
     out
 }
 
-/// The `=` functions and `+` locations in use, as the project's list shows them (design 054
-/// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
+/// The `=` functions and `+` locations in use, as the project's list shows them
+/// each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
     use crate::locations::designations::{Aspect, Uses, code_of, description_of};
@@ -423,8 +423,8 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
 /// site and notes, the revisions, a block toggle; a definition's first copy placed or last removed
 /// (counting the copies the transaction adds, so several new copies at once are seen), a
 /// definition in use redrawn or renamed; the first cable or the last; a continuation; a stored
-/// function or location, or an entry of the project's list (052), while the structure codes block
-/// is on (design 054 §10.2).
+/// function or location, or an entry of the project's list, while the structure codes block
+/// is on.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CoverNote {
     /// Copies of each definition the transaction adds.
@@ -471,7 +471,7 @@ impl CoverNote {
             // A text style's size changes the cover's texts; a wire category's name, colour or
             // cross-section its legend line.
             Effect::Style { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
-            // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
+            // A definition in use redrawn or renamed (Edit symbol), or a device re-pointed.
             Effect::Definition { id, .. } => !doc.items_using(*id).is_empty(),
             Effect::DeviceDefinition { .. } => true,
             Effect::Cable { before: None, after: Some(_), .. } => doc.cables().len() == 1,
@@ -483,7 +483,7 @@ impl CoverNote {
             Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. } => {
                 ecad_model::connectivity::continuation_key(a).is_some()
             }
-            // Design 072 §5.3: the revision rows, or a code the cover shows.
+            // The revision rows, or a code the cover shows.
             Effect::Project { before, after } => {
                 before.revisions != after.revisions
                     || before.info != after.info
@@ -523,7 +523,7 @@ impl CoverNote {
     }
 }
 
-/// The wire categories in use (design 054 §10.1): each conductor's category, and how many
+/// The wire categories in use: each conductor's category, and how many
 /// conductors each category has. Built once, on the cover's first show; then [`Uses::update`]
 /// re-reads only the conductors of the nets a transaction touched, and says whether a category's
 /// count crossed zero (the only change the wire-colour legend shows).
@@ -691,7 +691,7 @@ pub struct LegendFit {
     pub all: usize,
 }
 
-/// Where the cover's blocks go inside a frame, in paper millimetres (board 1.16): what the cover's
+/// Where the cover's blocks go inside a frame, in paper millimetres: what the cover's
 /// drawing places and what [`check_rows`] reads of the symbol legend.
 #[derive(Debug, Clone)]
 pub struct Layout {
@@ -744,7 +744,7 @@ pub fn layout(doc: &Document, input: &FrameInput, cover_mm: f64) -> Layout {
     let head_h = HEAD_MM * s;
     let pad = 5.0 * s;
 
-    // Each block is as tall as what it shows (board 1.16), top to bottom: row 1 (notes, wire
+    // Each block is as tall as what it shows, top to bottom: row 1 (notes, wire
     // colours), the symbol legend, row 3 (revisions, structure codes). The legend gives way when
     // the three do not fit above the title block.
     let (notes_list, _) = notes(doc);
@@ -804,7 +804,7 @@ pub fn layout(doc: &Document, input: &FrameInput, cover_mm: f64) -> Layout {
     }
 }
 
-/// The cover's rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with checks
+/// The cover's rows as a [`crate::checks::CheckSource`]: kept on pages with checks
 /// off. No commit scope reaches them: the cover's own update calls `crate::checks::Checks::set_cover`.
 pub(crate) struct CoverRows;
 
@@ -823,7 +823,7 @@ impl crate::checks::CheckSource for CoverRows {
     }
 }
 
-/// The cover's Checks rows (design 054 §9): `cover-legend-cut` when the legend shows fewer cells
+/// The cover's Checks rows: `cover-legend-cut` when the legend shows fewer cells
 /// than are used, `cover-notes-cut` when the stored notes are past the bounds. Worked out on open
 /// and again only after a change [`touches`] names (the cover is laid out once for it).
 pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {

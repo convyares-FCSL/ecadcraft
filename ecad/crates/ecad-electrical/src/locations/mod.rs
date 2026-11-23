@@ -1,25 +1,25 @@
-//! Device locations and functions, and location boxes (briefs 024 and 052, design 052 §5).
+//! Device locations and functions, and location boxes.
 //!
 //! # Semantics
 //! - A device's **location** (IEC 81346 `+` aspect) and **function** (`=`) are what is stored on
 //!   it: its `location` and `function` properties, each an entry key of the project's list
 //!   ([`crate::locations::designations`]). Unset means none, shown `?`. Nothing is inherited from boxes,
-//!   pages or the project (design 052 §5.1, FP2): those only **propose** ([`context_in`]).
-//! - A representation's location ([`rep_location`], §5.2): a strip's for every position and level;
+//!   pages or the project: those only **propose** ([`context_in`]).
+//! - A representation's location ([`rep_location`]): a strip's for every position and level;
 //!   else the device's override `location.<type>` (`socket`/`plug` for connector halves); else the
 //!   device's.
 //! - A symbol's **context** for an aspect is the innermost box carrying that aspect at its anchor,
 //!   else its page's value, else the project's. Its tag shows the device's value as a prefix where
 //!   the context differs (`=F1+CP1-K01`, [`shown_tag`]); that reads the symbol's own page only.
-//! - A **location box** is a drawing aid ([`ecad_model::Aid::Box`], design 072 §6.2) carrying a
-//!   `location`, a `function` or both (FP9), drawn as one closed polyline item (layer [`LAYER`])
-//!   of a drawn representation with role [`ecad_model::Role::LocationBox`] (design 024 FP2). Its
+//! - A **location box** is a drawing aid ([`ecad_model::Aid::Box`]) carrying a
+//!   `location`, a `function` or both, drawn as one closed polyline item (layer [`LAYER`])
+//!   of a drawn representation with role [`ecad_model::Role::LocationBox`]. Its
 //!   label is derived.
 //! - Containment ([`contains`]) is point in polygon by the even-odd rule; a point within
 //!   [`EDGE_TOL`] of the outline counts as inside. Innermost is the smallest polygon area, ties by
 //!   aid ID.
 //!
-//! # Update map (design 024 §9)
+//! # Update map
 //! Every function here reads one page's boxes and the representations asked about, never the
 //! whole project. Callers decide when to ask: the page drawing on every draw of the active page
 //! (tag prefixes and box labels), [`crate::reports`] for the devices a change could move.
@@ -39,9 +39,9 @@ use ecad_model::{
 
 use crate::locations::designations::Aspect;
 
-/// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
+/// A location box's panel temperature key (`setprop {aids}`).
 pub(crate) const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
-/// A location box's own location style key (`setprop {aids}`, brief 050a, design 072 §6.2).
+/// A location box's own location style key (`setprop {aids}`).
 pub(crate) const BOX_STYLE_KEY: &str = "style";
 /// The reserved layer of location boxes (`ecad.location-box`).
 pub const LAYER: &str = "ECAD-LOCATIONS";
@@ -55,7 +55,7 @@ pub(crate) const MIN_AREA: f64 = 100.0;
 pub(crate) const EDGE_TOL: f64 = 0.01;
 /// Most vertices of one box.
 pub(crate) const MAX_VERTICES: usize = 10_000;
-/// Refusal of a too small outline (design 024 §3.5).
+/// Refusal of a too small outline.
 pub(crate) const TOO_SMALL: &str = "A location box needs at least 10 x 10 mm.";
 /// Refusal of an item that is not a closed polyline.
 pub const NOT_CLOSED: &str = "Pick a closed polyline (an open one can be closed with PEDIT first).";
@@ -81,8 +81,8 @@ pub struct LocBox {
     pub area: f64,
 }
 
-/// A device in the sense of locations and the BOM (design 024 §6.1): a device with a tag (a BOM
-/// item is a loose part, design 072 §6.4).
+/// A device in the sense of locations and the BOM: a device with a tag (a BOM
+/// item is a loose part).
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
     doc.devices().get(&c).is_some_and(|x| !x.tag.is_none())
 }
@@ -205,7 +205,7 @@ pub(crate) fn crosses_itself(v: &[Pt]) -> bool {
     false
 }
 
-/// A representation's anchor (design 024 §3.1): a symbol's insertion point; for a drawn one its
+/// A representation's anchor: a symbol's insertion point; for a drawn one its
 /// first connection point, else its first item's first point.
 pub fn anchor(doc: &Document, r: &Representation) -> Option<Pt> {
     let first = r.items.first().and_then(|i| doc.items().get(i));
@@ -236,7 +236,7 @@ pub fn innermost(boxes: &[LocBox], p: Pt) -> Option<&LocBox> {
     innermost_where(boxes, p, |_| true)
 }
 
-/// The innermost of `boxes` carrying aspect `a` and holding `p` (design 052 §5.8: a box without a
+/// The innermost of `boxes` carrying aspect `a` and holding `p` (a box without a
 /// function is ignored when looking for the function context, and the other way round).
 pub(crate) fn innermost_in(boxes: &[LocBox], a: Aspect, p: Pt) -> Option<&LocBox> {
     innermost_where(boxes, p, |b| b.key(a).is_some())
@@ -320,7 +320,7 @@ impl Located {
         Located { value: designations::code_of(doc, a, key), source, key: Some(key.to_string()) }
     }
 
-    /// Whether a value is stored but names no entry of the list (design 052 §5.9).
+    /// Whether a value is stored but names no entry of the list.
     pub fn missing(&self) -> bool {
         self.key.is_some() && self.value.is_none()
     }
@@ -365,7 +365,7 @@ impl BoxCache {
     }
 }
 
-/// The context of aspect `a` at `at` on `page` (design 052 §5.3, §5.8): the innermost box
+/// The context of aspect `a` at `at` on `page`: the innermost box
 /// carrying `a`, else the page's value, else the project's.
 pub(crate) fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes: &[LocBox]) -> Located {
     if let Some(b) = at.and_then(|p| innermost_in(boxes, a, p))
@@ -437,7 +437,7 @@ pub(crate) fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cach
 }
 
 /// The code of the one context of aspect `a` all of device `c`'s symbols share, if they share
-/// one that has a value (the Checks row's **Use it**, design 052 §6).
+/// one that has a value (the Checks row's **Use it**).
 pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> {
     let mut cache = BoxCache::default();
     let mut shared: Option<Located> = None;
@@ -452,7 +452,7 @@ pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> 
     shared.and_then(|s| s.value)
 }
 
-/// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own field, else none.
+/// Device `c`'s stored value of aspect `a`: its own field, else none.
 pub(crate) fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
     match doc.devices().get(&c).and_then(|x| designations::device_key(x, a)) {
         Some(k) => Located::of(doc, a, &k, Source::Device),
@@ -460,7 +460,7 @@ pub(crate) fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
     }
 }
 
-/// Device `c`'s location: its stored `location`, else none (no inheritance, FP2). `cache` is not
+/// Device `c`'s location: its stored `location`, else none (no inheritance). `cache` is not
 /// read; it stays for callers that also read contexts.
 pub fn resolve_with(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Located {
     resolve_in(doc, c, Aspect::Location)
@@ -476,7 +476,7 @@ pub fn resolve_function(doc: &Document, c: DeviceId) -> Located {
     resolve_in(doc, c, Aspect::Function)
 }
 
-/// The override property of representation `r` (design 052 §5.2): `location.socket` or
+/// The override property of representation `r`: `location.socket` or
 /// `location.plug` for a connector half or pin (a pin pair uses the socket's), else
 /// `location.<type>`; `None` for a head.
 pub(crate) fn override_key(doc: &Document, r: &Representation) -> Option<String> {
@@ -488,13 +488,13 @@ pub(crate) fn override_key(doc: &Document, r: &Representation) -> Option<String>
     (t != ecad_model::PartRole::Head).then(|| format!("{LOCATION_KEY}.{}", ecad_model::Word::word(t)))
 }
 
-/// Whether `t` may name an override (design 052 FP3): a §3.1 type word other than `head`, or
+/// Whether `t` may name an override: a type word other than `head`, or
 /// `socket` / `plug`.
 pub(crate) fn override_type_ok(t: &str) -> bool {
     matches!(t, "socket" | "plug") || <ecad_model::PartRole as ecad_model::Word>::parse(t).is_some_and(|x| x != ecad_model::PartRole::Head)
 }
 
-/// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
+/// Representation `r`'s location, first match wins: a strip's own (a strip has
 /// no overrides); the device's override for `r`'s type; the device's; none.
 pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located {
     if crate::terminal_strips::strip_of(doc, c).is_some() {
@@ -507,7 +507,7 @@ pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located 
     resolve(doc, c)
 }
 
-/// The location of half `side` of connector `c` (design 052 §5.2): `location.socket` /
+/// The location of half `side` of connector `c`: `location.socket` /
 /// `location.plug`, else the connector's.
 pub fn half_location(doc: &Document, c: DeviceId, side: crate::symbols::Side) -> Located {
     let key = format!("{LOCATION_KEY}.{}", if side == crate::symbols::Side::Plug { "plug" } else { "socket" });
@@ -517,7 +517,7 @@ pub fn half_location(doc: &Document, c: DeviceId, side: crate::symbols::Side) ->
     }
 }
 
-/// The tag a symbol representation `r` of device `c` shows (design 024 §3.3, design 052 §5.8):
+/// The tag a symbol representation `r` of device `c` shows:
 /// the tag after the device's function and its representation's location, each where the
 /// symbol's context for that aspect differs (`=F1+CP1-K01`). Reads `r`'s page only.
 pub(crate) fn shown_tag(doc: &Document, c: DeviceId, r: &Representation, tag: &str, cache: &mut BoxCache) -> String {
@@ -552,8 +552,8 @@ pub fn label_of(b: &LocBox) -> (String, Pt) {
     (if text.is_empty() { "+?".into() } else { text }, Pt::new(tl.x + LABEL_INSET, tl.y - LABEL_INSET))
 }
 
-/// The style of box `b` on layer `layer`: dash-dot when it carries a function (design 052 §5.8,
-/// `ecad.function-box.linetype`), else dashed.
+/// The style of box `b` on layer `layer`: dash-dot when it carries a function (`ecad.function-box.linetype`), else
+/// dashed.
 fn box_style_for(layer: LayerId, b: &LocationBox) -> Style {
     let mut s = box_style(layer);
     if b.function.is_some() {
@@ -562,7 +562,7 @@ fn box_style_for(layer: LayerId, b: &LocationBox) -> Style {
     s
 }
 
-/// The linetype of a box carrying a function (design 052 §9.5, our own definition).
+/// The linetype of a box carrying a function (our own definition).
 pub(crate) const FUNCTION_LINETYPE: &str = "DASHDOT";
 
 /// The style of a box outline on layer `layer`.
@@ -606,11 +606,11 @@ pub struct Planned {
     pub rep: RepresentationId,
     pub item: ItemId,
     pub ops: Vec<Op>,
-    /// The echo for codes the box added to the project's list (design 052 §5.9).
+    /// The echo for codes the box added to the project's list.
     pub added: Option<String>,
 }
 
-/// A new box for `values` typed per aspect (design 052 FP9): at least one of function and
+/// A new box for `values` typed per aspect: at least one of function and
 /// location, each stored as an entry's id ([`designations::Pending`]), typed so fixed.
 fn new_box(
     doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
@@ -629,10 +629,10 @@ fn new_box(
     Ok(b)
 }
 
-/// Refusal of a box with neither a function nor a location (design 052 §5.8).
+/// Refusal of a box with neither a function nor a location.
 pub(crate) const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
 
-/// The ops of a new box carrying `values` (a function, a location or both, design 052 FP9),
+/// The ops of a new box carrying `values` (a function, a location or both),
 /// drawn on `page` with outline `vertices`. A code not in the project's list adds its entry in
 /// the same ops.
 ///
@@ -771,7 +771,7 @@ pub(crate) fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
     })
 }
 
-/// Why changing item `id` of `doc` to `after` is refused (tester 024, owner ruling): a location
+/// Why changing item `id` of `doc` to `after` is refused: a location
 /// box's outline cannot be opened or cut below three points. The words give the way out.
 pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {
     let (_, r) = doc.representation_of_item(id)?;

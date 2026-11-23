@@ -1,4 +1,4 @@
-//! Lane 072 B's rows of `setprop` (design 072 §2.1, brief 072 "Lanes"): a device's keys that became
+//! The rows of `setprop` for a device's keys that became
 //! [`ecad_model::Device`] fields. Each builds one `ModifyDevice`.
 
 use ecad_model::naming::text::TextError;
@@ -68,7 +68,7 @@ pub(crate) fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Optio
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
-/// The contacts a part offers (design 025 FP1): one `ModifyDevice` of its group's `contacts`.
+/// The contacts a part offers: one `ModifyDevice` of its group's `contacts`.
 ///
 /// # Errors
 /// A device whose group has no contacts; an unreadable offer ([`crate::references::devices::parse::with_contacts`]).
@@ -78,7 +78,7 @@ pub(crate) fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Optio
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
-/// Where a switching device's contact table goes (design 025 FP2): one `ModifyDevice` of its
+/// Where a switching device's contact table goes: one `ModifyDevice` of its
 /// `contact_table`.
 ///
 /// # Errors

@@ -1,4 +1,4 @@
-//! Reading a sensor's rating (design 072 §2.2, "Ratings"): a powered sensor's supply voltage.
+//! Reading a sensor's rating: a powered sensor's supply voltage.
 //!
 //! # Semantics
 //! - `24 V DC`, `24VDC` and `supply 24 V DC` read alike, as the supply.

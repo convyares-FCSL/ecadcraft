@@ -1,4 +1,4 @@
-//! The Checks list (brief 022, design 022 §8): open ends, loose wires, false-looking connections,
+//! The Checks list: open ends, loose wires, false-looking connections,
 //! nets with one connection point, unconnected device points, number and potential conflicts.
 //!
 //! # Semantics
@@ -10,21 +10,21 @@
 //!   checks use a per-page grid of route segments and loose ends ([`GRID_MM`] cells), built with
 //!   the list and kept by the same updates.
 //!
-//! # Update map (design 022 §11)
+//! # Update map
 //! | Op | Re-checked |
 //! | --- | --- |
 //! | `CreateWire` / `DeleteWire` (the commit's wire rewrite included) | that conductor; the connection points at its ends; their nets (before and after) and the nets sharing their numbers |
 //! | `AddRoute` / `RemoveRoute` / `ModifyRoute` | that route (open end, loose route, looks connected, drawn away); free route ends near its old and new path; the connection points it lands on before and after |
 //! | `AddConnectionPoint` / `RemoveConnectionPoint` | that point and its net |
-//! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
+//! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
 //! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that route |
 //! | the same of a component symbol | routes landing on its points ("drawn away"); continuations with its name |
 //! | `EmbedDefinition` / `RemoveDefinition` | components using it and their points |
 //! | `SetProjectSettings` changing the numbering or potentials (`wiring` scheme, digits, prefix, table) | every net (rare and explicit) |
 //! | `SetProjectSettings` changing anything else (label looks, tags, sheet, reference style) | nothing (sheet and reference style: rows are copied again) |
-//! | representation ops of a cable (reference ends), `CreateCable` / `DeleteCable` / cable ops | that cable's reference ends (orphan, brief 027) |
-//! | `RemovePage` | the cables with a reference end on it (orphan, brief 027) |
+//! | representation ops of a cable (reference ends), `CreateCable` / `DeleteCable` / cable ops | that cable's reference ends (orphan) |
+//! | `RemovePage` | the cables with a reference end on it (orphan) |
 //! | pages, layers, versions | nothing (page texts are worked out when shown) |
 //!
 //! This module reads the document; it changes nothing.
@@ -83,14 +83,14 @@ impl Severity {
     }
 }
 
-/// One row per check kind (brief 060, R7; review 2026-11, finding 5): its variant, its JSON name
+/// One row per check kind: its variant, its JSON name
 /// (persisted: never renamed), its severity, the words of the Show list and, after them, `count`
 /// for a row that shows a count rather than a place (`12 wires`). Generates [`Kind`],
 /// [`Kind::ALL`] (in table order), [`Kind::name`], [`Kind::severity`], [`Kind::words`] and
 /// [`Kind::is_count`]; a new check is one row here plus its source module.
 macro_rules! check_kinds {
     ($($(#[$doc:meta])* $kind:ident = $name:literal, $severity:ident, $words:expr $(, $count:ident)?;)*) => {
-        /// What a check found (design 022 §8's table, in its order).
+        /// What a check found (in the table's order).
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum Kind {
             $($(#[$doc])* $kind,)*
@@ -143,30 +143,30 @@ check_kinds! {
     TwoFixed = "two-fixed", Error, "One net, two fixed numbers";
     OpenEnd = "open-end", Warning, "Open end";
     LooseWire = "loose-wire", Warning, "Loose wire";
-    /// A drawn line with a free end carries no wire until both ends land (owner, 2026-11-18).
+    /// A drawn line with a free end carries no wire until both ends land.
     NoWireYet = "no-wire-yet", Info, "Line not connected at both ends: no wire yet";
     LooksConnected = "looks-connected", Warning, nets::looks_connected_words();
     DrawnAway = "drawn-away", Warning, "End drawn away from its connection point";
     SinglePoint = "single-point", Warning, "Net with a single connection point";
     Unconnected = "unconnected", Info, "Connection point not connected";
-    /// A connection point with more wires than it accepts (design 072 §4.4, F38, A17).
+    /// A connection point with more wires than it accepts.
     OverCount = "over-count", Error, "Connection point has more wires than it accepts";
     LonelyContinuation = "lonely-continuation", Info, "Continuation without partner";
     MixedPotentials = "mixed-potentials", Info, "Mixed potentials in one net";
     Unnumbered = "unnumbered", Info, "Unnumbered nets", count;
     UnknownName = "unknown-name", Warning, "Continuation name not a potential";
-    /// Two cables, or a cable and a device, share a tag (brief 026: one namespace).
+    /// Two cables, or a cable and a device, share a tag (one namespace).
     DuplicateTag = "duplicate-tag", Error, "Two cables share a tag";
-    /// A provisional tag (brief 026, design §5.4).
+    /// A provisional tag.
     ProvisionalTag = "provisional-tag", Warning, "Provisional tag";
-    /// Nets without a number while provisional tags are on: one summary row (Q6).
+    /// Nets without a number while provisional tags are on: one summary row.
     ProvisionalWires = "provisional-wires", Warning, "Wire numbers provisional", count;
-    /// Brief 052 (design 052 §6): a device's stored location is the context of none of its
+    /// A device's stored location is the context of none of its
     /// symbols.
     LocationUnused = "location-unused", Warning, "Location used by none of its symbols";
     /// The same for its function.
     FunctionUnused = "function-unused", Warning, "Function used by none of its symbols";
-    /// Design 072 §6.3 (A13): a device whose location was set by hand has a symbol inside a
+    /// A device whose location was set by hand has a symbol inside a
     /// location box of another location; one row on every placed symbol of the device.
     TiedLocations = "symbol-tied-locations", Error, "Symbol tied to multiple locations";
     /// The same for its function.
@@ -187,12 +187,12 @@ check_kinds! {
     NoPartNumber = "no-part-number", Info, "Devices without a part number", count;
     /// Devices without a location (one count row).
     NoLocation = "no-location", Info, "Devices without a location", count;
-    /// A device with more contacts of a kind drawn than its part offers (brief 025).
+    /// A device with more contacts of a kind drawn than its part offers.
     TooManyContacts = "too-many-contacts", Warning, "More contacts than the part offers";
-    /// Design 072 §2.2 (owner, 2026-11-18): a device whose group has typed rating fields, none
+    /// A device whose group has typed rating fields, none
     /// set (a rating note does not count).
     NoRating = "no-rating", Warning, "Device with no rating";
-    /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
+    /// A strip with more terminals drawn than it offers.
     TooManyTerminalBlocks = "too-many-terminal-blocks", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.
     TerminalBlockTwice = "terminal-block-twice", Error, "Terminal drawn twice";
@@ -202,9 +202,9 @@ check_kinds! {
     CoreTwice = "core-twice", Warning, "Core used by two wires";
     /// Cables with no core count (one count row).
     NoCoreCount = "no-core-count", Info, "Cables without a core count", count;
-    /// A cable reference end with no other end (brief 027, design 027 §4.2).
+    /// A cable reference end with no other end.
     OrphanReference = "orphan-reference", Warning, "Cable reference with no other end";
-    /// Brief 030 (design 030 §8): an accessory placed after or on a position the strip lacks.
+    /// An accessory placed after or on a position the strip lacks.
     AccessoryOrphan = "accessory-orphan", Warning, "Accessory at a position the strip lacks";
     /// Placed strip accessories without a part number (one count row).
     NoAccessoryPart = "no-accessory-part", Info, "Strip accessories without a part number", count;
@@ -212,13 +212,13 @@ check_kinds! {
     JumperBarAcrossPartition = "jumper-bar-across-partition", Warning, "Link crosses a partition";
     /// A link naming positions the strip does not have.
     JumperBarOrphan = "jumper-bar-orphan", Warning, "Link names positions the strip lacks";
-    /// A `jumper_bar.<n>` key on a device that is not a terminal strip (review of PR #57, 4).
+    /// A `jumper_bar.<n>` key on a device that is not a terminal strip.
     JumperBarOnNonStrip = "jumper-bar-on-non-strip", Warning, "Link on a device that is not a strip";
-    /// Brief 033: a contact table the user placed overlaps the title block.
+    /// A contact table the user placed overlaps the title block.
     TableOverTitle = "table-over-title", Warning, "Contact table over the title block";
-    /// Brief 033 (design 033 §5.3): a generated page grew onto another page's number.
+    /// A generated page grew onto another page's number.
     ContinuationClash = "continuation-clash", Warning, "Continuation sheet has another page's number";
-    /// Brief 036 (design 036 §8): a level of a multi-level position drawn twice.
+    /// A level of a multi-level position drawn twice.
     LevelTwice = "level-twice", Error, "Terminal level drawn twice";
     /// A position whose levels are drawn by symbols of two types.
     PositionMixed = "position-mixed", Warning, "Position mixes terminal types";
@@ -228,11 +228,11 @@ check_kinds! {
     FuseDevice = "fuse-device", Info, "Fuse terminals that are devices of their own";
     /// Fuse positions with no rating (one count row).
     NoFuseRating = "no-fuse-rating", Info, "Fuse positions without a rating";
-    /// Brief 040: a wire or core colour code the app does not know (drawn in ink).
+    /// A wire or core colour code the app does not know (drawn in ink).
     UnknownColour = "unknown-colour", Info, "Colour code not defined (drawn in ink); define it in Standards";
-    /// Brief 040: a page with more two-colour dashes than it draws (one row per page).
+    /// A page with more two-colour dashes than it draws (one row per page).
     DashesLeftOut = "dashes-left-out", Warning, "Two-colour wires drawn in one colour (too many dashes on the page)";
-    /// Brief 045 (design 045 §9): two cards in one slot of a rack.
+    /// Two cards in one slot of a rack.
     SlotTwice = "slot-twice", Error, "Two cards in one slot";
     /// A card naming a rack that is not in the project.
     RackMissing = "rack-missing", Warning, "Card names a rack that is not in the project";
@@ -240,7 +240,7 @@ check_kinds! {
     SlotRange = "slot-range", Warning, "Card in a slot its rack does not have";
     /// PLC cards in no rack (one count row).
     Unracked = "unracked", Info, "PLC cards in no rack", count;
-    /// Brief 045b: one channel drawn twice.
+    /// One channel drawn twice.
     ChannelTwice = "channel-twice", Error, "Channel drawn twice";
     /// A channel drawn beyond its card's channel count.
     ChannelOver = "channel-over", Warning, "Channel beyond the card's count";
@@ -254,12 +254,12 @@ check_kinds! {
     AddressOverflow = "address-overflow", Warning, "Address block past byte 65535";
     /// Used channels with no address (one count row).
     NoAddress = "no-address", Info, "Used channels with no address";
-    /// Brief 051 (design 051 §2.8): a wire that runs on through a PLC card to another point.
+    /// A wire that runs on through a PLC card to another point.
     WireThroughCard = "wire-through-card", Warning, "Wire runs through a PLC card";
-    /// Brief 051 (design 051 §2.5): a run's texts are wider or deeper than its cells at the
+    /// A run's texts are wider or deeper than its cells at the
     /// project's text styles (Info; nothing is shrunk).
     PlcTextWide = "plc-text-wide", Info, "PLC texts wider than their cells";
-    /// Brief 044 (design 044 §6.3): a connector pin drawn twice on one half.
+    /// A connector pin drawn twice on one half.
     ConnectorPinTwice = "connector-pin-twice", Error, "Connector pin drawn twice on one half";
     /// A connector whose whole halves are of two families.
     ConnectorFamily = "connector-family", Warning, "Connector halves of two families";
@@ -269,7 +269,7 @@ check_kinds! {
     ConnectorLonePin = "connector-lone-pin", Info, "Connector pins without a mate";
     /// A connector pin numbered beyond its `pins`.
     ConnectorOver = "connector-over", Info, "Connector pin beyond its pin count";
-    /// Brief 047 (design 047 §9): items without a part number (one count row).
+    /// Items without a part number (one count row).
     ItemNoPartNumber = "item-no-part-number", Info, "Items without a part number", count;
     /// Fuses (of banks, strips and fuse terminals) that no part line serves (one count row).
     FuseNoInsert = "fuse-no-insert", Info, "Fuses without an insert", count;
@@ -279,91 +279,74 @@ check_kinds! {
     PartForMissing = "part-for-missing", Warning, "Part line names a fuse or position the device lacks";
     /// A `part.` key, or an item's `qty` or `unit`, ECAD does not read.
     BadPartKey = "bad-part-key", Info, "Part line or item value ECAD does not read";
-    /// Brief 050a: an object's style choice names no style (drawn with the next level's).
+    /// An object's style choice names no style (drawn with the next level's).
     StyleUnknown = "style-unknown", Info, "Style not found; drawn without it";
-    /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
+    /// Style records past the bounds, ignored.
     StyleLimits = "style-limits", Info, "Style records past the limits are ignored";
-    /// Brief 050b: a wire's own category names no category (drawn without one).
+    /// A wire's own category names no category (drawn without one).
     CategoryUnknown = "category-unknown", Info, "Wire category not found; drawn without one";
-    /// Brief 050b: two categories name one potential (the first by ID is used).
+    /// Two categories name one potential (the first by ID is used).
     CategoryPotentialTwice = "category-potential-twice", Warning, "Two wire categories are the default for one potential";
-    /// Brief 050b (design 050 §5.6): a category with a part number has no allowance: its BOM row
+    /// A category with a part number has no allowance: its BOM row
     /// has no length.
     WireAllowance = "wire-allowance", Info, "Wire length not set (set an allowance in Standards)";
-    /// Brief 054 (design 054 §9): a page's `page.type` names no page type.
+    /// A page's `page.type` names no page type.
     PageTypeUnknown = "page-type-unknown", Warning, "Page type not found; drawn as its usual type";
-    /// Brief 054: a `folder.<id>.start` names no folder or is not 1–6 digits.
+    /// A `folder.<id>.start` names no folder or is not 1–6 digits.
     FolderStartUnknown = "folder-start-unknown", Info, "Folder start number not read";
-    /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
+    /// A folder's run of numbers reaches another run's.
     FolderRunsOverlap = "folder-runs-overlap", Warning, "A folder's page numbers run into another folder's";
-    /// Brief 054b (design 054 §6.3, Q6): the cover's symbol legend shows fewer symbols than are
+    /// The cover's symbol legend shows fewer symbols than are
     /// used.
     CoverLegendCut = "cover-legend-cut", Info, "The cover's symbol legend does not show every symbol";
-    /// Brief 054b (design 054 §6.4): stored cover notes past the bounds, read cut.
+    /// Stored cover notes past the bounds, read cut.
     CoverNotesCut = "cover-notes-cut", Warning, "The cover's notes are past 40 notes of 400 characters; the rest are not shown";
-    /// Brief 057 (design 057 §7).
     RatingUnder = "rating-under", Error, "Wire or cable rated below its protective device";
-    /// Brief 057 (design 057 §7).
     RatingTooHot = "rating-too-hot", Error, "Conductor at or above its maximum temperature";
-    /// Brief 057 (design 057 §7).
     RatingLoadOver = "rating-load-over", Warning, "Load above the protective device's rating";
-    /// Brief 057 (design 057 §7).
     VoltdropOver = "voltdrop-over", Warning, "Cable volt drop over its limit";
-    /// Brief 057 (design 057 §7).
     RatingBundlingUnset = "rating-bundling-unset", Warning, "Panel wires with no bundling factor";
-    /// Brief 057 (design 057 §7).
     RatingDeviceMissing = "rating-device-missing", Warning, "Protected by names no device";
-    /// Brief 057 (design 057 §7).
     RatingNoDevice = "rating-no-device", Info, "Rated wires and cables with no protective device";
-    /// Brief 057 (design 057 §7).
     RatingTwoDevices = "rating-two-devices", Info, "Fed by two protective devices";
-    /// Brief 057 (design 057 §7).
     RatingDeviceUnread = "rating-device-unread", Info, "Device rating has no readable current";
-    /// Brief 057 (design 057 §7).
     RatingNamedDevice = "rating-named-device", Info, "Protected by a device that is not a protective kind";
-    /// Brief 057 (design 057 §7).
     RatingNoData = "rating-no-data", Info, "Protected wires with no rating data";
-    /// Brief 057 (design 057 §7).
     RatingNoTable = "rating-no-table", Info, "No rating table value for this subject";
-    /// Brief 057 (design 057 §7).
     RatingTableBadRow = "rating-table-bad-row", Info, "Rating table rows not read";
-    /// Brief 057 (design 057 §7).
     RatingTableOdd = "rating-table-odd", Info, "Rating table values out of order";
-    /// Brief 057 (design 057 §7).
     RatingAssumed = "rating-assumed", Info, "Cables with no cable type (values assumed)";
-    /// Brief 057 (design 057 §7).
     RatingNoCurrent = "rating-no-current", Info, "Cables with no load and no device (no volt drop)";
-    /// Brief 057 (design 057 §7).
     RatingBadValue = "rating-bad-value", Info, "Rating value ECAD does not read";
-    /// Brief 057 (owner rule, board 2.06): a cable core not connected at both ends, not ticked
+    /// A cable core not connected at both ends, not ticked
     /// Not used.
     CoreOpen = "core-open", Error, "Cable core open at an end (tick Not used for a spare)";
-    /// Brief 055 (design 055 §8): a bound value is cut in the title block on at least one page.
+    /// A bound value is cut in the title block on at least one page.
     TitleValueCut = "title-value-cut", Info, "A value is cut in the title block";
-    /// Brief 055: a frame has fields this build cannot fill, or items past the bounds.
+    /// A frame has fields this build cannot fill, or items past the bounds.
     TitleBindingUnknown = "title-binding-unknown", Info, "Title block fields this build cannot fill";
-    /// Brief 055: a page's own sheet differs from its frame's; the frame wins.
+    /// A page's own sheet differs from its frame's; the frame wins.
     FrameSheetDiffers = "frame-sheet-differs", Warning, "Page sheet differs from its frame's; the frame wins";
-    /// Brief 059 (design 059 §6): a cable built in Project ▸ Cables that is not in the drawing yet
+    /// A cable built in Project ▸ Cables that is not in the drawing yet
     /// (Info; Warning in the release check).
     CableNotDrawn = "cable-not-drawn", Info, "Cable not in the drawing yet";
-    /// A core on a line with one end landed (owner rule, 2026-11-18): it moves onto a wire when
+    /// A core on a line with one end landed: it moves onto a wire when
     /// the other end lands.
     CoreOneEnd = "core-one-end", Warning, "Core landed at one end only";
     /// A core's stored place is not where the drawing puts it (a file made elsewhere): reading never
-    /// works it out, so it is reported (owner rule, 2026-11-18).
+    /// works it out, so it is reported.
     CorePlaceStale = "core-place-stale", Error, "Core's stored place disagrees with the drawing";
-    /// Brief 059: a drawn cable end differs from that end's planned location.
+    /// A drawn cable end differs from that end's planned location.
     CableEndOffPlan = "cable-end-off-plan", Warning, "Cable end drawn away from its plan";
-    /// Brief 059 (059d): a drawn cable end with no gland size.
+    /// A drawn cable end with no gland size.
     NoGland = "no-gland", Info, "Cable end with no gland size";
-    /// Brief 059: a cable value ECAD does not read (out of bounds); it is ignored.
+    /// A cable value ECAD does not read (out of bounds); it is ignored.
     CableBadValue = "cable-bad-value", Warning, "Cable value ECAD does not read";
-    /// Brief 056 (design 056 §9): two channels of one PLC share a tag (without case).
+    /// Two channels of one PLC share a tag (without case).
     PlcTagTwice = "plc-tag-twice", Error, "PLC tag given twice in one PLC";
     /// A tag an export leaves out (a control character, too long).
     PlcTagChars = "plc-tag-chars", Warning, "PLC tag an export leaves out";
-    /// Brief 066 (design 066 §7): a built-in default failed to load (not reachable in a tested
+    /// A built-in default failed to load (not reachable in a tested
     /// build); the affected entries use their kind's safe value.
     DefaultsDamaged = "defaults-damaged", Warning, "Built-in defaults damaged: safe values used";
 }
@@ -379,13 +362,13 @@ impl Kind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Object {
     Wire(WireId),
-    /// A drawn route (design 072 §4.3).
+    /// A drawn route.
     Route(RouteId),
     ConnectionPoint(ConnectionPointId),
     Device(DeviceId),
-    /// A drawing aid: a location box (design 072 §6.2).
+    /// A drawing aid: a location box.
     Aid(ecad_model::AidId),
-    /// A cable reference end (brief 027).
+    /// A cable reference end.
     Reference(ecad_model::RepresentationId),
     Cable(ecad_model::CableId),
     None,
@@ -394,106 +377,106 @@ pub enum Object {
 /// What a fix button on a row does.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Fix {
-    /// 032: `joinwires {at}` on the row's page (Looks connected: **Join**).
+    /// `joinwires {at}` on the row's page (Looks connected: **Join**).
     Join(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
     NumberThem,
-    /// Open Finalise numbering (brief 026, design §5.4): the Renumber dialog, not a direct write.
+    /// Open Finalise numbering: the Renumber dialog, not a direct write.
     Finalise,
-    /// Brief 052 (design 052 §6): **Use +CP1**: set the device's value of the aspect to the one
+    /// **Use +CP1**: set the device's value of the aspect to the one
     /// context all its symbols share (`setlocation`).
     UseContext(DeviceId, crate::locations::designations::Aspect),
-    /// Brief 052: **Set location** / **Set function**: the inspector's row of that device or box.
+    /// **Set location** / **Set function**: the inspector's row of that device or box.
     SetDesignation(DeviceId, crate::locations::designations::Aspect),
-    /// Brief 052: **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
+    /// **Show in Settings**: Settings ▸ Project info ▸ Functions and locations.
     ShowDesignations,
-    /// Brief 024: open Reports on the BOM tab with Only ? on.
+    /// Open Reports on the BOM tab with Only ? on.
     ShowReports,
-    /// Brief 028: offer the drawn count (`setprop terminals`, PE kept): Offer 14.
+    /// Offer the drawn count (`setprop terminals`, PE kept): Offer 14.
     OfferDrawn(DeviceId),
-    /// Brief 028: renumber the strip's terminal blocks (`renumber {kind: "terminal_blocks"}`).
+    /// Renumber the strip's terminal blocks (`renumber {kind: "terminal_blocks"}`).
     RenumberStrip(DeviceId),
-    /// Brief 028: focus Properties ▸ Cores on the cable.
+    /// Focus Properties ▸ Cores on the cable.
     SetCores(ecad_model::CableId),
-    /// Brief 028: give the member the next free core (`cablecore`).
+    /// Give the member the next free core (`cablecore`).
     NextFreeCore(WireId),
-    /// Brief 028: open Reports on the Cables tab with Only ? on.
+    /// Open Reports on the Cables tab with Only ? on.
     ShowCables,
-    /// Brief 030: the strip's orphan key (index into its kept orphans): **Move to end** (items
+    /// The strip's orphan key (index into its kept orphans): **Move to end** (items
     /// appended to `acc.end`, key cleared) or **Remove** (key cleared).
     AccessoryOrphan(DeviceId, u16),
-    /// Brief 030: link `n` crossing the partition after position index `at`: **Split link at**
+    /// Link `n` crossing the partition after position index `at`: **Split link at**
     /// (`jumper split_at`) or **Remove partition** (`accessory remove [partition]`).
     JumperBarAcrossPartition(DeviceId, u16, u16),
-    /// Brief 030: link `n` names missing positions: **Drop missing positions** or **Delete link**.
+    /// Link `n` names missing positions: **Drop missing positions** or **Delete link**.
     JumperBarOrphan(DeviceId, u16),
-    /// Brief 030 (review of PR #57, 4): **Remove** a link key from a device that is not a strip.
+    /// **Remove** a link key from a device that is not a strip.
     JumperBarOnNonStrip(DeviceId),
-    /// Brief 033 (design 033 §4.1): **Move table…** starts `mirrormove` for the device.
+    /// **Move table…** starts `mirrormove` for the device.
     MoveTable(DeviceId),
-    /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
+    /// **Renumber…** opens this page's number field.
     RenumberPage(PageId),
-    /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
+    /// **Move to next free** (the level drawn twice, to the next position of its type
     /// with that level free; `terminalblocklabel {terminal, move_to: "next"}`).
     MoveToNextFree(ConnectionPointId),
-    /// Brief 036: **Move to new position** (the other type's levels; `terminalblocklabel {terminal,
+    /// **Move to new position** (the other type's levels; `terminalblocklabel {terminal,
     /// move_to: "new"}`).
     MoveToNewPosition(ConnectionPointId),
-    /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.
+    /// Link `n` names missing levels: **Drop missing levels** or **Delete link**.
     LevelMissing(DeviceId, u16),
-    /// Brief 036: **Show** the fuse terminal devices, each with **Make strip position**
+    /// **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).
     FuseDevices,
-    /// Brief 045 (design 045 §9): a PLC row's buttons, from the kept PLC model
+    /// A PLC row's buttons, from the kept PLC model
     /// (`crate::plc::Plc::fix_commands`).
     Plc(DeviceId, crate::plc::PlcFix),
-    /// Brief 044: **Move to next free** (`pinlabel {terminal, to: "next"}`).
+    /// **Move to next free** (`pinlabel {terminal, to: "next"}`).
     ConnectorNextPin(ConnectionPointId),
-    /// Brief 044: **Set pins to n** (`setprop pins`).
+    /// **Set pins to n** (`setprop pins`).
     SetPins(DeviceId, u32),
-    /// Brief 044: **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
-    /// the lone pins lack (§4.4 gives them first).
+    /// **Place mates**: Place ▸ Connector on this connector, pin by pin, on the side
+    /// the lone pins lack.
     PlaceMates(DeviceId, crate::symbols::Side),
-    /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
+    /// **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
     IgnoreConnector(DeviceId, Kind),
-    /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
+    /// **Use A-0110 for all**: the most common article number of the part of line
     /// `n` of the device, or of the item (`article`).
     UseArticle(crate::reports::Owner, u8),
-    /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
+    /// **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
-    /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
+    /// **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
     OpenStandards(ecad_model::StyleCatalogue),
-    /// Brief 054 (design 054 §9): a page type or folder start row's fix.
+    /// A page type or folder start row's fix.
     Page(crate::pages::page_types::PageFix),
-    /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
+    /// **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
     ShowRating(crate::circuits::RatedSubject),
-    /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
+    /// **Use 2.5 mm²**: the conductor's own `cross_section`.
     UseSize(WireId, f64),
-    /// Brief 057: **Change cable type…** filtered to this size (mm²).
+    /// **Change cable type…** filtered to this size (mm²).
     PickCableType(CableId, f64),
-    /// Brief 057: **Use Datasheet** (`rating {basis}`).
+    /// **Use Datasheet** (`rating {basis}`).
     SetBasis(crate::circuits::RatedSubject, ecad_model::objects::wire::Basis),
-    /// Brief 057: **Clear Protected by**.
+    /// **Clear Protected by**.
     ClearProtectedBy(crate::circuits::RatedSubject),
-    /// Brief 057: **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.
+    /// **Choose a table**, **Set project bundling**: Settings ▸ Standards ▸ Defaults at Rating.
     ChooseRatingTable,
-    /// Brief 057: **Show** the rated wires (Project ▸ Wires).
+    /// **Show** the rated wires (Project ▸ Wires).
     ShowRatedWires,
-    /// Brief 057 (owner): an open core, by its place in [`crate::styles::cable::open_cores`]:
+    /// An open core, by its place in [`crate::styles::cable::open_cores`]:
     /// **Tick Not used** (one `setprop`) or **Go to the open end**.
     CoreOpen(CableId, u16),
-    /// Brief 055: **Edit block** opens Library ▸ Title blocks on the page's frame with item `n` selected.
+    /// **Edit block** opens Library ▸ Title blocks on the page's frame with item `n` selected.
     EditTitleBlock(PageId, u16),
-    /// Brief 055: **Clear the page's sheet** (`setprop` page `sheet` null).
+    /// **Clear the page's sheet** (`setprop` page `sheet` null).
     ClearPageSheet(PageId),
-    /// Brief 059 (design 059 §6): **Assign in the drawing…** (the slash tool with the cable picked)
+    /// **Assign in the drawing…** (the slash tool with the cable picked)
     /// or **Remove** (`cableremove`).
     AssignCable(CableId),
-    /// Brief 059: **Use the drawing**: set that end's plan to its drawn location (one `cableedit`),
+    /// **Use the drawing**: set that end's plan to its drawn location (one `cableedit`),
     /// or **Go to** that end.
     UseDrawing(CableId, crate::cables::Side),
-    /// Brief 059: **Set gland** / **Show**: focus that row of the cable's Details pane.
+    /// **Set gland** / **Show**: focus that row of the cable's Details pane.
     ShowCableField(CableId, crate::cables::CableField),
 }
 
@@ -514,7 +497,7 @@ impl Check {
         self.kind.severity()
     }
 
-    /// The severity in the release check (029; brief 059, Q2): a cable not drawn yet is a Warning
+    /// The severity in the release check: a cable not drawn yet is a Warning
     /// there, Info elsewhere.
     pub fn release_severity(&self) -> Severity {
         match self.kind {
@@ -523,8 +506,8 @@ impl Check {
         }
     }
 
-    /// The row's text: the kind's words, or for the unnumbered row its count. Brief 044 (design
-    /// 044 §6.3): a connector row's text names its connector (`-X10's halves differ: …`).
+    /// The row's text: the kind's words, or for the unnumbered row its count. A
+    /// connector row's text names its connector (`-X10's halves differ: …`).
     pub fn what(&self) -> String {
         match self.kind {
             Kind::ConnectorPinTwice
@@ -553,7 +536,7 @@ impl Check {
             {
                 self.which.clone()
             }
-            // Brief 057: every rating row says its own sentence.
+            // Every rating row says its own sentence.
             k if crate::circuits::rows::is_rating_kind(k) && !self.which.is_empty() => self.which.clone(),
             _ => self.kind.words().to_string(),
         }
@@ -599,7 +582,7 @@ impl Check {
             "text": self.what(),
             "which": self.which,
             "where": self.locator(doc),
-            // Brief 054: the command a page type or folder start fix runs.
+            // The command a page type or folder start fix runs.
             "fix": match self.fix {
                 Some(Fix::Page(f)) => {
                     let (command, params) = f.command();
@@ -620,29 +603,29 @@ pub enum Key {
     Route(RouteId),
     ConnectionPoint(ConnectionPointId),
     Device(DeviceId),
-    /// A continuation's rows (design 072 §6.2: no partner).
+    /// A continuation's rows (no partner).
     Aid(ecad_model::AidId),
-    /// The reference ends of a cable (brief 027: orphans).
+    /// The reference ends of a cable (orphans).
     CableReferences(CableId),
     Cable(ecad_model::CableId),
     Project,
-    /// Brief 040: a page's dash budget.
+    /// A page's dash budget.
     Page(PageId),
-    /// Brief 050a: the style rows (unknown styles, old settings, limits).
+    /// The style rows (unknown styles, old settings, limits).
     Styles,
-    /// Brief 054b: the cover's rows (legend cut, notes cut), refreshed when the cover changes.
+    /// The cover's rows (legend cut, notes cut), refreshed when the cover changes.
     Cover,
-    /// Brief 057: a rated subject's own rows.
+    /// A rated subject's own rows.
     Rating(crate::circuits::RatedSubject),
-    /// Brief 057: the count rows, unread devices and the rating table's own rows.
+    /// The count rows, unread devices and the rating table's own rows.
     RatingSummary,
-    /// Brief 052: the project's list of functions and locations (duplicate codes).
+    /// The project's list of functions and locations (duplicate codes).
     Designations,
-    /// Brief 055: the title block rows (cut values, unknown fields, sheets that differ).
+    /// The title block rows (cut values, unknown fields, sheets that differ).
     TitleBlocks,
 }
 
-/// An area that keeps whole-project rows under one [`Key`] (brief 060, R7): it emits them from its
+/// An area that keeps whole-project rows under one [`Key`] (R7): it emits them from its
 /// own module, and `Checks` asks it on open and whenever a commit's [`Scope`] reaches it, so a new
 /// area of this kind is one implementation plus a line in [`PROJECT_SOURCES`].
 pub trait CheckSource: Sync {
@@ -650,8 +633,8 @@ pub trait CheckSource: Sync {
     fn key(&self) -> Key;
     /// Whether a commit with `scope` may change its rows (its update map).
     fn touched(&self, scope: &Scope) -> bool;
-    /// Whether its rows stay on pages whose type has checks and references off (design 054
-    /// §3.4): rows about the project's own records rather than the drawing.
+    /// Whether its rows stay on pages whose type has checks and references off
+    /// Rows about the project's own records rather than the drawing.
     fn kept_on_pages_off(&self) -> bool {
         false
     }
@@ -677,20 +660,20 @@ pub struct Scope {
     routes: BTreeSet<RouteId>,
     connection_points: BTreeSet<ConnectionPointId>,
     devices: BTreeSet<DeviceId>,
-    /// Aids to re-check (design 072 §6.2): continuations made, removed or renamed, and their
+    /// Aids to re-check: continuations made, removed or renamed, and their
     /// partners by name; boxes made, removed or changed.
     aids: BTreeSet<ecad_model::AidId>,
-    /// Cables whose reference ends to re-check (brief 027: orphans).
+    /// Cables whose reference ends to re-check (orphans).
     cable_references: BTreeSet<CableId>,
-    /// Cables to re-check (brief 026: provisional and shared tags).
+    /// Cables to re-check (provisional and shared tags).
     cables: BTreeSet<ecad_model::CableId>,
-    /// Brief 050a: the style rows (`crate::styles::checks::touches`).
+    /// The style rows (`crate::styles::checks::touches`).
     pub(crate) styles: bool,
-    /// Brief 057: what the ops reach of the rating results.
+    /// What the ops reach of the rating results.
     rating: crate::circuits::kept::Touch,
-    /// Brief 052: the list's rows (an entry's code changed, added or removed).
+    /// The list's rows (an entry's code changed, added or removed).
     pub(crate) designations: bool,
-    /// Brief 055: the title block rows (`crate::title_blocks::checks::touches`).
+    /// The title block rows (`crate::title_blocks::checks::touches`).
     pub(crate) title_blocks: bool,
 }
 
@@ -717,7 +700,7 @@ impl Scope {
         self.rating.note(doc, effect);
         self.styles |= crate::styles::checks::touches(effect);
         self.title_blocks |= crate::title_blocks::checks::touches(effect);
-        // Brief 054: the set of pages with checks off may change (then everything is checked
+        // The set of pages with checks off may change (then everything is checked
         // again).
         self.all |= crate::pages::page_types::checks_changed(doc, effect);
         match effect {
@@ -728,7 +711,7 @@ impl Scope {
             }
             // Made or deleted.
             Effect::Wire { id, before, after } => {
-                // Brief 057: a member's ends decide its cable's open cores.
+                // A member's ends decide its cable's open cores.
                 self.cables.extend(doc.cables_of(*id));
                 self.wires.insert(*id);
                 node(self, Node::Wire(*id));
@@ -738,13 +721,13 @@ impl Scope {
                     self.component_of(doc, *t);
                 }
             }
-            // Added, removed, or both (brief 028's relabel).
+            // Added, removed, or both (a relabel).
             Effect::ConnectionPoint { id, before, after } => {
                 self.connection_points.insert(*id);
                 self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
                 node(self, Node::ConnectionPoint(*id));
             }
-            // Brief 048: another definition may bridge other points.
+            // Another definition may bridge other points.
             Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
                 for (t, _) in doc.connection_points_of(*id) {
@@ -759,7 +742,7 @@ impl Scope {
                 for (t, _) in doc.connection_points_of(*id) {
                     node(self, Node::ConnectionPoint(t));
                 }
-                // Design 072 §6.3: a device's location and function are fields, where the cables
+                // A device's location and function are fields, where the cables
                 // at its points are drawn (as the property arm below).
                 if let (Some(before), Some(after)) = (before, after)
                     && (before.location != after.location || before.function != after.function)
@@ -779,7 +762,7 @@ impl Scope {
                     let keys = [before, after].into_iter().flatten().flat_map(|t| [Key::of(t, TagState::Fixed), Key::of(t, TagState::Provisional)]);
                     self.tag_holders(doc, keys);
                 }
-                // Brief 059 (design 059 §8): a device's location or function is where the
+                // A device's location or function is where the
                 // cables at its points are drawn (`cable-end-off-plan`).
                 if crate::locations::designations::Aspect::of_property(key).is_some() {
                     for (t, _) in doc.connection_points_of(*c) {
@@ -800,9 +783,9 @@ impl Scope {
                 self.wires.insert(*c);
             }
             Effect::Cable { id: k, before, after } => {
-                // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
+                // A new or deleted cable, or its tag (the orphan row's words).
                 self.cable_references.insert(*k);
-                // Brief 026: the cable's own rows, and every holder of the tags it had or has.
+                // The cable's own rows, and every holder of the tags it had or has.
                 self.cables.insert(*k);
                 self.tag_holders(doc, before.iter().chain(after.iter()).filter_map(|c| c.tag_key()));
                 // A cable's tag and cores are part of its members' words.
@@ -817,14 +800,14 @@ impl Scope {
                     self.rep(doc, r);
                 }
             }
-            // Design 072 §4.3: the route's own rows, and the points it lands on (connected or
+            // The route's own rows, and the points it lands on (connected or
             // not).
             // The commit's rewrite pass makes and removes wires at those points (and at the
             // points of a route it lands on), which the ops given to `scope` do not hold yet:
-            // their nets as they were lose their rows (design 072 §4.2).
+            // their nets as they were lose their rows.
             Effect::Route { id, before, after } => {
                 self.routes.insert(*id);
-                // The cables with a core on it: their core rows (owner rule, 2026-11-18).
+                // The cables with a core on it: their core rows.
                 self.cables.extend(doc.cables_on_route(*id));
                 for t in before.iter().chain(after.iter()).flat_map(|r| cables::route_points(doc, r)) {
                     self.connection_points.insert(t);
@@ -844,7 +827,7 @@ impl Scope {
             // numbering and reference style change where rows say they are; label looks
             // (colour style, height), tag settings and units change nothing here.
             Effect::Settings { before, after } => {
-                // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
+                // A table the user placed may enter or leave the
                 // title block when the project's sheet changes.
                 if before.sheet != after.sheet {
                     self.devices.extend(crate::references::devices::read::placed_tables(doc));
@@ -859,9 +842,9 @@ impl Scope {
                     self.relocate = true;
                 }
             }
-            // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
+            // A page's sheet moves its frame, so the devices on it
             // are checked again for a table over the title block.
-            // Design 072 §5.1: a page changed in place; its sheet moves its frame (as below), its
+            // A page changed in place; its sheet moves its frame (as below), its
             // function or location is a context for the devices on it.
             Effect::Page { id: p, before: Some(before), after: Some(after), index_before: None, index_after: None } => {
                 let ch = before.change(after);
@@ -877,7 +860,7 @@ impl Scope {
                     self.devices_on(doc, *p);
                 }
             }
-            // Brief 027: a removed page's reference ends go with it (a page moved too: it is
+            // A removed page's reference ends go with it (a page moved too: it is
             // removed and added).
             Effect::Page { id, before: Some(_), .. } => {
                 self.relocate = true;
@@ -888,13 +871,13 @@ impl Scope {
                 }
             }
             // Page numbers, folders and the page order change where rows say they are (brief
-            // 019), not what they find: the rows are copied again.
+            // not what they find: the rows are copied again.
             Effect::Page { before: None, .. }
             | Effect::Folder { .. }
             | Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. } => self.relocate = true,
-            // No check or report reads a device link yet (design 072 §2.6).
+            // No check or report reads a device link yet.
             Effect::DeviceLink { .. } => {}
-            // Design 072 §6.2: a box's values are a context for the devices on its pages; a
+            // A box's values are a context for the devices on its pages; a
             // continuation's names join nets.
             Effect::Aid { id, before, after } => {
                 self.aid(doc, *id, before.iter().chain(after.iter()).copied());
@@ -909,10 +892,10 @@ impl Scope {
                     }
                 }
             }
-            // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's,
+            // A loose part's checks (an item with no part number) are the BOM's,
             // kept by the report models (`ReportModels::bom_checks`); no drawing check reads one.
             Effect::LoosePart { .. } => {}
-            // Brief 052 (design 052 §6): the project's default context for every device (rare);
+            // The project's default context for every device (rare);
             // the list's codes for the objects storing that entry, and the duplicate rows.
             Effect::Project { before, after } => {
                 use crate::locations::designations::{Aspect, changed_codes, default_key};
@@ -927,7 +910,7 @@ impl Scope {
                         self.designations = true;
                     }
                     for entry in &changed {
-                        // Brief 059: the cables planning an end there (their rows name its code).
+                        // The cables planning an end there (their rows name its code).
                         self.cables.extend(crate::cables::planning(doc, entry));
                         for (c, x) in doc.devices() {
                             if crate::locations::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
@@ -943,11 +926,11 @@ impl Scope {
                 }
             }
             Effect::Layer { .. } | Effect::Version { .. } => {}
-            // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
+            // A cable type's cores and gland reach its users' rows.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Cable, id, .. } => {
                 self.cables.extend(crate::styles::cable::users(doc, id));
             }
-            // Brief 050a: style records and the standard reach only the style rows (above).
+            // Style records and the standard reach only the style rows (above).
             Effect::Style { .. } | Effect::Standard { .. } => {}
         }
     }
@@ -967,7 +950,7 @@ impl Scope {
         }
     }
 
-    /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
+    /// Every device with a symbol on `page` (their contexts may have changed).
     fn devices_on(&mut self, doc: &Document, page: PageId) {
         for (_, r) in doc.representations_on(page) {
             if let Subject::Device(c) = r.subject
@@ -1016,7 +999,7 @@ impl Scope {
             Subject::Route(x) => {
                 self.routes.insert(x);
             }
-            // Design 072 §6.2: a box drawn, moved or erased changes the contexts on its page.
+            // A box drawn, moved or erased changes the contexts on its page.
             // A continuation's place moves its own and its partners' rows.
             Subject::Aid(a) => {
                 if let Some(x) = doc.aids().get(&a) {
@@ -1030,8 +1013,8 @@ impl Scope {
                     self.routes.extend(doc.routes_at(t));
                 }
             }
-            // A cable's drawing moves its rows (brief 026); a reference end linked, changed or
-            // unlinked (its point an item op) re-derives its orphans (brief 027).
+            // A cable's drawing moves its rows; a reference end linked, changed or
+            // unlinked (its point an item op) re-derives its orphans.
             Subject::Cable(k) => {
                 self.cables.insert(k);
                 self.cable_references.insert(k);
@@ -1055,4 +1038,4 @@ pub fn all_measured(doc: &Document, tol: f64, reports: &crate::reports::kept::Re
     sort(doc, rows)
 }
 
-// The engine half (design 065 §3), at its old path until step 6 turns this into a facade.
+// The engine half, at its old path until step 6 turns this into a facade.

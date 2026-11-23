@@ -1,6 +1,5 @@
-//! Brief 044's defaults (connector devices, design 044 §10): how a half is named, the BOM
+//! Defaults (connector devices): how a half is named, the BOM
 //! descriptions of each family's halves, and the first answers of the `connector` command. Owned by
-//! lane S.
 //!
 //! # Semantics
 //! - `connector.half.separator` and `connector.side.socket` / `connector.side.plug`: a half's tag
@@ -236,7 +235,7 @@ pub static ENTRIES: &[&Entry] = &[
 ];
 
 /// Whether `key` is a naming key a connector or the project may hold (separator, side names):
-/// what the connector index's `inherits` map watches (design 044 §11.1).
+/// what the connector index's `inherits` map watches.
 pub fn is_naming_key(key: &str) -> bool {
     key == SEPARATOR.key || key == SIDE_SOCKET.key || key == SIDE_PLUG.key
 }

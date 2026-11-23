@@ -1,8 +1,8 @@
-//! The built-in house block (brief 055, design 055 §3, FP3).
+//! The built-in house block.
 //!
 //! Our own arrangement of what a good drawing's title block holds: a revision grid with an ECR
 //! column, a red status field, the function and location, page, next and total counters, the
-//! page title and the drawing number, a logo box with an owner line. 40 mm high, as 019's block,
+//! page title and the drawing number, a logo box with an owner line. 40 mm high, as the standard block,
 //! so nothing on a page moves. Columns from the right: counters 30 mm, drawing 90 mm (its Rev box 25 mm), project
 //! 80 mm; the revision table takes the rest. Rows from the top: 15, 12.5 and 12.5 mm.
 //!
@@ -22,7 +22,7 @@ use crate::pages::frames::{FrameText, TABLE_ROWS};
 pub(crate) const COUNTERS_MM: f64 = 30.0;
 pub(crate) const DRAWING_MM: f64 = 90.0;
 pub(crate) const PROJECT_MM: f64 = 80.0;
-/// The Rev box's width (mm): wide enough for 033's `E (draft)` at the Rev size.
+/// The Rev box's width (mm): wide enough for `E (draft)` at the Rev size.
 pub(crate) const REV_MM: f64 = 25.0;
 /// Heights of the rows, top to bottom (mm).
 pub(crate) const TOP_ROW_MM: f64 = 15.0;
@@ -31,7 +31,7 @@ pub(crate) const ROW_MM: f64 = 12.5;
 pub(crate) const MIN_TABLE_MM: f64 = 60.0;
 
 fn draw(size: f64, bold: bool, align: Align) -> TextDraw {
-    // The text styles keep their own bounds; a block keeps its own (design 055 §1.3).
+    // The text styles keep their own bounds; a block keeps its own.
     let size = if size.is_finite() { size.clamp(MIN_TEXT_MM, MAX_TEXT_MM) } else { MIN_TEXT_MM };
     TextDraw { size: (size * 100.0).round() / 100.0, bold, align, colour: Ink::Ink }
 }

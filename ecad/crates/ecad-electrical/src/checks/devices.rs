@@ -1,7 +1,7 @@
 //! The device checks: a device's tag and parts, the designations list.
 
 use super::*;
-/// Brief 052: the project's list of functions and locations ([`designation_rows`]).
+/// The project's list of functions and locations ([`designation_rows`]).
 pub(crate) struct DesignationRows;
 
 impl CheckSource for DesignationRows {
@@ -17,12 +17,12 @@ impl CheckSource for DesignationRows {
 }
 
 /// The checks of component `c`, reading the book and grids through `places`, shared across a Checks
-/// pass so the book is built at most once (review of #105, 1).
+/// pass so the book is built at most once.
 pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> Vec<Check> {
     let doc = places.doc();
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);
-    // Brief 026: a provisional tag, and a tag a cable holds too.
+    // A provisional tag, and a tag a cable holds too.
     if let Some(device) = doc.devices().get(&c)
         && let (Some(key), Some(t)) = (device.tag_key(), device.tag_shown())
         && (device.is_provisional() || !doc.cables_with(&key).is_empty())
@@ -43,11 +43,11 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
             });
         }
     }
-    // Brief 025 (design 025 §4.3): drawn beyond the part's offer, ringed at the first such pole.
+    // Drawn beyond the part's offer, ringed at the first such pole.
     for (which, page, at) in crate::references::devices::read::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
-    // Design 072 §2.2: checks read only the typed rating; a note is not a rating.
+    // Checks read only the typed rating; a note is not a rating.
     if let Some(d) = doc.devices().get(&c)
         && d.has_no_rating()
     {
@@ -59,9 +59,9 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
         };
         out.push(Check { kind: Kind::NoRating, page, at, object: Object::Device(c), which, fix: None });
     }
-    // Brief 044 (design 044 §6.3): a connector's mating checks.
+    // A connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
-    // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
+    // A table the user placed over the title block stays there.
     if let Some((which, page, at)) = crate::references::devices::read::title_check(doc, c, m) {
         out.push(Check {
             kind: Kind::TableOverTitle,
@@ -75,7 +75,7 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
     out
 }
 
-/// The rows of design 052 §6 for component `c`: a stored function or location naming no entry
+/// The rows for component `c`: a stored function or location naming no entry
 /// (devices and boxes); for a device, a value none of its symbols' contexts has, and two heads.
 /// O(its representations and their pages' boxes).
 pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>) {
@@ -124,7 +124,7 @@ pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut
             fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
         });
     }
-    // Design 072 §6.3 (A13): a value set by hand, and a box of another value holding one of the
+    // A value set by hand, and a box of another value holding one of the
     // device's symbols: the error goes on every placed symbol of the device, with one message.
     for a in Aspect::ALL {
         let Some(own) = d::device_key(comp, a).filter(|_| d::device_fixed(comp, a)) else { continue };
@@ -167,7 +167,7 @@ pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut
     }
 }
 
-/// The rows of the project's list (design 052 §6): two entries of one aspect sharing a code.
+/// The rows of the project's list: two entries of one aspect sharing a code.
 pub fn designation_rows(doc: &Document) -> Vec<Check> {
     use crate::locations::designations::{self as d, Aspect};
     let mut out = Vec::new();

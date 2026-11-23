@@ -1,4 +1,4 @@
-//! The kept frame's view (design 064 §4.1, `FrameView`): what the active page's frame last showed
+//! The kept frame's view (`FrameView`): what the active page's frame last showed
 //! (its page and [`FrameInput`]), and whether a commit could change it, so the engine draws it
 //! again (`frame_stale`). The drawn parts stay with the engine, which records here what each
 //! drawing showed ([`FrameView::show`]).

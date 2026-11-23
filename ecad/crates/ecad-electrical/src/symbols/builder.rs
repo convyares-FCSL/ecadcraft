@@ -1,4 +1,4 @@
-//! The symbol builder's commands (brief 048, design 048 §9): `symbolnew`, `symboledit`,
+//! The symbol builder's commands: `symbolnew`, `symboledit`,
 //! `symbolimpact` (read only) and `symbolupdate`: params in, ops and a JSON result out, with the
 //! content fields the builder's `makesymbol` shares. Generic ([`crate::commands::run`]); the rules
 //! are in [`super::commands`].
@@ -18,7 +18,7 @@ use crate::commands::input::{Bounded, Point};
 use crate::commands::run::{Access, Cx, Generic, Outcome};
 use crate::error::CmdError;
 
-// ---------------------------------------------------------------- content (§3.5)
+// ---------------------------------------------------------------- content
 
 /// The shapes of a symbol: file records (`{kind: line|polyline|arc|circle|text|point, …}`).
 pub type Shapes = Bounded<Map<String, Value>, 0, MAX_SHAPES>;
@@ -152,8 +152,8 @@ impl ContentFields {
     }
 }
 
-/// `symbolnew {name, key, graphics, points, slots?, defaults?, bridges?, from?}` (design 048
-/// §9.1): version 1 of a project symbol.
+/// `symbolnew {name, key, graphics, points, slots?, defaults?, bridges?, from?}`:
+/// version 1 of a project symbol.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewParams {
@@ -183,7 +183,7 @@ pub struct NewParams {
     from: Option<DefinitionId>,
 }
 
-/// `symbolimpact {definition, …content as symbolnew…, builtins?}` (read only, design 048 §6.2):
+/// `symbolimpact {definition, …content as symbolnew…, builtins?}` (read only):
 /// every placed copy with what an update changes there and whether it clashes.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -216,8 +216,8 @@ pub struct ImpactParams {
     builtins: Option<bool>,
 }
 
-/// `symboledit {definition, …content as symbolnew…, update, copies?, builtins?}` (design 048
-/// §9.2): a new version, and the chosen placed copies updated, in one transaction.
+/// `symboledit {definition, …content as symbolnew…, update, copies?, builtins?}`:
+/// a new version, and the chosen placed copies updated, in one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditParams {

@@ -1,4 +1,4 @@
-//! The rules of the drawn cable commands (briefs 004, 009, 026, 028, 032, 059): `cableslash` (a new
+//! The rules of the drawn cable commands: `cableslash` (a new
 //! cable, or onto one that exists), `cableadd` and `cablecore`. Each reads the document and returns
 //! the ops to commit and what to report.
 //!
@@ -44,9 +44,9 @@ pub fn crossed(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Resu
 pub enum SlashTarget {
     /// A new cable.
     New,
-    /// A cable not drawn yet: the crossed wires are assigned to it (brief 059, FD5).
+    /// A cable not drawn yet: the crossed wires are assigned to it (FD5).
     Assign(CableId),
-    /// A drawn cable continued on this page (brief 032 §3.3).
+    /// A drawn cable continued on this page.
     Continue(CableId),
 }
 
@@ -95,7 +95,7 @@ pub fn slash_new(
     }
     let (cable, item, rep): (CableId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let mut c = ecad_model::Cable::default();
-    // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
+    // Every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
     let t = crate::devices::tags::new_cable_tag(ledger, high, tag)?;
     c.tag = ecad_model::naming::tag::TagSlot::of_text(Some(&t.text), t.state);
     c.cores = found.members.iter().map(|m| Core { position: m.position, ..Core::unplaced(None) }).collect();
@@ -158,7 +158,7 @@ pub fn plan_slash_assign(
     let cores = crate::cables::commands::cables::assign_cores(doc, k, found.members.len())?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut ops = Vec::new();
-    // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
+    // Each crossed line takes its core, the stored unplaced one of that label.
     if let Some(before) = doc.cables().get(&k) {
         let mut after = before.clone();
         for (m, core) in found.members.iter().zip(cores.iter()) {
@@ -183,17 +183,17 @@ pub fn plan_slash_assign(
 
 /// The ops of `cableadd`: `conductors` become members of `existing`, or of a new cable tagged
 /// `tag` (or the next free tag). A cable with a core offer gives each new member the next free
-/// core, in the order given (brief 028, design 028 §6.2). Returns the cable and the ops.
+/// core, in the order given. Returns the cable and the ops.
 ///
 /// # Errors
 /// A wire already in a cable or listed twice; no cable with the ID given; more members than a
-/// cable holds; more wires than free cores onto a cable not drawn yet (brief 059); a tag that
+/// cable holds; more wires than free cores onto a cable not drawn yet; a tag that
 /// does not read or is taken. Nothing is changed then.
 pub fn add_to_cable(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, existing: Option<CableId>, conductors: &[WireId], tag: Option<&str>,
 ) -> Result<(CableId, Vec<Op>), CmdError> {
     let doc = ledger.document();
-    // A conductor is in at most one cable (design 004, owner answer O5; §18.4 defers several).
+    // A conductor is in at most one cable (several are not supported).
     let blocked: Vec<(CorePosition, CableId)> =
         conductors.iter().filter_map(|w| doc.cables_of(*w).first().map(|k| (CorePosition::Wire(*w), *k))).collect();
     if !blocked.is_empty() {
@@ -212,7 +212,7 @@ pub fn add_to_cable(
         return Err(CmdError::refused(format!("a cable holds at most {MAX_CABLE_MEMBERS} wires; nothing was changed")));
     }
     let mut ops = Vec::new();
-    // Brief 059 (design 059 §4.3): onto a cable not drawn yet, never more wires than free cores.
+    // Onto a cable not drawn yet, never more wires than free cores.
     if let Some(k) = existing
         && !crate::cables::is_drawn(doc, k)
     {
@@ -225,13 +225,13 @@ pub fn add_to_cable(
         None => {
             let c: CableId = ids.fresh();
             let mut cable = ecad_model::Cable::default();
-            // Brief 026: every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
+            // Every new cable gets a tag (`-W01`, or `-W?1` with provisional tags).
             let t = crate::devices::tags::new_cable_tag(ledger, high, tag)?;
             cable.tag = ecad_model::naming::tag::TagSlot::of_text(Some(&t.text), t.state);
             (c, None, cable)
         }
     };
-    // Design 072 §4.5: each wire takes the next free core, the stored unplaced one of that label.
+    // Each wire takes the next free core, the stored unplaced one of that label.
     for w in conductors {
         let label = spare.pop_front().and_then(|l| ecad_model::CoreLabel::new(&l).ok());
         crate::styles::cable::place_core(&mut after, label, CorePosition::Wire(*w));
@@ -251,7 +251,7 @@ fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
     crate::terminal_strips::core_label(text)
 }
 
-/// Core `index` of `cable` relabelled `new` (design 009 §5.3).
+/// Core `index` of `cable` relabelled `new`.
 ///
 /// # Errors
 /// A label the stored form does not take.
@@ -272,13 +272,13 @@ pub struct CoreSet {
     pub index: usize,
     /// The label as stored.
     pub core: Option<String>,
-    /// The other members with the same label (design 009 §5.4, duplicates allowed).
+    /// The other members with the same label (duplicates allowed).
     pub duplicates: Vec<WireId>,
     /// Empty when the label is unchanged.
     pub ops: Vec<Op>,
 }
 
-/// `cablecore {conductor, core}` (design 009 §5.2): the ops setting or clearing wire
+/// `cablecore {conductor, core}`: the ops setting or clearing wire
 /// `conductor`'s core label.
 ///
 /// # Errors

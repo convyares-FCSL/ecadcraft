@@ -1,7 +1,7 @@
-//! Brief 066c's entries (design 066 §2.2, F3): project settings with a built-in.
+//! Entries: project settings with a built-in.
 //!
 //! The settings' built-ins live only in ecad-model's data (`ecad-model/defaults/settings.toml`;
-//! owner, 2026-11-16): the registry reads them through `ecad_model::naming::builtins::get`, never a copy. Their project level is the
+//! the registry reads them through `ecad_model::naming::builtins::get`, never a copy. Their project level is the
 //! settings field, absent when the project chose none. They have no standard level: ecad-model
 //! reads the project's choice or the built-in, never the standard. The project sheet's built-in
 //! (`page.sheet`) is ecad-model's alone: a sheet is structured, not one value.
@@ -33,7 +33,7 @@ fn reference_style(s: &ProjectSettings) -> Option<Value<'_>> {
     s.reference_style.map(|r| Value::Choice(r.word()))
 }
 
-/// Digits an automatic tag number is padded to (brief 018).
+/// Digits an automatic tag number is padded to.
 pub static TAG_PADDING: Entry = Entry {
     key: mb::TAG_PADDING,
     label: "Tag number digits",
@@ -45,7 +45,7 @@ pub static TAG_PADDING: Entry = Entry {
     project: ProjectSource::Settings(tag_padding),
 };
 
-/// Digits a wire number is padded to (brief 022).
+/// Digits a wire number is padded to.
 pub static WIRE_DIGITS: Entry = Entry {
     key: mb::WIRE_DIGITS,
     label: "Wire number digits",
@@ -57,7 +57,7 @@ pub static WIRE_DIGITS: Entry = Entry {
     project: ProjectSource::Settings(wire_digits),
 };
 
-/// How label colours are written (brief 022): IEC 60757 codes or three letters.
+/// How label colours are written: IEC 60757 codes or three letters.
 pub static COLOUR_STYLE: Entry = Entry {
     key: mb::COLOUR_STYLE,
     label: "Wire colour codes",
@@ -69,7 +69,7 @@ pub static COLOUR_STYLE: Entry = Entry {
     project: ProjectSource::Settings(colour_style),
 };
 
-/// What a new page's number adds to the one before it (design 019 §6.1).
+/// What a new page's number adds to the one before it.
 pub static PAGE_NUMBER_STEP: Entry = Entry {
     key: mb::PAGE_NUMBER_STEP,
     label: "Page number step",
@@ -81,7 +81,7 @@ pub static PAGE_NUMBER_STEP: Entry = Entry {
     project: ProjectSource::Settings(page_number_step),
 };
 
-/// How cross-references name a place (brief 019, owner answer Q1).
+/// How cross-references name a place.
 pub static REFERENCE_STYLE: Entry = Entry {
     key: mb::REFERENCE_STYLE,
     label: "Reference style",

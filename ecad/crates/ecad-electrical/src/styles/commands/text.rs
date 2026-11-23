@@ -1,4 +1,4 @@
-//! The text commands' rules (brief 031, design 031 §10; brief 050a): the text style table
+//! The text commands' rules: the text style table
 //! (`textstyle`), which texts are shown and at which level (`showtext`), a moved tag or connection
 //! point label (`movetext`), and the scope the defaults list is resolved at (`defaults`). Each
 //! function reads the document and returns the ops to commit and what to report; the generic
@@ -26,7 +26,7 @@ use crate::error::CmdError;
 use crate::styles::text_style::fonts::{Fonts, TextMetrics};
 use crate::styles::text_style::{self, Shown, TextKind, kind_words};
 
-/// Refusals (design 031 §10.1).
+/// Refusals.
 pub const BAD_HEIGHT: &str = "A text height is 0.5 to 10 mm.";
 pub(crate) const BAD_WEIGHT: &str = "Weight is regular or bold.";
 pub const BAD_SHOW: &str = "Shown is yes, no or first (first: tag only).";
@@ -67,7 +67,7 @@ pub(crate) fn opt_kind(word: Option<&str>) -> Result<Option<TextKind>, CmdError>
     word.map(kind).transpose()
 }
 
-// ---------------------------------------------------------------- textstyle (§10.1)
+// ---------------------------------------------------------------- textstyle
 
 /// One kind's row of a `textstyle` call, as given.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -100,7 +100,7 @@ pub(crate) struct TextStyleInput {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct KindChange {
     kind: TextKind,
-    /// The kind's own font (owner, 2026-11-12); `null` goes back to the project font.
+    /// The kind's own font; `null` goes back to the project font.
     font: Change<String>,
     height: Change<f64>,
     weight: Change<String>,
@@ -192,7 +192,7 @@ fn set_project(doc: &Document, key: &str, after: Option<String>, ops: &mut Vec<O
 type StyleFields = BTreeMap<StyleRef, Vec<(String, Option<String>)>>;
 
 /// The ops of one kind's changes. Height, weight and font are fields of the text style the kind
-/// uses at project level (brief 050a, design 050 §6.6), gathered in `style` per style and written
+/// uses at project level, gathered in `style` per style and written
 /// as one record each by [`style_ops`]; the wire label height stays in `settings.wiring`.
 fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut StyleFields) {
     let k = c.kind;
@@ -204,7 +204,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
     };
     if let Some(h) = c.height {
         if k == TextKind::WireLabel && id == k.builtin_style() {
-            // One stored value (§3.4): the wiring setting, never a record. A later row of the
+            // One stored value: the wiring setting, never a record. A later row of the
             // same call replaces an earlier one.
             ops.retain(|o| !matches!(o, Op::SetProjectSettings { .. }));
             let before = doc.settings().clone();
@@ -229,7 +229,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
     }
 }
 
-/// One project-level `SetStyle` per style whose record changes (brief 050a).
+/// One project-level `SetStyle` per style whose record changes.
 fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     for (id, fields) in style {
         let before = ecad_model::objects::styles::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
@@ -241,7 +241,7 @@ fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     }
 }
 
-/// The ops of a `textstyle` call (design 031 §10.1): one transaction; empty when everything is
+/// The ops of a `textstyle` call: one transaction; empty when everything is
 /// already so. A key given twice (two rows of one kind): the last value wins, in one op.
 pub(crate) fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
     let mut ops = Vec::new();
@@ -268,7 +268,7 @@ pub(crate) fn textstyle_ops(doc: &Document, c: &TextStyleChanges) -> Vec<Op> {
     kept
 }
 
-// ---------------------------------------------------------------- defaults (§10.8)
+// ---------------------------------------------------------------- defaults
 
 /// The scope a `defaults` call resolves at: a symbol, else a device and a page, else the project.
 ///
@@ -297,7 +297,7 @@ pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<De
     Ok(at)
 }
 
-/// Whether `key` names a default: a registry entry or a project symbol's field (brief 048).
+/// Whether `key` names a default: a registry entry or a project symbol's field.
 ///
 /// # Errors
 /// No default has that key.
@@ -308,7 +308,7 @@ pub fn default_key(doc: &Document, key: &str) -> Result<(), CmdError> {
     Ok(())
 }
 
-// ---------------------------------------------------------------- showtext (§10.2)
+// ---------------------------------------------------------------- showtext
 
 /// The level a `showtext` call writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -342,7 +342,7 @@ pub struct ShowTarget {
     pub page: Option<PageId>,
 }
 
-/// The kinds `showtext` sets at a level (design 031 §5.1).
+/// The kinds `showtext` sets at a level.
 fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
     use TextKind::*;
     match level {
@@ -441,7 +441,7 @@ pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option
     format!("{verb} {}{of}", kind_words(kind))
 }
 
-// ---------------------------------------------------------------- pagetexts (§10.4)
+// ---------------------------------------------------------------- pagetexts
 
 /// The page `pagetexts` lists: the one given, else the one shown.
 ///
@@ -455,7 +455,7 @@ pub(crate) fn text_page(doc: &Document, page: Option<PageId>, shown: Option<Page
     Ok(page)
 }
 
-// ---------------------------------------------------------------- movetext (§10.3)
+// ---------------------------------------------------------------- movetext
 
 /// The justification a `movetext` call gives (`"RT"`…), read.
 ///
@@ -547,7 +547,7 @@ pub(crate) fn plan_move(
 }
 
 /// The style table as `textstyle` returns it: `{font, drawn_with, status, height_is, kinds: [...],
-/// changed}`. Heights are cap heights (brief 040, owner answer 9): CADCraft draws a text's height
+/// changed}`. Heights are cap heights: CADCraft draws a text's height
 /// as the height of its capitals, so `height` 2.5 is 2.5 mm from baseline to the top of a `K`.
 /// `fonts` is the project's font resolved on this machine.
 pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::Fonts, changed: bool) -> Value {
@@ -664,7 +664,7 @@ impl From<KindRowParams> for KindRow {
 }
 
 /// `textstyle {font?, kind?, height?, weight?, show?, kinds?: [{kind, height?, weight?, show?}]}`
-/// (design 031 §10.1; `kinds` lets the Text section write several kinds as one transaction). No
+/// (`kinds` lets the Text section write several kinds as one transaction). No
 /// field reads the table.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -719,7 +719,7 @@ show?: \"on\"|\"off\"|\"first\"|null} (no fields: read only; all given fields ar
 /// Most rows `pagetexts` returns.
 pub(crate) const MAX_TEXT_ROWS: usize = 5_000;
 
-/// `pagetexts {page?}` (design 031 §10.4; named so because `texts` is CADCraft's): every derived
+/// `pagetexts {page?}` (named so because `texts` is CADCraft's): every derived
 /// text on a page, hidden ones too.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -793,8 +793,8 @@ pub(crate) fn pagetexts_json(doc: &Document, page: PageId, metrics: &dyn TextMet
     v
 }
 
-/// `movetext {representation, kind?, connection_point?, to, justify?}` or `{…, reset: true}`
-/// (§10.3): a symbol's tag or connection point label moved to a page point, or back to its
+/// `movetext {representation, kind?, connection_point?, to, justify?}` or `{…, reset: true}`:
+/// a symbol's tag or connection point label moved to a page point, or back to its
 /// computed place.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

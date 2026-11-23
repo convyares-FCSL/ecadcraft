@@ -1,4 +1,4 @@
-//! The rules of brief 026's `renumber` (design 026 §3, §13; brief 028 §9.5 for terminal blocks): what a
+//! The rules of `renumber`: what a
 //! renumber covers, read from its typed input into an [`ecad_model::naming::numbering::Request`]. The plan
 //! itself is [`ecad_model::naming::numbering`]'s; the engine crate's shim plans it against the project's
 //! tag marks, commits and answers in JSON.
@@ -29,7 +29,7 @@ pub fn kinds(word: Option<&str>) -> Result<BTreeSet<Kind>, CmdError> {
         "devices" | "device" | "dev" => [Kind::Devices].into(),
         "cables" | "cable" | "cbl" => [Kind::Cables].into(),
         "wires" | "wire" => [Kind::Wires].into(),
-        // Brief 028: terminal block labels per strip ("all" keeps its 026 meaning: tags and wires).
+        // Terminal block labels per strip ("all" keeps its usual meaning: tags and wires).
         "terminal_blocks" | "terminal_block" | "trm" => [Kind::TerminalBlocks].into(),
         "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
         other => {
@@ -81,7 +81,7 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
         Some(ScopeInput::Word(w)) => match w.trim().to_ascii_lowercase().as_str() {
             "all" => Ok(Scope::All),
             "provisional" | "unnumbered" => Ok(Scope::Provisional),
-            // Brief 028: a terminal block renumber may name its strips in `strips` alone.
+            // A terminal block renumber may name its strips in `strips` alone.
             "selection" if input.objects.is_none() && input.strips.is_some() => {
                 Ok(Scope::Selection { devices: BTreeSet::new(), cables: BTreeSet::new(), conductors: BTreeSet::new() })
             }
@@ -145,7 +145,7 @@ pub(crate) fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -
     }
 }
 
-/// Brief 028 (design 028 §9.5): the strips a terminal block renumber covers, from the scope: every
+/// The strips a terminal block renumber covers, from the scope: every
 /// strip (all, folder, pages; the planner keeps those on the pages), the strips with that tag
 /// prefix, or the strips named in `strips` or `objects` (selection; a terminal block ID names its strip).
 ///
@@ -196,12 +196,12 @@ pub(crate) fn request(doc: &Document, input: &RenumberInput, max_named: usize) -
     } else {
         BTreeSet::new()
     };
-    // Brief 036 (FP8c): each strip's positions, numbered as groups.
+    // Each strip's positions, numbered as groups.
     let positions = strips.iter().map(|c| (*c, crate::terminal_strips::terminal_blocks::position_groups(doc, *c))).collect();
     Ok(Request { kinds, scope, start: input.start, digits, strips, positions })
 }
 
-/// `finalise`'s request: the provisional tags and unnumbered nets (design 026 §5.3).
+/// `finalise`'s request: the provisional tags and unnumbered nets.
 pub fn finalise_request() -> Request {
     Request {
         kinds: [Kind::Devices, Kind::Cables, Kind::Wires].into(),
@@ -213,7 +213,7 @@ pub fn finalise_request() -> Request {
     }
 }
 
-// ---------------------------------------------------------------- words, choices and provisional items (brief 074: from the engine)
+// ---------------------------------------------------------------- words, choices and provisional items
 
 /// Most rows a JSON preview lists (`more` counts the rest).
 pub(crate) const MAX_PREVIEW_ROWS: usize = 2_000;
@@ -291,7 +291,7 @@ pub fn desc(doc: &Document, o: ObjectRef) -> String {
     }
 }
 
-/// The preview as JSON (design §13).
+/// The preview as JSON.
 pub fn preview_json(doc: &Document, plan: &Plan, change_count: u64) -> Value {
     let rows: Vec<Value> =
         plan.rows.iter().filter(|r| !matches!(r.mark, Mark::Skipped(_))).take(MAX_PREVIEW_ROWS).map(|r| row_json(doc, r)).collect();
@@ -405,7 +405,7 @@ pub(crate) fn summary_line(plan: &Plan) -> String {
     format!("{} to change · {} fixed · {} same · {} skipped", plan.changes(), plan.fixed(), plan.same(), plan.skipped())
 }
 
-/// What the Renumber dialog offers (design §3): the tag prefixes in use (`-K`, `-Q`…, provisional
+/// What the Renumber dialog offers: the tag prefixes in use (`-K`, `-Q`…, provisional
 /// ones included), the potentials of the wire table, the folders as paths (`Control / Motors`),
 /// and how many provisional items there are. Read when the dialog opens.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -510,7 +510,7 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     let tags: Vec<String> = held.into_iter().map(|(_, shown)| shown).collect();
     let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     let mut nets = 0;
-    // Unnumbered nets are provisional only with provisional tags on; otherwise they are 022's
+    // Unnumbered nets are provisional only with provisional tags on; otherwise they are the usual
     // nets with no number yet (an Info row), never a reason to stop an issue.
     let on = numbering::provisional_on(doc);
     for (_, n) in doc.connectivity().nets().filter(|_| on) {
@@ -529,7 +529,7 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     Provisional { tags, nets, by_potential }
 }
 
-/// What the provisional step before an issue will do (design §5.5), worked out without writing.
+/// What the provisional step before an issue will do, worked out without writing.
 #[derive(Debug, Clone)]
 pub enum BeforeIssue {
     /// Go on to the issue; the note for the echo (`(2 provisional tags issued)`), if any.
@@ -538,8 +538,8 @@ pub enum BeforeIssue {
     Finalise(Plan),
 }
 
-/// What the provisional step before an issue does for `doc` with the `provisional` word `way`
-/// (design §5.5): go on (with the echo's note), or finalise numbering first, which the caller
+/// What the provisional step before an issue does for `doc` with the `provisional` word `way`:
+/// go on (with the echo's note), or finalise numbering first, which the caller
 /// plans against the project's tag marks.
 ///
 /// # Errors
@@ -596,7 +596,7 @@ pub enum ScopeParam {
 }
 
 /// `renumber {kind?, strips?, scope?, objects?, start?, digits?, digits_for_new?, preview?,
-/// based_on?}` (design §3, §13): drawing order; fixed tags kept; one transaction.
+/// based_on?}`: drawing order; fixed tags kept; one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberParams {
@@ -630,7 +630,7 @@ pub struct RenumberParams {
 }
 
 /// `finalise {preview?, based_on?}` = `renumber {kind: "all", scope: "provisional"}` (design
-/// §5.3): numbers the provisional tags and unnumbered nets in drawing order; one transaction.
+/// numbers the provisional tags and unnumbered nets in drawing order; one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FinaliseParams {
@@ -642,7 +642,7 @@ pub struct FinaliseParams {
     based_on: Option<u64>,
 }
 
-/// `numbering {provisional?}` (design §5.1, FP2): no parameters reads; `provisional` sets whether
+/// `numbering {provisional?}`: no parameters reads; `provisional` sets whether
 /// new tags are provisional (`-K?1`) until Finalise.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -652,7 +652,7 @@ pub struct NumberingParams {
     provisional: Option<bool>,
 }
 
-/// The plan of `req` in drawing order (design 052 §4: a device is numbered at its head, else its
+/// The plan of `req` in drawing order (a device is numbered at its head, else its
 /// first symbol), with the tag high-water mark caught up.
 ///
 /// # Errors
@@ -681,9 +681,9 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     let plan = plan_for(cx.ledger, cx.tag_high, &req)?;
     let doc = cx.doc;
     let count = cx.change_count;
-    // Brief 030 (FP4, FP7): accessories and jumper bars follow their relabelled terminal blocks.
+    // Accessories and jumper bars follow their relabelled terminal blocks.
     let (mut acc_ops, mut acc_lines) = crate::terminal_strips::accessories::renumber_ops(doc, &plan.ops);
-    // Brief 047 (design 047 §2.3): a strip's part lines keep naming the positions they serve.
+    // A strip's part lines keep naming the positions they serve.
     let (for_ops, for_lines) = crate::reports::bom::renumber_for_ops(doc, &plan.ops);
     acc_ops.extend(for_ops);
     acc_lines.extend(for_lines);

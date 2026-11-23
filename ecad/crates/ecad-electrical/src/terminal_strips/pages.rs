@@ -1,4 +1,4 @@
-//! The graphic terminal-strip pages' kept layout data (brief 046, design 046): each strip's position
+//! The graphic terminal-strip pages' kept layout data: each strip's position
 //! block widths and sheet count, the pages' style and their sheets and titles. What
 //! `crate::strip_page` draws from them is the engine's.
 //!
@@ -6,7 +6,7 @@
 //! [`StripPages`] is kept in [`ReportModels`] beside the strips: per strip, its position block widths
 //! and its sheet count at the project's sheet, and two indexes, `by_cable` (cables with a core on
 //! the strip) and `by_far` (far devices named in a cable box). A full build takes 0.5 ms on the
-//! large project (end-gate review, 2026-11-21), under the ~5 ms bar, so [`StripPages::update`]
+//! large project, under the ~5 ms bar, so [`StripPages::update`]
 //! builds it again from scratch after every commit, right after the strips' own update.
 //!
 //! Which strips' drawing changed (for the redraw) is still worked out from what the effects name
@@ -34,7 +34,7 @@ pub const TAG_GAP_MM: f64 = 2.0;
 /// The default title of a graphic page (New page ▸ Terminal strips).
 pub const TITLE: &str = "Terminal strips";
 
-/// The words of an empty page (028's).
+/// The words of an empty page.
 pub const NO_STRIPS: &str = "No terminal strips yet.";
 
 /// A `connection_points` page's style.
@@ -57,7 +57,7 @@ pub fn is_graphic(doc: &Document, page: PageId) -> bool {
     crate::pages::generated::kind_of(doc, page) == Some(ecad_model::GenKind::TerminalBlocks) && style_of(doc, page) == Style::Graphic
 }
 
-/// The strip layout lengths (design 046 §7.2), paper millimetres.
+/// The strip layout lengths, paper millimetres.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Geometry {
     pub pitch: f64,
@@ -106,7 +106,7 @@ impl Geometry {
         }
     }
 
-    /// The width of a gap column (design 046 §5.3).
+    /// The width of a gap column.
     fn gap_width(acc: Acc) -> f64 {
         match acc {
             Acc::EndStop => 3.0,
@@ -255,7 +255,7 @@ impl Named {
             Effect::Cable { id, before: Some(_), after: Some(_) } => {
                 self.cables.insert(*id);
             }
-            // A far device's tag or description (design 072: its fields) shows in the strip's rows.
+            // A far device's tag or description shows in the strip's rows.
             Effect::Prop { object: ObjectRef::Device(d), .. } | Effect::Device { id: d, before: Some(_), after: Some(_) } => {
                 self.devices.insert(*d);
             }
@@ -423,7 +423,7 @@ pub fn sheet_at<'o>(doc: &Document, page: PageId, o: &'o ReportModels, i: usize)
     Ok(None)
 }
 
-/// The words after a graphic sheet's page title (design 046 §6.3): `-X01 Interface (2/3)`.
+/// The words after a graphic sheet's page title: `-X01 Interface (2/3)`.
 pub fn sheet_title(doc: &Document, page: PageId, o: &ReportModels, i: usize) -> Option<String> {
     let (s, j, n) = sheet_at(doc, page, o, i).ok().flatten()?;
     let mut t = s.tag.clone();

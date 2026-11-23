@@ -1,11 +1,11 @@
-//! Text styles (brief 031, design 031 §3): the kinds of text ECAD draws, their resolved height,
+//! Text styles: the kinds of text ECAD draws, their resolved height,
 //! weight and CADCraft style name, and whether a text is shown.
 //!
-//! **The shared contract** (lanes W and P read it): [`text_style`], [`TextStyle`], [`Weight`] and
+//! **The shared contract**: [`text_style`], [`TextStyle`], [`Weight`] and
 //! [`TextKind`]. The name, signature and the three fields do not change in v0.15; kinds may be
-//! added. [`text_shown`] is public too (lane W reads wire-label visibility through it).
+//! added. [`text_shown`] is public too.
 //!
-//! Every value comes from the kind's text style (brief 050a, [`crate::styles::text`]): the
+//! Every value comes from the kind's text style ([`crate::styles::text`]): the
 //! registry's `text.<kind>.style` choice says which style, and [`crate::styles::field`] what it
 //! says. Nothing here writes a size or a weight as a literal. The readers are a few map lookups
 //! and never fail: a hostile stored value counts as absent.
@@ -23,9 +23,9 @@ pub mod fonts;
 pub const STYLE_REGULAR: &str = "Standard";
 /// The CADCraft text style of bold ECAD text (the project font, bold).
 pub const STYLE_BOLD: &str = "ECAD-BOLD";
-/// The style name a text entity is built with before its kind's style is applied (brief 066d:
-/// every drawn text then takes its kind's style through `DrawApply`; symbol line art, exempt by
-/// the overseer's ruling 1, keeps it).
+/// The style name a text entity is built with before its kind's style is applied:
+/// every drawn text then takes its kind's style through `DrawApply`; symbol line art, which is
+/// exempt, keeps it).
 pub const PLACEHOLDER_STYLE: &str = STYLE_REGULAR;
 
 /// One row of the style table, resolved for this project.
@@ -39,13 +39,13 @@ pub struct TextStyle {
     /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
     /// for bold in the stroke-font fallback: use `apply`.
     pub style_name: &'static str,
-    /// Brief 050a (046 Q8): the style's colour, or `None` for ink. The engine draws it in its
+    /// The style's colour, or `None` for ink. The engine draws it in its
     /// colour on the sheet drawn on; a mono print prints ink regardless.
     pub colour: Option<TextColour>,
 }
 
-/// A text style's colour (brief 050a), before the sheet is known: a colour of its own, or a colour
-/// code whose colour depends on the sheet (design 065 §3, cut 4: the engine turns it into a
+/// A text style's colour, before the sheet is known: a colour of its own, or a colour
+/// code whose colour depends on the sheet (the engine turns it into a
 /// CADCraft colour when it draws, `draw::text_colour_rgb`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextColour {
@@ -85,7 +85,7 @@ impl WeightStyle for Weight {
 }
 
 ecad_model::word_enum! {
-/// A kind of text: one row of the style table (design 031 §3.1). Its word is the key word in
+/// A kind of text: one row of the style table. Its word is the key word in
 /// `text.<word>.height` and the commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TextKind {
@@ -101,7 +101,7 @@ pub enum TextKind {
     ContinuationName,
     /// Cross-reference texts.
     Reference,
-    /// Brief 049 (FP2): a continuation caption.
+    /// A continuation caption.
     ContinuationCaption,
     /// Wire labels (height stored in `settings.wiring.label_height`).
     WireLabel,
@@ -124,17 +124,17 @@ pub enum TextKind {
     TableHeader,
     /// Free text: its font only (a typed height is the user's).
     Free,
-    /// The title block's page number box (lane P, design 033 §1.2).
+    /// The title block's page number box.
     TitlePage,
-    /// The title block's revision box and pending marker (lane P).
+    /// The title block's revision box and pending marker.
     TitleRev,
-    /// Location and strip headings, `(continued)` (lane P).
+    /// Location and strip headings, `(continued)`.
     TableHeading,
-    /// Cover lines (lane P scales them from this height).
+    /// Cover lines.
     Cover,
-    /// Brief 051 (FP1): a PLC channel's function, outside its card (`Pump 1 run`, `Spare`).
+    /// A PLC channel's function, outside its card (`Pump 1 run`, `Spare`).
     ChannelText,
-    /// Brief 051 (FP1): a PLC channel's address inside its cell (`I0.3`).
+    /// A PLC channel's address inside its cell (`I0.3`).
     Address,
 }
 }
@@ -167,7 +167,7 @@ impl TextKind {
         TextKind::Address,
     ];
 
-    /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
+    /// The registry entry choosing this kind's text style (`text.<kind>.style`).
     pub fn style_entry(self) -> &'static Entry {
         let i = TextKind::ALL.iter().position(|k| *k == self).unwrap_or(0);
         crate::defaults::styles::TEXT.get(i).copied().unwrap_or(&crate::defaults::styles::TAG)
@@ -178,8 +178,8 @@ impl TextKind {
         StyleRef::Builtin(self.word().to_string())
     }
 
-    /// The registry entry of this kind's visibility, for the kinds that have one (design 031
-    /// §5.1); `None` for kinds that are always shown.
+    /// The registry entry of this kind's visibility, for the kinds that have one;
+    /// `None` for kinds that are always shown.
     pub fn show_entry(self) -> Option<&'static Entry> {
         match self {
             TextKind::Tag => Some(&d::TAG_SHOW),
@@ -196,8 +196,7 @@ impl TextKind {
     }
 }
 
-/// The refusal of a `text.` key through `projectprops`, `pageprops` or `setprop` (design 031
-/// §10.6).
+/// The refusal of a `text.` key through `projectprops`, `pageprops` or `setprop`.
 pub const RESERVED_KEY: &str = "\"text.…\" is set with Text styles (textstyle, showtext, movetext).";
 
 /// Whether `key` is one of the text commands' keys (`text.` prefix, any case).
@@ -206,8 +205,8 @@ pub fn is_reserved_key(key: &str) -> bool {
 }
 
 /// The style of `kind` in this project: its text style (the project's `text.<kind>.style`, else
-/// the standard's, else the kind's built-in style) and that style's fields (design 050 §2.4). The
-/// wire label's height is `settings.wiring.label_height` (031 §3.4). Never fails; a hostile stored
+/// the standard's, else the kind's built-in style) and that style's fields. The
+/// wire label's height is `settings.wiring.label_height`. Never fails; a hostile stored
 /// value gives the built-in.
 ///
 /// # Example
@@ -222,7 +221,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
     text_style_at(doc, kind, Scope::project())
 }
 
-/// [`text_style`] at `at` (brief 050a, design 050 §2.4): an object's own `text.<kind>.style`
+/// [`text_style`] at `at`: an object's own `text.<kind>.style`
 /// (S P O) chooses its style. The CADCraft style name and font stay the kind's project style's (an
 /// object's style changes height, weight and colour).
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
@@ -241,7 +240,7 @@ pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     TextStyle { height, weight, style_name, colour }
 }
 
-/// An object's own text style as drawn (brief 050a, design 050 §4.1, owner answer Q1): its
+/// An object's own text style as drawn: its
 /// height, weight and colour, and the CADCraft text style naming its font. `family` is the font
 /// family it draws in when that is not the project font, so the page installs that style
 /// (`install_family`).
@@ -273,7 +272,7 @@ pub(crate) fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_
     Some(own_with(doc, style, &id))
 }
 
-/// The text style `id` of the `text` catalogue as drawn (brief 066d): its height, weight and
+/// The text style `id` of the `text` catalogue as drawn: its height, weight and
 /// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
 /// For a text whose style is chosen by something other than its kind (a location box's label).
 pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
@@ -355,7 +354,7 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
     }
 }
 
-/// A kind's own font family (its text style's `font`, brief 050a), when it names a family that
+/// A kind's own font family (its text style's `font`), when it names a family that
 /// differs from the project font; `None` when the kind uses the project font (`project`, the
 /// built-in).
 pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
@@ -373,7 +372,7 @@ pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
 }
 
 ecad_model::word_enum! {
-    /// Whether a text is shown (design 031 §5.2).
+    /// Whether a text is shown.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
     pub enum Shown {
         #[default]
@@ -381,7 +380,7 @@ ecad_model::word_enum! {
         On,
         #[strum(serialize = "no")]
         Off,
-        /// Once per run (§5.3): on the first symbol of each run, hidden on the others. Tags only.
+        /// Once per run: on the first symbol of each run, hidden on the others. Tags only.
         First,
     }
 }
@@ -408,7 +407,7 @@ impl Shown {
     }
 }
 
-/// The built-in run rule of a symbol (design 031 §5.3): strip terminals and PLC channels show
+/// The built-in run rule of a symbol: strip terminals and PLC channels show
 /// their tag once per run unless something narrower says otherwise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum RunRule {
@@ -452,7 +451,7 @@ impl TextTarget {
         TextTarget { page: s.page, component: s.component, representation: Some(rep), conductor: None, run }
     }
 
-    /// A conductor drawn on `page` (lane W: wire labels).
+    /// A conductor drawn on `page` (for wire labels).
     pub fn conductor(conductor: WireId, page: Option<PageId>) -> Self {
         TextTarget { page, conductor: Some(conductor), ..TextTarget::default() }
     }
@@ -462,7 +461,7 @@ impl TextTarget {
     }
 }
 
-/// Whether a text of `kind` on `target` is shown (design 031 §5.2): the narrowest level that has a
+/// Whether a text of `kind` on `target` is shown: the narrowest level that has a
 /// value wins (symbol, device or conductor, page, project); then, for a tag with a run rule, the
 /// project's `text.tag.show.strip` / `.plc`; then the built-in. `First` is only ever returned for
 /// a tag. Kinds with no visibility entry are always `On`. Never fails.
@@ -482,10 +481,10 @@ pub(crate) fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> 
     <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default()
 }
 
-// ---------------------------------------------------------------- Fonts (§2)
+// ---------------------------------------------------------------- Fonts
 
 /// The family CADCraft's resolver looks for when the project's family is missing: the built-in of
-/// `text.font` (§2.2 step 3).
+/// `text.font`.
 pub(crate) fn default_family() -> &'static str {
     match d::FONT.builtin() {
         defaults::Value::Text(t) => t,
@@ -493,7 +492,7 @@ pub(crate) fn default_family() -> &'static str {
     }
 }
 
-// ---------------------------------------------------------------- Show Hidden Text (§5.7)
+// ---------------------------------------------------------------- Show Hidden Text
 
 // ---------------------------------------------------------------- Justification and boxes
 
@@ -546,7 +545,7 @@ pub(crate) fn text_box(width: f64, height: f64, at: ecad_model::Pt, h: TextHAlig
     (ecad_model::Pt::new(x0, y0), ecad_model::Pt::new(x0 + width, y0 + height))
 }
 
-// ---------------------------------------------------------------- Symbol keys (§6.4, FP5)
+// ---------------------------------------------------------------- Symbol keys
 
 /// The prefix of a symbol's own text keys on its component: `text.<rep>.`.
 pub(crate) fn symbol_prefix(rep: RepresentationId) -> String {
@@ -564,7 +563,7 @@ pub(crate) fn is_symbol_key(key: &str) -> bool {
     key.strip_prefix("text.").and_then(|r| r.split_once('.')).is_some_and(|(id, _)| id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
-/// The properties of a copy of symbol `old` that is now symbol `new` (FP5): every symbol key of the
+/// The properties of a copy of symbol `old` that is now symbol `new`: every symbol key of the
 /// source component is dropped, and `old`'s own keys come back under `new`.
 pub fn copy_symbol_keys(props: &mut ecad_model::Properties, old: RepresentationId, new: RepresentationId) {
     let mine = symbol_text_keys(props, old);
@@ -582,7 +581,7 @@ pub(crate) fn rename_symbol_key(key: &str, old: RepresentationId, new: Represent
     }
 }
 
-// ---------------------------------------------------------------- Placement (§6)
+// ---------------------------------------------------------------- Placement
 
 /// Most tag blocks on a page that search for a free place; beyond it a block takes its first
 /// candidate (a guard on hostile pages).
@@ -666,9 +665,9 @@ impl Obstacles {
 pub(crate) struct BlockPlace {
     pub rect: TextBox,
     pub halign: TextHAlign,
-    /// Stored by Move Text (§6.4).
+    /// Stored by Move Text.
     pub moved: bool,
-    /// No candidate was free (§6.3): the block overlaps something.
+    /// No candidate was free: the block overlaps something.
     pub overlaps: bool,
 }
 
@@ -699,7 +698,7 @@ pub(crate) fn block_rect(at: ecad_model::Pt, w: f64, h: f64, halign: TextHAlign,
     (ecad_model::Pt::new(x0, y1 - h), ecad_model::Pt::new(x0 + w, y1))
 }
 
-/// The candidates of design 031 §6.2 for a block `w` × `h` beside a symbol box `(lo, hi)`, in
+/// The candidates for a block `w` × `h` beside a symbol box `(lo, hi)`, in
 /// order: (box, halign).
 pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64, h: f64, gap: f64) -> [(TextBox, TextHAlign); 5] {
     use ecad_model::Pt;
@@ -716,7 +715,7 @@ pub fn candidates(lo: ecad_model::Pt, hi: ecad_model::Pt, vertical: bool, w: f64
     if vertical { [left_top, left_mid, right_top, above, below] } else { [above, above_left, below, left_mid, right_mid] }
 }
 
-/// A stored text place (`"x,y,J"`, design 031 §6.4): the point in the symbol's own frame and the
+/// A stored text place (`"x,y,J"`): the point in the symbol's own frame and the
 /// justification. `None` for anything that does not parse.
 pub(crate) fn parse_at(v: &str) -> Option<(ecad_model::Pt, TextHAlign, TextVAlign)> {
     let mut it = v.split(',');
@@ -762,7 +761,7 @@ pub struct Block {
     pub h: f64,
 }
 
-/// The obstacles of `page` that never move (§6.3 step 1): symbol boxes, conductor routes inflated
+/// The obstacles of `page` that never move: symbol boxes, conductor routes inflated
 /// by `text.wire_clearance`, and the boxes of `fixed` texts (connection point labels, location
 /// labels). The frame's inside edge is checked separately ([`place_blocks`]).
 fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles {
@@ -803,7 +802,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
     obs
 }
 
-/// Place every tag block of `page` (design 031 §6.3): moved blocks at their stored places, then
+/// Place every tag block of `page`: moved blocks at their stored places, then
 /// the others in reading order, each at its first free candidate (else the one with the least
 /// overlap), never crossing the frame's inside edge when a candidate inside it exists. Each placed
 /// block becomes an obstacle. Deterministic: the result does not depend on op order.
@@ -819,7 +818,7 @@ pub(crate) fn place_blocks(
     let gap_factor = defaults::resolve(doc, &d::TAG_GAP, Scope::project()).number();
     let tag_height = text_style(doc, TextKind::Tag).height;
     let mut free: Vec<&Block> = Vec::new();
-    // Moved blocks first (§6.4).
+    // Moved blocks first.
     for b in blocks {
         let stored = doc
             .devices()
@@ -872,7 +871,7 @@ pub(crate) fn place_blocks(
     out
 }
 
-// ---------------------------------------------------------------- Runs (§5.3)
+// ---------------------------------------------------------------- Runs
 
 /// Most symbols on a page for which runs are worked out; beyond it every symbol counts as the
 /// first of its own run (a guard on hostile pages: the grouping is quadratic in a line's symbols).
@@ -890,7 +889,7 @@ struct Placed {
     hi: (f64, f64),
 }
 
-/// The symbols of `page` that are the first of their run (design 031 §5.3): leftmost of a row,
+/// The symbols of `page` that are the first of their run: leftmost of a row,
 /// topmost of a column, or a run of one. A run is a maximal set of symbols of one device, of one
 /// starter kind, whose centres are within `text.run.align` across the line, whose neighbouring
 /// boxes are at most `text.run.gap` apart along it, with no symbol of another device between
@@ -908,7 +907,7 @@ pub(crate) fn run_firsts(doc: &Document, page: PageId) -> std::collections::BTre
         let Some((def, pl)) = crate::devices::tags::rep_definition(doc, r) else { continue };
         let Some((lo, hi)) = crate::devices::texts::placed_box(def, &pl) else { continue };
         let class = match crate::devices::texts::run_rule(doc, r) {
-            // Brief 044: a connector's pins run per half, so each half tag shows once per run.
+            // A connector's pins run per half, so each half tag shows once per run.
             RunRule::Strip => crate::connectors::run_class(doc, r).unwrap_or(1),
             RunRule::Plc => 2,
             RunRule::None => {
@@ -1038,7 +1037,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
     }
 }
 
-// The engine half (design 065 §3, cut 4), at its old paths until the split moves this module to
+// The engine half, at its old paths until the split moves this module to
 // ecad-electrical, where ecad-engine's `text_style` facade takes over (step 6).
 
 #[cfg(test)]
@@ -1047,7 +1046,7 @@ mod tests {
     use crate::defaults::Value;
     use ecad_model::{Device, LengthUnit, Page, Representation};
 
-    /// Design 031 §3.2, written out here so a reader and its entry cannot drift.
+    /// The built-in table, written out here so a reader and its entry cannot drift.
     const TABLE: [(TextKind, f64, Weight); 23] = [
         (TextKind::Tag, 2.5, Weight::Bold),
         (TextKind::PointLabel, 1.5, Weight::Regular),
@@ -1055,7 +1054,6 @@ mod tests {
         (TextKind::PartNumber, 1.6, Weight::Regular),
         (TextKind::ContinuationName, 2.0, Weight::Regular),
         (TextKind::Reference, 2.5, Weight::Regular),
-        // Brief 049 (design 049 §7).
         (TextKind::ContinuationCaption, 2.5, Weight::Regular),
         (TextKind::WireLabel, 2.5, Weight::Regular),
         (TextKind::CableText, 1.6, Weight::Regular),
@@ -1071,7 +1069,6 @@ mod tests {
         (TextKind::TitleRev, 5.0, Weight::Regular),
         (TextKind::TableHeading, 3.5, Weight::Regular),
         (TextKind::Cover, 10.0, Weight::Regular),
-        // Brief 051 (design 051 §5).
         (TextKind::ChannelText, 2.5, Weight::Regular),
         (TextKind::Address, 2.0, Weight::Regular),
     ];
@@ -1082,7 +1079,7 @@ mod tests {
         for (kind, h, w) in TABLE {
             let s = text_style(&doc, kind);
             assert_eq!(s, TextStyle { height: h, weight: w, style_name: w.style_name(), colour: None }, "{kind:?}");
-            // Brief 050a: the kind's built-in text style carries exactly these values.
+            // The kind's built-in text style carries exactly these values.
             let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
             assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
             assert_eq!(<TextKind as ecad_model::Word>::parse(kind.word()), Some(kind));
@@ -1092,7 +1089,7 @@ mod tests {
 
     #[test]
     fn hostile_heights_give_the_default() {
-        // Design 072 §8: a stored height is a number; one outside the field's range counts as absent.
+        // A stored height is a number; one outside the field's range counts as absent.
         for bad in [f64::NAN, 0.1, 11.0, 1e308, -2.0, f64::INFINITY] {
             let mut doc = Document::default();
             let body = ecad_model::objects::styles::TextStyle { height: Some(ecad_model::geometry::units::Mm(bad)), ..Default::default() };
@@ -1107,7 +1104,7 @@ mod tests {
 
     #[test]
     fn old_031_properties_are_ignored() {
-        // Brief 050a (FP4): 031's old project keys are not read.
+        // The old project keys are not read.
         let mut doc = Document::default();
         doc.edit_parts(|parts| {
             parts.display.insert("text.tag.height".into(), "3".into());

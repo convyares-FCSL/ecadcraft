@@ -1,16 +1,16 @@
-//! The rules of the symbol builder's commands (brief 048, design 048 §9): `symbolnew`,
+//! The rules of the symbol builder's commands: `symbolnew`,
 //! `symboledit`, `symbolimpact`, `symbolupdate` and `makesymbol`, and placing a project symbol.
 //! Each function reads the document and returns the ops to commit and what to report; the engine
 //! crate's shims read the parameters, find the selection on the page, commit and answer in JSON.
 //!
 //! # Semantics
-//! - A project symbol is an embedded definition whose origin is [`PROJECT_SYMBOLS`] (FP3): its
+//! - A project symbol is an embedded definition whose origin is [`PROJECT_SYMBOLS`]: its
 //!   lineage is `origin.definition`, its version `origin.library_seq`. Every save that changes
 //!   content embeds a new version; saving the newest version's content again is refused.
-//! - An update rewrites placed copies by connection-point **key** (design §2.5): component,
+//! - An update rewrites placed copies by connection-point **key**: component,
 //!   terminal and wire IDs are kept; a wired point that moves takes its wire end with it.
-//! - Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
-//!   Properties and Devices (048c); the page's selection and every JSON form.
+//! - Not here: the builder's drawing, drafts and the review drawer; "update available" in
+//!   Properties and Devices; the page's selection and every JSON form.
 #![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use ecad_model::PointKey;
@@ -31,7 +31,7 @@ use crate::symbols::graphics::POINT_GRID_MM;
 use crate::symbols::project::{PROJECT_SYMBOLS, Version};
 use crate::symbols::{self, Join};
 
-/// Most shapes a symbol holds (design 048 §3.5).
+/// Most shapes a symbol holds.
 pub const MAX_SHAPES: usize = 4000;
 /// Most connection points a symbol holds.
 pub const MAX_POINTS: usize = 512;
@@ -50,9 +50,9 @@ const MAX_POINT_TEXT: usize = 32;
 /// Positions closer than this are one spot.
 const TOL: f64 = 1e-6;
 
-// ---------------------------------------------------------------- content (§3.5)
+// ---------------------------------------------------------------- content
 
-/// What a symbol holds, as given to a command (design 048 §9.1).
+/// What a symbol holds, as given to a command.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Content {
     pub name: String,
@@ -61,7 +61,7 @@ pub struct Content {
     pub slots: Vec<TextSlot>,
     pub defaults: ecad_model::SymbolDefaults,
     pub bridges: Vec<Vec<PointKey>>,
-    /// What a device this symbol starts is (design 072 §2.3).
+    /// What a device this symbol starts is.
     pub device_type: ecad_model::DeviceType,
 }
 
@@ -204,7 +204,7 @@ pub struct Rules<'a> {
     pub grid: bool,
 }
 
-/// The rules of design 048 §3.5, in the builder's order; every rule the content breaks, in words.
+/// The rules of a symbol's content, in the builder's order; every rule the content breaks, in words.
 /// Empty when it may be saved.
 pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
     let mut out = Vec::new();
@@ -241,7 +241,7 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
             out.push(format!("The {k} is too long ({} characters at most).", f.max_chars()));
         }
     }
-    // Design 072 §2.2: a default rating reads as the declared group's (ambiguous text is asked).
+    // A default rating reads as the declared group's (ambiguous text is asked).
     if let Some(r) = c.defaults.rating.as_ref().map(|t| t.as_str())
         && let Err(m) = crate::devices::ratings::rated(&c.device_type, "The symbol", Some(r))
     {
@@ -347,9 +347,9 @@ pub(crate) fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, d
     Ok(d)
 }
 
-// ---------------------------------------------------------------- the impact (§6.2)
+// ---------------------------------------------------------------- the impact
 
-/// What an update does to one placed copy (design 048 §6.1's row, as data).
+/// What an update does to one placed copy (as data).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub rep: RepresentationId,
@@ -412,7 +412,7 @@ fn wire_words(doc: &Document, t: ConnectionPointId) -> String {
     }
 }
 
-/// The row of one copy (`item` in `rid`) moving from `old` to `new` (design 048 §6.2).
+/// The row of one copy (`item` in `rid`) moving from `old` to `new`.
 fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId, old: &Definition, new: &Definition) -> Option<Row> {
     let r = doc.representations().get(&rid)?;
     let Subject::Device(c) = r.subject else { return None };
@@ -516,7 +516,7 @@ pub fn impact(doc: &Document, defs: &[DefinitionId], new: &Definition) -> Vec<Ro
         .collect()
 }
 
-/// The ops moving the copies of `rows` to definition `new_id` (`new`), per design 048 §5.3. The
+/// The ops moving the copies of `rows` to definition `new_id` (`new`). The
 /// component's own definition follows when it was the copy's old version.
 fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: DefinitionId, new: &Definition) -> Result<Vec<Op>, CmdError> {
     const GONE: &str = "A copy is gone.";
@@ -581,7 +581,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 cps.insert(t, nd.at);
             }
         }
-        // The copy's part follows its new definition (design 072 §4.4, F3′).
+        // The copy's part follows its new definition.
         let role = ecad_model::Role::Part(new.part_role);
         if cps != r.connection_points || role != r.role {
             ops.push(Op::ModifyRepresentation {
@@ -612,7 +612,7 @@ fn follow(doc: &Document, t: ConnectionPointId, page: PageId, from: Pt, to: Pt, 
     }
 }
 
-/// Superseded project versions of `lineage` nothing places once `ops` are applied (FP8), as
+/// Superseded project versions of `lineage` nothing places once `ops` are applied, as
 /// removals; never `keep`.
 fn superseded(doc: &Document, lineage: DefinitionId, keep: DefinitionId, ops: &[Op]) -> Vec<Op> {
     let mut leaving: BTreeMap<DefinitionId, usize> = BTreeMap::new();
@@ -654,7 +654,7 @@ pub struct SymbolPlan {
 }
 
 /// `symbolnew`: version 1 of a new project symbol, copied from definition `from` (a built-in the
-/// project need not have placed) when given, so the copy remembers where it came from (FP4).
+/// project need not have placed) when given, so the copy remembers where it came from.
 ///
 /// # Errors
 /// The first rule the content breaks, or a `from` that names no definition.
@@ -715,7 +715,7 @@ pub(crate) struct Impact {
     pub problems: Vec<String>,
 }
 
-/// `symbolimpact` (read only, design 048 §6.2): every placed copy of the symbol edited from
+/// `symbolimpact` (read only): every placed copy of the symbol edited from
 /// version `edited`, with what saving `content` changes there and whether it clashes; built-ins'
 /// copies only with `builtins`.
 ///
@@ -759,7 +759,7 @@ impl Update {
     }
 }
 
-/// `symboledit` (design 048 §9.2): a new version of the symbol edited from version `edited`, and
+/// `symboledit`: a new version of the symbol edited from version `edited`, and
 /// the chosen placed copies updated, in one transaction; earlier versions nothing places go.
 ///
 /// # Errors
@@ -870,10 +870,10 @@ pub(crate) fn plan_update(
     Ok(SymbolPlan { ops, label: format!("Update symbol {}", target.def.name), id: target.id, updated: chosen.len(), left: 0 })
 }
 
-// ---------------------------------------------------------------- make symbol (§4)
+// ---------------------------------------------------------------- make symbol
 
 /// The point of the page a made symbol's (0, 0) goes to: the bounding-box centre of `prims` on
-/// the nearest point-grid point (design 048 §4.1 step 2).
+/// the nearest point-grid point.
 pub fn grid_origin(prims: &[Primitive]) -> Pt {
     let mut pts: Vec<Pt> = Vec::new();
     for p in prims {
@@ -910,14 +910,14 @@ pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
     }
 }
 
-/// The refusal for item `i` of a selection that has a meaning (design 048 §9.5), naming its
+/// The refusal for item `i` of a selection that has a meaning, naming its
 /// object: `Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.`
 pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tags::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cables::cable_words(doc, k),
-        // Design 072: a line names the wire it carries; a loose line carries none.
+        // A line names the wire it carries; a loose line carries none.
         Some(Subject::Route(r)) => match crate::wires::routes::wire_of_route(doc, r) {
             Some(c) => format!("Wire {}", wire_number(doc, c)),
             None => "A line".to_string(),
@@ -951,7 +951,7 @@ pub struct MakeAt {
     pub replace: bool,
 }
 
-/// `makesymbol` of plain geometry (design 048 §4.1): a symbol of the selection's `items` (lines,
+/// `makesymbol` of plain geometry: a symbol of the selection's `items` (lines,
 /// arcs and text with no meaning). Without `content.graphics` the page geometry is taken as it is
 /// and points and slots are page points; with it (the builder's drawing, in the symbol's frame)
 /// they are in that frame.
@@ -1009,7 +1009,7 @@ pub struct Promoted {
     pub representation: RepresentationId,
 }
 
-/// Promote drawn component `c` (design 048 §4.2, §5.4): its drawn representation becomes a
+/// Promote drawn component `c`: its drawn representation becomes a
 /// symbol representation of the same component, keeping component, terminal and wire IDs. The
 /// placed symbol takes the drawing's style, else `fallback`.
 ///
@@ -1061,7 +1061,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     for sl in &mut content.slots {
         sl.at = Pt::new(sl.at.x - origin.x, sl.at.y - origin.y);
     }
-    // The symbol made from the device's drawing declares the type the device has (design 072 §2.3).
+    // The symbol made from the device's drawing declares the type the device has.
     content.device_type = comp.device_type.clone();
     refuse_problems(&content, &Rules { doc, lineage: None, grid: false })?;
     let (id, lineage, item, new_rep): (DefinitionId, DefinitionId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
@@ -1106,7 +1106,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     Ok(Promoted { plan: SymbolPlan { ops, label: format!("Make symbol {}", content.name), id, updated: 0, left: 0 }, representation: new_rep })
 }
 
-// ---------------------------------------------------------------- placing (§5.1)
+// ---------------------------------------------------------------- placing
 
 /// A planned placement of a project symbol.
 #[derive(Debug, Clone, PartialEq)]
@@ -1180,7 +1180,7 @@ pub fn plan_place(
             let tag = given.shown();
             let c: DeviceId = ids.fresh();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
-            // Design 072 §2.2: the default rating is read by the group's reader; text it cannot
+            // The default rating is read by the group's reader; text it cannot
             // read (ambiguous since it was saved) is kept as the note, never guessed.
             let rating = field_value(doc, &key, def, Field::Rating);
             let (device_type, rating_note) = crate::devices::ratings::rated(&def.device_type, &tag, rating.as_deref())
@@ -1231,7 +1231,7 @@ fn field_value(doc: &Document, key: &str, def: &Definition, field: Field) -> Opt
 
 /// The row of a copy as data; `book` is the project's page book, built once per listing (a page's
 /// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
-/// reference style, design 048 §6.1's page and zone).
+/// reference style, page and zone).
 pub fn row_json(
     r: &Row, doc: &Document, book: &ecad_model::document::book::Book, places: &mut crate::references::devices::places::Places<'_>,
 ) -> Value {

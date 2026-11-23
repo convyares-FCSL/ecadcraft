@@ -1,11 +1,11 @@
-//! Rating tables: a user's data set of ratings and factors (design 057 §5; owner, Q11).
+//! Rating tables: a user's data set of ratings and factors.
 //!
 //! **ECAD ships no values.** This module holds the row structure, the CSV parser with its bounds,
 //! the lookups and the plausibility checks. The rows come from the user (Standards ▸ Rating tables,
 //! or `ratingtable {csv}`), from a source they are licensed to use. The only rows in the repository
 //! are synthetic test fixtures under `tests/`.
 //!
-//! # Rows (CSV, design 057 §5.2)
+//! # Rows (CSV)
 //! One row per line, comma-separated; a header line starting `kind,` is skipped; a line starting
 //! `#` is a comment. Kinds: `capacity` (method, insulation, loaded, size, amps), `ambient`
 //! (insulation, °C, factor), `grouping` (method, circuits, factor), `resistance` (class, size,
@@ -29,7 +29,7 @@ pub(crate) const MAX_FIELD: usize = 32;
 /// The most bad lines an import refusal lists.
 pub const MAX_LISTED: usize = 10;
 
-/// IEC 60364-5-52's installation method names (Q17).
+/// IEC 60364-5-52's installation method names.
 pub const METHODS: [&str; 10] = ["A1", "A2", "B1", "B2", "C", "D1", "D2", "E", "F", "G"];
 
 /// Words for a method, for the drop-down (the description is ECAD's own, short).
@@ -65,7 +65,7 @@ pub enum Insulation {
 }
 
 impl Insulation {
-    /// The column a conductor of maximum temperature `theta_max` °C reads (design 057 §3.2).
+    /// The column a conductor of maximum temperature `theta_max` °C reads.
     pub fn of_max(theta_max: f64) -> Option<Self> {
         if !theta_max.is_finite() {
             return None;
@@ -301,7 +301,7 @@ fn is_data(line: &str) -> bool {
     !(t.is_empty() || t.starts_with('#') || t.to_ascii_lowercase().starts_with("kind,"))
 }
 
-/// Read a table for import (design 057 §5.2): the whole file is refused if any row is bad.
+/// Read a table for import: the whole file is refused if any row is bad.
 ///
 /// # Errors
 /// In words: the bound it breaks, or the first [`MAX_LISTED`] bad lines with their numbers.
@@ -353,8 +353,8 @@ impl Dataset {
         self.rows.keys().any(|k| matches!(k, RowKey::Ambient { insulation: i, .. } if *i == insulation))
     }
 
-    /// The ambient factor at `theta`: the row at the next higher (or equal) listed temperature
-    /// (design 057 §3.2), with that row's temperature; `None` above the last row.
+    /// The ambient factor at `theta`: the row at the next higher (or equal) listed temperature,
+    /// with that row's temperature; `None` above the last row.
     pub fn ambient(&self, insulation: Insulation, theta: f64) -> Option<(f64, f64)> {
         let want = key_of(theta);
         self.rows
@@ -421,7 +421,7 @@ impl Dataset {
         v
     }
 
-    /// The first implausible pair (design 057 §5.4), in words, or `None`.
+    /// The first implausible pair, in words, or `None`.
     pub fn odd(&self) -> Option<String> {
         let mut prev: Option<(&RowKey, f64)> = None;
         // Capacity rises with size within one method, insulation and loaded count.

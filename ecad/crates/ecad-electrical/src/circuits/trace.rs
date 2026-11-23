@@ -1,4 +1,4 @@
-//! Which device protects a rated subject (design 057 §4.1–§4.2, Q2).
+//! Which device protects a rated subject.
 //!
 //! # Semantics
 //! - **By hand:** a subject's `protected_by` (`-Q01`, or `-F01:3` for a fuse of a bank or a strip's
@@ -12,7 +12,7 @@
 //! - Bounded: at most [`MAX_TRACE_NETS`] nets per subject; each net once (cycles end).
 //! - Devices found at the same depth are all returned; the caller uses the largest In.
 //!
-//! A strip's fuse position (036) protects only what reaches its out point (`.no`); its in point
+//! A strip's fuse position protects only what reaches its out point (`.no`); its in point
 //! (the supply side) and a one-point drawing stop the trace there.
 
 use std::collections::BTreeSet;
@@ -22,7 +22,7 @@ use ecad_model::{ConnectionPointId, DeviceId, Document, NetKey, Node, Subject};
 use crate::circuits::RatedSubject;
 use ecad_model::objects::devices::ProtectionKind;
 
-/// Most nets one subject's trace visits (design 057 §4.2).
+/// Most nets one subject's trace visits.
 pub(crate) const MAX_TRACE_NETS: usize = 64;
 
 /// How a device was found.
@@ -50,8 +50,8 @@ pub struct Found {
     pub bounded: bool,
 }
 
-/// The load-side pins of an overcurrent protective device (design 057 §4.2), by its stored kind
-/// (design 072 §2.2) and the pin label: the even-numbered pins of a fuse, a fuse terminal, an MCB
+/// The load-side pins of an overcurrent protective device, by its stored kind
+/// and the pin label: the even-numbered pins of a fuse, a fuse terminal, an MCB
 /// and an RCBO (and an RCBO's `N2`); a fuse bank's numbered outputs. An RCD has none: it is crossed.
 pub(crate) fn load_side(kind: ProtectionKind, label: &str) -> bool {
     let n = label.parse::<u32>().ok();
@@ -64,14 +64,14 @@ pub(crate) fn load_side(kind: ProtectionKind, label: &str) -> bool {
     }
 }
 
-/// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
+/// The kind of device `c` when it is an overcurrent protective device.
 fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
     use crate::devices::traits::Protects;
     let ecad_model::DeviceType::Protection(p) = &doc.devices().get(&c)?.device_type else { return None };
     p.overcurrent().then(|| p.kind())
 }
 
-/// Whether device `c` is an overcurrent protective device: its typed kind (design 072 §2.4), never
+/// Whether device `c` is an overcurrent protective device: its typed kind, never
 /// its symbols.
 pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
     use crate::devices::traits::DeviceKind;
@@ -104,7 +104,7 @@ pub fn pair(label: &str) -> Option<String> {
     }
 }
 
-/// Whether device `c` is crossed by pin pairs (design 072 §4.4: its stored parts and its type,
+/// Whether device `c` is crossed by pin pairs (its stored parts and its type,
 /// never its starters): a device with a contact (contacts, change-overs, power contacts), a
 /// solid-state relay with its output, and an RCD.
 fn crossed(doc: &Document, c: DeviceId) -> bool {
@@ -135,7 +135,7 @@ fn step(doc: &Document, t: ConnectionPointId) -> Step {
     if crate::terminal_strips::strip_of(doc, c).is_some() {
         for p in crate::terminal_strips::terminal_blocks::positions(doc, c) {
             if let Some(ts) = p.levels.values().find(|ts| ts.contains(&t)) {
-                // Review of #108: a fuse position protects only what is on its out point (`.no`); its
+                // A fuse position protects only what is on its out point (`.no`); its
                 // in point (supply side) or an old one-point drawing stops the trace, so a supply-side
                 // wire is never passed against it.
                 if p.ty.code == "fuse" {
@@ -171,7 +171,7 @@ fn step(doc: &Document, t: ConnectionPointId) -> Step {
     Step::Stop
 }
 
-/// Trace from `start` nets (design 057 §4.2).
+/// Trace from `start` nets.
 pub(crate) fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Found {
     let conn = doc.connectivity();
     let mut found = Found::default();
@@ -299,8 +299,8 @@ pub(crate) fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
     (!parts.is_empty()).then(|| format!("protected_by cleared on {}", parts.join(" and ")))
 }
 
-/// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
-/// §2.2); a strip's fuse position: its typed fuse rating.
+/// The rating of a device (or its fuse) as shown: its typed rating, else its note
+/// A strip's fuse position: its typed fuse rating.
 pub(crate) fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let key = fuse
         .map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
@@ -308,7 +308,7 @@ pub(crate) fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> St
 }
 
 /// In of a device (or its fuse): a protective device's or a strip's fuse position's typed rated
-/// current (design 072 §2.2 and §2.5: checks read only the typed fields).
+/// current (checks read only the typed fields).
 pub(crate) fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
     let d = doc.devices().get(&c)?;
     match &d.device_type {

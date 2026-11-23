@@ -1,4 +1,4 @@
-//! The rules behind `linkdevices`, `unlinkdevices` (design 072 §2.6) and `userfield` (§2.8), and
+//! The rules behind `linkdevices`, `unlinkdevices` and `userfield`, and
 //! `setprop`'s `user.<name>` row.
 //!
 //! # Semantics
@@ -12,7 +12,7 @@
 //!   value clears it.
 //!
 //! The commands are generic ([`crate::commands::run`]). This module excludes any check that
-//! reads a link (lane F's interlock checks).
+//! reads a link (the interlock checks).
 
 use ecad_model::naming::id::{LinkId, UserFieldId};
 use ecad_model::objects::user::{Choice, DeviceLink, FieldName, FieldUnit, LinkKind, UserFieldDef, UserFieldKind, UserValue};

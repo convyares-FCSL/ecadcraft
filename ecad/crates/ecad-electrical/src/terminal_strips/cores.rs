@@ -1,4 +1,4 @@
-//! A cable's cores (design 028 §6): the core offer, its notation (`7G1.5`), and the used, spare and
+//! A cable's cores: the core offer, its notation (`7G1.5`), and the used, spare and
 //! over count of its members.
 
 use std::collections::BTreeSet;
@@ -14,7 +14,7 @@ fn cores_refusal(text: &str) -> CmdError {
     CmdError::refused(format!("\"{shown}{more}\" is not a core list. Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE."))
 }
 
-/// A core count as a cable type writes it (design 028 §6.1, owner decisions 2026-11-12).
+/// A core count as a cable type writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Notation {
     /// Cores, or pairs or triples when `group` is 2 or 3.
@@ -80,7 +80,7 @@ fn skip_spaces(c: &[char], mut i: usize) -> usize {
     i
 }
 
-/// The first core count `text` writes (design 028 §6.1): `nGs` / `nXs` (G: green-yellow among
+/// The first core count `text` writes: `nGs` / `nXs` (G: green-yellow among
 /// the n; X: none); `n x s` with a lower-case multiplier (n cores, green-yellow not stated); pairs
 /// and triples `n(2xs)`, `nx2xs`, `n x 2 x s` (`3` for triples). Words such as `C`, `CY` and
 /// `(TP)` hold no count and are passed over; `4(2x0.25)` is 4 pairs, never 2 cores.
@@ -144,7 +144,7 @@ pub fn type_notation(kind: &str) -> Option<Notation> {
     (n.cores() <= MAX_CORES).then_some(n)
 }
 
-/// The cross-section a type's notation names, in mm² (brief 057, design 057 §2.2): the number
+/// The cross-section a type's notation names, in mm²: the number
 /// after the count's `G`, `X` or multiplier (`H07RN-F 4G1.5` → 1.5, `3x2.5` → 2.5, `4x2x0.25` →
 /// 0.25); `None` without a notation or a readable size. [`Notation`] is unchanged.
 pub fn notation_size(kind: &str) -> Option<f64> {
@@ -192,7 +192,7 @@ pub fn notation_size(kind: &str) -> Option<f64> {
     None
 }
 
-/// Read a core offer (§6.1): `7`, `7G`, `5X`, a type's notation (`4x2x0.25`, `4(2x0.25)`,
+/// Read a core offer: `7`, `7G`, `5X`, a type's notation (`4x2x0.25`, `4(2x0.25)`,
 /// `3x1.5`, `12G0.5`), or a list `BN,BK,GY,BU,GNYE`.
 ///
 /// # Errors
@@ -319,7 +319,7 @@ pub fn spare_core_words(n: usize) -> String {
     format!("{n} spare core{}", if n == 1 { "" } else { "s" })
 }
 
-/// How a cable's members meet its offer (§6.2).
+/// How a cable's members meet its offer.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CoreCount {
     /// The offer, when known.
@@ -363,7 +363,7 @@ impl CoreCount {
     }
 }
 
-/// Count a cable's stored cores against `offer` (§6.2, design 072 §4.5: read as stored, never
+/// Count a cable's stored cores against `offer` (read as stored, never
 /// matched by order). A placed core counts as the offered core of its label; a placed core with
 /// no label, a label the offer lacks, or a label an earlier core has is over. The spare cores are
 /// the stored cores on no line, in core order.

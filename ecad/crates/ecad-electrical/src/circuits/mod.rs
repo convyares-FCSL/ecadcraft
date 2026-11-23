@@ -1,19 +1,19 @@
-//! Wire and cable rating checks (brief 057, design 057): is each panel wire and field cable big
+//! Wire and cable rating checks: is each panel wire and field cable big
 //! enough for the device that protects it, **Ib ≤ In ≤ Iz**, and is a cable's volt drop within its
 //! limit. Calculations are checks, not tools: every result is a row in the Checks list.
 //!
 //! # Semantics
 //! - A **rated subject** ([`RatedSubject`]) is a panel wire (a conductor that is not a cable core)
-//!   or a field cable that has rating data (design 057 §7): a wire whose category has a rated
+//!   or a field cable that has rating data: a wire whose category has a rated
 //!   current, or with `rating.*`, `load` or `protected_by` of its own; a cable with a cable type,
 //!   `rating.*`, `load` or `protected_by`, or a readable size when the project has chosen a rating
 //!   table. Anything else makes no rows, so a project that does not rate wires is not nagged.
-//! - Iz comes from one of three bases ([`Basis`], §3): the datasheet (category or cable type), the
+//! - Iz comes from one of three bases ([`Basis`]): the datasheet (category or cable type), the
 //!   project's **rating table** (user-supplied, [`dataset`]; ECAD ships no values) or a typed value.
 //!   Factors are rounded to 2 dp before multiplying; comparisons use the unrounded product.
 //! - In comes from the protective device ([`trace`]), Ib from a [`load::LoadSource`].
 //!
-//! # Update map (design 057 §10)
+//! # Update map
 //! [`Kept`] holds every subject's result and three indexes: `protects` (device → subjects),
 //! `path` (net → subjects, from the trace) and `users` (wire category / cable type → subjects).
 //! [`Kept::update`] re-evaluates only what an op reaches ([`Touch`]):
@@ -29,9 +29,9 @@
 //! | `SetStyle` of a rating table, `SetStandard`, a project or standard `rating.*` / `wire.*` key, the potentials | every result (no trace) |
 //! | anything else | nothing |
 //!
-//! The calculations are split by side (design 072 §2.4): [`circuit`] works out a subject's Iz,
-//! factors and volt drop (lane D's `Circuit`), [`protection`] the device that protects it (lane
-//! B's `Protects`); this module keeps the shared words, the update map and the Checks rows.
+//! The calculations are split by side: [`circuit`] works out a subject's Iz,
+//! factors and volt drop (`Circuit`), [`protection`] the device that protects it
+//! (`Protects`); this module keeps the shared words, the update map and the Checks rows.
 //!
 //! This module reads the document; it changes nothing.
 
@@ -61,11 +61,11 @@ use crate::styles::{self, cable, ratingtable, wire};
 use load::{Load, LoadFrom, LoadSource, TypedLoads};
 use trace::{Found, How};
 
-/// The style fields lane 057 adds (design 057 §4.4, FP3 and FP4): wire categories take the five
+/// The rating style fields: wire categories take the five
 /// rating fields, cable types all of them.
 pub mod fields {
     // Each catalogue that lists one of these holds its own copy in its static `FIELDS`, whose
-    // slot is filled once there; the constants themselves are never read directly (brief 066).
+    // slot is filled once there; the constants themselves are never read directly.
     #![allow(clippy::declare_interior_mutable_const, reason = "copied into each catalogue's static field list")]
 
     use crate::defaults::{Kind, Slot};
@@ -114,7 +114,7 @@ pub mod fields {
 }
 
 /// A refusal of a wire category or cable type record whose reference temperature is not below its
-/// maximum (design 057 §3.1); `None` for every other record.
+/// maximum; `None` for every other record.
 pub(crate) fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::objects::styles::StyleRecord) -> Option<String> {
     if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
@@ -157,7 +157,7 @@ impl RatedSubject {
         }
     }
 
-    /// Its own rating inputs and load: a wire's or a cable's fields (design 072 §4.2, §4.5).
+    /// Its own rating inputs and load: a wire's or a cable's fields.
     pub fn inputs(self, doc: &Document) -> (CircuitInputs, Option<f64>) {
         self.circuit(doc).map_or_else(Default::default, |c| (*c.inputs(), c.load()))
     }
@@ -177,7 +177,7 @@ impl RatedSubject {
     }
 }
 
-/// What the rating check reads from a panel wire or a field cable (design 072 §4.5): its typed
+/// What the rating check reads from a panel wire or a field cable: its typed
 /// rating inputs and load, and the few words still kept as properties.
 ///
 /// # Semantics
@@ -239,7 +239,7 @@ impl Circuit for ecad_model::Cable {
 
 use ecad_model::objects::wire::Basis;
 
-/// Property keys (FP1, FP2, FP6).
+/// Property keys.
 pub(crate) const BASIS: &str = "rating.basis";
 pub(crate) const MANUAL: &str = "rating.manual";
 pub(crate) const BUNDLING: &str = "rating.bundling";

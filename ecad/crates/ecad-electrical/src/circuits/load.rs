@@ -1,7 +1,7 @@
-//! Load current (design 057 §4.3): the interface the Power brief (0.2.3) fills.
+//! Load current: the interface the Power brief (0.2.3) fills.
 //!
-//! 057 ships [`TypedLoads`]: a subject's own `load` property. Power adds its own source behind
-//! [`LoadSource`] and composes typed → Power: a typed load wins (Q4).
+//! [`TypedLoads`] reads a subject's own `load` property. Power adds its own source behind
+//! [`LoadSource`] and composes typed → Power: a typed load wins.
 
 use ecad_model::{Document, Op};
 
@@ -29,7 +29,7 @@ pub trait LoadSource {
     fn touched(&self, doc: &Document, op: &Op) -> Vec<RatedSubject>;
 }
 
-/// The subject's own `load` property (A, design 057 §6.1).
+/// The subject's own `load` property (A).
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TypedLoads;
 

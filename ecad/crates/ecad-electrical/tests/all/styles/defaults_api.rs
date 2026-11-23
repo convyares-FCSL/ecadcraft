@@ -1,5 +1,4 @@
-//! Tester 031: the shared getter and the defaults registry through their Rust API (design 031
-//! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
+//! The shared getter and the defaults registry through their Rust API.
 
 use ecad_electrical::defaults::{self, Scope};
 use ecad_model::{Document, ObjectRef, Op};

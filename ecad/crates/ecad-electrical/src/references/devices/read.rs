@@ -1,4 +1,4 @@
-//! Reading the derived references (design 025 §5): the list, the JSON forms, go-to targets and the lines the panels show.
+//! Reading the derived references: the list, the JSON forms, go-to targets and the lines the panels show.
 
 use crate::CmdError;
 use crate::devices::traits::DeviceKind;
@@ -14,12 +14,12 @@ use super::parse::{Placement, offer_of, placement_of};
 use super::places::Places;
 use super::table::{State, counts, drawn_table, enters_title_block, kind_words, rows, table_box, table_measured, unit};
 
-/// Refusal of an edit of the text under a contact (design 025 §4.1).
+/// Refusal of an edit of the text under a contact.
 pub const TEXT_DERIVED: &str = "The reference text is derived; move the coil or the contact instead.";
-/// Refusal of an edit of a contact table (design 025 §4.2).
+/// Refusal of an edit of a contact table.
 pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move Mirror Table, or set it in Properties.";
 
-// ---------------------------------------------------------------- reading (design 025 §5)
+// ---------------------------------------------------------------- reading
 
 /// One reference as `references` lists it.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +29,7 @@ pub struct Reference {
     pub target: RepresentationId,
     pub target_page: PageId,
     /// `cable`, `contact` (a contact shows its coil), `mirror` (a table row shows a contact) or
-    /// `continuation` (an arrow shows another arrow of its name, brief 049).
+    /// `continuation` (an arrow shows another arrow of its name).
     pub kind: &'static str,
     /// The contact pole it is about (`13/14`), for device references: one per pole.
     pub labels: Option<String>,
@@ -62,9 +62,9 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
                 };
                 match (g, idx.member(s).map(|(_, c)| c)) {
                     (Group::Cable(_), _) => out.push(r("cable", None, cable_texts.get(&s).cloned().unwrap_or_default())),
-                    // Brief 049 (design 049 §5.5): an arrow shows each other end's place.
+                    // An arrow shows each other end's place.
                     (Group::Continuation(_), _) => out.push(r("continuation", None, places.text(tr.page, anchor(doc, tr)))),
-                    // Brief 044 (tester D2): a connector half shows its mate half's place, a pin its
+                    // A connector half shows its mate half's place, a pin its
                     // mate pin's (labelled with the pin name).
                     (Group::Device(_), Some(Class::Half(_))) => out.push(r("half", None, places.text(tr.page, anchor(doc, tr)))),
                     (Group::Device(_), Some(Class::Pin(_))) => {
@@ -86,9 +86,9 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
     out
 }
 
-/// `references {component?, cable?, page?, limit?, after?}`'s result (design 025 §5.4).
+/// `references {component?, cable?, page?, limit?, after?}`'s result.
 ///
-/// Continuation rows (brief 049) come after the others, one per (arrow, other end), made only for
+/// Continuation rows come after the others, one per (arrow, other end), made only for
 /// the window asked for: with `component`, that arrow's; with `page`, those of the arrows on the
 /// page (a row whose source is elsewhere is listed from its source). O(arrows listed + rows
 /// returned), never O(m²) for a name of m arrows.
@@ -100,7 +100,7 @@ pub fn device_references_json(
     limit: usize, after: usize,
 ) -> Result<Value, CmdError> {
     let groups: BTreeSet<Group> = match (component, cable) {
-        // Brief 049 (design 049 §5.5): an arrow lists its other ends.
+        // An arrow lists its other ends.
         (None, None) if let Some(a) = aid => {
             crate::continuations::continuation(doc, a).ok_or(CmdError::refused(crate::continuations::NO_SUCH_ARROW))?;
             crate::continuations::name_of(doc, a).and_then(|n| crate::continuations::group_key(doc, &n)).into_iter().collect()
@@ -127,7 +127,7 @@ pub fn device_references_json(
             None => idx.groups().collect(),
         },
     };
-    // Brief 049 (review of #85, 2): continuation rows are made per source and only for the
+    // Continuation rows are made per source and only for the
     // window asked for, never all m(m−1) of a name; the other groups' rows as before.
     let (cont, other): (BTreeSet<Group>, BTreeSet<Group>) = groups.into_iter().partition(|g| matches!(g, Group::Continuation(_)));
     let all: Vec<Reference> =
@@ -193,7 +193,7 @@ pub fn device_references_json(
     Ok(v)
 }
 
-/// `contacts {component}`'s result (design 025 §5.4).
+/// `contacts {component}`'s result.
 ///
 /// # Errors
 /// Unknown component.
@@ -226,7 +226,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     }))
 }
 
-/// The `contacts` reply's `table` (design 033 §4.2): `{top, bottom, placement, shown}`, or null.
+/// The `contacts` reply's `table`: `{top, bottom, placement, shown}`, or null.
 fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Value {
     let Some(t) = drawn_table(doc, places, dev, m) else { return Value::Null };
     let k = unit(doc);
@@ -238,7 +238,7 @@ fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Tex
     })
 }
 
-/// The target `refgoto` goes to from `source` (design 025 §5.3): a cable end's partner, a
+/// The target `refgoto` goes to from `source`: a cable end's partner, a
 /// contact's head, or a head's given target (`target`, else its first child). `None` when it shows
 /// nothing.
 pub(crate) fn goto_target(doc: &Document, idx: &RefIndex, source: RepresentationId, target: Option<RepresentationId>) -> Option<RepresentationId> {
@@ -261,7 +261,7 @@ pub(crate) fn goto_target(doc: &Document, idx: &RefIndex, source: Representation
     }
 }
 
-/// Hover lines (design 025 §5.1) for contact `rep`: `Coil: 100-B-3  (page 100 "Supply")`.
+/// Hover lines for contact `rep`: `Coil: 100-B-3  (page 100 "Supply")`.
 pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
     let dev = device(doc, c);
     if !dev.children.contains(&rep) {
@@ -277,7 +277,7 @@ pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<
     }
 }
 
-/// What a contact's hover calls its device's head: by the device's stored type (design 072 §2.2).
+/// What a contact's hover calls its device's head: by the device's stored type.
 fn head_noun(t: &ecad_model::DeviceType) -> &'static str {
     use ecad_model::DeviceType as T;
     use ecad_model::objects::devices::{OperatorKind, ProtectionKind};
@@ -353,12 +353,12 @@ pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> 
     }])
 }
 
-/// The Checks rows of device `c` (design 025 §4.3): one `too-many-contacts` warning per kind drawn
+/// The Checks rows of device `c`: one `too-many-contacts` warning per kind drawn
 /// beyond the offer, ringed at the first over pole.
 pub(crate) fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<PageId>, Option<Pt>)> {
     let Some((text, offer)) = offer_of(doc, c) else { return Vec::new() };
     let dev = device(doc, c);
-    // A device with no head shows no references and gets no check (design 025 §12 Q2).
+    // A device with no head shows no references and gets no check.
     if dev.head.is_none() || dev.poles.is_empty() {
         return Vec::new();
     }
@@ -380,7 +380,7 @@ pub(crate) fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<P
 }
 
 /// Whether a project key sizes every contact table's text, so every table is placed again (the
-/// reference update map's wide case, design 033 §9.3): the table text's style choice (brief 050a; its height
+/// reference update map's wide case): the table text's style choice (its height
 /// and weight are the style's) and the font.
 pub fn table_text_key(key: &str) -> bool {
     use crate::defaults::text::FONT;
@@ -404,7 +404,7 @@ pub(crate) fn placed_tables(doc: &Document) -> Vec<DeviceId> {
         .collect()
 }
 
-/// The Checks row of a table the user placed over the title block (design 033 §4.1): its words,
+/// The Checks row of a table the user placed over the title block: its words,
 /// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
 pub(crate) fn title_check(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Option<(String, PageId, Pt)> {
     let (placement, _) = placement_of(doc, c);

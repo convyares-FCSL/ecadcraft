@@ -1,21 +1,21 @@
-//! Continuation cross-references (brief 049, design 049): every continuation arrow shows where its
+//! Continuation cross-references: every continuation arrow shows where its
 //! other ends are, and arrows that go to the same place can share a caption.
 //!
 //! # Semantics
-//! - A **continuation arrow** is a drawing aid, [`ecad_model::Aid::Continuation`] (design 072
-//!   §6.2), that joins its net to every arrow with the same name. Its **other ends** are the other
-//!   arrows of that name, on the reference index as one [`Group::Continuation`] (FP4: keyed by the
+//! - A **continuation arrow** is a drawing aid, [`ecad_model::Aid::Continuation`]
+//!   that joins its net to every arrow with the same name. Its **other ends** are the other
+//!   arrows of that name, on the reference index as one [`Group::Continuation`] (keyed by the
 //!   lowest aid ID, with implicit edges).
 //! - Each arrow's **reference text** lists its other ends' places in book order, then column, then
 //!   row (`102-C-2 103-B-5`), at most `continuation.places.max` of them then `+n`, past the arrow's
 //!   tip and reading along the wire (`parts_on_page`). The sorted list of a name is worked out
 //!   once per derivation, so a group of m arrows costs O(m log m), never O(pages) per arrow.
-//! - A **caption** is the aid's own caption (FP1; `setprop` key [`CAPTION_KEY`]). On each page, captioned arrows
+//! - A **caption** is the aid's own caption (`setprop` key [`CAPTION_KEY`]). On each page, captioned arrows
 //!   with the same caption and direction whose tips are no more than `continuation.caption.run_gap`
 //!   apart form a **run**, drawn under one bracket with the caption (`runs`).
 //! - Everything drawn here is derived, never stored, and refused as an edit ([`TEXT_DERIVED`]).
 //!
-//! # Update map (design 049 §8)
+//! # Update map
 //! [`names_named`] says which names a commit's ops touch (arrows created, deleted, renamed,
 //! captioned, moved, linked or unlinked, their definitions); `devices::Watch` compares what those
 //! names show (`shown`) before and after, page by page, so only pages whose texts or runs changed
@@ -41,15 +41,15 @@ use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
 
-/// The `setprop` key of a continuation's name (design 072 §6.2).
+/// The `setprop` key of a continuation's name.
 pub(crate) const NAME_KEY: &str = "name";
-/// The `setprop` key of a continuation's caption (FP1).
+/// The `setprop` key of a continuation's caption.
 pub const CAPTION_KEY: &str = "caption";
 /// Most characters of a caption.
 pub(crate) const MAX_CAPTION_CHARS: usize = 80;
 /// Most lines a caption wraps to.
 pub(crate) const MAX_CAPTION_LINES: usize = 3;
-/// The narrowest a caption wraps to, millimetres (design 049 §3.2).
+/// The narrowest a caption wraps to, millimetres.
 pub(crate) const MIN_WRAP_MM: f64 = 25.0;
 /// How far a bracket runs past the first and last arrow, millimetres.
 pub(crate) const BRACKET_OVERHANG_MM: f64 = 1.5;
@@ -57,9 +57,9 @@ pub(crate) const BRACKET_OVERHANG_MM: f64 = 1.5;
 pub(crate) const CAPTION_TEXT_GAP_MM: f64 = 1.0;
 /// Hover lines listing other ends before `+N more`.
 pub(crate) const HOVER_ENDS: usize = 6;
-/// Refusal of an edit of an arrow's reference text, bracket or caption (design 049 §10, 11).
+/// Refusal of an edit of an arrow's reference text, bracket or caption (11).
 pub const TEXT_DERIVED: &str = "The continuation reference is derived; move or rename the continuation instead.";
-/// The caption rule, in words (design 049 §3.1).
+/// The caption rule, in words.
 pub const CAPTION_RULE: &str = "A caption is 1 to 80 characters on one line.";
 
 /// The part index of an arrow's reference text; a run's bracket, ticks and caption lines follow.
@@ -69,7 +69,7 @@ const CAPTION_INDEX: u32 = 4;
 
 // ---------------------------------------------------------------- what an arrow is
 
-/// Continuation `a`'s name and caption, when `a` is a continuation (design 072 §6.2).
+/// Continuation `a`'s name and caption, when `a` is a continuation.
 pub fn continuation(doc: &Document, a: AidId) -> Option<(Option<&str>, Option<&str>)> {
     match doc.aids().get(&a)? {
         Aid::Continuation { name, caption } => Some((name.as_ref().map(|n| n.as_str()), caption.as_ref().map(|c| c.as_str()))),
@@ -116,7 +116,7 @@ pub(crate) fn group_of_rep(doc: &Document, r: &Representation) -> Option<Group> 
     group_key(doc, &name_of(doc, a)?)
 }
 
-/// Where an arrow points, snapped to a quarter turn (design 049 §2.1).
+/// Where an arrow points, snapped to a quarter turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Direction {
     Down,
@@ -185,7 +185,7 @@ pub fn arrow(doc: &Document, rid: RepresentationId) -> Option<Arrow> {
     Some(Arrow { rep: rid, aid: c, page: r.page, tip, direction: direction(&pl)? })
 }
 
-// ---------------------------------------------------------------- settings (design 049 §7)
+// ---------------------------------------------------------------- settings
 
 /// The `continuation` area's values for a project, resolved once per derivation.
 #[derive(Debug, Clone, Copy)]
@@ -226,7 +226,7 @@ impl Settings {
     }
 }
 
-// ---------------------------------------------------------------- other ends (design 049 §2.2)
+// ---------------------------------------------------------------- other ends
 
 /// One other end: its symbol, its sort key (`None` when it cannot be located) and its text.
 #[derive(Debug, Clone, PartialEq)]
@@ -319,9 +319,9 @@ impl<'m> Cache<'m> {
     }
 }
 
-// ---------------------------------------------------------------- drawing (design 049 §2.3, §3.2)
+// ---------------------------------------------------------------- drawing
 
-/// Arrow `a`'s reference text as a part: past its tip, reading along the wire (§2.3).
+/// Arrow `a`'s reference text as a part: past its tip, reading along the wire.
 fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
     let at = Pt::new(a.tip.x + a.direction.unit().x * s.gap, a.tip.y + a.direction.unit().y * s.gap);
     let (halign, rotation) = match a.direction {
@@ -334,7 +334,7 @@ fn reference_part(a: &Arrow, value: String, s: &Settings) -> Part {
         rep: a.rep,
         index: REF_INDEX,
         shape: Shape::Text { kind: TextKind::Reference, at, value, height: s.ref_height, halign, valign: VAlign::Middle, rotation },
-        // Ink 2 of the sheet in use ([`colour`]), not a cable colour (review of #85, 3).
+        // Ink 2 of the sheet in use ([`colour`]), not a cable colour.
         aci: None,
         row: None,
         bar: false,
@@ -400,7 +400,7 @@ fn wrap(doc: &Document, cache: &mut Cache<'_>, caption: &str, width: f64) -> Vec
     lines
 }
 
-/// One run's bracket, ticks and caption lines, as parts of its lowest-ID arrow (§3.2).
+/// One run's bracket, ticks and caption lines, as parts of its lowest-ID arrow.
 fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, caption: &str, run: &[Arrow], page: PageId) -> Vec<Part> {
     let Some(owner) = run.iter().map(|a| a.rep).min() else { return Vec::new() };
     let Some(first) = run.first() else { return Vec::new() };
@@ -456,7 +456,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
     out
 }
 
-/// Every continuation part drawn on `page` (design 049 §4): each arrow's reference text, then
+/// Every continuation part drawn on `page`: each arrow's reference text, then
 /// each caption run's bracket and caption. O(the page's arrows and their names' arrows).
 pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let arrows = arrows_on(doc, page);
@@ -511,7 +511,7 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
     out
 }
 
-// ---------------------------------------------------------------- per commit (design 049 §8)
+// ---------------------------------------------------------------- per commit
 
 /// The continuation names `ops` could change the texts or runs of, looked up in `doc` (called on
 /// the state before and after the ops).
@@ -595,7 +595,7 @@ pub(crate) fn is_wide_key(key: &str) -> bool {
         || key == crate::defaults::text::FONT.key
 }
 
-/// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
+/// Whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
 pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
     use crate::styles::text_style::{TextKind, style_of};
@@ -604,7 +604,7 @@ pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogu
         && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
 }
 
-// ---------------------------------------------------------------- captions (design 049 §3.1)
+// ---------------------------------------------------------------- captions
 
 /// Refusal of an aid ID that names no continuation arrow.
 pub const NO_SUCH_ARROW: &str = "There is no such continuation arrow.";
@@ -640,9 +640,9 @@ pub fn caption_text(value: Option<&str>) -> Result<Option<String>, CmdError> {
     Ok(Some(t.to_string()))
 }
 
-// ---------------------------------------------------------------- reading (design 049 §5)
+// ---------------------------------------------------------------- reading
 
-/// The other end Go to Reference goes to from arrow `source` (design 049 §5.3): `target` when it
+/// The other end Go to Reference goes to from arrow `source`: `target` when it
 /// is one, else the one after `last` (the place it went to last time) in sorted order, wrapping,
 /// else the first.
 pub fn goto(doc: &Document, source: RepresentationId, target: Option<RepresentationId>, last: Option<(PageId, Pt)>) -> Option<RepresentationId> {
@@ -664,7 +664,7 @@ pub(crate) fn end_words(doc: &Document, e: &End) -> String {
     format!("{}  {}", e.text, crate::references::cables::page_words(doc, e.page))
 }
 
-/// Hover lines for arrow `rep` of continuation `c` (design 049 §5.4).
+/// Hover lines for arrow `rep` of continuation `c`.
 pub fn hover_lines(doc: &Document, c: AidId, rep: RepresentationId) -> Vec<String> {
     let mut lines = Vec::new();
     if let Some(cap) = caption_of(doc, c) {

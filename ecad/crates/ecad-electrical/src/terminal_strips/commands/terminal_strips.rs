@@ -1,4 +1,4 @@
-//! The rules of brief 028's commands (design 028 §3, §4, §10) and brief 036's levels: Place
+//! The rules of the commands: Place
 //! Terminals (`connection_points`, one terminal or level on each wire a line crosses), Draw Bridge
 //! (`bridge`), and the paging of the terminal plan (`stripplan`). Each function reads the document
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
@@ -22,9 +22,9 @@ use crate::terminal_strips::terminal_blocks as tt;
 use crate::terminal_strips::{self, connection_point_words};
 use crate::wires::placing::OnRoute;
 
-/// Most wires one Place Terminals line lands on (design 028 §3.2).
+/// Most wires one Place Terminals line lands on.
 pub const MAX_FENCE: usize = 200;
-/// How far a bridge's staple stands off its terminals, in millimetres (design 028 §4).
+/// How far a bridge's staple stands off its terminals, in millimetres.
 pub const BRIDGE_STANDOFF: f64 = 4.0;
 
 /// The definition ID of starter `s` in `doc`, embedding it in `ops` when it is not yet there.
@@ -47,8 +47,8 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 }
 
 /// Plan one terminal symbol of `strip` labelled `label` at `at` (a join: its own connection
-/// point keyed by its label, as 018's joins are). `first`: a new strip's first symbol, which shows
-/// the definition's own point. Every symbol's role is its starter's part (design 072 §4.4).
+/// point keyed by its label, as joins are). `first`: a new strip's first symbol, which shows
+/// the definition's own point. Every symbol's role is its starter's part.
 #[allow(clippy::too_many_arguments)]
 fn terminal_block_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: ecad_model::Role,
@@ -85,7 +85,7 @@ pub struct Fence {
     pub skipped: usize,
 }
 
-/// Plan Place Terminals (design 028 §3.2) from `from` to `to` on `page`.
+/// Plan Place Terminals from `from` to `to` on `page`.
 ///
 /// # Errors
 /// No wire crossed, more than [`MAX_FENCE`], an unknown strip, or a refusal of one landing.
@@ -98,7 +98,7 @@ pub fn plan_fence(
     plan_fence_typed(ledger, ids, high, page, style, strip, FenceKind { ty, level: Some(1), position: None }, from, to, tol)
 }
 
-/// What a Place Terminals line places (brief 036 §3.2).
+/// What a Place Terminals line places.
 #[derive(Debug, Clone)]
 pub struct FenceKind {
     pub ty: &'static tt::TermType,
@@ -108,7 +108,7 @@ pub struct FenceKind {
     pub position: Option<String>,
 }
 
-/// [`plan_fence`] for any terminal type and level (brief 036 §3.2, §3.3).
+/// [`plan_fence`] for any terminal type and level.
 ///
 /// # Errors
 /// As [`plan_fence`], and a named position that cannot take the level.
@@ -155,7 +155,7 @@ pub fn plan_fence_typed(
         Some(c) => (c, crate::devices::tags::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
         None => {
             let c: DeviceId = ids.fresh();
-            // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
+            // A provisional `-X?n` when provisional tags are on, as Place gives.
             let given = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             ops.push(Op::CreateDevice {
                 id: c,
@@ -209,7 +209,7 @@ pub fn plan_fence_typed(
     Ok(Fence { ops, strip, tag, placed, skipped })
 }
 
-/// Plan one level symbol (or a whole terminal) of `strip` at position `position` (brief 036 §3.3):
+/// Plan one level symbol (or a whole terminal) of `strip` at position `position`:
 /// one terminal per definition point, labelled with the position and keyed by the point, shown
 /// through explicit connection points. Returns (key, terminal, local point) in definition order.
 ///
@@ -253,8 +253,8 @@ pub fn level_symbol(
     Ok(out)
 }
 
-/// Land a level symbol on its route: a one-point level as 028 does; a two-point level splits the
-/// route into two nets (design 036 §3.4): the part towards the in point ends on `.1i`, the other
+/// Land a level symbol on its route: a one-point level as a one-level terminal block does; a two-point level
+/// splits the route into two nets: the part towards the in point ends on `.1i`, the other
 /// on `.1o`, each drawn to its point. The commit's rewrite makes the wires of both nets.
 ///
 /// # Errors
@@ -346,7 +346,7 @@ pub struct TerminalBlocks {
     pub label: &'static str,
 }
 
-/// `connection_points` (design 028 §3.2, brief 036 §3.2): one terminal, or one level, on each wire the line
+/// `connection_points`: one terminal, or one level, on each wire the line
 /// `from`–`to` crosses on `page`.
 ///
 /// # Errors
@@ -367,9 +367,9 @@ pub fn plan_terminal_blocks(
     Ok(TerminalBlocks { fence, level, label })
 }
 
-/// The shown labels of `f`'s terminals once committed, and the echo of the line (design 028 §3.2,
-/// brief 036 §3.2): the range placed, the wires, positions and level, and any stored wire number
-/// an out half did not keep (review M1: said, never dropped silently).
+/// The shown labels of `f`'s terminals once committed, and the echo of the line: the range placed, the
+/// wires, positions and level, and any stored wire number
+/// an out half did not keep (said, never dropped silently).
 pub fn connection_points_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, f: &Fence) -> (Vec<String>, String) {
     let shown: Vec<String> = f.placed.iter().map(|(t, _, _, _)| tt::connection_point_name(doc, *t)).collect();
     let range = match shown.as_slice() {
@@ -398,9 +398,9 @@ pub fn connection_points_message(doc: &Document, ty: &tt::TermType, level: Optio
     (shown, message)
 }
 
-// ---------------------------------------------------------------- Draw Bridge (§4)
+// ---------------------------------------------------------------- Draw Bridge
 
-/// The staple of a bridge from `a` to `b` (design 028 §4): 4 mm towards the inside (up; left when
+/// The staple of a bridge from `a` to `b`: 4 mm towards the inside (up; left when
 /// the terminals sit one above the other), then across.
 pub fn staple(a: Pt, b: Pt) -> Vec<Pt> {
     let (dx, dy) = ((b.x - a.x).abs(), (b.y - a.y).abs());
@@ -418,7 +418,7 @@ pub enum Bridge {
     Drawn { ops: Vec<Op>, label: String, route: RouteId, same: bool, message: String },
 }
 
-/// `bridge {from, to}` (design 028 §4): a wire between two terminals shown on `page`; of one strip
+/// `bridge {from, to}`: a wire between two terminals shown on `page`; of one strip
 /// it is a bridge, drawn as a staple.
 ///
 /// # Errors
@@ -459,7 +459,7 @@ pub fn plan_bridge(
     Ok(Bridge::Drawn { ops, label, route, same, message })
 }
 
-// ---------------------------------------------------------------- the terminal plan (§10)
+// ---------------------------------------------------------------- the terminal plan
 
 /// One page of the terminal plan: for each strip shown (by index), its rows `first..end`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -471,7 +471,7 @@ pub struct PlanPage {
     pub next: Option<usize>,
 }
 
-/// `stripplan`'s paging (design 028 §10): strips of `lens` rows each, in order; `after` rows are
+/// `stripplan`'s paging: strips of `lens` rows each, in order; `after` rows are
 /// skipped and at most `limit` (at least 1) shown, a strip split across pages starting part-way.
 pub fn plan_page(lens: &[usize], after: usize, limit: usize) -> PlanPage {
     let total: usize = lens.iter().sum();
@@ -524,8 +524,8 @@ pub(crate) fn plan_fields_json() -> Value {
     )
 }
 
-/// One plan row as JSON (the keys 027 exports; design 028 §10, brief 036 §9): `label` is the shown
-/// label (the position for a one-level position, as before); `type` keeps 028's `feed-through` and
+/// One plan row as JSON (the keys the terminal plan exports): `label` is the shown
+/// label (the position for a one-level position, as before); `type` keeps `feed-through` and
 /// `pe` and is the type code otherwise.
 pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     let mut o = serde_json::Map::new();
@@ -559,7 +559,7 @@ pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
     Value::Object(o)
 }
 
-/// A gap row as JSON (design 030 §7.2).
+/// A gap row as JSON.
 pub(crate) fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::accessories::Acc) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("kind".into(), json!("accessory"));
@@ -574,8 +574,8 @@ pub(crate) fn gap_json(s: &StripData, gap: &str, a: crate::terminal_strips::acce
 }
 
 /// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
-/// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
-/// `marker` and `jumper_bars`, and the strip carries `accessories` and `jumper_bars`; without, 028's rows.
+/// 0). With `accessories` every row has `kind`, gap rows are in, terminal rows carry
+/// `marker` and `jumper_bars`, and the strip carries `accessories` and `jumper_bars`; without, the plain rows.
 pub(crate) fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
     let mut o = serde_json::Map::new();
     o.insert("strip".into(), json!(s.component.hex()));
@@ -584,7 +584,7 @@ pub(crate) fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first
     put(&mut o, "offered", s.offer.map(|x| x.text()));
     o.insert("drawn".into(), json!(s.drawn));
     o.insert("spare".into(), json!(s.spare));
-    // Brief 036: positions per type, with their BOM part.
+    // Positions per type, with their BOM part.
     let types: Vec<Value> = s
         .types
         .iter()
@@ -659,7 +659,7 @@ pub fn put<T: serde::Serialize>(o: &mut serde_json::Map<String, Value>, key: &st
     }
 }
 
-/// The terminal plan's fields (design 036 §9): the row model the terminal manager (2.6, the U3
+/// The terminal plan's fields: the row model the terminal manager (2.6, the U3
 /// table) and strip pages (1.8) draw. Each is `(group, key, editable, the command that writes it)`;
 /// the groups mirror the strip: `inside` | `strip` | `outside`, and `either` for the row's place.
 pub(crate) const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[

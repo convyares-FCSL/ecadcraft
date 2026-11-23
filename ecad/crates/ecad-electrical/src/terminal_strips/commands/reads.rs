@@ -1,4 +1,4 @@
-//! The reads of the terminal strips (design 028 §10): `stripplan` and `cablecores`. Both are
+//! The reads of the terminal strips: `stripplan` and `cablecores`. Both are
 //! generic ([`crate::commands::run`]): they read the report models and record nothing.
 
 use ecad_model::{CableId, DeviceId, Noun, WireId};
@@ -94,13 +94,13 @@ impl Generic for CablecoresParams {
             o.insert("state".into(), json!(state));
             rules::put(&mut o, "conductor", w.map(|w| w.hex()));
             rules::put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
-            // Brief 032: a core is a chain of members through continuations, From to To.
+            // A core is a chain of members through continuations, From to To.
             let (from, to) = o_chain(i);
             rules::put(&mut o, "from", from);
             rules::put(&mut o, "to", to);
             Value::Object(o)
         };
-        // Brief 032: the rows are the cable's core chains, each with its stored label.
+        // The rows are the cable's core chains, each with its stored label.
         let stored = |i: usize| row.member_cores.get(i).cloned().flatten();
         let mut cores = Vec::new();
         match &count.offer {
@@ -108,7 +108,7 @@ impl Generic for CablecoresParams {
                 for label in offer {
                     match count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
                         Some(i) => cores.push(member_json(i, Some(label.clone()), "used")),
-                        // A spare core has no ends (review of PR #55, finding 3).
+                        // A spare core has no ends.
                         None => cores.push(json!({"label": label, "state": "spare"})),
                     }
                 }

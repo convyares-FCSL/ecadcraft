@@ -1,4 +1,4 @@
-//! The rules of brief 010's cable reference commands (design 010 §2, §7): `cablereference` (a reference
+//! The rules of the cable reference commands: `cablereference` (a reference
 //! end), `cablecontinue` (the cable's second drawing) and `cablegoto` (the other end). Each reads
 //! the document and returns the ops to commit and what to report; the derivations themselves are
 //! [`crate::references::cables`].
@@ -49,7 +49,7 @@ fn reference_ops(ids: &mut IdAllocator, page: PageId, style: Style, cable: Cable
     Referenced { item, rep, ops }
 }
 
-/// `cablereference` (design 010 §2.1, §7.1): the ops of a reference end of `cable` on `page` at `at`.
+/// `cablereference`: the ops of a reference end of `cable` on `page` at `at`.
 ///
 /// # Errors
 /// No such cable; the cable already has a reference here, already has two, or has no wire drawn
@@ -60,7 +60,7 @@ pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Sty
 }
 
 /// One continued core's stub: a route from the core's named point on the new reference to a free
-/// end (design 072 §4.4, F4).
+/// end.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StubRoute {
     /// The core's index in the cable.
@@ -86,7 +86,7 @@ pub struct Continued {
     pub ops: Vec<Op>,
 }
 
-/// `cablecontinue` (design 010 §2.2, §5, §7.2; design 072 §4.4, F4): the second drawing of
+/// `cablecontinue`: the second drawing of
 /// `cable` on `page`. A reference end at `at`; then, for each continued core (`members`, its wire
 /// or its loose line, restricts and orders them), one named point on each of the cable's two
 /// references: the source page's loose line lands on the one there, and a stub, a new route from
@@ -95,7 +95,7 @@ pub struct Continued {
 /// device point to device point across the pages.
 ///
 /// # Errors
-/// `members` longer than a cable holds (R9); the refusals of design 010 §4.4 and §7.2.
+/// `members` longer than a cable holds; the refusals.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn continue_cable(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
@@ -171,7 +171,7 @@ pub struct OtherEnd {
     pub message: String,
 }
 
-/// `cablegoto` (design 010 §4.5, §7.3): the other end of `reference`.
+/// `cablegoto`: the other end of `reference`.
 ///
 /// # Errors
 /// No such reference; it has no other end, or the other end cannot be located.
@@ -205,7 +205,7 @@ fn reference_fields(doc: &Document, reference: RepresentationId) -> (Value, bool
     }
 }
 
-/// `cablereference {cable, at}` (design 010 §2.1, §7.1): a reference end of `cable` on the active page,
+/// `cablereference {cable, at}`: a reference end of `cable` on the active page,
 /// at `at`. One transaction: the Point item and its `reference` representation. Refused (R1 to
 /// R3) when the cable already has a reference here, already has two, or has no wire drawn here.
 #[derive(Deserialize, JsonSchema)]
@@ -217,10 +217,10 @@ pub struct CableReferenceParams {
     at: Point,
 }
 
-/// `cablecontinue {cable, at, toward, members?}` (design 010 §2.2, §5, §7.2): the second drawing of
+/// `cablecontinue {cable, at, toward, members?}`: the second drawing of
 /// `cable` on the active page. One transaction: a reference end at `at`; for each continued core
 /// (one on a loose line of the source page) a named point on each reference, the source line
-/// landed on the one there and a stub from the one here to a free end (design 072 §4.4, F4);
+/// landed on the one there and a stub from the one here to a free end;
 /// then a slash across the stubs. Once a stub lands on a device point, one wire runs from device
 /// point to device point across the pages.
 #[derive(Deserialize, JsonSchema)]
@@ -238,7 +238,7 @@ pub struct CablecontinueParams {
     members: Option<Vec<WireId>>,
 }
 
-/// `cablereferences {cable?}` (design 010 §7.4): every cable reference (or `cable`'s), derived; read
+/// `cablereferences {cable?}`: every cable reference (or `cable`'s), derived; read
 /// only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

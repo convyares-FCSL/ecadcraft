@@ -1,4 +1,4 @@
-//! The contact mirror table (design 025 §4.2): rows, their states, the parts drawn, the table box and its placement.
+//! The contact mirror table: rows, their states, the parts drawn, the table box and its placement.
 
 use crate::styles::text_style::fonts::TextMetrics;
 use ecad_model::objects::devices::PoleKind;
@@ -9,7 +9,7 @@ use super::classify::{Device, DrawnPole, anchor, bounds, connection_point_points
 use super::parse::{OfferedPole, Placement, offer_of, placement_of};
 use super::places::Places;
 
-/// The text style of a contact's or a connector member's reference (brief 066d).
+/// The text style of a contact's or a connector member's reference.
 const REF: crate::styles::text_style::TextKind = crate::styles::text_style::TextKind::Reference;
 
 /// The height of reference text in drawing units: the `Reference` text style's.
@@ -18,7 +18,7 @@ fn ref_height(doc: &Document) -> f64 {
 }
 
 /// `ecad.references`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
-/// style (brief 066d), never a size of its own.
+/// style, never a size of its own.
 /// `ecad.xref-spare`: ACI 8.
 pub(crate) const SPARE_ACI: u8 = 8;
 /// `ecad.orphan`: ACI 1, for rows drawn beyond the offer.
@@ -30,7 +30,7 @@ pub(crate) const GROUP_GAP_MM: f64 = 2.0;
 /// What a spare row shows for its place.
 pub const SPARE_PLACE: &str = "—";
 
-// ---------------------------------------------------------------- rows (design 025 §4.2)
+// ---------------------------------------------------------------- rows
 
 /// Whether a row's pole is drawn, offered and not drawn, or drawn beyond the offer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -79,11 +79,11 @@ impl Row {
 
 /// Natural order of labels: `2` before `13`, `A2` before `A10`.
 pub fn natural_key(s: &str) -> Vec<(u8, u128, String)> {
-    // One ordering for labels (review of PR #57, 5): the model's.
+    // One ordering for labels: the model's.
     ecad_model::connectivity::jumper_bars::natural_key(s)
 }
 
-/// The rows of device `dev` (design 025 §4.2): offered poles matched to drawn poles by labels,
+/// The rows of device `dev`: offered poles matched to drawn poles by labels,
 /// then by kind in order; unmatched offered poles are spare, unmatched drawn poles over. With no
 /// offer every drawn pole is a plain row. Power rows first, each group in natural label order.
 pub fn rows(places: &mut Places<'_>, dev: &Device, offer: Option<&[OfferedPole]>) -> Vec<Row> {
@@ -166,16 +166,15 @@ pub fn kind_words(power: bool, kind: PoleKind) -> String {
     format!("{} {}", if power { "power" } else { "auxiliary" }, kind.upper())
 }
 
-/// The labels the next contact of kind `make` joining `c` takes from its offer (design 025 §4.3,
-/// owner answer Q4): the first offered auxiliary pole of that kind whose labels are free. `None`
-/// when `c` has no readable offer or no such pole is free.
+/// The labels the next contact of kind `make` joining `c` takes from its offer: the first offered auxiliary pole of
+/// that kind whose labels are free. `None` when `c` has no readable offer or no such pole is free.
 pub fn offer_labels(doc: &Document, c: DeviceId, make: bool, used: &BTreeSet<String>) -> Option<Vec<String>> {
     let (_, offer) = offer_of(doc, c)?;
     let kind = if make { PoleKind::No } else { PoleKind::Nc };
     offer.iter().find(|o| !o.power && o.kind == kind && !used.contains(&o.labels[0]) && !used.contains(&o.labels[1])).map(|o| o.labels.to_vec())
 }
 
-/// The echo after a join that went beyond the offer (design 025 §4.3), if it did.
+/// The echo after a join that went beyond the offer, if it did.
 pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> Option<String> {
     let (text, offer) = offer_of(doc, c)?;
     let dev = device(doc, c);
@@ -192,7 +191,7 @@ pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> 
     })
 }
 
-// ---------------------------------------------------------------- drawing (design 025 §4)
+// ---------------------------------------------------------------- drawing
 
 /// Where a reference text sits across its point (the drawing maps it to CADCraft's alignment,
 /// `draw::reference`).
@@ -218,8 +217,8 @@ pub enum VAlign {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     Line(Pt, Pt),
-    /// `rotation` in radians (brief 049, FP3): 0 for every text but a continuation's reference.
-    /// `kind` is the text style it is drawn in (brief 066d): its height is that style's, and the
+    /// `rotation` in radians: 0 for every text but a continuation's reference.
+    /// `kind` is the text style it is drawn in: its height is that style's, and the
     /// engine applies the style's font, weight and colour.
     Text {
         kind: crate::styles::text_style::TextKind,
@@ -255,7 +254,7 @@ pub(super) fn unit(doc: &Document) -> f64 {
     }
 }
 
-/// The text under contact `rep` of device `dev` (design 025 §4.1): its head's place, where it is
+/// The text under contact `rep` of device `dev`: its head's place, where it is
 /// drawn, and how it is aligned. `None` when the device has no head or the contact cannot be
 /// drawn.
 pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: RepresentationId) -> Option<Part> {
@@ -306,13 +305,13 @@ pub struct Table {
     pub placement: Placement,
     pub rows: Vec<Row>,
     pub parts: Vec<Part>,
-    /// Which step of design 033 §4.1 placed it.
+    /// Which step placed it.
     pub shown: TableShown,
     /// The y of its box's bottom (drawing units).
     pub bottom: f64,
 }
 
-/// Where a contact table went (design 033 §4.1): where its placement puts it, right of its head
+/// Where a contact table went: where its placement puts it, right of its head
 /// (no room below), or lifted above the title block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableShown {
@@ -332,7 +331,7 @@ impl TableShown {
     }
 }
 
-/// The box of a table at `top` with `rows` (design 033 §4.1): from −10 mm to 12 mm plus the widest
+/// The box of a table at `top` with `rows`: from −10 mm to 12 mm plus the widest
 /// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
 pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> (Pt, Pt) {
     let k = unit(doc);
@@ -346,7 +345,7 @@ pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> 
     (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
 }
 
-/// The page's free area for tables (design 033 §4.1): the frame's drawing area above the title
+/// The page's free area for tables: the frame's drawing area above the title
 /// block, the registry's `print.contact_table_clearance` clear of its top line. (lo, hi),
 /// drawing units.
 pub(crate) fn free_area(doc: &Document, page: PageId) -> (Pt, Pt) {
@@ -363,7 +362,7 @@ fn inside(b: (Pt, Pt), free: (Pt, Pt)) -> bool {
     b.0.x >= free.0.x - 1e-9 && b.0.y >= free.0.y - 1e-9 && b.1.x <= free.1.x + 1e-9 && b.1.y <= free.1.y + 1e-9
 }
 
-/// Whether the box `b` enters the title block of `page` (the user-placed check of design 033 §4.1).
+/// Whether the box `b` enters the title block of `page` (the user-placed check).
 pub(crate) fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> bool {
     let g = ecad_model::document::sheet::Grid::of(doc, page);
     let line = g.frame_bottom() + ecad_model::document::sheet::keep_out(doc, page) * unit(doc);
@@ -371,7 +370,7 @@ pub(crate) fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> b
     b.0.y < line && b.1.y > g.frame_bottom() && b.1.x > left && b.0.x < right
 }
 
-/// Where an automatic table goes (design 033 §4.1), from where `placement` puts it (`top`): there
+/// Where an automatic table goes, from where `placement` puts it (`top`): there
 /// when its box lies in the free area; else right of the head (`auto`, `below`) when that fits;
 /// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
 /// the free area starts at its top. A table the user placed (`at`) is never moved.
@@ -462,7 +461,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
     top.is_finite().then_some(top)
 }
 
-/// The table under device `dev`'s head (design 025 §4.2), or `None`: no head, `off`, or neither
+/// The table under device `dev`'s head, or `None`: no head, `off`, or neither
 /// children nor an offer.
 pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
     let head = dev.head?;
@@ -480,7 +479,7 @@ pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: 
     Some(Table { head, page, top, placement, rows, parts, shown, bottom })
 }
 
-/// The lines and texts of a table at `top` (design 025 §4.2's geometry).
+/// The lines and texts of a table at `top`.
 pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]) -> Vec<Part> {
     let k = unit(doc);
     let at = |x: f64, y: f64| Pt::new(top.x + x * k, top.y + y * k);
@@ -490,7 +489,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
         parts.push(Part { rep: head, index, shape, aci, row, bar });
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
-    // Design 033 §1.2: contact-table rows are table text.
+    // Contact-table rows are table text.
     let h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
@@ -531,10 +530,10 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     parts
 }
 
-/// Most places one connector reference lists before `+n` (design 044 §7; hover lists all).
+/// Most places one connector reference lists before `+n` (hover lists all).
 pub(crate) const MAX_CONNECTOR_PLACES: usize = 3;
 
-/// The reference texts of connector `c` (design 044 §7): under each member with targets, their
+/// The reference texts of connector `c`: under each member with targets, their
 /// places (`/102.C4`), at most [`MAX_CONNECTOR_PLACES`] then `+n`. O(the connector's symbols).
 pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: DeviceId) -> Vec<(PageId, Part)> {
     let list = crate::connectors::ref_classes(doc, c);
@@ -594,7 +593,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
     let mut out = Vec::new();
     let mut tables: Vec<Table> = Vec::new();
     for (c, here) in by_component {
-        // Brief 044 (design 044 §7): a connector's half and pin references.
+        // A connector's half and pin references.
         if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
             out.extend(connector_parts(doc, &mut places, c).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
             continue;
@@ -619,7 +618,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
     // redraws the page ([`Watch`]), so the update map is unchanged.
     spread(doc, &mut tables, m);
     out.extend(tables.into_iter().flat_map(|t| t.parts));
-    // Brief 049 (design 049 §4): continuation arrows' other ends, brackets and captions.
+    // Continuation arrows' other ends, brackets and captions.
     out.extend(crate::continuations::parts_on_page_measured(doc, &mut places, page, m));
     out
 }
@@ -685,7 +684,7 @@ pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextMetrics) {
 }
 
 /// Device `dev`'s table where its page draws it: `table`, then moved by [`spread`] with the other
-/// tables on its page (review of #92, 2). O(devices on that page); for replies, not per commit.
+/// tables on its page. O(devices on that page); for replies, not per commit.
 pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
     let own = table_measured(doc, places, dev, m)?;
     let mut others: BTreeSet<DeviceId> = BTreeSet::new();
@@ -713,7 +712,7 @@ pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device,
 /// and after a commit: page → parts.
 pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
-    // Brief 044: a connector's references.
+    // A connector's references.
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         for (page, p) in connector_parts(doc, places, c) {
             out.entry(page).or_default().push(p);

@@ -3,13 +3,13 @@
 use super::*;
 
 impl ReportModels {
-    /// How many sheets the BOM-by-location page needs (design 024 §8.2): from the rows per
+    /// How many sheets the BOM-by-location page needs: from the rows per
     /// location only (O(locations)), never the BOM rows themselves.
     pub fn bom_sheets(&self) -> usize {
         let per = crate::pages::generated::rows_per_sheet();
         let (mut sheets, mut used) = (1, 0);
-        // Brief 028: the strips' rows per location, kept with them (O(locations), never the rows).
-        // Brief 047: the nested layout's counts are kept too (main rows, then each part line).
+        // The strips' rows per location, kept with them (O(locations), never the rows).
+        // The nested layout's counts are kept too (main rows, then each part line).
         let mut rows = if self.view.nested {
             let mut r = self.loc_nested_rows.clone();
             for (k, n) in &self.loc_lines {
@@ -22,7 +22,7 @@ impl ReportModels {
         for (loc, n) in &self.strips.bom_rows {
             *rows.entry(loc_key(loc.as_deref())).or_default() += n;
         }
-        // Brief 044: the connectors' half-row groups per location, kept.
+        // The connectors' half-row groups per location, kept.
         for (k, n) in &self.half_loc_rows {
             *rows.entry(k.clone()).or_default() += n;
         }
@@ -64,7 +64,7 @@ impl ReportModels {
         self.devices.len()
     }
 
-    /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
+    /// A strip's BOM rows: one row per terminal type, Qty
     /// in positions (a three-level terminal is one part), in catalogue order.
     pub(super) fn strip_bom(&self, s: &crate::terminal_strips::strip_model::StripData, location: Option<String>) -> Vec<BomRow> {
         let mut out = Vec::new();
@@ -84,7 +84,7 @@ impl ReportModels {
                 ..BomRow::default()
             });
         }
-        // Brief 030 (design 030 §7.4): one row per accessory part, only for what is placed.
+        // One row per accessory part, only for what is placed.
         for a in &s.acc.bom {
             out.push(BomRow {
                 location: location.clone(),
@@ -102,7 +102,7 @@ impl ReportModels {
         out
     }
 
-    /// Brief 047: the row a set of entries makes (design 047 §4.2, §4.3).
+    /// The row a set of entries makes.
     pub(super) fn entry_row(&self, set: &BTreeSet<EntrySort>, location: Option<String>) -> BomRow {
         let es: Vec<&Entry> = set.iter().filter_map(|(_, _, c, n)| self.entries.get(&(*c, *n))).collect();
         let Some(first) = es.first() else { return BomRow { location, ..BomRow::default() } };
@@ -159,8 +159,8 @@ impl ReportModels {
         }
     }
 
-    /// Brief 047, nested layout: the rows of `c`'s part lines, unmerged, in line order.
-    /// Brief 044: the part lines of connector `c` under its half tagged `tag` (nested layout).
+    /// Nested layout: the rows of `c`'s part lines, unmerged, in line order.
+    /// The part lines of connector `c` under its half tagged `tag` (nested layout).
     pub(super) fn line_rows_of_half(&self, c: DeviceId, tag: &str, location: &Option<String>) -> Vec<BomRow> {
         let o = Owner::Device(c);
         let mine: BTreeSet<u8> = self.entries.range((o, 1)..=(o, u8::MAX)).filter(|(_, e)| e.tag == tag).map(|(k, _)| k.1).collect();
@@ -192,13 +192,13 @@ impl ReportModels {
             .collect()
     }
 
-    /// The BOM rows (design 024 §6.1): devices, and each strip per terminal type (brief 028);
-    /// brief 047: part lines and items, in the project's layout (`bom.lines`).
+    /// The BOM rows: devices, and each strip per terminal type;
+    /// Part lines and items, in the project's layout (`bom.lines`).
     pub fn bom(&self, group: Group) -> Vec<BomRow> {
         self.bom_with(group, self.view.nested)
     }
 
-    /// Brief 050b (design 050 §5.6): one wire row per distinct (part number, colour,
+    /// One wire row per distinct (part number, colour,
     /// cross-section) among wires whose category has a part number; Qty in metres, the wires ×
     /// the category's allowance rounded up to 0.5 m (an estimate); with no allowance, no Qty.
     pub fn wire_bom(&self) -> Vec<BomRow> {
@@ -277,8 +277,8 @@ impl ReportModels {
                     }
                     v.push((loc_key(s.location.as_deref()), (false, tag_key(&s.tag), Owner::Device(s.component), 0), rows));
                 }
-                // Brief 044 (design 044 §8.1): one row per drawn half, grouped like devices; nested,
-                // each half's row is followed by its part lines (`part.<n>.half`, §8.3).
+                // One row per drawn half, grouped like devices; nested,
+                // each half's row is followed by its part lines (`part.<n>.half`).
                 self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 for r in group_halves(self.connectors.values().flatten(), Group::Location) {
                     let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
@@ -318,7 +318,7 @@ impl ReportModels {
                         v.push(((false, tag_key(&s.tag), Owner::Device(s.component), 0), r));
                     }
                 }
-                // Brief 044: half rows grouped by part, their locations counted.
+                // Half rows grouped by part, their locations counted.
                 self.half_groupings.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 for r in group_halves(self.connectors.values().flatten(), Group::Part) {
                     let first = r.tags.first().map_or_else(|| tag_key(""), |t| tag_key(t));
@@ -330,18 +330,18 @@ impl ReportModels {
         }
     }
 
-    /// Brief 047: one BOM entry.
+    /// One BOM entry.
     pub fn entry(&self, c: Owner, line: u8) -> Option<&Entry> {
         self.entries.get(&(c, line))
     }
 
-    /// Brief 047: the entries of device `c` (main part first, then its part lines).
+    /// The entries of device `c` (main part first, then its part lines).
     pub fn entries_of(&self, c: DeviceId) -> impl Iterator<Item = &Entry> {
         let o = Owner::Device(c);
         self.entries.range((o, 0)..=(o, u8::MAX)).map(|(_, e)| e)
     }
 
-    /// Brief 047: the article numbers of part key of entry `(c, line)`, most common first.
+    /// The article numbers of part key of entry `(c, line)`, most common first.
     pub fn article_values(&self, c: Owner, line: u8) -> Vec<(String, usize)> {
         let Some(pk) = self.entries.get(&(c, line)).map(Entry::part_key) else { return Vec::new() };
         let mut v: Vec<(String, usize)> = self.articles.get(&pk).map(|m| m.iter().map(|(a, n)| (a.clone(), *n)).collect()).unwrap_or_default();

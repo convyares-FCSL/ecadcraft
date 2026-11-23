@@ -1,4 +1,4 @@
-//! Proposals (brief 052d, design 052 §5.3–§5.6, §5.8): when a symbol is placed or moved, a box
+//! Proposals: when a symbol is placed or moved, a box
 //! drawn or given another entry, or a page's or the project's value changed, the context there
 //! **proposes** a function and a location for the devices concerned.
 //!
@@ -7,11 +7,11 @@
 //!   transaction (or, after a move, in one follow-up transaction).
 //! - A device with the same value: nothing.
 //! - A device with another value: a **conflict**. It is listed and asked about, never changed
-//!   silently. The default answer is always Leave (Q2). JSON calls never prompt: their
+//!   silently. The default answer is always Leave. JSON calls never prompt: their
 //!   `location` / `function` parameter decides (`propose`, the default: set unset devices and
 //!   leave conflicts; `move`: also move conflicting devices; `keep`: propose nothing; a code: set
 //!   that value).
-//! - A strip proposes for the strip (its positions and levels take the strip's, §5.2).
+//! - A strip proposes for the strip (its positions and levels take the strip's).
 //!
 //! Excludes: the prompt itself (the command line and the prompt strip, `crate::interact`). This
 //! module reads and plans ops only.
@@ -26,7 +26,7 @@ use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect, Pending};
 use crate::locations::{self, LocBox};
 
-/// What a JSON call asks for one aspect (design 052 §5.3).
+/// What a JSON call asks for one aspect.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Mode {
     /// Set unset devices; leave conflicts (the default).
@@ -39,7 +39,7 @@ pub enum Mode {
     /// Set this code.
     Value(String),
     /// A connector half or pin placed: set that half's own location (`location.socket` /
-    /// `location.plug`) when the connector has another one (design 052 §5.3, **Half**).
+    /// `location.plug`) when the connector has another one (**Half**).
     Half,
 }
 
@@ -82,7 +82,7 @@ pub struct Conflict {
     /// Every one of its symbols is now in the proposal's context.
     pub all_symbols: bool,
     /// For a connector half or pin just placed: its side (socket or plug). The answer **Half**
-    /// sets that half's `location.<side>` instead of the connector's location (design 052 §5.3).
+    /// sets that half's `location.<side>` instead of the connector's location.
     pub half: Option<crate::symbols::Side>,
 }
 
@@ -176,7 +176,7 @@ pub fn plan(
                 }
             }
             if set {
-                // A typed code is set by hand (fixed); a context's is not (design 072 §6.3).
+                // A typed code is set by hand (fixed); a context's is not.
                 let fixed = matches!(mode, Mode::Value(_));
                 crate::devices::edit_planned_on(doc, base, &mut out.ops, s.device, |d| {
                     *d = designations::with_device_key(d, a, Some(&key), fixed);
@@ -198,7 +198,7 @@ fn all_in(doc: &Document, a: Aspect, c: DeviceId, key: &str, extra: &[LocBox], c
 }
 
 /// Plan a changed value of aspect `a` where `candidates` are (a box given another entry, a page's
-/// or the project's value changed; design 052 §5.6): an unset device takes `new_key`; a device at
+/// or the project's value changed): an unset device takes `new_key`; a device at
 /// `old_key` is a conflict (moved with [`Mode::Move`]); a device with any other value is not
 /// listed. [`Mode::Keep`] proposes nothing.
 /// `base` are the caller's planned ops these follow.
@@ -280,7 +280,7 @@ pub struct Moved {
 }
 
 /// The device symbols whose context `ops` (about to be committed on `doc`) could change, with
-/// their contexts now (design 052 §5.4): the symbols whose items the ops move, and the device
+/// their contexts now: the symbols whose items the ops move, and the device
 /// symbols on the page of a box whose outline they move or reshape. O(the moved symbols and the
 /// boxes' pages' symbols).
 pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
@@ -323,7 +323,7 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
         .collect()
 }
 
-/// The follow-up of a move (design 052 §5.4) on `doc` (after the move): for each aspect, the
+/// The follow-up of a move on `doc` (after the move): for each aspect, the
 /// moved symbols whose context changed to a value propose it. Leaving every box never prompts: a
 /// context changed to none proposes nothing.
 pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Result<Planned, CmdError> {
@@ -370,7 +370,7 @@ pub fn follow_up_label(p: &Planned) -> String {
 }
 
 /// The spots of the device symbols on `page` whose anchor lies inside box `b` (a planned or
-/// existing box): what drawing it proposes for (design 052 §5.6).
+/// existing box): what drawing it proposes for.
 pub(crate) fn spots_inside(doc: &Document, b: &LocBox) -> Vec<Spot> {
     doc.representations_on(b.page)
         .filter_map(|(_, r)| {
@@ -384,7 +384,7 @@ pub(crate) fn spots_inside(doc: &Document, b: &LocBox) -> Vec<Spot> {
         .collect()
 }
 
-/// The JSON of a planned proposal (design 052 §5.3): per aspect `{value, set, conflicts}`, each
+/// The JSON of a planned proposal: per aspect `{value, set, conflicts}`, each
 /// conflict `{component, tag, aspect, location|function, proposed, all_symbols}`.
 pub fn json(doc: &Document, p: &Planned) -> Value {
     let mut out = serde_json::Map::new();
@@ -406,7 +406,7 @@ pub fn json(doc: &Document, p: &Planned) -> Value {
     Value::Object(out)
 }
 
-/// The conflict list as the command line shows it (design 052 §5.5), and the echo of what stayed:
+/// The conflict list as the command line shows it, and the echo of what stayed:
 /// `Location: 1 device has another location.` then one row per device and aspect.
 pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
     if conflicts.is_empty() {
@@ -429,7 +429,7 @@ pub fn conflict_words(doc: &Document, conflicts: &[Conflict]) -> Vec<String> {
     out
 }
 
-/// The echo of a placement's proposal (design 052 §5.3): `Placed -K01 in +CP1.`, `Placed -K01 (no
+/// The echo of a placement's proposal: `Placed -K01 in +CP1.`, `Placed -K01 (no
 /// location).`, `-K01 is now in +CP1.`, and the conflict rows with what stayed.
 pub fn place_words(doc: &Document, c: DeviceId, joined: bool, p: &Planned) -> Vec<String> {
     let tag = crate::devices::tags::tag_words(doc, c);
@@ -494,7 +494,7 @@ pub fn half_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
         .collect()
 }
 
-/// The waiting `conflicts` that still hold on `doc` (tester 052d, finding 1): the device is still
+/// The waiting `conflicts` that still hold on `doc`: the device is still
 /// there, the proposed entry is still in the list, and the device's value still differs. An
 /// undo, a redo or another edit may have taken any of these away.
 pub(crate) fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {

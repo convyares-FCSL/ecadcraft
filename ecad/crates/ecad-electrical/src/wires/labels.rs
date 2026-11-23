@@ -1,4 +1,4 @@
-//! Wire labels (§7) and continuation texts (§3.2).
+//! Wire labels and continuation texts.
 
 use super::*;
 
@@ -17,12 +17,12 @@ pub struct WireLabel {
     pub text: String,
     /// Drawn in `ecad.orphan`: the net is in a number error.
     pub error: bool,
-    /// Drawn in `ecad.provisional`: no number yet, provisional tags on (brief 026).
+    /// Drawn in `ecad.provisional`: no number yet, provisional tags on.
     pub provisional: bool,
-    /// Brief 032 fix round: its text width as the project's font draws it (lane T's
+    /// Its text width as the project's font draws it (see
     /// `text_style::width_in`), which placement keeps clear.
     pub width: f64,
-    /// Brief 050a: the conductor's own wire label style (its `text.wire_label.style`), else the
+    /// The conductor's own wire label style (its `text.wire_label.style`), else the
     /// project's.
     pub own: Option<crate::styles::text_style::OwnStyle>,
 }
@@ -108,8 +108,8 @@ fn segment_meets(b: &Bbox, p: Pt, q: Pt, clearance: f64) -> bool {
     })
 }
 
-/// The places tried for a label of width `w` on segment `a`-`b`, nearest first (owner,
-/// 2026-11-09: labels must not touch): above the line at its middle, then below it, then moved
+/// The places tried for a label of width `w` on segment `a`-`b`, nearest first (labels must
+/// not touch): above the line at its middle, then below it, then moved
 /// along the segment, then just past either end of it (a label longer than a short segment), then
 /// one text height further from the line.
 fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
@@ -136,7 +136,7 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// Every conductor label on `page` (one per route, of the wire it stands for ([`wire_of_route`]),
 /// on its longest segment) but
 /// those of the routes whose items are `hidden` (a cable drawn as a fan: its members' routes and
-/// their labels are not shown, brief 005 and owner 2026-11-09). `m` measures the labels (the C
+/// their labels are not shown). `m` measures the labels (the C
 /// wrappers `labels_on_page` and `labels_on_page_with` pass CADCraft's fonts).
 ///
 /// # Semantics
@@ -144,7 +144,7 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
 pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn TextMetrics) -> Vec<WireLabel> {
-    // Brief 032 §4.3: the wire label height, weight and width through lane T's text styles.
+    // The wire label height, weight and width through the text styles.
     let style = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::WireLabel);
     let fonts = crate::styles::text_style::fonts::Fonts::resolve_with(doc, m);
     let h = style.height;
@@ -159,12 +159,12 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
             routes.push((rid, c, route.points.clone()));
         }
     }
-    // Brief 032 §4.2: which routes get a label (the project's rule; a wire whose label lane T's
+    // Which routes get a label (the project's rule; a wire whose label the text style's
     // getter hides is left out, so its net's next route takes the label).
     let conn = doc.connectivity();
     let mut routes_in: Vec<LabelCandidate> = Vec::new();
     let mut texts: Vec<(usize, ecad_model::connectivity::wiring::Label)> = Vec::new();
-    // Brief 050b (design 050 §5.5): each wire's category gives its label's cross-section and
+    // Each wire's category gives its label's cross-section and
     // colour and its label rule.
     let draws = crate::styles::wire::WireDraws::new(doc);
     let mut rules: Vec<String> = Vec::new();
@@ -207,7 +207,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     let mut out = Vec::new();
     for (i, label) in chosen {
         let Some((rid, c, v)) = routes.get(i) else { continue };
-        // Brief 050a: a conductor's own wire label style (height, weight, colour, font).
+        // A conductor's own wire label style (height, weight, colour, font).
         let own = doc.wires().get(c).and_then(|x| {
             let at = crate::defaults::Scope { conductor: Some(*c), ..crate::defaults::Scope::project() };
             crate::styles::text_style::own_style(doc, crate::styles::text_style::TextKind::WireLabel, at, &x.display)
@@ -261,10 +261,10 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     out
 }
 
-// ---------------------------------------------------------------- continuation texts (§3.2)
+// ---------------------------------------------------------------- continuation texts
 
-/// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `a` is not a
-/// continuation. Its other ends' places are reference parts since brief 049
+/// The text beside a continuation symbol: its name; `None` when `a` is not a
+/// continuation. Its other ends' places are reference parts
 /// ([`crate::continuations`]).
 pub(crate) fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
     let (name, _) = crate::continuations::continuation(doc, a)?;

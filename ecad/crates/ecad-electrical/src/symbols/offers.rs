@@ -1,4 +1,4 @@
-//! What the symbol builder offers for drawn geometry (design 048 §4.1 step 3): a connection point at every
+//! What the symbol builder offers for drawn geometry: a connection point at every
 //! free line end on the point grid, and a Tag slot for text that reads like a tag. Rules, so they live here and
 //! not in the screen that shows the offers.
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::symbols::graphics::POINT_GRID_MM;
 
-/// What the builder offers and does not apply until accepted (design 048 §4.1 step 3).
+/// What the builder offers and does not apply until accepted.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Offer {
     /// A free line end on the point grid: a connection point there.
@@ -35,7 +35,7 @@ pub(crate) fn looks_like_tag(text: &str) -> bool {
     letters > 0 && digits > 0 && letters + digits == rest.chars().count()
 }
 
-/// The offers for geometry `graphics` (design 048 §4.1 step 3): a connection point at every free
+/// The offers for geometry `graphics`: a connection point at every free
 /// line end on the point grid that no other shape touches, and a Tag slot for the first text that
 /// reads like a tag.
 pub fn offers_for(graphics: &[Primitive]) -> Vec<Offer> {

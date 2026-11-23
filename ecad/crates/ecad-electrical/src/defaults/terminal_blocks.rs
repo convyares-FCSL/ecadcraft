@@ -1,5 +1,5 @@
-//! Brief 036's defaults (multi-level terminals, design 036 §12): the level separator, the level
-//! names of each multi-level type and each type's BOM description. Owned by lane D.
+//! Defaults for multi-level terminal blocks: the level separator, the level
+//! names of each multi-level type and each type's BOM description.
 //!
 //! # Semantics
 //! - `terminal_block.level.separator`: what goes between a position and a level name in a shown label
@@ -9,10 +9,10 @@
 //!   type's level count, each 1–6 characters. A value with the wrong count is absent.
 //! - `terminal_block.<code>.description`: a type's BOM description, project → built-in (its name).
 //!
-//! - `terminal_block.<key>.prefix`: the tag prefix of each of this brief's starters (overseer ruling,
-//!   2026-11-13: the `connection_point` area, following the pattern of 034's `symbol.<key>.prefix`, not its
+//! - `terminal_block.<key>.prefix`: the tag prefix of each starter:
+//!   the `connection_point` area, following the pattern of `symbol.<key>.prefix`, not its
 //!   area). The project level is the project's `tag_prefixes` setting, keyed by starter key, as for
-//!   034's entries. A strip's tag comes from the starter that made it; later levels join it and
+//!   the symbol entries. A strip's tag comes from the starter that made it; later levels join it and
 //!   take no prefix of their own.
 //!
 //! Types, codes, level counts and bridges are catalogue code ([`crate::terminal_strips::terminal_blocks`]).
@@ -37,7 +37,7 @@ fn separator_ok(t: &str) -> bool {
     t.eq_ignore_ascii_case(NO_SEPARATOR) || (t.chars().count() <= 3 && !t.chars().any(|c| c.is_whitespace() || c.is_ascii_alphanumeric() || c == ','))
 }
 
-/// Level names a link can never misread (overseer ruling, M1 review): exactly `n` names, each 1–6
+/// Level names a link can never misread: exactly `n` names, each 1–6
 /// characters with no `.`, `,` or space, all different (ignoring case), and a name made of digits
 /// only is its own level number (`1,2,3` on a three-level terminal; never `2,1,3`). So in a link
 /// `1.2` is always level 2, whichever names the type has.
@@ -262,7 +262,7 @@ mod tests {
         assert!(setprop_value("terminal_block.lnpe.levels", Some("L,N")).is_some_and(|r| r.is_err()));
         assert!(setprop_value("terminal_block.lnpe.levels", Some(&"x".repeat(10_000))).is_some_and(|r| r.is_err()));
         assert_eq!(setprop_value("text.tag.height", Some("3")), None);
-        // Names a link could misread are refused (overseer ruling, M1 review).
+        // Names a link could misread are refused.
         for bad in ["2,1,3", "L,N,L", "L.1,N,PE", "L N,N,PE", "1,X,1"] {
             assert!(setprop_value("terminal_block.lnpe.levels", Some(bad)).is_some_and(|r| r.is_err()), "{bad}");
         }

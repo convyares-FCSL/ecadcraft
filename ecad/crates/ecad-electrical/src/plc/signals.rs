@@ -1,21 +1,21 @@
-//! The signal list's channel data (brief 056, design 056 §4): a channel's PLC tag and safe state,
+//! The signal list's channel data: a channel's PLC tag and safe state,
 //! what it drives, the Test column's states, and **Make tags**.
 //!
 //! # Semantics
-//! - A channel's **tag** is the card property `plc.ch.<i>.tag` (FP1), at most [`MAX_TAG`]
+//! - A channel's **tag** is the card property `plc.ch.<i>.tag`, at most [`MAX_TAG`]
 //!   characters with no control character, unique per PLC compared without case
 //!   ([`tag_holder`]). A PLC is a rack with its cards; the cards in no rack are one PLC together.
-//! - A channel's **safe state** is `plc.ch.<i>.safe` (FP1), for outputs only: a digital output
+//! - A channel's **safe state** is `plc.ch.<i>.safe`, for outputs only: a digital output
 //!   `off`, `on` or `hold`; an analogue (or IO-Link) output `hold`, `min`, `max` or a value of at
 //!   most [`MAX_SAFE`] characters. Unset, the registry's `plc.safe.dq` / `plc.safe.ao` at the card's
 //!   level applies ([`safe_default`]).
-//! - **Drives** ([`drives`]) are the channel's targets (045: the tagged devices on its nets) less
+//! - **Drives** ([`drives`]) are the channel's targets (the tagged devices on its nets) less
 //!   the pass-through devices: terminals and connector halves. Checked against the code (house rule
 //!   3): a terminal's two sides and a plug's mating halves are one net already, joined by their
 //!   definition's bridges (`ecad_model::connectivity`, join 3), so the end device is on the
 //!   channel's own net and no hop across a pass-through is needed. With no other target the last
 //!   pass-through is shown.
-//! - [`TestState`] is defined here for the Tests brief (0.2.3); 056 produces only `None`.
+//! - [`TestState`] is defined here for later; only `None` is produced for now.
 
 use crate::CmdError;
 use std::collections::BTreeSet;
@@ -31,9 +31,9 @@ use crate::plc::rack::{self, CardType, RackRef};
 /// The field names of a channel's tag and safe state (`plc.ch.<i>.tag`, `plc.ch.<i>.safe`).
 pub const TAG: &str = "tag";
 pub const SAFE: &str = "safe";
-/// Longest tag (design 056 §4.3).
+/// Longest tag.
 pub(crate) const MAX_TAG: usize = 128;
-/// Longest safe value (design 056 §4.4).
+/// Longest safe value.
 pub(crate) const MAX_SAFE: usize = 16;
 /// The safe words of a digital output.
 pub(crate) const DQ_SAFE: &[&str] = <SafeState as ecad_model::Word>::WORDS;
@@ -42,7 +42,7 @@ pub(crate) const AO_SAFE: [&str; 3] = ["hold", "min", "max"];
 /// Most channels **Make tags** fills in one call (bounded by the cards' channel counts anyway).
 pub(crate) const MAX_MADE: usize = 20_000;
 
-/// The value check of a tag (design 056 §4.3): trimmed, 1 to [`MAX_TAG`] characters, no control
+/// The value check of a tag: trimmed, 1 to [`MAX_TAG`] characters, no control
 /// character. Empty clears.
 ///
 /// # Errors
@@ -174,7 +174,7 @@ pub(crate) fn duplicate_words(doc: &Document, tag: &str, holder: (DeviceId, u32)
     format!("Tag \"{tag}\" is already {}{at}.", crate::plc::channels::channel_words(doc, c, j))
 }
 
-/// A tag made from a description (design 056 §4.3): spaces and dashes become `_`, other characters
+/// A tag made from a description: spaces and dashes become `_`, other characters
 /// are dropped, a digit first gets `_` before it. `None` when nothing is left.
 pub(crate) fn make_tag(description: &str) -> Option<String> {
     let mut s = String::new();
@@ -219,7 +219,7 @@ pub fn is_pass_through(doc: &Document, c: DeviceId) -> bool {
     doc.devices().get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::TerminalStrip(_) | DeviceType::Connector(_)))
 }
 
-/// What a channel drives (design 056 §4.5), from its row's targets: the targets that are not
+/// What a channel drives, from its row's targets: the targets that are not
 /// pass-throughs; with none of those, the last pass-through (shown faint).
 pub fn drives(targets: &[Target]) -> (Vec<&Target>, bool) {
     let kept: Vec<&Target> = targets.iter().filter(|t| !t.through).collect();
@@ -239,7 +239,7 @@ pub fn drives_words(targets: &[Target]) -> String {
     }
 }
 
-/// The Test column's state of a channel (design 056 §4.6), filled by the Tests brief (0.2.3).
+/// The Test column's state of a channel, filled by the Tests brief (0.2.3).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum TestState {
     /// No test yet: `—`.

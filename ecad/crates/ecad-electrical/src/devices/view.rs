@@ -1,4 +1,4 @@
-//! The Devices feed (design 064 §4.1, `DevicesFeed`): what a commit could change in the Devices
+//! The Devices feed (`DevicesFeed`): what a commit could change in the Devices
 //! list and the symbol search ([`DeviceTouch`]), for the change log.
 //!
 //! # Update map
@@ -85,7 +85,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
         }
         let doc = cx.doc;
         let t = &mut scope.touch;
-        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so the places of
+        // A frame decides its pages' grids, so the places of
         // the devices on them.
         match frame_reach_of(doc, effect) {
             Reach::Pages(ps) => {
@@ -103,7 +103,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
         };
         let mut moves = false;
         match effect {
-            // Design 072 §2.6: a device link is not shown in the list.
+            // A device link is not shown in the list.
             Effect::DeviceLink { .. } => {}
             Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => subject(&Subject::Device(*id)),
             Effect::Prop { object: ObjectRef::Device(c), .. } => subject(&Subject::Device(*c)),
@@ -117,7 +117,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
                     subject(&r.subject);
                 }
             }
-            // Brief 048: a project symbol's new or removed version changes "update available" on
+            // A project symbol's new or removed version changes "update available" on
             // the devices showing its lineage.
             Effect::Definition { before, after, .. } => {
                 let origin = after.or(*before).and_then(|d| d.origin.as_ref()).filter(|o| o.library == crate::symbols::project::PROJECT_SYMBOLS);
@@ -131,7 +131,7 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
                     }
                 }
             }
-            // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
+            // A page's number or sheet changes the place of the symbols on it; the book
             // order (folders) may change every place.
             Effect::Page { id, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
                 let ch = b.change(a);

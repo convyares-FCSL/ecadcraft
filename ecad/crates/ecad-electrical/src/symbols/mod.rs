@@ -1,17 +1,17 @@
-//! The starter symbols (brief 018, design 018 §4): about 18 IEC 60617-style definitions built into
+//! The starter symbols: about 18 IEC 60617-style definitions built into
 //! the app, embedded into a project the first time they are used.
 //!
 //! # Semantics
 //! - Each starter symbol is a [`Definition`] with an [`Origin`]: one fixed library ID for "ECAD
-//!   starter symbols", a fixed definition ID per symbol, `library_seq` 1 and the content hash of
-//!   proposal §20.10. A project's embedded copy is found by that origin, never by name.
+//!   starter symbols", a fixed definition ID per symbol, `library_seq` 1 and the content hash.
+//!   A project's embedded copy is found by that origin, never by name.
 //! - What a symbol *is* (its kind, default tag prefix, aliases and default description) is kept
 //!   here, in the catalogue, keyed by origin; the stored `Definition` holds none of it.
 //! - Geometry is in millimetres, local frame, y up, symbol centre at (0,0), terminals on a 5 mm
 //!   grid. The shapes follow IEC 60617 forms but are drawn new for ECAD.
 //!
-//! Brief 034 grows the catalogue by family (contacts, protection, sensors, actuators, connectors,
-//! PLC card bodies) and adds text anchors for lane T ([`anchors`]), the rating rule
+//! Grows the catalogue by family (contacts, protection, sensors, actuators, connectors,
+//! PLC card bodies) and adds text anchors for the text placement ([`anchors`]), the rating rule
 //! ([`setprop_rule`]) and quiet points ([`is_quiet`]).
 //!
 //! The catalogue reads no project; [`setprop_rule`] reads one to find a fuse bank's fuses, and the
@@ -48,7 +48,7 @@ pub const STARTER_LIBRARY: LibraryId = LibraryId(0x0000_ecad_0018_5ea1_0000_0000
 /// The terminal grid of the starter symbols, in millimetres (`ecad.symbol-grid`).
 pub const SYMBOL_GRID_MM: f64 = 5.0;
 
-/// How a symbol joins a device (design 018 §3.1).
+/// How a symbol joins a device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     /// A contact: its labels follow the IEC sequence digit (`13`/`14`, `21`/`22`…). `make` for
@@ -56,24 +56,23 @@ pub enum Kind {
     Contact { make: bool },
     /// A single terminal: numbered 1, 2, 3…
     TerminalBlock,
-    /// A PLC channel of a card of this type (brief 045, FP7): it joins a card as its next free
+    /// A PLC channel of a card of this type: it joins a card as its next free
     /// channel, its points labelled with pins and keyed `.<i>.<role>` ([`crate::plc::channels`]).
     Channel(crate::plc::rack::CardType),
-    /// A change-over contact (brief 034): common, NC and NO, numbered by the next IEC sequence
+    /// A change-over contact: common, NC and NO, numbered by the next IEC sequence
     /// digit (`11`/`12`/`14`, `21`/`22`/`24`…), see [`changeover_labels`].
     ChangeOver,
     /// Fixed labels from the definition. `exclusive`: a device holds at most one of these.
     Fixed { exclusive: bool },
-    /// A tagless component of its own, never part of a device: a continuation
-    /// (brief 022, FP4).
+    /// A tagless component of its own, never part of a device: a continuation.
     Tagless,
-    /// A connector half, or one pin of one or both halves (brief 044, design 044 §3.3): its
+    /// A connector half, or one pin of one or both halves: its
     /// connection points are written as the side keys `.s` / `.p` with the pin names as labels,
     /// and it joins a connector by [`crate::connectors`]' rules. Catalogue code, never stored.
     ConnectorHalf { side: Side },
 }
 
-/// Which half of a connector a symbol draws (brief 044).
+/// Which half of a connector a symbol draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Side {
     /// The socket half (female contacts): side key `.s`.
@@ -130,13 +129,13 @@ impl Side {
     }
 }
 
-/// The terminal key of a socket pin (design 044 FP1).
+/// The terminal key of a socket pin.
 pub(crate) const SOCKET_KEY: PointKey = PointKey::Side(ecad_model::Side::Socket);
-/// The terminal key of a plug pin (design 044 FP1).
+/// The terminal key of a plug pin.
 pub(crate) const PLUG_KEY: PointKey = PointKey::Side(ecad_model::Side::Plug);
 
 ecad_model::word_enum! {
-    /// The key of a starter symbol (design 072 §9.1): one value per row of [`STARTERS`], in table
+    /// The key of a starter symbol: one value per row of [`STARTERS`], in table
     /// order, stored and typed as its word (`coil`, `no`, `term2.1`…). Variants are the words
     /// with a capital first letter, `.` written `L` (level).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -272,9 +271,9 @@ ecad_model::word_enum! {
 use StarterKey as K;
 
 impl StarterKey {
-    /// The group a device this starter begins belongs to (design 072 §2.2): what the starter
+    /// The group a device this starter begins belongs to: what the starter
     /// declares in its definition's [`Definition::device_type`]. Continuations are
-    /// `General` until lane F makes them drawing aids.
+    /// `General` for now: they are not drawing aids yet.
     pub fn device_group(self) -> DeviceGroup {
         match self {
             K::Psu | K::Trafo => DeviceGroup::PowerSupply,
@@ -509,17 +508,17 @@ pub struct Starter {
     pub kind: Kind,
     /// Its fixed definition ID inside [`STARTER_LIBRARY`].
     pub id: DefinitionId,
-    /// The family Find Symbol groups it in and also matches by its word (brief 034).
+    /// The family Find Symbol groups it in and also matches by its word.
     pub family: Family,
-    /// Its connection points that may stay unwired without an `Unconnected` check (design 034
-    /// §11): spare connector pins, spare fuse outputs, a card's supply points.
+    /// Its connection points that may stay unwired without an `Unconnected` check:
+    /// spare connector pins, spare fuse outputs, a card's supply points.
     pub quiet: Quiet,
 }
 
-/// A catalogue family (design 034 §2.2).
+/// A catalogue family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
-    /// The 21 symbols of briefs 018, 022 and 028.
+    /// The 21 basic symbols.
     Basic,
     Contacts,
     Protection,
@@ -545,7 +544,7 @@ impl Family {
     }
 }
 
-/// Which connection points of a symbol are quiet (design 034 §2.2, §11).
+/// Which connection points of a symbol are quiet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quiet {
     /// None: every point is checked.
@@ -574,7 +573,7 @@ impl Starter {
     }
 
     fn build(&self) -> Result<Definition, CmdError> {
-        // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
+        // A connector half's bridge joins the side keys written at placement.
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
             Kind::Contact { .. } | Kind::TerminalBlock | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
@@ -597,7 +596,7 @@ impl Starter {
         Ok(d)
     }
 
-    /// A placed copy's part in its device (design 072 §4.4, F3′): the part its definition
+    /// A placed copy's part in its device: the part its definition
     /// declares. The power pole sets (`power3`, `power4`) are a contactor's contacts.
     pub fn part_role(&self) -> PartRole {
         match self.kind {
@@ -613,10 +612,10 @@ impl Starter {
         }
     }
 
-    /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
+    /// What a device this starter begins is: the type its definition declares.
     pub fn device_type(&self) -> DeviceType {
         let t = crate::plc::types::starter_type(self.key);
-        // A protective device's kind is its symbol's (design 072 §2.2).
+        // A protective device's kind is its symbol's.
         if let DeviceType::Protection(_) = t {
             use ecad_model::objects::devices::ProtectionKind as P;
             let kind = if self.key.fuse_bank_ways().is_some() {
@@ -634,7 +633,7 @@ impl Starter {
             };
             return DeviceType::Protection(kind.empty());
         }
-        // What operates a switching device is its symbol's (design 072 §2.2).
+        // What operates a switching device is its symbol's.
         if let DeviceType::Switching(_) = t {
             use ecad_model::objects::devices::OperatorKind as O;
             let kind = if matches!(self.key, K::Ssrin | K::Ssrout) {
@@ -646,7 +645,7 @@ impl Starter {
             };
             return DeviceType::Switching(kind.empty());
         }
-        // What a sensor senses and outputs is its symbol's (design 072 §2.2).
+        // What a sensor senses and outputs is its symbol's.
         if let DeviceType::Sensor(_) = t {
             use ecad_model::objects::devices::{Output as O, Sensing as S, Sensor};
             let known = [
@@ -661,18 +660,18 @@ impl Starter {
             }
             return t;
         }
-        // A motor's phases are its symbol's (design 072 §2.2).
+        // A motor's phases are its symbol's.
         if let DeviceType::Motor(_) = t {
             use ecad_model::objects::devices::{Motor, Phases};
             return DeviceType::Motor(Motor::empty(if self.key == K::Motor1 { Phases::Single } else { Phases::Three }));
         }
-        // An indicator's signal is a starter default, stored when it is created (design 072 §2.2): a
+        // An indicator's signal is a starter default, stored when it is created: a
         // lamp is steady. Its colour starts empty.
         if let DeviceType::Indicator(_) = t {
             use ecad_model::objects::devices::{Indicator, SignalType};
             return DeviceType::Indicator(Indicator::empty(SignalType::Steady));
         }
-        // Whether it is a power supply or a transformer is its symbol's (design 072 §2.2).
+        // Whether it is a power supply or a transformer is its symbol's.
         if let DeviceType::PowerSupply(_) = t {
             use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
             return DeviceType::PowerSupply(if self.key == K::Trafo {
@@ -691,8 +690,8 @@ impl Starter {
         t
     }
 
-    /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief
-    /// 044 changed (FP3), 1 for every other.
+    /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves that
+    /// were changed, 1 for every other.
     pub fn library_seq(&self) -> u64 {
         match self.kind {
             Kind::ConnectorHalf { side: Side::Socket | Side::Plug } if !matches!(self.key, K::Pins | K::Pinp) => 2,
@@ -721,7 +720,7 @@ impl Starter {
         crate::defaults::symbols::prefix_entry(self.key).map_or("", crate::defaults::symbols::builtin_prefix)
     }
 
-    /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
+    /// Whether it can join an existing device (every starter symbol can, within the joining rules).
     pub fn joinable(&self) -> bool {
         true
     }

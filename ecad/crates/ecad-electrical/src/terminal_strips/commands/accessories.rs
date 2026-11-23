@@ -1,4 +1,4 @@
-//! The rules of brief 030's commands (design 030 §2.2, §5.4, §5.5, §10): `accessory` (end stops,
+//! The rules of the commands: `accessory` (end stops,
 //! end plates, partitions, strip labels and markers at places of a strip) and `jumper` (make a jumper bar,
 //! or edit one). Both write ordinary strip properties. Each function reads the document and returns
 //! the ops to commit and what to report; the engine crate's shims read the parameters, commit and
@@ -108,7 +108,7 @@ fn plural(a: Acc, n: usize) -> String {
     }
 }
 
-/// What `accessory` is asked to write (design 030 §2.2).
+/// What `accessory` is asked to write.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AccessoryInput {
     pub strip: Option<DeviceId>,
@@ -139,7 +139,7 @@ pub struct Accessory {
     pub message: String,
 }
 
-/// Plan `accessory` (design 030 §2.2): one `SetProperty` per place, all in one transaction.
+/// Plan `accessory`: one `SetProperty` per place, all in one transaction.
 ///
 /// # Errors
 /// No such strip or terminal, a place or item that does not read, too many items at a place.
@@ -263,7 +263,7 @@ pub(crate) fn plan_accessory(doc: &Document, input: AccessoryInput) -> Result<Ac
     Ok(Accessory { strip: c, keys, ops, label, message })
 }
 
-// ---------------------------------------------------------------- jumper (§5.4, §5.5)
+// ---------------------------------------------------------------- jumper
 
 /// The positions a jumper bar names in plan order, with the labels it names that the strip lacks.
 fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
@@ -276,7 +276,7 @@ fn jumper_bar_labels(p: &Positions, order: &[String]) -> Vec<String> {
     v
 }
 
-/// Canonical jumper bar text on `level` (brief 036: `1.2-8.2`; level 1 as 030 wrote it).
+/// Canonical jumper bar text on `level` (`1.2-8.2`; on level 1 the plain labels, `1-8`).
 fn canonical_of(labels: &[String], order: &[String], level: u32, point: Option<char>) -> String {
     let mut sorted: Vec<&String> = labels.iter().collect();
     sorted.sort_by_key(|l| (order.iter().position(|o| o == *l).unwrap_or(usize::MAX), jumper_bars::natural_key(l)));
@@ -335,7 +335,7 @@ pub(crate) struct JumperBarRef {
     pub n: Option<u64>,
 }
 
-/// What `jumper` is asked to do (design 030 §10): make a jumper bar (`jumper_bar` absent), or edit one.
+/// What `jumper` is asked to do: make a jumper bar (`jumper_bar` absent), or edit one.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct JumperInput {
     /// The jumper bar to edit.
@@ -374,12 +374,12 @@ pub struct Jumper {
     pub split: Option<(u32, String)>,
 }
 
-/// Plan `jumper` (design 030 §10): make a jumper bar, or edit one.
+/// Plan `jumper`: make a jumper bar, or edit one.
 ///
 /// # Errors
 /// No such strip or terminal, positions that do not read, a jumper bar the rules refuse.
 pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdError> {
-    // Brief 036 (design 036 §5.3): the level the jumper bar runs on, or a cross-level jumper bar's text.
+    // The level the jumper bar runs on, or a cross-level jumper bar's text.
     let mut level: u32 = 1;
     let mut point: Option<char> = None;
     let mut cross: Option<String> = None;
@@ -439,7 +439,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
             if first.is_empty() || rest.is_empty() {
                 return Err(CmdError::refused(format!("Jumper bar {cur_text} has no positions on both sides of {at}; pick a position inside it.")));
             }
-            // Review of PR #57, 3: a side of one position would be no jumper bar; never dropped.
+            // A side of one position would be no jumper bar; never dropped.
             if first.len() < 2 || rest.len() < 2 {
                 let one = if first.len() < 2 { &first } else { &rest };
                 return Err(CmdError::refused(format!(
@@ -524,7 +524,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
             prev = Some(l);
         }
         if let Some(v) = &input.positions {
-            // Tester 036 (c): typed positions keep their level and point (`1.3-4.3`); a typed
+            // Typed positions keep their level and point (`1.3-4.3`); a typed
             // cross-level jumper bar is kept as written.
             let typed = jumper_bars::parse(v)?;
             if picks.is_empty() {
@@ -574,7 +574,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
     {
         let t = canonical_of(rest, &order, level, point);
         ops.extend(set_op(doc, c, jumper_bars::key(*m), Some(t.clone())));
-        // Both halves keep the jumper bar's own part (review of PR #57, 3).
+        // Both halves keep the jumper bar's own part.
         for f in acc::FIELDS {
             let own = doc.devices().get(&c).and_then(|x| x.properties.get(&format!("{}.{f}", jumper_bars::key(n)))).cloned();
             if own.is_some() {
@@ -610,7 +610,7 @@ pub(crate) enum WordsParam {
     Text(String),
 }
 
-/// `accessory {strip | terminal, at, on?, items? | add? | remove?, clear?}` (design 030 §2.2):
+/// `accessory {strip | terminal, at, on?, items? | add? | remove?, clear?}`:
 /// one `SetProperty` per place, all in one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -654,7 +654,7 @@ pub(crate) struct JumperBarParam {
     n: Option<u64>,
 }
 
-/// `jumper` (design 030 §10): make a jumper bar (`{strip | terminals, positions?, skip?}`), or edit one
+/// `jumper`: make a jumper bar (`{strip | terminals, positions?, skip?}`), or edit one
 /// (`{jumper_bar: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -1,5 +1,5 @@
-//! Reading a typed rating into a group's typed fields (design 072 §2.2, "Ratings", owner decisions
-//! 2026-11-18): one reader per group (protection here, switching in [`read_switching`], sensors in
+//! Reading a typed rating into a group's typed fields:
+//! one reader per group (protection here, switching in [`read_switching`], sensors in
 //! [`read_sensor`], motors in [`read_motor`], loads in [`read_load`], indicators in
 //! [`read_indicator`], power supplies and transformers in [`read_power_supply`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
 //! UI, the CLI and MCP alike) and by a symbol's default rating.
@@ -480,7 +480,7 @@ pub(crate) fn with_output_rating(
 }
 
 /// Terminal strip `d` with fuse position `p`'s rating set from `text` (`None` clears it);
-/// `fuse_positions` are the strip's fuse position labels (design 072 §2.5).
+/// `fuse_positions` are the strip's fuse position labels.
 ///
 /// # Semantics
 /// The text is read as one fuse ([`read_fuse`]); text that is no fuse rating is refused, never

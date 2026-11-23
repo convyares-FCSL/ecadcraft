@@ -1,4 +1,4 @@
-//! The built-in values as data (brief 066, design 066 §3 and §7).
+//! The built-in values as data.
 //!
 //! Every registry entry's built-in value, every style field's built-in and every built-in style's
 //! field values live in TOML files under `ecad-electrical/defaults/`, one per area, embedded at
@@ -19,7 +19,7 @@
 //!   which Checks reports as `defaults-damaged`.
 //!
 //! Excluded: loading a company file from disk (waits for libraries, stage 3), numbered built-in
-//! sets (deferred to the v1 format freeze), and `miette` reports (lane 061; the errors already
+//! sets (deferred to the v1 format freeze), and `miette` reports (the errors already
 //! carry the file and the byte span it needs).
 
 use std::ops::Range;
@@ -31,14 +31,14 @@ use toml::de::{DeTable, DeValue};
 use crate::defaults::{Entry, Kind, Value};
 use crate::styles::{self, Builtin as BuiltinStyle, Catalogue, Field};
 
-/// The largest file [`load`] parses (design 066 §7): a guard, not a preference.
+/// The largest file [`load`] parses: a guard, not a preference.
 pub const MAX_BYTES: usize = 256 * 1024;
 /// The deepest nesting [`load`] parses: brackets, braces and dotted keys.
 pub const MAX_DEPTH: usize = 16;
 /// The unknown keys listed one by one; the rest are counted in one problem.
 pub const MAX_LISTED: usize = 50;
 
-/// The built-in files: one line per area (lanes adding an area each add one line).
+/// The built-in files: one line per area.
 #[rustfmt::skip]
 pub static FILES: &[(&str, &str)] = &[
     ("text.toml", include_str!("../../defaults/text.toml")),
@@ -56,20 +56,20 @@ pub static FILES: &[(&str, &str)] = &[
     ("rating.toml", include_str!("../../defaults/rating.toml")),
 ];
 
-/// Built-in layout values no level overrides (brief 066c): `[layout]` keys of the files, with the
+/// Built-in layout values no level overrides: `[layout]` keys of the files, with the
 /// check each value must pass. Not registry entries (every entry has a project level).
 #[rustfmt::skip]
 pub static LAYOUT: &[(&str, Kind)] = &[
     ("page.report.row_height", Kind::Length { min: 3.0, max: 20.0 }),
     ("page.report.header_height", Kind::Length { min: 3.0, max: 30.0 }),
-    // Brief 066d (overseer ruling 5): the cover's lines as fractions of the `Cover` style height.
+    // The cover's lines as fractions of the `Cover` style height.
     ("front.cover.block_title", Kind::Number { min: 0.05, max: 1.0 }),
     ("front.cover.body", Kind::Number { min: 0.05, max: 1.0 }),
     ("front.cover.column_head", Kind::Number { min: 0.05, max: 1.0 }),
     ("front.cover.customer", Kind::Number { min: 0.05, max: 1.0 }),
 ];
 
-/// Whether ecad-model holds `key`'s built-in (`ecad_model::naming::builtins::KEYS`; owner, 2026-11-16:
+/// Whether ecad-model holds `key`'s built-in (`ecad_model::naming::builtins::KEYS`:
 /// what the lower crate needs lives only in the lower crate). This crate's files never name it.
 pub fn in_model(key: &str) -> bool {
     ecad_model::naming::builtins::KEYS.contains(&key)
@@ -185,7 +185,7 @@ fn sub<'t, 'i>(t: &'t DeTable<'i>, key: &str) -> Option<&'t DeTable<'i>> {
     }
 }
 
-/// Read one defaults file named `file` (design 066 §7). Never fails and never panics; see
+/// Read one defaults file named `file`. Never fails and never panics; see
 /// [`Loaded::problems`].
 pub fn load<'i>(file: &str, text: &'i str) -> Loaded<'i> {
     let mut out = Loaded { file: file.to_string(), table: None, problems: Vec::new() };
@@ -422,7 +422,7 @@ pub(crate) fn field_builtin(f: &Field) -> Value<'static> {
 
 /// Built-in style `b`'s field values from the data, in its catalogue's field order (what
 /// [`BuiltinStyle::values`] caches). The `wire_label` text style's height is the entry
-/// `text.wire_label.height` (one value, one place, design 066 §3.3).
+/// `text.wire_label.height` (one value, one place).
 pub(crate) fn style_values(b: &BuiltinStyle) -> Vec<(&'static str, Value<'static>)> {
     let Some(cat) = styles::CATALOGUES.iter().copied().find(|c| c.builtins.iter().any(|x| std::ptr::eq(x, b))) else {
         return Vec::new();

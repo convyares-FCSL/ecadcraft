@@ -1,4 +1,4 @@
-//! The rules of the cross-reference commands (brief 025, design 025 §4.4, §5.3, §5.4): where
+//! The rules of the cross-reference commands: where
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`references`,
 //! `contacts`) are [`crate::references::devices`]'s own; the engine crate's shims open pages and answer in JSON.
 
@@ -28,7 +28,7 @@ pub struct Jump {
 
 /// `refgoto {source, target?}`: the place reference `source` (a cable reference end, a contact, a
 /// coil or a continuation arrow) shows. An arrow goes to its first other end, then the next on
-/// repeat (after `ring`, the place the last go-to ringed), wrapping (brief 049, design 049 §5.3).
+/// repeat (after `ring`, the place the last go-to ringed), wrapping.
 ///
 /// # Errors
 /// No such reference, one with no other end, or an other end that cannot be located.
@@ -38,7 +38,7 @@ pub fn goto(
     let r = doc.representations().get(&source).ok_or(CmdError::refused("no such reference"))?;
     let arrow = matches!(idx.member(source), Some((devices::classify::Group::Continuation(_), _)));
     let none = match r.subject {
-        // Brief 049: a lonely continuation arrow.
+        // A lonely continuation arrow.
         Subject::Device(_) if arrow || crate::continuations::arrow(doc, source).is_some() => "This continuation has no other end.",
         Subject::Device(_) => "This symbol shows no reference: its device has no coil or no contacts.",
         Subject::Cable(_) => "this reference has no other end",
@@ -178,7 +178,7 @@ pub struct DeviceReferencesParams {
     /// Only this device's references.
     #[serde(default)]
     component: Option<DeviceId>,
-    /// Only this continuation arrow's other ends (design 072 §6.2).
+    /// Only this continuation arrow's other ends.
     #[serde(default)]
     aid: Option<ecad_model::AidId>,
     /// Only this cable's references.

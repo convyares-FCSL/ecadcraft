@@ -1,17 +1,17 @@
-//! Wire types (brief 050b, design 050 §5; design 072 §4.6, §8, F36): the `wire` catalogue.
+//! Wire types: the `wire` catalogue.
 //!
 //! A wire type gives a wire its colours and size (in the label, the reports and the BOM), its
 //! insulation, its drawn line (colour, type, weight), its label rule and its BOM part. A type names
-//! the potential it is the default for (one direction stored, owner answer 3).
+//! the potential it is the default for (stored in one direction only).
 //!
 //! Its records are typed ([`WireType`]); the built-in types and the defaults are our own data,
 //! `defaults/wire_types.toml`, read as the same type. [`FIELDS`] is the editor's description of
 //! the fields (labels, input rules), not their storage.
 //!
-//! # A wire's type (design 050 §5.3)
+//! # A wire's type
 //! Its own `wire_type`, else the type whose `potential` is its net's potential, else the
 //! registry's `wire.category` (project, then standard), else none (today's look of a wire with no
-//! potential). Its colours and size are its own when it has them (022 FP3, "overridden"), else the
+//! potential). Its colours and size are its own when it has them ("overridden"), else the
 //! type's. A cable core takes no type colour: its core is its colour.
 //!
 //! This module draws nothing; `wires`, `draw` and `reports` read [`WireDraws`].
@@ -37,7 +37,7 @@ fn any_text(_: &str) -> bool {
     true
 }
 
-/// `wire` (the insulation colour, 040), `ink`, or one colour in any of its forms.
+/// `wire` (the insulation colour), `ink`, or one colour in any of its forms.
 pub(crate) fn is_line_colour(s: &str) -> bool {
     LineColour::parse(s).is_some()
 }
@@ -67,7 +67,7 @@ pub static FIELDS: [Field; 17] = [
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None },
-    // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the type's wires.
+    // The datasheet rating, shared by the type's wires.
     crate::circuits::fields::RATED_CURRENT,
     crate::circuits::fields::RATED_AT,
     crate::circuits::fields::MAX_TEMPERATURE,
@@ -79,7 +79,7 @@ const fn wire_type(id: &'static str, name: &'static str) -> Builtin {
     Builtin { id, name, slot: Slot::new() }
 }
 
-/// Design 050 §5.2 and design 072 F37: the built-in types, in table order; their values are in
+/// The built-in types, in table order; their values are in
 /// `defaults/wire_types.toml`.
 static BUILTINS: [Builtin; 12] = [
     wire_type("l", "Power L"),
@@ -253,7 +253,7 @@ pub fn set(w: &mut WireType, key: &str, value: Option<&str>) -> Result<(), CmdEr
     Ok(())
 }
 
-/// Where a conductor's category came from (the inspector's badge, design 050 §7.5).
+/// Where a conductor's category came from (the inspector's badge).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryFrom {
     /// The conductor's own `wire.category`.
@@ -267,7 +267,7 @@ pub enum CategoryFrom {
     None,
 }
 
-/// A conductor's resolved look (design 050 §5.3).
+/// A conductor's resolved look.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireDraw {
     pub category: Option<StyleRef>,
@@ -357,7 +357,7 @@ impl WireDraws {
         self.by_potential.get(&name.trim().to_lowercase())
     }
 
-    /// The category of conductor `c` and where it came from (design 050 §5.3).
+    /// The category of conductor `c` and where it came from.
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
         let own = doc.wires().get(&c).and_then(|x| x.wire_type.clone());
@@ -385,7 +385,7 @@ impl WireDraws {
         }
     }
 
-    /// The look of conductor `c` (design 050 §5.3).
+    /// The look of conductor `c`.
     pub fn draw(&self, doc: &Document, c: WireId) -> WireDraw {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires().get(&c);
@@ -431,7 +431,7 @@ pub fn linetype(word: &str) -> &'static str {
 mod tests {
     use super::*;
 
-    /// Design 072 F37: the built-in data reads as typed records, every built-in type has its values
+    /// The built-in data reads as typed records, every built-in type has its values
     /// and every type in the data is listed, and the 230 V L/N types are there.
     #[test]
     fn wire_types_data_reads() {

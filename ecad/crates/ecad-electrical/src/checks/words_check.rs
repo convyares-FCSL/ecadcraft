@@ -1,4 +1,4 @@
-//! The words check run once when a project is opened (design 072 §9.4, F11).
+//! The words check run once when a project is opened.
 //!
 //! A typed field with an unknown word already fails its record's decode. This check finds the
 //! words inside values that stay text: a stored value of a defaults choice that is not one of its
@@ -10,7 +10,7 @@
 //!
 //! It reads the whole document, so it runs on open (and on reload) only, never per commit. It
 //! changes nothing and excludes values that are not words: an out-of-range length or a malformed
-//! style ID still reads as absent (design 066).
+//! style ID still reads as absent.
 
 use ecad_model::document::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
@@ -49,7 +49,7 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     for (id, c) in doc.cables() {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
     }
-    // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
+    // A starter's prefix names a starter of the catalogue (the key's form is read
     // strictly with the file); a project symbol's prefix names a project symbol the project holds.
     for key in doc.settings().tag_prefixes.keys() {
         let known = match key {
@@ -72,7 +72,7 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
         let Some((entry, level)) = entry_of(key, level) else { continue };
         let words = match entry.kind {
             Kind::Choice(words) => words,
-            // Stored strictly as `yes` or `no` (F4).
+            // Stored strictly as `yes` or `no`.
             Kind::Flag => words::FLAG_WORDS,
             Kind::Length { .. } | Kind::Number { .. } | Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_) => continue,
         };
@@ -85,11 +85,11 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
     }
 }
 
-/// The property a device's kind was kept in before design 072: a device has none now (drawing
-/// aids, loose parts and routes are their own types, §6).
+/// The property a device's kind was kept in before the current model: a device has none now (drawing
+/// aids, loose parts and routes are their own types).
 const OLD_KIND_KEY: &str = "kind";
 
-/// A device's stored `kind`, any word: a junction went with routes (design 072 D: a T is a route
+/// A device's stored `kind`, any word: a junction went with routes (a T is a route
 /// landing on a route), so a file holding one opens read-only (pre-v1, no conversion). The old
 /// device forms of drawing aids and loose parts are read errors in ecad-file.
 fn old_kind(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {

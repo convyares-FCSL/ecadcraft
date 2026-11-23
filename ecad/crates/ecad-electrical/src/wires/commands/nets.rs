@@ -1,5 +1,5 @@
-//! The net, wire number, potential, category, wire settings, renumber and check commands (brief 022,
-//! design 022 §10; brief 050b): params in, a result out. Generic ([`crate::commands::run`]); the
+//! The net, wire number, potential, category, wire settings, renumber and check commands: params in, a result out.
+//! Generic ([`crate::commands::run`]); the
 //! rules are in [`super::wires`].
 //!
 //! Excludes: `wire` and `joinwires`, which draw (the engine's session commands).
@@ -110,8 +110,8 @@ pub struct PotentialParams {
     value: Option<Option<String>>,
 }
 
-/// `category {conductor | net | conductors, value: string | null}` (brief 050b, design 050
-/// §6.9): a wire's own category (`net`: a wire whose whole net takes it).
+/// `category {conductor | net | conductors, value: string | null}`:
+/// a wire's own category (`net`: a wire whose whole net takes it).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CategoryParams {

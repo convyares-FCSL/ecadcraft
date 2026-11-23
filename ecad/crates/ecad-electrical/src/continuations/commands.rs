@@ -1,6 +1,6 @@
-//! The rules of brief 049's command (design 049 §5.1): `contcaption` sets or removes the caption
-//! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`
-//! (design 072 §6.2): a continuation's `name` or `caption`, a location box's `function`,
+//! The rules of command `contcaption` sets or removes the caption
+//! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`:
+//! a continuation's `name` or `caption`, a location box's `function`,
 //! `location`, `panel_temperature` or `style`. `contcaption` is a generic command
 //! ([`crate::commands::run`]); its interactive form (select arrows, type the caption) is the engine's.
 
@@ -43,7 +43,7 @@ pub(crate) struct Contcaption {
     pub message: String,
 }
 
-/// Plan `contcaption` (design 049 §5.1): `caption` (`None`: remove) on every arrow of `arrows`.
+/// Plan `contcaption`: `caption` (`None`: remove) on every arrow of `arrows`.
 ///
 /// # Errors
 /// No arrow named, a caption the rule refuses, or an object that is not a continuation arrow
@@ -97,7 +97,7 @@ fn box_keys(key: &str) -> CmdError {
     ))
 }
 
-/// `setprop {aids, key, value}` (design 072 §6.2), one `ModifyAid` per aid that changes: a
+/// `setprop {aids, key, value}`, one `ModifyAid` per aid that changes: a
 /// continuation's `name` (checked, required) or `caption` (checked; `None` removes it); a location
 /// box's `function` or `location` (a code, as [`crate::locations::commands::locations::plan_box_set`], without its
 /// proposals), `panel_temperature` (−40 to 90 °C; `None` clears it) or `style` (a location style by
@@ -163,7 +163,7 @@ fn continuation_keys(key: &str) -> CmdError {
 // ---------------------------------------------------------------------------------------------
 // The commands (generic: crate::commands::run)
 
-/// `contcaption {continuations, caption}` (design 049 §5.1): sets (or with null removes) the
+/// `contcaption {continuations, caption}`: sets (or with null removes) the
 /// arrows' caption, one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

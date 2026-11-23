@@ -1,4 +1,4 @@
-//! The rules of the unknown-word check (design 072 §5): a stored word that is not one of the
+//! The rules of the unknown-word check: a stored word that is not one of the
 //! words its setting allows is named, and so is a key a typed field has taken over.
 
 use ecad_electrical::checks::words_check::check;

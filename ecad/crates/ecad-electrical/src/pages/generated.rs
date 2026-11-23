@@ -1,7 +1,7 @@
-//! Generated pages (brief 024, design 024 §5): a page whose content ECAD draws from the project
-//! (cover, contents, revision list, BOM by location; brief 028 adds the terminal plan and the
+//! Generated pages: a page whose content ECAD draws from the project
+//! (cover, contents, revision list, BOM by location; the terminal plan and the
 //! cable schedule). It is a page like any other for numbers,
-//! folders and the book; its kind is [`ecad_model::Page::kind`] (design 072 §5.1), set only when it
+//! folders and the book; its kind is [`ecad_model::Page::kind`], set only when it
 //! is made. Nothing drawn on it is stored.
 //!
 //! # Semantics
@@ -9,17 +9,16 @@
 //!   sheet of the same page, header repeated ([`rows_per_sheet`] rows per A3 sheet). Sheets are
 //!   drawn side by side, sheet *i* at x = *i* × (paper width + [`SHEET_GAP`]).
 //! - Each sheet has the page's frame and title block: the page title gets ` (2/3)`, Next shows the
-//!   same number on all but the last sheet, and Total counts sheets in the whole book (owner
-//!   answer Q4).
+//!   same number on all but the last sheet, and Total counts sheets in the whole book.
 //! - Content lies on the reserved, locked layer [`LAYER`]; it is mapped like the frame, so
 //!   selecting it selects nothing and editing it is refused.
 //!
-//! # Update map (design 024 §9)
+//! # Update map
 //! The project keeps the active page's parts with its frame. They are worked out again after an
 //! op of the frame's map ([`crate::pages::frames::touches`]), after any op [`touches`] names for the
 //! active generated page's kind, and when the report models' BOM changes while a BOM page is shown
 //! or the book's sheet count moves (`derived::ReportsView`). A terminal plan or cable schedule
-//! page (brief 028) is redrawn the same way when the strip or cable rows changed while it is shown. Contents reads the book order
+//! page is redrawn the same way when the strip or cable rows changed while it is shown. Contents reads the book order
 //! (O(pages)) only when it is drawn.
 
 use std::collections::BTreeSet;
@@ -35,14 +34,14 @@ use crate::reports::kept::ReportModels;
 pub const LAYER: &str = "ECAD-GENERATED";
 /// Gap between the sheets of one page, in millimetres.
 pub const SHEET_GAP: f64 = 50.0;
-/// The column widths of design 024 §5.2 are for an A3 drawing area this wide.
+/// The column widths are for an A3 drawing area this wide.
 pub const A3_AREA: f64 = 390.0;
 /// The height of that A3 drawing area ([`area`] of an A3 sheet in the house frame): what the rows
-/// per sheet are computed from (brief 066c).
+/// per sheet are computed from.
 pub(crate) const A3_TABLE_MM: f64 = 230.0;
 
 /// `ecad.table-row`: a report table's row height, millimetres (the `[layout]` value
-/// `page.report.row_height` in `pages.toml`, data since brief 066c).
+/// `page.report.row_height` in `pages.toml`).
 pub fn row_mm() -> f64 {
     crate::defaults::data::layout("page.report.row_height")
 }
@@ -52,7 +51,7 @@ pub fn header_mm() -> f64 {
     crate::defaults::data::layout("page.report.header_height")
 }
 
-/// Rows per A3 sheet of a generated table (design 024 §5.2): as many rows as fit under the header
+/// Rows per A3 sheet of a generated table: as many rows as fit under the header
 /// in [`A3_TABLE_MM`] (44 at 5 mm rows and a 7 mm header), at least 2.
 pub fn rows_per_sheet() -> usize {
     static ROWS: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
@@ -63,7 +62,7 @@ pub fn rows_per_sheet() -> usize {
 }
 /// `ecad.flagged` (`ecad.check-warning`, ACI 2): `?` values on screen.
 pub const FLAGGED_ACI: u8 = 2;
-/// `ecad.flagged-print` (ACI 7): a missing value's `?` and box when printed (design 033 §3.1).
+/// `ecad.flagged-print` (ACI 7): a missing value's `?` and box when printed.
 pub const FLAGGED_PRINT_ACI: u8 = 7;
 /// The text of a missing value.
 pub const MISSING: &str = "?";
@@ -99,7 +98,7 @@ fn strips_shown<'o>(doc: &Document, page: PageId, o: &'o ReportModels) -> Vec<&'
 /// How many sheets a terminal plan needs: each strip starts a sheet, its heading repeated on
 /// each sheet it runs onto (O(strips)).
 fn terminal_block_sheets(doc: &Document, page: PageId, o: &ReportModels) -> usize {
-    // Kept per strip and in total (review of PR #55, finding 1): no walk of the rows.
+    // Kept per strip and in total: no walk of the rows.
     match strip_of(doc, page) {
         Some(c) => o.strips.get(c).map_or(1, |s| s.sheets),
         None => o.strips.sheets_total.max(1),
@@ -113,7 +112,7 @@ pub fn bom_sheets(o: &ReportModels) -> usize {
 
 /// The sheets of a table whose row `i` is a heading when `heads[i]` is `Some`: (first row, end,
 /// the heading repeated as `(continued)` at the top). A continued heading takes a row of the
-/// sheet, so every sheet holds at most [`rows_per_sheet`] lines (tester 024, bug 4).
+/// sheet, so every sheet holds at most [`rows_per_sheet`] lines.
 pub fn paginate(heads: &[Option<String>]) -> Vec<(usize, usize, Option<String>)> {
     paginate_with(heads, false)
 }
@@ -151,21 +150,21 @@ pub fn sheets_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -
         Some(GenKind::Contents) => doc.page_order().len(),
         Some(GenKind::Revisions) => crate::releases::revisions::issued(doc).len(),
         Some(GenKind::BomLocation) => return reports.map_or(1, bom_sheets),
-        // Brief 046: a graphic page counts its strips' kept graphic sheets.
+        // A graphic page counts its strips' kept graphic sheets.
         Some(GenKind::TerminalBlocks) if crate::terminal_strips::pages::style_of(doc, page) == crate::terminal_strips::pages::Style::Graphic => {
             return reports.map_or(1, |o| crate::terminal_strips::pages::sheets(doc, page, o));
         }
         Some(GenKind::TerminalBlocks) => return reports.map_or(1, |o| terminal_block_sheets(doc, page, o)),
         Some(GenKind::Cables) => reports.map_or(0, ReportModels::cable_count),
-        // Brief 051 (design 051 §4.1): cards packed on sheets, from the kept row counts.
+        // Cards packed on sheets, from the kept row counts.
         Some(GenKind::IoList) => return reports.map_or(1, |o| o.plc.iolist_sheets(rows_per_sheet())),
-        // Brief 051 (design 051 §4.2): racks packed on sheets, from the kept slot counts.
+        // Racks packed on sheets, from the kept slot counts.
         Some(GenKind::PlcRack) => return reports.map_or(1, |o| crate::plc::sheets::rack_sheets(doc, page, &o.plc)),
     };
     rows.div_ceil(rows_per_sheet()).max(1)
 }
 
-/// The number of sheet `i` (0-based) of a generated page numbered `number` (design 033 §5.1):
+/// The number of sheet `i` (0-based) of a generated page numbered `number`:
 /// its trailing digits plus `i`, keeping their width (`400` → `401`, `0090` → `0091`, `B10` →
 /// `B11`); without trailing digits, `N`, `N2`, `N3`… Sheet 0 is the number itself.
 pub fn sheet_number(number: &str, i: usize) -> String {
@@ -201,7 +200,7 @@ pub(crate) fn number_range(doc: &Document, book: &Book, page: PageId, reports: O
 }
 
 /// The page whose continuation sheet (2nd or later) is numbered `number`, and that sheet's index:
-/// continuation numbers count as taken (design 033 §5.3). O(generated pages × their sheets).
+/// continuation numbers count as taken. O(generated pages × their sheets).
 pub fn continuation_of(doc: &Document, book: &Book, number: &str, reports: Option<&ReportModels>) -> Option<(PageId, usize)> {
     book.order.iter().filter(|p| kind_of(doc, **p).is_some()).find_map(|p| {
         let n = book.number(doc, *p);
@@ -209,14 +208,14 @@ pub fn continuation_of(doc: &Document, book: &Book, number: &str, reports: Optio
     })
 }
 
-/// The refusal of typing `number` when it is sheet `i` of `page` (design 033 §5.3).
+/// The refusal of typing `number` when it is sheet `i` of `page`.
 pub(crate) fn continuation_taken(doc: &Document, number: &str, page: PageId, i: usize) -> String {
     let title = doc.pages().get(&page).map(|p| p.title.as_str()).unwrap_or_default();
     let owner = ecad_model::document::book::page_number(doc, page);
     format!("Number {number} is sheet {} of page {owner} ({title}).", i.saturating_add(1))
 }
 
-/// The Checks rows of continuation sheets that took another page's number (design 033 §5.3): a
+/// The Checks rows of continuation sheets that took another page's number: a
 /// table grew, so the book still prints and the two sheets share the number until the user
 /// renumbers. Each row is on the other page. O(pages + generated pages × their sheets).
 pub(crate) fn continuation_checks(doc: &Document, reports: Option<&ReportModels>) -> Vec<crate::checks::Check> {
@@ -266,7 +265,7 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
 
 /// Whether `effect` can change what a generated page of `kind` shows (beyond the frame's own map
 /// and the report models, which the project watches itself). The cover's own map is
-/// `crate::pages::front::touches` (brief 054b), which needs the document; the report kinds follow their
+/// `crate::pages::front::touches`, which needs the document; the report kinds follow their
 /// models.
 pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKind) -> bool {
     use ecad_model::document::effect::Effect;
@@ -276,14 +275,14 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, kind: GenKi
         }
         (GenKind::Contents, Effect::Page { .. } | Effect::Folder { .. }) => true,
         (GenKind::Revisions, Effect::Prop { object: ObjectRef::Project, .. } | Effect::Version { .. }) => true,
-        // Design 072 §5.3: the revision rows and the project's info are the project's own data.
+        // The revision rows and the project's info are the project's own data.
         (GenKind::Revisions, Effect::Project { before, after }) => before.revisions != after.revisions || before.info != after.info,
         _ => false,
     }
 }
 
-/// Whether the content of `connection_points` page `page` changed in the last update of `o` (design 046
-/// §9): the table style when a strip it shows changed (028); the graphic style when a strip it
+/// Whether the content of `connection_points` page `page` changed in the last update of `o`
+/// the table style when a strip it shows changed; the graphic style when a strip it
 /// shows was drawn again, or the layout settings changed. Either style redraws when the project's
 /// style changed and the page has no style of its own. O(strips shown).
 pub(crate) fn connection_points_rewritten(doc: &Document, page: PageId, o: &ReportModels) -> bool {
@@ -304,7 +303,7 @@ pub(crate) fn connection_points_rewritten(doc: &Document, page: PageId, o: &Repo
         }
 }
 
-/// The refusal of `ops` when they would draw on a generated page (design 024 §5.3), before
+/// The refusal of `ops` when they would draw on a generated page, before
 /// anything is written.
 pub fn refusal(doc: &Document, ops: &[Op]) -> Option<String> {
     ops.iter()
@@ -325,7 +324,7 @@ pub(crate) fn refusal_words(doc: &Document, page: PageId, kind: GenKind) -> Stri
 /// The drawing area of a sheet in paper millimetres: left, bottom, right, top.
 pub fn area(input: &crate::pages::frames::FrameInput) -> (f64, f64, f64, f64) {
     let (w, h) = (f64::from(input.sheet.width), f64::from(input.sheet.height));
-    // Brief 055 (FP4): the frame's margins and its block's height.
+    // The frame's margins and its block's height.
     let m = input.draw.margins;
     (m.left + 5.0, m.bottom + input.keep_out() + 5.0, w - m.right - 5.0, h - m.top - 5.0)
 }
@@ -335,11 +334,11 @@ pub fn area(input: &crate::pages::frames::FrameInput) -> (f64, f64, f64, f64) {
 pub struct TRow {
     pub cells: Vec<String>,
     pub heading: bool,
-    /// Brief 028: the terminal plan's marks.
+    /// The terminal plan's marks.
     pub marks: Marks,
 }
 
-/// What a terminal plan row draws beyond its text (design 028 §5.3).
+/// What a terminal plan row draws beyond its text.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Marks {
     /// Column of the terminal box (its label centred in a 6 × 4 mm box).
@@ -359,7 +358,7 @@ fn table(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -> (Vec<
     (cols.into_iter().map(|(n, w)| (n.to_string(), w)).collect(), rows)
 }
 
-/// The revision list (design 033 §7.3): the project's revision columns, then Version, across
+/// The revision list: the project's revision columns, then Version, across
 /// the A3 area (Version keeps 60 mm).
 fn revision_list(doc: &Document) -> (Vec<(String, f64)>, Vec<TRow>) {
     const VERSION_MM: f64 = 60.0;
@@ -438,10 +437,10 @@ fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -
             (cols, rows)
         }
         GenKind::BomLocation => {
-            // Brief 047 (design 047 §6.3): an Article column when `bom.column.article` is on (the
+            // An Article column when `bom.column.article` is on (the
             // others narrower, still 390 mm), Qty with its unit, nested lines indented.
             let article = reports.is_some_and(|o| o.view.article);
-            // UI rev 3 (board 1.15): the tag first, then the description, its quantity (right
+            // The tag first, then the description, its quantity (right
             // aligned, [`BOM_QTY_COLUMN`]), maker and part number.
             let cols = if article {
                 vec![("Tags", 60.0), ("Description", 120.0), ("Qty", 15.0), ("Maker", 60.0), ("Part number", 85.0), ("Article", 50.0)]
@@ -468,11 +467,10 @@ fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -
             }
             (cols, rows)
         }
-        // Brief 028 (design 028 §5.3), drawn by `terminal_block_rows`.
+        // Drawn by `terminal_block_rows`.
         GenKind::TerminalBlocks => (TERMINAL_BLOCK_COLUMNS.to_vec(), Vec::new()),
-        // Brief 051: drawn by `crate::plc::sheets`.
+        // Drawn by `crate::plc::sheets`.
         GenKind::PlcRack => (Vec::new(), Vec::new()),
-        // Brief 045c (design 045 §8.2).
         GenKind::IoList => {
             let Some(o) = reports else { return (crate::plc::iolist::PAGE_COLUMNS.to_vec(), Vec::new()) };
             let mut rows: Vec<TRow> =
@@ -526,10 +524,10 @@ fn table_static(doc: &Document, kind: GenKind, reports: Option<&ReportModels>) -
     }
 }
 
-/// The BOM page's Qty column, drawn right aligned (UI rev 3, board 1.15).
+/// The BOM page's Qty column, drawn right aligned.
 pub const BOM_QTY_COLUMN: usize = 2;
 
-/// The terminal plan's columns with their A3 widths (design 028 §5.3).
+/// The terminal plan's columns with their A3 widths.
 const TERMINAL_BLOCK_COLUMNS: [(&str, f64); 9] = [
     ("Inside target", 70.0),
     ("Inside wire", 30.0),
@@ -552,7 +550,7 @@ fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TR
         if let Some(pn) = &s.part_number {
             head.push_str(&format!("  (part: {pn})"));
         }
-        // Brief 030 (design 030 §7.1): the accessory totals.
+        // The accessory totals.
         let acc = s.acc.summary();
         if !acc.is_empty() {
             head.push_str(&format!(" \u{b7} {acc}"));
@@ -562,7 +560,7 @@ fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TR
         for item in s.plan(true) {
             let (ri, r) = match item {
                 crate::terminal_strips::strip_model::PlanItem::Term(i, r) => (i, r),
-                // Brief 030 (design 030 §7.3): a gap row is a full row, the word in Inside target,
+                // A gap row is a full row, the word in Inside target,
                 // a mark across Terminal, the part in Place.
                 crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                     let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];
@@ -600,7 +598,7 @@ fn terminal_block_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TR
                 }
                 m.into_iter().collect::<String>().trim_end().to_string()
             };
-            // Brief 036: a PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
+            // A PE mark only on a one-level PE terminal (an L/N/PE level shows `1.PE`).
             let pe_mark = r.pe && !r.ty.multi();
             if r.connection_point.is_none() {
                 let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];

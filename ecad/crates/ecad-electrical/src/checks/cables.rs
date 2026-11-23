@@ -3,7 +3,7 @@
 use super::places::*;
 use super::*;
 
-/// The checks of cable `k`'s reference ends (brief 027, design 027 §4.2): a cable with exactly one
+/// The checks of cable `k`'s reference ends: a cable with exactly one
 /// reference end has an orphan (`/?`). Reads that cable's representations only.
 pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
     let references = crate::references::cables::references_of(doc, k);
@@ -16,7 +16,7 @@ pub fn reference_checks(doc: &Document, k: CableId) -> Vec<Check> {
     vec![Check { kind: Kind::OrphanReference, page: Some(r.page), at, object: Object::Reference(*rid), which, fix: None }]
 }
 
-/// The checks of cable `k` (brief 026): a provisional tag; a tag another cable or a device holds.
+/// The checks of cable `k`: a provisional tag; a tag another cable or a device holds.
 pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
     cable_checks_in(&mut Places::new(doc), k)
 }
@@ -25,7 +25,7 @@ pub fn cable_checks(doc: &Document, k: ecad_model::CableId) -> Vec<Check> {
 pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<Check> {
     let doc = places.doc();
     let mut out = Vec::new();
-    // Brief 059 (design 059 §6): a cable not drawn yet has one Info row and no core rows; its
+    // A cable not drawn yet has one Info row and no core rows; its
     // planned ends and glands are not checked until it is drawn.
     let drawn = crate::cables::is_drawn(doc, k);
     if !drawn && doc.cables().contains_key(&k) {
@@ -41,13 +41,13 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
     }
     out.extend(crate::cables::value_checks(doc, k, drawn));
     core_place_checks(doc, k, &mut out);
-    // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
+    // Every core is connected at both ends or ticked Not used.
     let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
         let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         let name = crate::cables::cable_title(doc, k);
         for (i, o) in open.into_iter().enumerate() {
-            // Brief 059 (design 059 §6): an unwired core is "not assigned".
+            // An unwired core is "not assigned".
             let which = format!("{name} core {} is not assigned: slash or add a wire, or tick Not used.", o.label);
             out.push(Check {
                 kind: Kind::CoreOpen,
@@ -76,7 +76,7 @@ pub(crate) fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -
     out
 }
 
-/// The rows of cable `k`'s cores on lines (owner rule, 2026-11-18): a core whose line has one end
+/// The rows of cable `k`'s cores on lines: a core whose line has one end
 /// landed, and a core whose stored place is not the one its line now gives
 /// ([`ecad_model::connectivity::wire_order::core_position`]). Reads only the cable's own cores and their lines.
 pub(super) fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {

@@ -1,4 +1,4 @@
-//! The rules of the rating commands (brief 057, design 057 §8): which wires or cable `rating` and
+//! The rules of the rating commands: which wires or cable `rating` and
 //! `ratings` name, the values `rating` sets, a location's panel temperature, and the record
 //! `ratingtable` writes. The engine crate's shims read the files, commit the ops and answer in
 //! JSON.
@@ -99,7 +99,7 @@ pub(crate) fn not_a_key(key: &str) -> CmdError {
     CmdError::refused(format!("{key} is not a rating key; the keys are {}.", KEYS.iter().map(|k| k.0).collect::<Vec<_>>().join(", ")))
 }
 
-/// Check `value` for `key` (design 057 §6.1) and give the text stored.
+/// Check `value` for `key` and give the text stored.
 ///
 /// # Errors
 /// The key and its range, in words.
@@ -288,14 +288,14 @@ pub(crate) fn check_temperature(text: &str) -> Result<String, CmdError> {
     }
 }
 
-/// `rating {location, temperature}` (design 057 FP6; tester F1): the location boxes of `typed` (a
+/// `rating {location, temperature}`: the location boxes of `typed` (a
 /// code or an entry key) take panel temperature `after` (`None` clears it), one `ModifyAid` per
-/// box that changes (design 072 §6.2).
+/// box that changes.
 ///
 /// # Errors
 /// No location box of that location.
 pub(crate) fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Result<PanelTemperature, CmdError> {
-    // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
+    // `location` is a code (or an entry key); boxes store the entry's key.
     let entry = crate::locations::designations::find(doc, crate::locations::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
     let boxes: Vec<ecad_model::AidId> = match &entry {
@@ -428,7 +428,7 @@ pub(crate) fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) 
     Ok(TablePlan { ops, id, rows, odd: data.odd(), label })
 }
 
-/// One result as `ratings` returns it (design 057 §8.2): the object the panel shows.
+/// One result as `ratings` returns it: the object the panel shows.
 pub(crate) fn rating_json(doc: &Document, r: &Rating) -> Value {
     let subject = match r.subject {
         RatedSubject::Wire(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),

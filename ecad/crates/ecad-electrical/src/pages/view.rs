@@ -1,4 +1,4 @@
-//! The drawn pages' feed (design 064 §4.1, `PagesView`): the pages whose drawing a commit could
+//! The drawn pages' feed (`PagesView`): the pages whose drawing a commit could
 //! change, for the change log and the redraw, and the pages its ops name directly, one of which an
 //! undo or redo brings to the front ([`PagesView::take_named`]). It keeps nothing between commits.
 //!
@@ -32,7 +32,7 @@
 //!   cable made or removed, a cable property, the settings, a version): every page.
 //!
 //! After the commit, the effects past those the Before phase saw (the transaction's extension: the
-//! wire rewrite, design 072 §4.4, and the numbering pass, brief 022), each looked up on the
+//! wire rewrite, and the numbering pass), each looked up on the
 //! document after them: a wire made or removed, the pages of the routes at its ends; changed, or
 //! a property of it written, the pages its labels are on. Nothing else.
 
@@ -104,7 +104,7 @@ pub fn points_pages(doc: &Document, points: &[ecad_model::ConnectionPointId]) ->
     points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes().get(&r).map(|x| x.page)).collect()
 }
 
-/// Brief 048 (FP8): whether definition `id` is shown by nothing after `effects` (its last copies
+/// Whether definition `id` is shown by nothing after `effects` (its last copies
 /// moved off it or removed in the same transaction); `doc` is the document before them.
 fn unused_after(doc: &Document, id: DefinitionId, effects: &Effects<'_>) -> bool {
     let item_left = |i: &ecad_model::ItemId| {
@@ -140,17 +140,17 @@ fn unused_after(doc: &Document, id: DefinitionId, effects: &Effects<'_>) -> bool
 fn project_key_drawn_nowhere(key: ecad_model::document::effect::Key<'_>) -> bool {
     let (area, key) = (key.area, key.raw);
     ecad_model::naming::keys::NUMBERING_HIGH.parse(key).is_some()
-        // Brief 044 (design 044 §11.1): a connector default's pages come from `ConnectorsView`.
+        // A connector default's pages come from `ConnectorsView`.
         || area == ecad_model::naming::keys::Area::Connector
-        // Brief 030: strip accessory defaults (the plan page is a generated page, kept by its own rule).
+        // Strip accessory defaults (the plan page is a generated page, kept by its own rule).
         || crate::terminal_strips::accessories::strip_key_of_project(key).is_some()
 }
 
-/// Brief 052 (design 052 §8.2a): what a change of the project's data redraws, read in `doc`
+/// What a change of the project's data redraws, read in `doc`
 /// before it.
 fn project_pages(doc: &Document, before: &ecad_model::document::project::Project, after: &ecad_model::document::project::Project, out: &mut PageSet) {
     use crate::locations::designations::{Aspect, changed_codes, default_key, page_key};
-    // Design 072 §5.3: the info and the revision rows are drawn in every page's frame.
+    // The info and the revision rows are drawn in every page's frame.
     if before.info != after.info || before.revisions != after.revisions {
         *out = PageSet::All;
         return;
@@ -180,7 +180,7 @@ fn project_pages(doc: &Document, before: &ecad_model::document::project::Project
 fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mut PagesScope) {
     let out = &mut scope.pages;
     match effect {
-        // Design 072 §2.6: a device link is a relationship, drawn on no page.
+        // A device link is a relationship, drawn on no page.
         Effect::DeviceLink { .. } => {}
         Effect::Item { before, after, .. } => {
             for p in before.iter().chain(after.iter()).map(|i| i.page) {
@@ -195,22 +195,21 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
             }
         }
         Effect::Route { before, after, .. } => extend(out, before.iter().chain(after.iter()).map(|r| r.page)),
-        // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages (the
+        // A continuation's partners list it on their pages (the
         // reference index's part), and its own pages come from its representation effects. A
         // location box's pages likewise (its label and the tag prefixes of the devices inside are
         // drawn on its own pages only).
         Effect::Aid { before: None, .. } | Effect::Aid { after: None, .. } => {}
-        // A continuation renamed or captioned, a box's values changed: its own pages (design 072
-        // §6.2).
+        // A continuation renamed or captioned, a box's values changed: its own pages
         Effect::Aid { id, .. } => extend(out, subject_pages(doc, Subject::Aid(*id))),
-        // A loose part is drawn on no page (design 072 §6.4).
+        // A loose part is drawn on no page.
         Effect::LoosePart { .. } => {}
         Effect::Device { id, before: None, after: Some(_) } if !doc.devices().contains_key(id) => {}
         Effect::Wire { id, before: None, after: Some(_) } if !doc.wires().contains_key(id) => {}
         Effect::Wire { before: Some(w), after: None, .. } => extend(out, points_pages(doc, &w.ends)),
         Effect::Wire { id, before: Some(_), after: Some(_) } => extend(out, crate::wires::routes::wire_pages(doc, *id)),
         Effect::Prop { object: ObjectRef::Wire(c), .. } => extend(out, crate::wires::routes::wire_pages(doc, *c)),
-        // Brief 028: a connection point relabelled (removed and added) is drawn by its device's
+        // A connection point relabelled (removed and added) is drawn by its device's
         // symbols only. A new one is drawn through its device.
         Effect::ConnectionPoint { id, before: None, after: Some(_) } if !doc.connection_points().contains_key(id) => {}
         Effect::ConnectionPoint { before, after, .. } => {
@@ -219,10 +218,10 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
             }
         }
         Effect::Definition { id, before: None, after: Some(_) } if !doc.definitions().contains_key(id) => {}
-        // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
+        // A superseded version nothing shows after the transaction is drawn
         // nowhere; its last copies' own effects name their pages.
         Effect::Definition { id, before: Some(_), after: None } if unused_after(doc, *id, effects) => {}
-        // A page's own properties show in its frame (brief 019). A folder move changes the book
+        // A page's own properties show in its frame. A folder move changes the book
         // order (Next boxes, unnumbered pages) anywhere.
         Effect::Page { id: p, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
             let ch = b.change(a);
@@ -240,16 +239,16 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
             }
         }
         Effect::Prop { object: ObjectRef::Page(p), .. } => out.insert(*p),
-        // Brief 018: a device's tag is drawn beside each of its symbols.
+        // A device's tag is drawn beside each of its symbols.
         Effect::Prop { object: ObjectRef::Device(c), key, after, .. } => {
             extend(out, subject_pages(doc, Subject::Device(*c)));
-            // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
+            // A rack's tag shows in its cards' captions, and a
             // card's slot or size moves the addresses of the cards after it.
             extend(out, crate::plc::pages_touched(doc, None, *c, key.raw, *after));
         }
         Effect::DeviceDefinition { id, .. } => extend(out, subject_pages(doc, Subject::Device(*id))),
-        // Design 072: a device's typed fields show beside its symbols; a PLC station's or module's
-        // fields (§3) on its station's cards' pages.
+        // A device's typed fields show beside its symbols; a PLC station's or module's
+        // fields on its station's cards' pages.
         Effect::Device { id: c, before: Some(b), after: Some(a) } => {
             extend(out, subject_pages(doc, Subject::Device(*c)));
             if b.tag != a.tag {
@@ -259,7 +258,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
                 extend(out, crate::plc::pages_modified(doc, None, *c, b, a));
             }
         }
-        // Design 072 §4.5: a cable's fields are drawn by its slashes and its cores' lines; a
+        // A cable's fields are drawn by its slashes and its cores' lines; a
         // change of its cores redraws every page.
         Effect::Cable { id, before: Some(b), after: Some(a) } => {
             if b.cores != a.cores {
@@ -286,7 +285,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
                 *out = PageSet::All;
             }
         }
-        // Brief 050a (design 050 §10): a style record marks its users' pages (every page when the
+        // A style record marks its users' pages (every page when the
         // project's choice resolves to it); the standard's header none.
         Effect::Style { layer, catalogue, id, before, after } => {
             let op = Op::SetStyle { layer: *layer, catalogue: *catalogue, id: (*id).clone(), before: before.cloned(), after: after.cloned() };
@@ -317,7 +316,7 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut PageSet) {
         Effect::Prop { object: ObjectRef::Wire(c), .. } | Effect::Wire { id: c, before: Some(_), after: Some(_) } => {
             extend(out, crate::wires::routes::wire_pages(doc, *c));
         }
-        // The rewrite's wires (design 072 §4.4): labelled on the routes at their ends.
+        // The rewrite's wires: labelled on the routes at their ends.
         Effect::Wire { before: Some(w), after: None, .. } | Effect::Wire { before: None, after: Some(w), .. } => {
             extend(out, points_pages(doc, &w.ends));
         }

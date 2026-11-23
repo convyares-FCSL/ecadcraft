@@ -1,4 +1,4 @@
-//! What a device does, as calculations on its typed data (design 072 §2.4): [`Supply`], [`Load`],
+//! What a device does, as calculations on its typed data: [`Supply`], [`Load`],
 //! [`Protects`], [`Senses`], [`Signals`] and [`Contacts`], and [`DeviceKind`], which gives a
 //! [`DeviceType`]'s view as each of them.
 //!
@@ -16,8 +16,8 @@
 //! - [`Contacts`] is every group that physically has contacts: switching devices, breakers, RCDs
 //!   and RCBOs (their auxiliaries) and switching sensors. Their offer is a typed [`ContactSet`].
 //!
-//! This module excludes the circuit side (the rating checks' `Circuit`, lane D), trip curves,
-//! numbering an offer's poles (`crate::references::devices`), connection points (`Connects`, step 4) and PLC addresses (lane C).
+//! This module excludes the circuit side (the rating checks' `Circuit`), trip curves,
+//! numbering an offer's poles (`crate::references::devices`), connection points (`Connects`, step 4) and PLC addresses.
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::DeviceType;
@@ -78,7 +78,7 @@ pub trait Signals {
     fn colour(&self) -> Option<IndicatorColour>;
 }
 
-/// A device type's views as each trait (design 072 §2.4).
+/// A device type's views as each trait.
 ///
 /// # Example
 /// ```
@@ -101,7 +101,7 @@ pub trait DeviceKind {
     fn as_contacts_mut(&mut self) -> Option<&mut dyn Contacts>;
 }
 
-/// A device that has contacts (design 025 FP1, design 072 §2.4): what the part offers.
+/// A device that has contacts: what the part offers.
 pub trait Contacts {
     /// The contacts it offers; empty when none are typed.
     fn contacts(&self) -> &ContactSet;

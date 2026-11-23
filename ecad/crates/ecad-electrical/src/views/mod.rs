@@ -1,4 +1,4 @@
-//! One update pipeline for every derived view (design 064 §5): [`Views`].
+//! One update pipeline for every derived view: [`Views`].
 //!
 //! The project owns one [`Views`], built once with the engine's inputs ([`EngineInputs`]) on open,
 //! reload and branch switch, and after that updated only by the three commit paths (command,
@@ -10,7 +10,7 @@
 //! let changes = views.finish(after_doc, tx_ops, pending);
 //! ```
 //!
-//! Every derived view has one way in: this set (design 064 §5.2). Another document state (an
+//! Every derived view has one way in: this set. Another document state (an
 //! issued or finalised revision) is read through [`Views::detached`].
 //!
 //! This module excludes the engine: what the engine does with [`Changes`] (the change log, the
@@ -39,7 +39,7 @@ pub use changes::Changes;
 
 use crate::styles::text_style::fonts::TextMetrics;
 
-/// What the engine supplies to the views (design 064 §5.2): the text metrics, and any later
+/// What the engine supplies to the views: the text metrics, and any later
 /// engine-made input. ecad-engine fills it in.
 #[derive(Clone)]
 pub struct EngineInputs {
@@ -54,7 +54,7 @@ impl std::fmt::Debug for EngineInputs {
 }
 
 /// What a view's update reads besides the document: the engine's inputs and the outcomes of
-/// earlier stages (design 064 §4).
+/// earlier stages.
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub engine: &'a EngineInputs,
@@ -136,7 +136,7 @@ impl Detached {
     }
 }
 
-/// Every derived view the project keeps, in stage order (design 064 §5).
+/// Every derived view the project keeps, in stage order.
 #[derive(Debug)]
 pub struct Views {
     inputs: EngineInputs,
@@ -225,7 +225,7 @@ impl Views {
         &mut self.frame
     }
 
-    /// The kept reference index (design 025 §3.3).
+    /// The kept reference index.
     pub fn references(&self) -> &crate::references::devices::index::RefIndex {
         self.references.index()
     }
@@ -235,12 +235,12 @@ impl Views {
         &mut self.references
     }
 
-    /// The kept connector index (design 044 §11.1).
+    /// The kept connector index.
     pub fn connectors(&self) -> &crate::connectors::Index {
         self.connectors.index()
     }
 
-    /// The report models, built on their first show (design 024 §8.1) and kept after that.
+    /// The report models, built on their first show and kept after that.
     pub fn reports(&mut self, doc: &Document) -> &crate::reports::kept::ReportModels {
         let metrics = &*self.inputs.metrics;
         self.reports.get_or_build(|| ReportsView::build(doc, metrics)).model()
@@ -262,7 +262,7 @@ impl Views {
         self.reports.reset();
     }
 
-    /// The Checks list, built on its first show with tolerance `tol` (design 022 §8) and kept
+    /// The Checks list, built on its first show with tolerance `tol` and kept
     /// after that.
     pub fn checks(&mut self, doc: &Document, tol: f64) -> &crate::checks::kept::Checks {
         let metrics = &*self.inputs.metrics;
@@ -357,7 +357,7 @@ impl Views {
         merge(&mut changes, self.frame.update(after, frame, &inputs));
         merge(&mut changes, self.generated.update(after, generated, &inputs));
         let cover = self.generated.take_cover();
-        // Stage 3b: the Checks list; brief 054b: the cover's rows follow the cover (a cover page
+        // The Checks list: the cover's rows follow the cover (a cover page
         // added or removed too).
         if let Some(view) = self.checks.get_mut() {
             merge(&mut changes, view.update(after, checks, &inputs));
@@ -425,7 +425,7 @@ fn merge(changes: &mut Changes, outcome: Outcome) {
 }
 
 /// Note every effect of `cx.effects` for `view`, dropping a property write outside the view's
-/// areas (design 064 §3.3). A view that is not kept notes nothing.
+/// areas. A view that is not kept notes nothing.
 pub fn note_view<V, Cx>(view: &V, cx: &NoteCx<'_>, scope: &mut V::Scope)
 where
     V: DerivedView<Cx>,

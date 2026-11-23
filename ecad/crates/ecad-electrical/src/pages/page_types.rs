@@ -1,19 +1,19 @@
-//! Brief 054a (design 054 §4, §8.3, §9): folder start numbers, Renumber pages, deleting a
+//! Folder start numbers, Renumber pages, deleting a
 //! generated page, and the Checks rows of page types and folder starts.
 //!
 //! # Semantics
-//! - A folder's **start number** is the project property `folder.<folder id>.start` (FP7): 1 to 6
+//! - A folder's **start number** is the project property `folder.<folder id>.start`: 1 to 6
 //!   digits, leading zeros setting the width. Setting it renumbers nothing. The first page added
 //!   to a folder with one takes it (`ecad_engine::pages::commands::sheets::new_page_ops_at`).
 //! - **Renumber pages** walks the book order. Each page belongs to the **run** of the nearest
 //!   folder above it with a start number, else the book's run from `1`; each run numbers its pages
 //!   in book order from its start by the project's step. A number given in this renumber, a
-//!   continuation sheet's number (033), or a number in another run's span is skipped, never
+//!   continuation sheet's number, or a number in another run's span is skipped, never
 //!   refused. One transaction; nothing written when nothing changes.
 //! - `deletepage` removes generated pages only: they store nothing but their properties, so undo
 //!   restores them exactly. A drawn page is refused before anything is written.
 //!
-//! # Update map (design 054 §10.2)
+//! # Update map
 //! The Checks rows here ([`check_rows`]) are worked out again only after an effect [`touches_checks`]
 //! names: a `folder.*.start` property, a page's folder or type, a page or folder added or removed,
 //! a page type record. Renumber runs on request (O(pages)).
@@ -38,14 +38,14 @@ pub const MAX_NUMBER_CHARS: usize = 12;
 pub(crate) const MAX_START_DIGITS: usize = 6;
 /// The refusal for a start number that is not 1–6 digits.
 pub const BAD_START: &str = "A start number is 1 to 6 digits.";
-/// The refusal for deleting a drawn page (design 054 §8.3, Q9).
+/// The refusal for deleting a drawn page.
 pub const DRAWN_PAGE: &str = "Deleting a drawn page comes later; move its content first.";
 /// Whether `t` is a start number: 1 to 6 ASCII digits.
 pub(crate) fn is_start(t: &str) -> bool {
     t.len() <= MAX_START_DIGITS && ecad_model::naming::words::is_digits(t)
 }
 
-/// `folder`'s start number (design 072 §5.2: `Folder.start`), when it has a valid one.
+/// `folder`'s start number (`Folder.start`), when it has a valid one.
 pub fn start_of(doc: &Document, folder: FolderId) -> Option<String> {
     doc.folders().get(&folder)?.start.as_ref().map(|s| s.as_str().trim()).filter(|s| is_start(s)).map(str::to_string)
 }
@@ -141,7 +141,7 @@ pub fn overlaps(doc: &Document, reports: Option<&ReportModels>) -> Vec<(Option<F
     out
 }
 
-/// The overlap row's words: `Folder Schematic's numbers run into Terminal's (300).`
+/// The overlap row's words: `Folder Schematic's numbers run into Terminal's.`
 pub(crate) fn overlap_words(doc: &Document, from: Option<FolderId>, into: Option<FolderId>, n: u64) -> String {
     let mut a = run_name(doc, from);
     if let Some(c) = a.get(..1) {
@@ -214,7 +214,7 @@ pub fn renumber(doc: &Document, reports: Option<&ReportModels>, scope: Option<Fo
     out
 }
 
-/// The type `newpage` gives a page (design 054 §4.2): `type` read as a page type ID or name,
+/// The type `newpage` gives a page: `type` read as a page type ID or name,
 /// checked against `generated`. `Ok(None)`: no type and no generated kind (a page as before).
 ///
 /// # Errors
@@ -231,7 +231,7 @@ pub(crate) fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKin
     }
 }
 
-/// A fix of a page type or folder start row (design 054 §9).
+/// A fix of a page type or folder start row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageFix {
     /// **Use its usual type**: clear the page's own `page.type`, so it takes its derived type.
@@ -266,7 +266,7 @@ impl PageFix {
     }
 }
 
-/// Whether `effect` changes which pages have checks and references off (design 054 §3.4): a
+/// Whether `effect` changes which pages have checks and references off: a
 /// page's type moved to or from such a type, such a page added or removed, a type record whose
 /// `checks` changed. Looked up in `doc` (call it on the state before and after).
 pub(crate) fn checks_changed(doc: &Document, effect: &ecad_model::document::effect::Effect<'_>) -> bool {
@@ -336,7 +336,7 @@ pub(crate) fn touches_checks(effect: &ecad_model::document::effect::Effect<'_>) 
     }
 }
 
-/// The Checks rows of design 054 §9 that 054a adds: a page type that is not found, a type field
+/// The Checks rows for page types: a page type that is not found, a type field
 /// that is not read, a folder start key that is not read, runs that overlap.
 pub fn check_rows(doc: &Document) -> Vec<Check> {
     let mut out = Vec::new();
@@ -356,9 +356,9 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));
         out.push(r);
     }
-    // Design 072 §8: a type record holds typed values only; a value its field does not take
+    // A type record holds typed values only; a value its field does not take
     // does not read, so there is nothing to report about type records here.
-    // Folder start numbers that are not 1–6 digits (design 072 §5.2: a page number is stored).
+    // Folder start numbers that are not 1–6 digits (a page number is stored).
     for (id, f) in doc.folders() {
         if f.start.as_ref().is_some_and(|s| !is_start(s.as_str().trim())) {
             let mut r = row(Kind::FolderStartUnknown, None, format!("Folder {}'s start number is not 1 to 6 digits", f.name));

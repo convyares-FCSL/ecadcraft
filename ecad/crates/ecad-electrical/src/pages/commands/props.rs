@@ -290,7 +290,7 @@ clears; no fields: the current values, read only)";
         if self.generated.is_some() {
             return Err(CmdError::refused(generated::KIND_FIXED));
         }
-        // Brief 031 (§10.6): a page's `text.` keys are written by `showtext` only, also when asked
+        // A page's `text.` keys are written by `showtext` only, also when asked
         // for as `props`.
         if self.props.as_ref().is_some_and(|o| o.keys().any(|k| text_style::is_reserved_key(k))) {
             return Err(CmdError::refused(text_style::RESERVED_KEY));

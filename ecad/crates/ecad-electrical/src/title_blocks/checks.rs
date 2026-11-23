@@ -1,9 +1,9 @@
-//! The title block rows of the Checks list (brief 055, design 055 §8).
+//! The title block rows of the Checks list.
 //!
 //! - `title-value-cut` (Info): a bound value is cut in the title block on at least one page; one
 //!   row per frame and field, counting the pages. Go to: the first page; Fix: **Edit block**.
 //! - `title-binding-unknown` (Info): a frame has fields this build cannot fill (an unknown source
-//!   or key, a newer file), or items past the bounds of design 055 §1.3, or a title block on a
+//!   or key, a newer file), or items past the bounds of a title block, or a title block on a
 //!   record that is not a frame. One row per record.
 //! - `frame-sheet-differs` (Warning): a page's own `sheet` differs from its frame's; the frame
 //!   wins. Fix: **Clear the page's sheet**.
@@ -36,7 +36,7 @@ pub fn touches(effect: &Effect<'_>) -> bool {
         Effect::Style { .. } | Effect::Standard { .. } => true,
         Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard | ObjectRef::Page(_), .. } => true,
-        // Design 072 §5.3: the info, the revision rows and the lists the block shows.
+        // The info, the revision rows and the lists the block shows.
         Effect::Project { .. } => true,
         Effect::Page { .. } | Effect::Folder { .. } => true,
         Effect::Layer { .. }
@@ -57,7 +57,7 @@ pub fn touches(effect: &Effect<'_>) -> bool {
     }
 }
 
-/// The title block rows as a [`crate::checks::CheckSource`] (brief 060): kept on pages with
+/// The title block rows as a [`crate::checks::CheckSource`]: kept on pages with
 /// checks off.
 pub(crate) struct TitleBlockRows;
 
@@ -91,10 +91,10 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
         let Some(cats) = ecad_model::objects::styles::layer_of(doc, layer) else { continue };
         for (cat, records) in cats {
             for (id, r) in records.iter().take(ecad_model::objects::styles::MAX_STYLES_PER_CATALOGUE) {
-                // Only a frame style's body holds a title block (design 072 §8).
+                // Only a frame style's body holds a title block.
                 let Some(l) = r.title_block() else { continue };
                 let name = crate::styles::name(doc, *cat, id);
-                // Tester 055 (§12.1 J, §1.3): a size past the bounds is drawn with the built-in's
+                // A size past the bounds is drawn with the built-in's
                 // keep-out strip; say so.
                 if !l.size_ok() {
                     let which = format!(
@@ -104,7 +104,7 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                     );
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                 }
-                // Design 072 §5.4: every binding that reads can be filled; only items past the
+                // Every binding that reads can be filled; only items past the
                 // bounds are skipped.
                 let (_, skipped) = l.usable();
                 let n = skipped.items;
@@ -160,8 +160,8 @@ fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> F
     inp.page = book.number(doc, page);
     inp.next_page = book.next(page);
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));
-    // Brief 052: stored as entry keys of the project's list; shown as codes.
-    // Design 072 §5.3: the page's own id, else the project's.
+    // Stored as entry keys of the project's list; shown as codes.
+    // The page's own id, else the project's.
     let shown = |a: crate::locations::designations::Aspect| {
         crate::locations::designations::inherited_key(doc, page, a)
             .map(|k| crate::locations::designations::display(doc, a.property(), &k))

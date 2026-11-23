@@ -1,7 +1,7 @@
 //! The crate's error type, [`CmdError`], and the refusals said in more than one place ([`msg`]).
 //!
 //! The words a person reads are each variant's `Display` text, word for word as before (brief
-//! 070). They become a `String` only at the edge: a command's result, MCP, the UI.
+//! They become a `String` only at the edge: a command's result, MCP, the UI.
 
 use std::borrow::Cow;
 
@@ -79,7 +79,7 @@ pub mod msg {
     pub const USE_WIRENUMBER: &str = "use wirenumber: a wire number belongs to the whole net";
     /// `setprop` of a potential on one conductor.
     pub const USE_POTENTIAL: &str = "use potential: a potential belongs to the whole net";
-    /// A potential's colour or cross-section (brief 050b, design 050 §6.9).
+    /// A potential's colour or cross-section.
     pub const CATEGORY_COLOURS: &str = "Colour and cross-section are set on wire categories now (setstyle {catalogue: \"wire\"}).";
     /// `joinwires` where nothing meets.
     pub const NO_ENDS_TO_JOIN: &str = "There are no wire ends to join here.";
@@ -97,6 +97,6 @@ pub mod msg {
     pub const FOLDER_NAME: &str = "A folder name is 1 to 100 characters, with no control characters.";
     /// A page title that does not read.
     pub const PAGE_TITLE: &str = "`title` must be a non-empty string of at most 200 characters";
-    /// A `proposal` word that does not read (brief 052d).
+    /// A `proposal` word that does not read.
     pub const PROPOSAL_WORDS: &str = "`proposal` is \"propose\", \"move\" or \"keep\"";
 }

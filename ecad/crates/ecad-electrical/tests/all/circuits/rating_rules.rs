@@ -1,6 +1,6 @@
-//! The rules of the rating checks that need no project (design 057 §11): how a device's rating, a
+//! The rules of the rating checks that need no project: how a device's rating, a
 //! value and a rating table read, and the formulas. Every table and datasheet value here is
-//! synthetic, made up to exercise the arithmetic; none is a value from a standard (owner, Q11).
+//! synthetic, made up to exercise the arithmetic; none is a value from a standard.
 
 use ecad_electrical::circuits;
 use ecad_electrical::devices::ratings::dataset::{self, Insulation};

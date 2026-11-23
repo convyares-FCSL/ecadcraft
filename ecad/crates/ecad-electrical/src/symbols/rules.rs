@@ -3,7 +3,7 @@
 use super::*;
 
 //
-// Overseer ruling (2026-11-12): labels, quiet points and anchors are catalogue code; only
+// Labels, quiet points and anchors are catalogue code; only
 // user-overridable values (the prefix) are in the defaults registry, `defaults/symbols.rs`.
 
 /// Whether point `point` (a definition key) of `s` is quiet: left unwired, it raises no
@@ -18,8 +18,8 @@ pub fn is_quiet(s: &Starter, point: &str) -> bool {
 
 // ---------------------------------------------------------------- change-over contacts
 
-/// The labels a change-over contact gets joining a device whose labels are `used` (design 034
-/// §2.3): s = 1 + the highest IEC sequence digit among labels of the form `[1-9][1-4]`, then `s1`,
+/// The labels a change-over contact gets joining a device whose labels are `used`:
+/// s = 1 + the highest IEC sequence digit among labels of the form `[1-9][1-4]`, then `s1`,
 /// `s2`, `s4` (common, NC, NO: definition order).
 ///
 /// # Errors
@@ -28,7 +28,7 @@ pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<Strin
     sequence_labels(used, &BTreeSet::new(), &['1', '2', '4'], who)
 }
 
-/// The labels a contact gets joining a device (design 018 §3.1, 034 §2.3): `suffixes` after the
+/// The labels a contact gets joining a device: `suffixes` after the
 /// next IEC sequence digit s, in that order (`['3', '4']` NO, `['1', '2']` NC, `['1', '2', '4']`
 /// change-over).
 ///
@@ -36,7 +36,7 @@ pub fn changeover_labels(used: &BTreeSet<String>, who: &str) -> Result<Vec<Strin
 /// s = 1 + the highest digit among the labels of `used` of the form `[1-9][1-4]` that are not in
 /// `skip`, then the first digit from there whose labels `used` does not already hold. `skip` is a
 /// fuse bank's own outputs ([`bank_outputs`]): fuse `11` or `12` is not a contact, so a fault
-/// contact on a 12-way bank is still `13`/`14` (design 034 §3), and an NC skips to `21`/`22`.
+/// contact on a 12-way bank is still `13`/`14`, and an NC skips to `21`/`22`.
 ///
 /// # Errors
 /// s would be over 9: `<who> already has 9 contacts.`
@@ -67,7 +67,7 @@ pub(crate) fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<
 /// The output labels of device `c` when it is a fuse bank (its typed `device_type`), in the order
 /// its head symbol draws them; empty for any other device.
 ///
-/// Gap (#27): how many ways a bank has is not stored on [`ecad_model::objects::devices::FuseBank`]
+/// Gap: how many ways a bank has is not stored on [`ecad_model::objects::devices::FuseBank`]
 /// (only the rated outputs are), so the head symbol is still read for its labels.
 pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     use ecad_model::objects::devices::{DeviceType, Protection};
@@ -82,7 +82,7 @@ pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String
         .unwrap_or_default()
 }
 
-// ---------------------------------------------------------------- ratings (design 034 §7.3)
+// ---------------------------------------------------------------- ratings
 
 pub use ecad_model::objects::devices::{RATING_KEY, RATING_OF_PREFIX};
 
@@ -101,7 +101,7 @@ pub(crate) fn is_fuse_bank(s: &Starter) -> bool {
 }
 
 /// Check a `rating.<n>` value set on `object` that is neither a protective device nor a terminal
-/// strip (design 034 §7.3; a device's own rating, a fuse bank's fuses and a strip's fuse positions
+/// strip (a device's own rating, a fuse bank's fuses and a strip's fuse positions
 /// are typed fields, `cmd::props::b`).
 ///
 /// # Semantics
@@ -115,7 +115,7 @@ pub(crate) fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: 
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));
     }
-    // Clearing always works (review of PR #63, 2): a `rating.<n>` left on a device that is no
+    // Clearing always works: a `rating.<n>` left on a device that is no
     // longer a fuse bank (its bank symbol erased, or an older free property) must stay removable.
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     if let Some(n) = key.strip_prefix(RATING_OF_PREFIX).filter(|_| !clearing) {

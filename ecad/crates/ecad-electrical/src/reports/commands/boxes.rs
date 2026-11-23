@@ -1,4 +1,4 @@
-//! The box commands (brief 024, design 024 §7; brief 052d, design 052 §5.6, §5.8): `locationbox` and
+//! The box commands: `locationbox` and
 //! `functionbox` draw a box carrying a location or a function, and propose its values for the
 //! devices inside. The box's rules and the JSON it answers sit here; the commands are generic
 //! ([`crate::commands::run`]). Excludes the click-based form, which is the engine's.
@@ -72,7 +72,7 @@ pub(crate) struct BoxPlan {
     pub message: String,
 }
 
-/// A box (design 024 §7, design 052 §5.6, §5.8) on `page` carrying `function` and `location`
+/// A box on `page` carrying `function` and `location`
 /// (at least one), drawn as `shape`, and the proposal it makes for the device symbols inside.
 /// Unset devices take its values in the same transaction; devices with another value are listed as
 /// conflicts (`mode`: propose, move or keep).
@@ -97,7 +97,7 @@ pub(crate) fn plan_box(
     };
     let b = locations::planned_box(doc, &planned).ok_or(CmdError::refused("the box could not be read back"))?;
     let shown = locations::label_of(&b).0;
-    // Brief 052d: the box proposes its values for the device symbols inside it.
+    // The box proposes its values for the device symbols inside it.
     let spots = proposals::spots_inside(doc, &b);
     let modes = [if b.function_key.is_some() { mode.clone() } else { Mode::Keep }, if b.location_key.is_some() { mode.clone() } else { Mode::Keep }];
     let mut pending = Pending::default();
@@ -122,7 +122,7 @@ pub(crate) fn plan_box(
     Ok(BoxPlan { ops, label: format!("{kind} {shown}"), planned, proposed, inside: n, keeps: keeps.len(), message })
 }
 
-/// The JSON a box answers (design 024 §7, design 052 §5.6): the box, the proposal it made for the
+/// The JSON a box answers: the box, the proposal it made for the
 /// device symbols inside, and that proposal's conflicts.
 pub(crate) fn box_json(doc: &Document, plan: &BoxPlan) -> Value {
     let (planned, proposed) = (&plan.planned, &plan.proposed);
@@ -183,8 +183,7 @@ impl Generic for LocationboxParams {
     }
 }
 
-/// `functionbox {function, location?, corners | points | item, page?, proposal?}` (brief 052d,
-/// design 052 §5.8): a box carrying a function (and a location, when given), drawn dash-dot.
+/// `functionbox {function, location?, corners | points | item, page?, proposal?}`: a box carrying a function (and a location, when given), drawn dash-dot.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionboxParams {
@@ -232,7 +231,7 @@ struct BoxInput {
 }
 
 impl BoxInput {
-    /// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it
+    /// A box: its values, outline, and the proposal it
     /// makes for the device symbols inside. The conflicts it finds wait for an answer when no
     /// device was moved.
     fn run(self, cx: &mut Cx<'_>, page: Option<PageId>, proposal: Option<String>) -> Result<Outcome, CmdError> {

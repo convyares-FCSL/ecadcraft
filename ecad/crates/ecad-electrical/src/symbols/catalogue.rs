@@ -26,7 +26,7 @@ impl Starter {
 const HEAD: Kind = Kind::Fixed { exclusive: true };
 const PART: Kind = Kind::Fixed { exclusive: false };
 
-// Brief 034's aliases, shared by several entries.
+// Aliases, shared by several entries.
 const FUSE_BANK: &[&str] = &["fuse bank", "fuse block", "distribution", "protection"];
 const SOCKET: &[&str] = &["socket", "female", "connector"];
 const PLUG: &[&str] = &["plug", "male", "connector"];
@@ -35,7 +35,7 @@ const DSUB_P: &[&str] = &["d-sub", "dsub", "sub-d", "plug", "fieldbus", "profibu
 const M12_S: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "socket", "connector"];
 const M12_P: &[&str] = &["m12", "fieldbus", "profinet", "io-link", "plug", "connector"];
 const USB: &[&str] = &["usb", "bulkhead", "connector"];
-// Brief 044's aliases.
+// Aliases.
 const PINPAIR: &[&str] = &["pin pair", "mated pin", "plug and socket", "connector pin", "connector"];
 const PIN_S: &[&str] = &["socket pin", "female pin", "connector pin", "connector"];
 const PIN_P: &[&str] = &["plug pin", "male pin", "connector pin", "connector"];
@@ -45,7 +45,7 @@ const fn conn(key: StarterKey, name: &'static str, aliases: &'static [&'static s
     st(key, name, aliases, HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
 
-/// A mating connector half or pin (brief 044, design 044 §3.1): every pin quiet.
+/// A mating connector half or pin: every pin quiet.
 const fn half(key: StarterKey, name: &'static str, aliases: &'static [&'static str], side: Side, id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::ConnectorHalf { side }, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
@@ -53,7 +53,7 @@ const fn half(key: StarterKey, name: &'static str, aliases: &'static [&'static s
 const S: Side = Side::Socket;
 const P: Side = Side::Plug;
 
-/// Contacts and protection (brief 034 stage 1): definition IDs `0x100 + n`.
+/// Contacts and protection: definition IDs `0x100 + n`.
 const fn cp(n: u128) -> DefinitionId {
     def_id(0x100 + n)
 }
@@ -78,7 +78,7 @@ const fn card(key: StarterKey, name: &'static str, aliases: &'static [&'static s
     st(key, name, aliases, HEAD, id).of(Family::Plc)
 }
 
-/// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
+/// The catalogue, in table order. A definition ID is never
 /// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
     st(K::Coil, "Contactor / relay coil", &["coil", "relay", "contactor"], HEAD, def_id(1)),
@@ -97,12 +97,12 @@ pub const STARTERS: &[Starter] = &[
     st(K::Motor1, "Motor, single-phase", &["motor"], HEAD, def_id(14)),
     st(K::Trafo, "Transformer", &["control transformer"], HEAD, def_id(15)),
     st(K::TerminalBlock, "Terminal", &["terminal", "clamp"], Kind::TerminalBlock, def_id(16)),
-    // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `connection_point`.
+    // A protective-earth terminal; it joins a strip like `connection_point`.
     st(K::TerminalBlockPe, "PE terminal", &["pe terminal", "earth terminal"], Kind::TerminalBlock, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
-    // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
+    // ---- Contacts and protection.
     st(K::Co, "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
     st(K::Swco, "Switch, change-over", &["change-over", "switch", "toggle"], Kind::ChangeOver, cp(2)).of(Family::Contacts),
     st(K::Power4, "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).of(Family::Contacts),
@@ -117,7 +117,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Fusebank8, "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank10, "Fuse bank, 10-way", FUSE_BANK, HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     st(K::Fusebank12, "Fuse bank, 12-way", FUSE_BANK, HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    // ---- Brief 034 stage 2: sensors and field devices (design 034 §4).
+    // ---- Sensors and field devices.
     st(K::Prox3, "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], HEAD, sa(1)).of(Family::Sensors),
     st(K::Floatno, "Float switch, NO", &["float", "level", "sensor"], Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
     st(K::Floatnc, "Float switch, NC", &["float", "level", "sensor"], Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
@@ -132,8 +132,8 @@ pub const STARTERS: &[Starter] = &[
     st(K::Valve2, "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], HEAD, sa(9)).of(Family::Actuators),
     st(K::Tc, "Thermocouple", &["thermocouple", "temperature", "sensor"], HEAD, sa(10)).of(Family::Sensors),
     st(K::Heater, "Heater", &["heater", "heating element", "heat"], HEAD, sa(11)).of(Family::Actuators),
-    // ---- Brief 034 stage 3a: connector bodies (design 034 §5); halves only, mating is M1 1.11.
-    // Brief 044 (design 044 §3.1): the mating halves are connector halves, version 2.
+    // ---- Connector bodies; halves only, mating is M1 1.11.
+    // The mating halves are connector halves, version 2.
     half(K::Socket2, "Socket, 2-pin", SOCKET, S, cn(1)),
     half(K::Socket3, "Socket, 3-pin", SOCKET, S, cn(2)),
     half(K::Socket4, "Socket, 4-pin", SOCKET, S, cn(3)),
@@ -161,11 +161,11 @@ pub const STARTERS: &[Starter] = &[
     conn(K::Rj45, "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
     conn(K::Usba, "USB-A bulkhead", USB, cn(26)),
     conn(K::Usbb, "USB-B bulkhead", USB, cn(27)),
-    // ---- Brief 044: connector pins (design 044 §3.2), drawn one by one across wires.
+    // ---- Connector pins, drawn one by one across wires.
     half(K::Pinpair, "Connector pin pair", PINPAIR, Side::Both, cn(28)),
     half(K::Pins, "Connector socket pin", PIN_S, S, cn(29)),
     half(K::Pinp, "Connector plug pin", PIN_P, P, cn(30)),
-    // ---- Brief 034 stage 3b: PLC card bodies (design 034 §6); channels join as `di`/`do`.
+    // ---- PLC card bodies; channels join as `di`/`do`.
     card(K::Plccpu, "PLC CPU", &["plc", "cpu", "controller", "card"], pc(1)),
     card(K::Plcps, "PLC power supply", &["plc", "power", "card"], pc(2)),
     card(K::Plcdi, "PLC digital input card", &["plc", "di", "input", "card"], pc(3)).quiet_at(Quiet::All),
@@ -174,7 +174,7 @@ pub const STARTERS: &[Starter] = &[
     card(K::Plcao, "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
     card(K::Plcrtd, "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
     card(K::Plciol, "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
-    // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
+    // ---- Multi-level terminal blocks. Geometry, points and bridges come from
     // `terminal_block_types`; `terminalblockfuse` shares `fuseterminalblock`'s drawing.
     lvl(K::Term2L1, "Two-level terminal, level 1", TWO, mt(1)),
     lvl(K::Term2L2, "Two-level terminal, level 2", TWO, mt(2)),
@@ -196,12 +196,12 @@ pub const STARTERS: &[Starter] = &[
     lvl(K::Termsensor, "Sensor terminal", SENSOR, mt(18)),
     lvl(K::Termdisc, "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
     lvl(K::Terminalblockfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
-    // ---- Brief 045 (design 045 §3.1): a head module (a rack of its own), a power module and a
-    // communication module, as 034's card bodies.
+    // ---- A head module (a rack of its own), a power module and a
+    // communication module, as card bodies.
     card(K::Plcim, "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
     card(K::Plcpm, "PLC power module", &["plc", "pm", "power", "card"], pc(10)),
     card(K::Plccm, "PLC communication module", &["plc", "cm", "communication", "fieldbus", "card"], pc(11)).quiet_at(Quiet::All),
-    // ---- Brief 045 (design 045 §4.1): one channel cell per card type with channels; cells side
+    // ---- One channel cell per card type with channels; cells side
     // by side read as the card. Every point is quiet (a spare channel is normal).
     cell(K::Chdi, "PLC digital input channel", &["plc", "di", "input", "channel"], CT::Di, pc(12)),
     cell(K::Chdq, "PLC digital output channel", &["plc", "dq", "do", "output", "channel"], CT::Dq, pc(13)),
@@ -216,12 +216,12 @@ const THREE: &[&str] = &["three-level", "stacked", "terminal"];
 const LNPE: &[&str] = &["installation terminal", "l/n/pe", "stacked", "terminal"];
 const SENSOR: &[&str] = &["sensor terminal", "three-level", "stacked", "terminal"];
 
-/// Multi-level terminal starters (brief 036): `0x500 + n`.
+/// Multi-level terminal starters: `0x500 + n`.
 const fn mt(n: u128) -> DefinitionId {
     def_id(0x500 + n)
 }
 
-/// A multi-level terminal starter (brief 036): joins a strip as a level.
+/// A multi-level terminal starter: joins a strip as a level.
 const fn lvl(key: StarterKey, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::TerminalBlock, id)
 }
@@ -263,7 +263,7 @@ pub fn of_definition(d: &Definition) -> Option<&'static Starter> {
 }
 
 /// The project's embedded copy of `s` as this catalogue builds it, found by origin: library,
-/// definition **and content hash** (brief 044, FP3), so a project holding an older version of a
+/// definition **and content hash**, so a project holding an older version of a
 /// starter embeds the current one beside it for new placements.
 pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
     let hash = s.definition().ok()?.origin.as_ref()?.content_hash;
@@ -274,8 +274,8 @@ pub fn embedded(doc: &Document, s: &Starter) -> Option<DefinitionId> {
 }
 
 /// The kind of a stored definition: its starter's, except that a connector half embedded before
-/// brief 044 (no side bridges, version 1) is the exclusive head it was then (design 044 §3.1).
-/// A project symbol (brief 048, design §5.2): an edited starter keeps its starter's kind; any
+/// Is the exclusive head it was then.
+/// A project symbol: an edited starter keeps its starter's kind; any
 /// other is a device of its own (`join: device`) or part of a named device (`join: part`), with
 /// fixed labels.
 pub fn kind_of_definition(d: &Definition) -> Option<Kind> {

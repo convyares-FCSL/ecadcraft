@@ -1,4 +1,4 @@
-//! The rules of the device commands (design 018 §6–§8; experiments 004 and 008): tag settings
+//! The rules of the device commands: tag settings
 //! (`tagsettings`), deleting a wire, device or cable (`ecaddelete`, `devicedelete`), and the ops of
 //! `convertcomponent` and `addconnectionpoint`. Typed input in, ops and a plain result (or a
 //! [`CmdError`]) out.
@@ -30,7 +30,7 @@ pub(crate) struct TagSettings {
     pub prefixes: Vec<(String, Option<String>)>,
 }
 
-/// The tag settings `tagsettings` is given (brief 018, owner decision 2026-11-08): `padding` digits,
+/// The tag settings `tagsettings` is given: `padding` digits,
 /// and per starter symbol the project's own prefix (`None`: the built-in one).
 ///
 /// # Errors
@@ -90,9 +90,9 @@ pub enum Doomed {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Deleted {
     pub ops: Vec<Op>,
-    /// A rack's cards that left it (brief 045).
+    /// A rack's cards that left it.
     pub released: usize,
-    /// A cable's wires, which stay (design 004 §8).
+    /// A cable's wires, which stay.
     pub kept: Option<usize>,
     /// What to say, when there is something to say.
     pub message: Option<String>,
@@ -140,7 +140,7 @@ fn remove_routes(doc: &Document, routes: &[RouteId]) -> Vec<Op> {
 /// one transaction. A wire goes with the routes drawn straight between its two connection points
 /// (the commit's rewrite takes it away) and leaves its cables; a route goes with its drawing, and
 /// routes landing on it end free; a device's connection points let go of their routes and a
-/// rack's cards leave it (design 045 §2.2, FP1); a cable's wires stay (design 004 §8, owner
+/// rack's cards leave it; a cable's wires stay
 /// answer O3).
 ///
 /// # Errors
@@ -181,7 +181,7 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
             for (t, term) in doc.connection_points_of(c) {
                 ops.push(Op::RemoveConnectionPoint { id: t, connection_point: term.clone() });
             }
-            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
+            // A rack's cards leave it in the same transaction.
             let (released_ops, released) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
@@ -196,7 +196,7 @@ pub(crate) fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, Cmd
         }
         Doomed::Cable(k) => {
             let cable = doc.cables().get(&k).ok_or(CmdError::refused("no such cable"))?;
-            // Its named points go with it (design 072 §4.4, F4): the lines on them end free.
+            // Its named points go with it: the lines on them end free.
             ops.extend(crate::wires::routes::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
             ops.extend(remove_representations(doc, Subject::Cable(k)));
             ops.push(Op::DeleteCable { id: k, cable: cable.clone() });
@@ -217,7 +217,7 @@ pub struct Converted {
     pub ops: Vec<Op>,
 }
 
-/// `convertcomponent` (experiment 004): plain geometry `items` on `page` become one new component,
+/// `convertcomponent`: plain geometry `items` on `page` become one new component,
 /// drawn.
 pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> Converted {
     let (component, representation): (DeviceId, RepresentationId) = (ids.fresh(), ids.fresh());
@@ -241,7 +241,7 @@ pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> 
 /// The refusal of an item that belongs to no component.
 pub(crate) const NOT_A_COMPONENTS_ITEM: &str = "that item is not part of a component";
 
-/// `addconnectionpoint` (experiment 008): a connection point labelled `label` at `at` on the drawn
+/// `addconnectionpoint`: a connection point labelled `label` at `at` on the drawn
 /// component that `item` is part of.
 ///
 /// # Errors
@@ -268,7 +268,7 @@ pub fn plan_addconnectionpoint(
 pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
     crate::symbols::catalogue::STARTERS
         .iter()
-        // Junctions and continuations have no tag (brief 022).
+        // Junctions and continuations have no tag.
         .filter(|s| s.kind != crate::symbols::Kind::Tagless)
         .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
         .collect()
@@ -276,7 +276,7 @@ pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<Strin
 
 // ---------------------------------------------------------------- the commands (generic)
 
-/// `symbols {query?}` (design 018 §8): the starter symbols and devices matching `query`; read only.
+/// `symbols {query?}`: the starter symbols and devices matching `query`; read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SymbolsParams {
@@ -297,7 +297,7 @@ impl Generic for SymbolsParams {
     }
 }
 
-/// `devices {tag?}` (design 018 §8): the devices whose tag starts with `tag`; read only.
+/// `devices {tag?}`: the devices whose tag starts with `tag`; read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DevicesParams {
@@ -386,8 +386,7 @@ impl Generic for EcaddeleteParams {
     }
 }
 
-/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete` (design 018
-/// §6.3).
+/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete`
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DevicedeleteParams {
@@ -410,7 +409,7 @@ impl Generic for DevicedeleteParams {
     }
 }
 
-/// `tagsettings {padding?, prefixes?}` (brief 018, owner decision 2026-11-08): how many digits
+/// `tagsettings {padding?, prefixes?}`: how many digits
 /// automatic tag numbers have, and the project's own prefix per starter symbol (`{"coil": "KA"}`;
 /// `null` goes back to the built-in one). One `SetProjectSettings` transaction; with nothing to
 /// change, or no parameters, it records nothing and reports the settings.

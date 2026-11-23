@@ -1,11 +1,11 @@
-//! Cable types (brief 057, design 057 §4.4, FP4): the `cable` catalogue, the word 050 FP7 reserved.
+//! Cable types: the `cable` catalogue.
 //!
 //! A cable type holds what a field cable's rating needs from its datasheet: the size, the
 //! conductor's material, maximum temperature and class, and a rated current at a reference
 //! temperature; and the part number, maker and description, shown only (2.7 and the BOM later).
 //! There are **no built-in cable types**. A cable chooses one with its field
-//! [`ecad_model::Cable::cable_type`] (design 072 §4.5); the registry has no cable level.
-//! The cable's free `type` text (028) is unchanged and still drives its core offer.
+//! [`ecad_model::Cable::cable_type`]; the registry has no cable level.
+//! The cable's free `type` text is unchanged and still drives its core offer.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -22,7 +22,7 @@ use crate::circuits::fields;
 use crate::defaults::{Kind, Slot, Value};
 use crate::styles::{Catalogue, Field};
 
-/// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
+/// The input word (and style-choice index key) naming a cable's cable type; stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
 pub(crate) const CABLE_TYPE: &str = ecad_model::document::doc::cable::CABLE_TYPE_KEY;
 
@@ -39,7 +39,7 @@ fn is_colour_list(s: &str) -> bool {
     CoreColours::parse(s).is_some()
 }
 
-/// The field naming a scheme the cores' colours come from (design 072 F37).
+/// The field naming a scheme the cores' colours come from.
 pub(crate) const CORE_SCHEME: &str = "core_scheme";
 
 fn is_size(s: &str) -> bool {
@@ -58,7 +58,7 @@ static FIELDS: [Field; 15] = [
     Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
-    // Brief 059 (design 059 §2.2, FD3): the cable's defaults.
+    // The cable's defaults.
     Field { key: TYPE_CORES, label: "Cores", kind: Kind::Parsed { max_chars: 256, parse: is_offer }, slot: Slot::new(), over: None },
     Field { key: TYPE_SHIELD, label: "Shield", kind: Kind::Parsed { max_chars: 16, parse: is_shield }, slot: Slot::new(), over: None },
     Field { key: TYPE_GLAND, label: "Gland", kind: Kind::Parsed { max_chars: MAX_GLAND_CHARS, parse: is_gland }, slot: Slot::new(), over: None },
@@ -71,14 +71,14 @@ static FIELDS: [Field; 15] = [
     },
 ];
 
-/// Brief 059: the cable type's core offer (`4G`, `BN,BK,GY,GNYE`), used when the cable has no
+/// The cable type's core offer (`4G`, `BN,BK,GY,GNYE`), used when the cable has no
 /// `cores` of its own.
 pub(crate) const TYPE_CORES: &str = "cores";
-/// Brief 059: the cable type's shield (`none`, `overall`, `pairs`, `overall+pairs`).
+/// The cable type's shield (`none`, `overall`, `pairs`, `overall+pairs`).
 pub(crate) const TYPE_SHIELD: &str = "shield";
-/// Brief 059: the cable type's gland at both ends (`M20`).
+/// The cable type's gland at both ends (`M20`).
 pub(crate) const TYPE_GLAND: &str = "gland";
-/// Brief 059: the cable type's outer diameter in millimetres, 1 to 200 (shown; computed glands later).
+/// The cable type's outer diameter in millimetres, 1 to 200 (shown; computed glands later).
 pub(crate) const TYPE_OUTER_DIAMETER: &str = "outer_diameter";
 /// The longest gland size stored.
 pub(crate) const MAX_GLAND_CHARS: usize = 16;
@@ -94,7 +94,7 @@ fn is_shield(s: &str) -> bool {
 }
 
 /// A gland size: 1 to [`MAX_GLAND_CHARS`] characters, with no control or invisible (bidi,
-/// zero-width) characters (`ecad_model::naming::text::check`, tester 059 f4).
+/// zero-width) characters (`ecad_model::naming::text::check`).
 pub(crate) fn is_gland(s: &str) -> bool {
     ecad_model::naming::text::check(s, MAX_GLAND_CHARS).is_ok()
 }
@@ -136,7 +136,7 @@ pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-/// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
+/// Cable `k`'s core offer and where it comes from: its own `cores`,
 /// else its cable type's `cores`, else its `type` notation; `None` when unknown.
 pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::terminal_strips::cores::OfferSource, String)> {
     offer_of(doc, doc.cables().get(&k)?)
@@ -159,7 +159,7 @@ pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>,
     crate::terminal_strips::cores::cable_offer(props)
 }
 
-/// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
+/// Store the cores `after`'s offer names (a write rule): every offered core no
 /// core of the cable holds by label goes to a placed core with no label (in core order), else
 /// becomes an unplaced in-use core, and an unplaced core the old offer
 /// (`before`'s) named and the new one does not goes. Placed cores never move. Run by
@@ -193,7 +193,7 @@ pub(crate) fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, aft
     }
 }
 
-/// Place a core of `cable` at `position` (design 072 §4.5, a write rule): the first unplaced in-use
+/// Place a core of `cable` at `position` (a write rule): the first unplaced in-use
 /// core labelled `label` moves there; with none (or no label), a new in-use core labelled `label`
 /// is added at the end.
 pub(crate) fn place_core(cable: &mut ecad_model::Cable, label: Option<ecad_model::CoreLabel>, position: ecad_model::CorePosition) {
@@ -208,7 +208,7 @@ pub(crate) fn place_core(cable: &mut ecad_model::Cable, label: Option<ecad_model
 }
 
 /// The core colours of cable `k`, in core order, from its cable type: the type's own list, else
-/// its scheme's colours for the cable's core offer (design 072 F37); empty when neither gives any.
+/// its scheme's colours for the cable's core offer; empty when neither gives any.
 pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
     let Some(id) = of(doc, k) else { return Vec::new() };
     let own = |get: &dyn Fn(&CableType) -> bool| -> Option<&CableType> {
@@ -225,9 +225,9 @@ pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
     scheme_colours(scheme, labels.len(), offer_has_earth(&text)).map(|v| v.iter().map(ToString::to_string).collect()).unwrap_or_default()
 }
 
-/// The `setprop` key word ticking core `<label>` as **Not used** (owner rule, board 2.06):
+/// The `setprop` key word ticking core `<label>` as **Not used**:
 /// `unused.<label>` = `yes`. Nothing is stored under it: it sets the core's
-/// [`ecad_model::Purpose`] (design 072 §4.5). An in-use core that is not connected at both ends is
+/// [`ecad_model::Purpose`]. An in-use core that is not connected at both ends is
 /// an open end (an error).
 pub(crate) const UNUSED_PREFIX: &str = "unused.";
 /// The longest core label read in an `unused.` key.
@@ -245,7 +245,7 @@ pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
 }
 
 /// The cores of cable `k`, by label: its offer (`4G1.5`: 1, 2, 3, GNYE), then each stored core's
-/// label not in it (its place `1`, `2`… when it has none). Read as stored (design 072 §4.5).
+/// label not in it (its place `1`, `2`… when it has none). Read as stored.
 pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables().get(&k) else { return Vec::new() };
     let mut out: Vec<String> = offer(doc, k).map(|(o, _, _)| o).unwrap_or_default();
@@ -258,7 +258,7 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
     out
 }
 
-/// The ops of `setprop unused.<core>` on cable `k` (tester re-check 2, item 4): the core is one
+/// The ops of `setprop unused.<core>` on cable `k`: the core is one
 /// of the cable's ([`core_labels`]), named by 1 to [`MAX_LABEL_CHARS`] characters with no control
 /// characters; the value is `yes` (ticked) or `no` / null (not ticked). Ticking sets the purpose
 /// of the stored core of that label to Spare, storing the core unplaced when no line carries it
@@ -313,7 +313,7 @@ pub(crate) fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&s
     Ok(Op::modify_cable(k, cab, after).into_iter().collect())
 }
 
-/// A stored core on no line (neither a wire nor a loose line, design 072 §4.2) and in use (not
+/// A stored core on no line (neither a wire nor a loose line) and in use (not
 /// ticked Not used). (A wire always runs between two connection points, so a core with a wire is
 /// never open at an end.)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,8 +328,8 @@ impl OpenCore {
     }
 }
 
-/// The open cores of cable `k` (owner rule): its stored in-use cores on no line, in core order.
-/// Read as stored (design 072 §4.5); bounded by the cable's member bound.
+/// The open cores of cable `k`: its stored in-use cores on no line, in core order.
+/// Read as stored; bounded by the cable's member bound.
 pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     let Some(cab) = doc.cables().get(&k) else { return Vec::new() };
     cab.cores
@@ -351,7 +351,7 @@ pub fn size(doc: &Document, k: CableId) -> Option<String> {
 }
 
 /// The cables that name cable type `id`, through the style-choice index.
-/// A catalogue edit of the type's cores syncs none of their stored cores yet (design 072 §4.5):
+/// A catalogue edit of the type's cores syncs none of their stored cores yet:
 /// they follow when the cable's own `cores`, `type` or `cable_type` is next set.
 pub fn users(doc: &Document, id: &StyleRef) -> Vec<CableId> {
     doc.style_users(CABLE_TYPE, &id.text())
@@ -438,7 +438,7 @@ pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdE
     Ok(())
 }
 
-// ---------------------------------------------------------------- core colour schemes (F37)
+// ---------------------------------------------------------------- core colour schemes
 
 /// The built-in core colour schemes' data.
 pub(crate) const SCHEMES: &str = include_str!("../../defaults/core_schemes.toml");
@@ -523,7 +523,7 @@ mod scheme_tests {
         v.unwrap_or_default().iter().map(ToString::to_string).collect()
     }
 
-    /// Design 072 F37: the schemes read as typed data, every scheme has data, and a misspelt key
+    /// The schemes read as typed data, every scheme has data, and a misspelt key
     /// or a colour in another form is refused.
     #[test]
     fn core_schemes_data_reads() {

@@ -1,4 +1,4 @@
-//! Reading a command's JSON parameters into its params struct (brief 070).
+//! Reading a command's JSON parameters into its params struct.
 //!
 //! Each command has a `#[derive(Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]` struct;
 //! [`parse`] reads it. Fields are ordinary types: typed IDs read their hex form themselves,

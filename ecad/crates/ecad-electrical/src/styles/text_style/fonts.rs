@@ -1,5 +1,4 @@
-//! The fonts a project's texts are drawn with, and their widths (design 031 §2.2 and §2.4; design
-//! 065 §3, cut 10, option F2).
+//! The fonts a project's texts are drawn with, and their widths.
 //!
 //! Which fonts a machine has and how wide a text is drawn are the drawing engine's knowledge. It
 //! reaches the rules through one trait, [`TextMetrics`]: is a font found, and how wide is a text in
@@ -51,7 +50,7 @@ impl TextMetrics for FixedWidth {
     }
 }
 
-/// The fonts a project's texts are drawn with on this machine (design 031 §2.2).
+/// The fonts a project's texts are drawn with on this machine.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fonts {
     /// The family the project asks for (`text.font`, or the default).
@@ -65,12 +64,12 @@ pub struct Fonts {
     /// name, or `stroke`.
     pub drawn_with: String,
     /// Bold drawn in the stroke font: the lineweight (hundredths of a millimetre) that makes it
-    /// bold (§2.2 step 4, `text.bold_stroke_weight`); `None` with an outline font.
+    /// bold (`text.bold_stroke_weight`); `None` with an outline font.
     pub bold_lineweight: Option<u16>,
 }
 
 impl Fonts {
-    /// Resolve `doc`'s font with `m`. Never fails: a missing font falls back (§2.2).
+    /// Resolve `doc`'s font with `m`. Never fails: a missing font falls back.
     pub fn resolve_with(doc: &Document, m: &dyn TextMetrics) -> Fonts {
         let wanted = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
             defaults::Value::Text(t) => t.to_string(),
@@ -79,9 +78,9 @@ impl Fonts {
         Fonts::for_family_with(doc, wanted, m)
     }
 
-    /// Resolve the family `wanted` with `m`, with the fallbacks of §2.2.
+    /// Resolve the family `wanted` with `m`, with the fallbacks below.
     pub fn for_family_with(doc: &Document, wanted: String, m: &dyn TextMetrics) -> Fonts {
-        // Brief 040: the wanted family, the sheet font (registered by the app), then 031's
+        // The wanted family, the sheet font (registered by the app), then the
         // built-in font, then the stroke font.
         let family = [wanted.as_str(), default_family(), d::FALLBACK_FONT].into_iter().find(|f| m.found(f)).map(str::to_string);
         match family {
@@ -113,7 +112,7 @@ impl Fonts {
         self.drawn_with == self.wanted
     }
 
-    /// The status words of §4.1: `drawn with <family>`, or why another font is used.
+    /// The status words: `drawn with <family>`, or why another font is used.
     pub fn status(&self) -> String {
         if self.is_wanted() {
             format!("drawn with {}", self.drawn_with)
@@ -167,7 +166,7 @@ impl DrawStyles {
     }
 }
 
-/// The width of `value` at `kind`'s height in the font it is drawn with (§2.4). Resolves only
+/// The width of `value` at `kind`'s height in the font it is drawn with. Resolves only
 /// `kind`'s style and font; a caller measuring many texts holds a [`DrawStyles`] and calls
 /// [`width_in`] instead.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str, m: &dyn TextMetrics) -> f64 {

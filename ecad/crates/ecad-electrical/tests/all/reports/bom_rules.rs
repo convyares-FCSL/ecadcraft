@@ -1,4 +1,4 @@
-//! The rules of the BOM's inputs (brief 047, design 047 §7): quantities, part keys, `for` lists and
+//! The rules of the BOM's inputs: quantities, part keys, `for` lists and
 //! line numbers.
 
 use std::collections::BTreeSet;

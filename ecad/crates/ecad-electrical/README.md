@@ -9,13 +9,14 @@ laid out. It reads a `Document` and returns plain data (positions in mm, texts, 
 The engine crate turns that into drawing entities.
 
 ## Contents
-- `devices`, `kinds`, `symbols`, `reps`, `words`, `designations`: the shared vocabulary: kinds, symbols, representations, designations.
-- `wires`, `cables`, `strips`, `connectors`, `accessories`, `plc/`: the electrical objects and their rules, including PLC racks, cards and channels.
-- `xref`, `references`, `continuations`, `link_lines`, `slash`: cross-references, continuations and what a cable slash crosses.
-- `checks`, `proposals`: project checks (`Check`, `Severity`, `Fix`) and proposed fixes.
-- `rating/`: the rating dataset; `bom`, `device_list`, `outputs`: the reports.
-- `front`, `frames`, `title_block/`, `generated`, `page_types`: the layout of generated pages, frames and title blocks.
-- `locations`, `revisions`, `styles`, `defaults/`, `text_style/`: locations, revisions, styles and project defaults, and text styles (text is measured through a `TextMetrics` the caller supplies).
+One folder per feature area under `src/` (the crate doc in `src/lib.rs` gives one line each):
+- `devices/`, `symbols/`, `locations/`, `numbering/`: devices and tags, device kinds and ratings, starter symbols, locations and designations, renumbering.
+- `wires/`, `cables/`, `terminal_strips/`, `connectors/`, `plc/`: the electrical objects and their rules: wires and routes, cables and cable slash, terminal strips with terminal blocks and jumper bars, connectors, PLC racks and channels.
+- `references/`, `continuations/`: device and cable references, continuation arrows.
+- `checks/`, `circuits/`: the Checks list, and wire and cable sizing (each result a Checks row).
+- `reports/`, `releases/`: the BOM, wire and cable reports; revisions, issue and release.
+- `pages/`, `title_blocks/`, `styles/`, `defaults/`, `properties/`: page types, frames and generated pages, title blocks, style catalogues and text styles, the defaults registry, the Properties palette rows.
+- `commands/`, `input.rs`, `error.rs`, `merge.rs`, `views/`: the generic command runner, typed input grammars, the crate's errors, merge value rules, and the update pipeline for derived views.
 
 ## Must not depend on
 Core rules: no `cadcraft-*` crate, no UI, no OS access (no files, clock, environment or process:
@@ -24,13 +25,15 @@ callers pass the time in) and no font lookup. It uses only `ecad-model`, `ecad-d
 other Core crate may use it.
 
 ## Key types
-`checks::Check`, `checks::CheckSource`, `checks::Fix`, and the functions that start from a
-`Document`: `checks::page_checks`, `net_checks`, `component_checks`.
+`checks::Check` and `checks::Fix` (a Checks row and its fix), `commands::run::Generic` (a
+generic command's parameters), `views::Views` (the derived views of a project), and
+`checks::nets::page_checks`, which starts from a `Document`.
 
 ## How to test
 ```bash
 cargo test -p ecad-electrical
 ```
-Its tests are unit tests inside the modules (there is no `tests/` folder); behaviour that needs a
-project is also covered through `ecad-engine`'s tests. Slow tests are marked
-`#[ignore = "slow: …"]` and run only at the QA gate.
+Unit tests sit inside the modules; the integration tests are one executable, `tests/all/main.rs`,
+with one folder per feature area (`tests/all/<area>/`), so `cargo test -p ecad-electrical <area>`
+runs one area. Behaviour that needs the engine is covered by `ecad-engine`'s tests. Slow tests are
+marked `#[ignore = "slow: …"]` and run only at the QA gate.

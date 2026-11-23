@@ -1,5 +1,5 @@
-//! The rules of the commands of the project's list of functions and locations (brief 052, design
-//! 052 §5.9): adding, renaming and describing, merging and removing entries. Each function reads
+//! The rules of the commands of the project's list of functions and locations (design
+//! Adding, renaming and describing, merging and removing entries. Each function reads
 //! the document (and the use index, [`Uses`], caught up by the caller) and returns the ops to
 //! commit and what to report. The commands are generic ([`crate::commands::run`]).
 
@@ -166,7 +166,7 @@ pub struct Merged {
     pub moved: String,
 }
 
-/// `designationmerge` (Q11): every user of `from` takes `into`'s key, and `from` is removed, in
+/// `designationmerge`: every user of `from` takes `into`'s key, and `from` is removed, in
 /// one transaction. `uses` is caught up with `doc`.
 ///
 /// # Errors
@@ -193,7 +193,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
                     project = designations::with_default_key(&project, a, Some(&into.key));
                 }
             }
-            // Design 072 §6.3: a device's own value is a field; its `fixed` flag stays as it was.
+            // A device's own value is a field; its `fixed` flag stays as it was.
             ObjectRef::Device(c) if prop == a.property() => {
                 crate::devices::edit_planned(doc, &mut ops, c, |d| {
                     if designations::device_key(d, a).as_deref() == Some(from.key.as_str()) {
@@ -213,7 +213,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
             }
         }
     }
-    // A location box's values are its aid's fields (design 072 §6.2).
+    // A location box's values are its aid's fields.
     for b in uses.users(a, &from.key).map(|u| u.boxes.clone()).unwrap_or_default() {
         let Some(before @ ecad_model::Aid::Box(x)) = doc.aids().get(&b) else { continue };
         if designations::box_key(x, a).as_deref() == Some(from.key.as_str()) {
@@ -233,7 +233,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     Ok(Merged { ops, label, from: from.code, into: into.code, key: into.key, moved: counts.words() })
 }
 
-/// `designationremove {aspect?, unused: true}` (design 052 §9.4, **Remove unused**): the ops
+/// `designationremove {aspect?, unused: true}` (**Remove unused**): the ops
 /// removing every entry nothing uses (of `only`, else of both lists), and their codes.
 pub(crate) fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> (Vec<Op>, Vec<String>) {
     let mut project = doc.project().clone();
@@ -264,8 +264,8 @@ pub(crate) fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&s
 
 /// Whether the transactions after the first `seen` of `ledger`'s log could change the designation
 /// rows (`ecad_engine::commands::designation::rows`): an op on the list, on a `function` /
-/// `location` / `location.<type>` value, or a component or page created or deleted (design 052
-/// §8.2a, the Settings card's update map).
+/// `location` / `location.<type>` value, or a component or page created or deleted
+/// the Settings card's update map).
 pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
     let log = ledger.log();
     if seen > log.len() {
@@ -292,7 +292,7 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
 // The commands (generic: crate::commands::run)
 
 /// The list with its counts, as `designations` answers (`only`: one aspect), for the command and
-/// for Settings ▸ Project info (design 052 §9.4). `uses` must be caught up.
+/// for Settings ▸ Project info. `uses` must be caught up.
 pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
     let mut out = serde_json::Map::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
@@ -308,7 +308,7 @@ pub fn rows(doc: &Document, uses: &Uses, only: Option<Aspect>) -> Value {
                 })
             })
             .collect();
-        // Stored keys with no entry (design 052 §5.9: only merges of branches make them).
+        // Stored keys with no entry (only merges of branches make them).
         let missing: Vec<&str> = uses.keys(a).filter(|k| designations::code_of(doc, a, k).is_none()).collect();
         out.insert(a.plural().into(), json!({"entries": rows, "missing": missing}));
     }
@@ -415,7 +415,7 @@ impl Generic for EditParams {
     }
 }
 
-/// `designationmerge {aspect, from, into}` (Q11): every user of `from` takes `into`; `from` is
+/// `designationmerge {aspect, from, into}`: every user of `from` takes `into`; `from` is
 /// removed.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -446,7 +446,7 @@ impl Generic for MergeParams {
 }
 
 /// `designationremove {aspect, key | code}`, or `{aspect?, unused: true}`: every entry nothing
-/// uses, in one transaction (design 052 §9.4, **Remove unused**).
+/// uses, in one transaction (**Remove unused**).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RemoveParams {

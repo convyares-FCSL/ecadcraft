@@ -1,4 +1,4 @@
-//! The rules of `place` (design 018 §8; briefs 022, 036, 044, 045 and 048): which device a placed
+//! The rules of `place`: which device a placed
 //! symbol joins, or which tag a new one takes, for each form of `place`, and the checks of a
 //! tagless symbol's name and caption. Typed input in, a target or a refusal out.
 //!
@@ -41,11 +41,11 @@ fn style(doc: &Document) -> Style {
     crate::defaults::print::tag_style(doc)
 }
 
-/// What a starter symbol `place`d makes (design 018 §8): another symbol of `device`, a new device
+/// What a starter symbol `place`d makes: another symbol of `device`, a new device
 /// tagged `tag`, or a new device with the next automatic tag.
 ///
 /// # Errors
-/// No such device; a connector half's tag (brief 044, tester D5); a tag that does not read.
+/// No such device; a connector half's tag; a tag that does not read.
 pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) -> Result<Target, CmdError> {
     match (device, tag) {
         (Some(c), _) if doc.devices().contains_key(&c) => Ok(Target::Join(c)),
@@ -65,9 +65,9 @@ pub fn device_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>
     }
 }
 
-/// What a project symbol `place`d joins (design 048 §5.1; pack re-run, bug 2): `device`, or the
+/// What a project symbol `place`d joins (pack re-run, bug 2): `device`, or the
 /// device that already holds the typed tag (a tag is an identity), else a new device with that
-/// tag. Devices and cables share one namespace (brief 026).
+/// tag. Devices and cables share one namespace.
 ///
 /// # Errors
 /// A tag that does not read, or a cable's.
@@ -88,7 +88,7 @@ fn free_or_held(doc: &Document, typed: tag::Entry, noun: &str) -> Result<(Option
     }
 }
 
-/// The strip a level symbol joins (brief 036 §3.3): `device`, or the strip tagged `tag`, else a
+/// The strip a level symbol joins: `device`, or the strip tagged `tag`, else a
 /// new strip with that tag (`None`, `None`: a new strip with the next tag).
 ///
 /// # Errors
@@ -117,7 +117,7 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
     }
 }
 
-/// The card a channel symbol joins (design 045 §4.4): `device`, or the device tagged `tag`, else a
+/// The card a channel symbol joins: `device`, or the device tagged `tag`, else a
 /// new card with that tag (`None`, `None`: a new card with the next tag).
 ///
 /// # Errors
@@ -140,7 +140,7 @@ pub fn card_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>) 
     }
 }
 
-/// The connector a half or pin symbol of `side` joins (design 044 §3.3): `device` (an ID or a
+/// The connector a half or pin symbol of `side` joins: `device` (an ID or a
 /// tag), or the connector a half's tag (`-X01.P`) or a tag names, else a new connector with that
 /// tag.
 ///
@@ -156,7 +156,7 @@ pub fn connector_target(
     if let Some(t) = tag
         && let Some(named) = crate::connectors::resolve(doc, t)
     {
-        // Brief 044 (tester D5): a half's tag (`-X01.P`) names its connector and that half.
+        // A half's tag (`-X01.P`) names its connector and that half.
         let (c, half, _) = named?;
         if let Some(h) = half
             && side != Side::Both
@@ -186,7 +186,7 @@ pub fn connector_target(
     Ok((found, new_tag))
 }
 
-/// A tagless symbol's name and caption as `place` takes them (design 022 §3.2, 049 §5.1): a
+/// A tagless symbol's name and caption as `place` takes them: a
 /// continuation is part of no device, needs a name and may have a caption.
 ///
 /// # Errors
@@ -203,7 +203,7 @@ pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Opti
     if starter.key == crate::symbols::StarterKey::Continuation && name.is_none() {
         return Err(CmdError::input("`name` is required for a continuation (the potential or signal it carries, e.g. 24V)"));
     }
-    // Brief 049 (design 049 §5.1): a continuation may be placed with its caption.
+    // A continuation may be placed with its caption.
     let caption = match caption {
         None => None,
         Some(_) if starter.key != crate::symbols::StarterKey::Continuation => {

@@ -1,4 +1,4 @@
-//! What hovering a connection point or a cable says (design 028 §7.1).
+//! What hovering a connection point or a cable says.
 
 use std::collections::BTreeSet;
 
@@ -21,7 +21,7 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
     (crate::terminal_strips::connection_point_words(doc, t), Some(c))
 }
 
-/// The hover lines of a terminal symbol `here` of strip `c` (design 028 §7.1), from the document
+/// The hover lines of a terminal symbol `here` of strip `c`, from the document
 /// alone: `-X01:3  feed-through  +CP1`, `inside  -K01:A1  24V-07`, `outside  -W01 core 3 → -M01:U1`,
 /// `bridged to 4`, then the strip's positions.
 pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
@@ -32,7 +32,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
     let number = |w: WireId| ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
     for (t, _) in crate::devices::merge::shown_connection_points(doc, c, r) {
-        // Brief 036: the type, and the level of a multi-level position.
+        // The type, and the level of a multi-level position.
         let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, t);
         let kind = if ty.multi() {
             format!(
@@ -86,7 +86,7 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
             lines.push(format!("bridged to {}", bridged.join(", ")));
         }
     }
-    // Brief 036: counted in positions (a three-level terminal is one).
+    // Counted in positions (a three-level terminal is one).
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let drawn = labels.len();
     let tag = crate::devices::tags::tag_words(doc, c);

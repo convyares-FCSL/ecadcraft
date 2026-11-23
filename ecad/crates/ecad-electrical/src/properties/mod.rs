@@ -1,9 +1,9 @@
-//! The ECAD section of CADCraft's Properties palette (brief 019, design 019 §8; moved out of the
-//! engine by brief 074): the sections and rows shown for picked objects, built as a plain copy the
+//! The ECAD section of CADCraft's Properties palette (moved out of the
+//! engine): the sections and rows shown for picked objects, built as a plain copy the
 //! UI draws, and the command line a row edit writes. Edits go through the
 //! commands' JSON forms (`setprop`, `pageprops`, `projectprops`), never through here.
 //!
-//! # Update map (design 019 §9, `ecad/CLAUDE.md` "Derived views")
+//! # Update map (`ecad/CLAUDE.md` "Derived views")
 //! A [`PropsView`] names the objects its rows read ([`PropsView::deps`]). It is rebuilt when the
 //! selection or the active page changes, and after a change whose Properties-feed set
 //! ([`crate::views::PropsFeed`]) meets those
@@ -30,7 +30,7 @@ pub enum Target {
     Page(PageId),
     Project,
     Devices(Vec<DeviceId>),
-    /// Continuation arrows (design 072 §6.2).
+    /// Continuation arrows.
     Aids(Vec<ecad_model::AidId>),
     Wire(WireId),
     Cable(CableId),
@@ -136,7 +136,7 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     let path = crate::releases::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
-        // Brief 052: stored as entry keys, shown as codes (design 072 §5.3: page and project fields).
+        // Stored as entry keys, shown as codes (page and project fields).
         let shown = |v: Option<String>| v.map(|v| crate::locations::designations::display(doc, key, &v));
         let a = crate::locations::designations::Aspect::of_property(key);
         let own = a.and_then(|a| pg.and_then(|x| crate::locations::designations::page_key(x, a)));
@@ -162,7 +162,7 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     );
     sheet.choices = sheet_choices(doc);
     rows.push(sheet);
-    // Brief 031 (design §5.6): the page's Texts group.
+    // The page's Texts group.
     text_rows(doc, TextsAt::Page(page), &mut rows);
     Section {
         title: format!("ECAD · PAGE {number}"),
@@ -174,14 +174,14 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     }
 }
 
-/// The codes of `key`'s aspect in the project's list, offered as completions (design 052 §9.1).
+/// The codes of `key`'s aspect in the project's list, offered as completions.
 fn codes(doc: &Document, key: &str) -> Vec<String> {
     crate::locations::designations::Aspect::of_property(key)
         .map(|a| crate::locations::designations::entries(doc, a).into_iter().map(|e| e.code).collect())
         .unwrap_or_default()
 }
 
-/// A location box (design 024 §3.5, design 052 §5.8): Function and Location (editable, either may
+/// A location box: Function and Location (editable, either may
 /// be empty), Panel temperature and Style (editable; unset shows the project's, faint), Vertices
 /// and Devices inside.
 pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
@@ -215,7 +215,7 @@ pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
     }
 }
 
-/// A box's Panel temperature row (design 072 §6.2), in °C: its own, else the project's (faint).
+/// A box's Panel temperature row, in °C: its own, else the project's (faint).
 fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>) -> Row {
     let key = crate::locations::PANEL_TEMPERATURE_KEY;
     let label = "Panel temperature (\u{b0}C)";
@@ -228,7 +228,7 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
     }
 }
 
-/// A box's Style row (brief 050a): its own location style's name, else the project's (faint); the
+/// A box's Style row: its own location style's name, else the project's (faint); the
 /// location styles' names as choices.
 fn box_style_row(doc: &Document, b: ecad_model::AidId) -> Row {
     let cat = ecad_model::StyleCatalogue::Location;
@@ -254,7 +254,7 @@ pub fn device_section(
         let value = if varies {
             "*varies*".into()
         } else {
-            // Brief 052: a function or location shows its code (`?` for a key with no entry).
+            // A function or location shows its code (`?` for a key with no entry).
             values.into_iter().next().flatten().map(|v| crate::locations::designations::display(doc, key, &v)).unwrap_or_default()
         };
         let mut r = if key == "tag" && !one { Row::ro(key, label, value) } else { Row::rw(key, label, value) };
@@ -262,7 +262,7 @@ pub fn device_section(
         if key == "tag" && one {
             r.tag_state = devices.iter().next().and_then(|c| doc.devices().get(c)).and_then(|d| d.tag.state());
         }
-        // Brief 052 (design 052 §9.1): an unset function or location is `?`, with the selected
+        // An unset function or location is `?`, with the selected
         // symbol's context offered as **Use +CP1**. Nothing is inherited.
         if let Some(a) = crate::locations::designations::Aspect::of_property(key) {
             r.choices = codes(doc, key);
@@ -271,7 +271,7 @@ pub fn device_section(
             }
         }
         rows.push(r);
-        // The overrides (design 052 §5.2, §9.1): a connector's halves; a non-strip device's
+        // The overrides: a connector's halves; a non-strip device's
         // terminal symbols.
         if key == LOCATION_KEY
             && one
@@ -298,7 +298,7 @@ pub fn device_section(
                 this.push_str(&labels.join("/"));
             }
             rows.push(Row::ro("symbol", "This symbol", this));
-            // Brief 052 (design 052 §3.5): the symbol's type, from its definition.
+            // The symbol's type, from its definition.
             rows.push(Row::ro("rep_type", "Symbol", crate::symbols::reps::rep_type(doc, r).word().to_string()));
             let book = Book::of(doc);
             let grid = ecad_model::document::sheet::Grid::of(doc, r.page);
@@ -320,7 +320,7 @@ pub fn device_section(
     } else {
         format!("ECAD · {} DEVICES", devices.len())
     };
-    // Brief 031 (design §5.6): the Texts group of one device, and of one symbol when one is picked.
+    // The Texts group of one device, and of one symbol when one is picked.
     if let (true, Some(c)) = (one, devices.iter().next().copied()) {
         text_rows(doc, TextsAt::Device(c), &mut rows);
         if let Some(r) = symbol.filter(|r| doc.representations().get(r).is_some_and(|x| x.form == ecad_model::Form::Symbol)) {
@@ -329,11 +329,11 @@ pub fn device_section(
     }
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
-        // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
+        // A strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::terminal_strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         (true, Some(c)) => {
             device_reference_rows(doc, c, symbol, &mut rows, &mut buttons);
-            // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
+            // Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
             crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
         }
@@ -349,7 +349,7 @@ pub fn device_section(
     }
 }
 
-/// The proposal for an unset aspect `a`: the selected symbol's context (design 052 §9.1).
+/// The proposal for an unset aspect `a`: the selected symbol's context.
 fn proposal(doc: &Document, a: crate::locations::designations::Aspect, symbol: Option<ecad_model::RepresentationId>) -> Option<(String, String)> {
     let r = symbol.and_then(|s| doc.representations().get(&s))?;
     let ctx = crate::locations::rep_context_in(doc, a, r, &mut crate::locations::BoxCache::default());
@@ -362,7 +362,7 @@ fn proposal(doc: &Document, a: crate::locations::designations::Aspect, symbol: O
     Some((code, from))
 }
 
-/// The override rows of device `c` (design 052 §9.1): **Location (socket)** and **Location
+/// The override rows of device `c`: **Location (socket)** and **Location
 /// (plug)** for a connector; **Terminals in** for a device other than a strip with terminal
 /// symbols. An unset override shows the device's value faint, `(device)`.
 fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
@@ -386,7 +386,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
     }
 }
 
-/// Brief 025's rows of the device section (design 025 §5.2): Contacts offered, Contact table,
+/// Rows of the device section: Contacts offered, Contact table,
 /// and read-only Coil (a contact selected) or Contacts (its coil selected), each with Go to
 /// (`refgoto:<source>:<target>:<label>` buttons).
 fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<Button>) {
@@ -444,7 +444,7 @@ fn device_reference_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model:
     }
 }
 
-/// Continuation arrows' section (design 072 §6.2, brief 049 §5.2): **Name**, **Caption** (blank
+/// Continuation arrows' section: **Name**, **Caption** (blank
 /// when they differ), and for one arrow its **Other ends** with Go to
 /// (`refgoto:<source>:<target>:<label>`).
 pub fn continuation_section(doc: &Document, arrows: &BTreeSet<ecad_model::AidId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
@@ -489,7 +489,7 @@ fn continuation_rows(
     }
 }
 
-/// Brief 028's rows of a strip (design 028 §7.2): Terminals offered, the read-only counts with
+/// Rows of a strip: Terminals offered, the read-only counts with
 /// **Show plan** (`showplan:<strip>`), and the PE terminals' part number and maker.
 fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Vec<Button>) {
     use crate::terminal_strips;
@@ -508,7 +508,7 @@ fn strip_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>, buttons: &mut Ve
     rows.push(Row::ro("terminal_block_counts", "Terminals", value));
     rows.push(Row::rw(terminal_strips::PE_PART_KEY, "PE part number", get(terminal_strips::PE_PART_KEY)));
     rows.push(Row::rw(terminal_strips::PE_MAKER_KEY, "PE maker", get(terminal_strips::PE_MAKER_KEY)));
-    // Brief 030 (design 030 §2.5): what is placed, and the parts (the project's value shown
+    // What is placed, and the parts (the project's value shown
     // faint where the strip has none).
     rows.push(Row::ro("acc.placed", "Accessories placed", placed_words(props)));
     for item in crate::terminal_strips::accessories::PART_ITEMS {
@@ -568,7 +568,7 @@ fn placed_words(props: Option<&ecad_model::Properties>) -> String {
 
 fn end_words(doc: &Document, w: WireId, end: End) -> String {
     match doc.wires().get(&w).map(|c| c.end(end)) {
-        // `-K01:A1` (design 019 §8.2); a junction or continuation by what it is (brief 022).
+        // `-K01:A1`; a junction or continuation by what it is.
         Some(t) => crate::wires::words::point_words(doc, t),
         None => "not connected".into(),
     }
@@ -578,7 +578,7 @@ fn free_rows(props: Option<&ecad_model::Properties>, skip: &[&str]) -> Vec<Row> 
     props.into_iter().flatten().filter(|(k, _)| !skip.contains(&k.as_str())).map(|(k, v)| Row::rw(k, k, v.clone())).collect()
 }
 
-/// Brief 022's rows of the wire section (design 022 §9): Wire number, Fixed, Potential,
+/// Rows of the wire section: Wire number, Fixed, Potential,
 /// Cross-section, Colour, and the read-only Net block.
 fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     use ecad_model::connectivity::wiring;
@@ -599,7 +599,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
         potential.inherited = true;
     }
     top.push(potential);
-    // Brief 050b: what the wire has none of its own comes from its category.
+    // What the wire has none of its own comes from its category.
     let draw = crate::styles::wire::wire_draw(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
@@ -691,7 +691,7 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
         cable.and_then(|c| c.description()).unwrap_or_default().to_string(),
     ));
     rows.extend(free_rows(props, &[crate::terminal_strips::CORES_KEY]));
-    // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
+    // Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
     let count = crate::terminal_strips::cores::cable_cores(doc, k).unwrap_or_default();
     let own = props.and_then(|p| p.get(crate::terminal_strips::CORES_KEY)).cloned();
@@ -720,7 +720,7 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
 }
 
 /// The key a clash box's button edits (`tag#swap`, `tag#merge`, `tag#next`): the tag, with that
-/// way forward (brief 026, design §7).
+/// way forward.
 pub fn conflict_key(way: &str) -> String {
     format!("{}#{way}", ecad_model::naming::tag::TAG_KEY)
 }
@@ -747,7 +747,7 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
     Section { title: "ECAD · CABLE REFERENCE".into(), kind: SectionKind::Reference, target: None, rows, note: None, buttons: vec![Button::GoTo(r)] }
 }
 
-// ---------------------------------------------------------------- Texts (brief 031, design §5.6)
+// ---------------------------------------------------------------- Texts
 
 /// Where a Texts group writes.
 #[derive(Debug, Clone, Copy)]
@@ -762,7 +762,7 @@ fn shown_words(w: &str) -> &'static str {
     <crate::styles::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
-/// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
+/// The Texts rows of a device, a symbol or a page: one per kind of text, `Default (…)` when the
 /// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
 /// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
 fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
@@ -831,11 +831,11 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
 /// The command line (JSON form) that writes `value` to row `key` of `target`; `None` for `null`
 /// (clear). Several devices are written in one `setprop` with `devices`.
 pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
-    // Brief 031: a Texts row writes its visibility with `showtext`.
+    // A Texts row writes its visibility with `showtext`.
     if let Some(line) = showtext_line(target, key, value) {
         return line;
     }
-    // Brief 045: a card's Rack and Slot rows write `plcslot`.
+    // A card's Rack and Slot rows write `plcslot`.
     if let Target::Devices(cs) = target
         && let [c] = cs.as_slice()
         && let Some(line) = crate::plc::edit_line(*c, key, value)
@@ -843,7 +843,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         return line;
     }
     let v = value.map_or(serde_json::Value::Null, |s| serde_json::Value::String(s.to_string()));
-    // Brief 026: a clash box's choice (`tag#swap`…), and Fixed `no` releasing the flag.
+    // A clash box's choice (`tag#swap`…), and Fixed `no` releasing the flag.
     if let Some(way) = key.strip_prefix("tag#") {
         let mut j = match target {
             Target::Devices(cs) => serde_json::json!({"component": cs.first().map(|c| c.hex())}),
@@ -877,7 +877,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         Target::Devices(cs) if cs.len() == 1 => ("setprop", serde_json::json!({"component": cs.first().map(|c| c.hex()), "key": key, "value": v})),
         Target::Devices(cs) => ("setprop", serde_json::json!({"devices": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         Target::Aids(cs) => ("setprop", serde_json::json!({"aids": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
-        // Brief 022: the number and the potential belong to the whole net.
+        // The number and the potential belong to the whole net.
         Target::Wire(w) if key == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY => {
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v}))
         }
@@ -898,8 +898,8 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
     format!("{} {}", j.0, j.1)
 }
 
-/// Properties ▸ Jumper bar (design 030 §5.5): positions, part, bars.
-/// A jumper bar's section (brief 030): its positions, part and the bars it needs (`bars`, from the
+/// Properties ▸ Jumper bar: positions, part, bars.
+/// A jumper bar's section: its positions, part and the bars it needs (`bars`, from the
 /// strips' report model, when kept).
 pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usize>) -> Section {
     let key = ecad_model::connectivity::jumper_bars::key(n);

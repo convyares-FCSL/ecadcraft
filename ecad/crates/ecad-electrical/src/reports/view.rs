@@ -1,4 +1,4 @@
-//! The report models' view (design 064 §4.2, `ReportsView`): the kept [`ReportModels`] (rows, strips,
+//! The report models' view (`ReportsView`): the kept [`ReportModels`] (rows, strips,
 //! PLC model, strip pages), built on first show and then kept from each commit's effects.
 //!
 //! # Update map
@@ -115,12 +115,11 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
             return Outcome::default();
         }
         let metrics = &*cx.engine.metrics;
-        // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
-        // and cable rows; only the pages drawn from the models can change their sheet count here
-        // (review of PR #55, finding 1).
+        // The terminal plan and cable schedule pages count their sheets from the strip
+        // and cable rows; only the pages drawn from the models can change their sheet count here.
         let (before, revision) = (self.sheets(doc), self.model.revision);
         self.model.update(doc, noted, metrics);
-        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
+        // The rack sheet prints each card's place.
         let places_moved = places.touched(doc, &self.model.plc);
         let mut problems = Vec::new();
         if ecad_model::document::ledger::verify_mode()
@@ -129,16 +128,16 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
             problems.push(line);
         }
         let o = &self.model;
-        // Each generated page says whether it was rewritten (overseer item O1), by its kind's
-        // kept change set (tester 028, defect 2).
+        // Each generated page says whether it was rewritten, by its kind's
+        // kept change set.
         let rewritten = |p: PageId| match generated::kind_of(doc, p) {
             Some(GenKind::BomLocation) => o.revision != revision,
-            // Brief 046 (design 046 §9): either style, by its own kept change set.
+            // Either style, by its own kept change set.
             Some(GenKind::TerminalBlocks) => generated::connection_points_rewritten(doc, p, o),
             Some(GenKind::Cables) => o.last_cables_changed,
-            // Brief 045c: the I/O list when a card's rows changed.
+            // The I/O list when a card's rows changed.
             Some(GenKind::IoList) => !o.plc.rows_changed.is_empty(),
-            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
+            // The rack sheet when a card or rack changed.
             Some(GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || places_moved,
             Some(GenKind::Cover | GenKind::Contents | GenKind::Revisions) | None => false,
         };

@@ -1,6 +1,6 @@
-//! The rules of brief 055's commands (design 055 §9): which frame `titleblock` names, the record a
+//! The rules of the title block commands: which frame `titleblock` names, the record a
 //! write or a new frame makes, and the checks a body passes. A title block is a `frame` style
-//! record (050a) with its block as the record's body (FP1). The block's layout and drawing are
+//! record with its block as the record's body. The block's layout and drawing are
 //! [`crate::title_blocks`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
 //! text styles, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
 
@@ -57,10 +57,10 @@ pub fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
     [StyleLayer::Project, StyleLayer::Standard].into_iter().find(|l| styles::record(doc, *l, FRAME_CATALOGUE, id).is_some())
 }
 
-/// A body, checked against design 055 §1.3.
+/// A body, checked against the title block bounds.
 ///
 /// # Errors
-/// A bound broken (an unknown item kind does not read: design 072 §5.4).
+/// A bound broken (an unknown item kind does not read).
 pub(crate) fn check_body(l: TitleBlockLayout) -> Result<TitleBlockLayout, CmdError> {
     l.check().map_err(CmdError::refused)?;
     Ok(l)
@@ -179,7 +179,7 @@ pub(crate) fn new_name(doc: &Document, given: Option<&str>, spec: &SheetSpec) ->
     }
 }
 
-/// A new own frame (design 055 §4.6).
+/// A new own frame.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct NewFrame<'a> {
     pub name: String,
@@ -224,7 +224,7 @@ pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
     doc.page_order().iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
 }
 
-/// The margins of frame `id` (its field, else 019's).
+/// The margins of frame `id` (its field, else the default).
 fn margins(doc: &Document, id: &StyleRef) -> Margins {
     sheet::frame_margins(doc, id).unwrap_or_default()
 }
@@ -238,7 +238,7 @@ pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameTe
     }
 }
 
-/// The project keys `layout` reads beyond the built-in five (design 055 §7: Settings ▸ Project
+/// The project keys `layout` reads beyond the built-in five (Settings ▸ Project
 /// info lists them).
 pub(crate) fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
     let (keys, _) = bind::keys(layout);
@@ -300,7 +300,7 @@ pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::commands::run; design 055 §9). `titleblockimport` reads a DXF with
+// The commands (generic: crate::commands::run). `titleblockimport` reads a DXF with
 // CADCraft's reader and stays the engine's.
 
 /// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.
@@ -309,7 +309,7 @@ pub(crate) fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: 
 #[schemars(extend("properties" = {}))]
 pub struct TitleblocksParams {}
 
-/// A new own frame (design 055 §4.6).
+/// A new own frame.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NewParams {
@@ -387,7 +387,7 @@ impl Generic for TitleblockParams {
         if let Some(new) = self.new {
             return new_frame(cx, new);
         }
-        // With `id`, `name` renames (design 055 §9); without, it names the frame.
+        // With `id`, `name` renames; without, it names the frame.
         let (frame_name, rename) = match &self.id {
             Some(_) => (None, self.name),
             None => (self.name, self.rename),

@@ -1,8 +1,8 @@
-//! The JSON view of devices and symbols (§8).
+//! The JSON view of devices and symbols.
 
 use super::*;
 
-/// Whether device tag `t` matches a search `query` (design 018 §5.1): `-k` and `k1` find `-K01`,
+/// Whether device tag `t` matches a search `query`: `-k` and `k1` find `-K01`,
 /// `-K10`…
 pub(crate) fn tag_matches(t: &str, query: &str) -> bool {
     let q = query.trim().trim_start_matches('-').to_uppercase();
@@ -19,7 +19,7 @@ pub(crate) fn tag_matches(t: &str, query: &str) -> bool {
 /// Every device (a component with a tag) whose tag matches `query` (or every one), ordered by
 /// prefix, then number, then ID.
 pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
-    // Through the tag index (brief 018 "Speed"): untagged components are never visited.
+    // Through the tag index: untagged components are never visited.
     let mut v: Vec<(String, u64, String, DeviceId)> = doc
         .tagged()
         .filter_map(|(_, id)| {
@@ -32,7 +32,7 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
         })
         .collect();
     v.sort();
-    // Brief 044 (design 044 §5.1, tester D5): a typed half tag (`-X10.S`, `-X10.P:3`) finds its
+    // A typed half tag (`-X10.S`, `-X10.P:3`) finds its
     // connector.
     if v.is_empty()
         && let Some(Ok((c, Some(_), _))) = query.and_then(|q| crate::connectors::resolve(doc, q))
@@ -42,7 +42,7 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
     v.into_iter().map(|(_, _, _, id)| id).collect()
 }
 
-/// `symbols {query?}`'s result (design 018 §8).
+/// `symbols {query?}`'s result.
 pub(crate) fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
     let q = query.unwrap_or("");
     let symbols: Vec<Value> = symbols::project::search(q)
@@ -75,7 +75,7 @@ pub(crate) fn symbols_json(doc: &Document, query: Option<&str>) -> Value {
     r
 }
 
-/// `devices {tag?}`'s result (design 018 §8).
+/// `devices {tag?}`'s result.
 pub(crate) fn devices_json(doc: &Document, query: Option<&str>) -> Value {
     let found = devices(doc, query);
     let more = found.len().saturating_sub(MAX_LISTED);
@@ -109,15 +109,15 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
     reps.sort_by_key(|(n, rid, _)| (*n, *rid));
     let mut v = json!({ "component": c.hex() });
     for (key, _) in PROPERTIES {
-        // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
+        // A function or location shows its code; its stored key is `<key>_key`.
         let stored = comp.value(key);
         v[key] = stored.as_ref().map_or(Value::Null, |x| Value::String(crate::locations::designations::display(doc, key, x)));
         if crate::locations::designations::Aspect::of_property(key).is_some() {
             v[format!("{key}_key")] = stored.map_or(Value::Null, Value::String);
         }
     }
-    // Brief 052 (design 052 §5.1): the location stored (never derived), and each symbol's own
-    // location (overrides, §5.2) and context (what a box or page there proposes).
+    // The location stored (never derived), and each symbol's own
+    // location (overrides) and context (what a box or page there proposes).
     let mut boxes = crate::locations::BoxCache::default();
     let loc = crate::locations::resolve_with(doc, c, &mut boxes);
     v["location_shown"] = loc.value.map_or(Value::Null, Value::String);
@@ -130,7 +130,7 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
         }
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
-    // Brief 026, S6 #3: the tag with its state as one value (`{"state","tag"}`, the bare tag), and as drawn
+    // S6 #3: the tag with its state as one value (`{"state","tag"}`, the bare tag), and as drawn
     // (a provisional one with its `?`).
     v["tag"] = json!(comp.tag);
     v["tag_shown"] = json!(comp.tag_shown());
@@ -145,7 +145,7 @@ pub fn starter(key: &str) -> Result<&'static Starter, CmdError> {
     symbols::catalogue::by_key(key).ok_or_else(|| CmdError::refused(format!("No symbol \"{}\". Type List to see them.", key.trim())))
 }
 
-/// A device property value as stored (design 018 §6.1): trimmed; `location` with a leading `+`,
+/// A device property value as stored: trimmed; `location` with a leading `+`,
 /// `function` with a leading `=`; empty clears it. Tags go through [`ecad_model::naming::tag::normalise`].
 ///
 /// # Errors

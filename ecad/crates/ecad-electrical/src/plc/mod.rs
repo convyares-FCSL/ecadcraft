@@ -1,4 +1,4 @@
-//! PLC racks and cards (brief 045, design 045; design 072 §3): stations with numbered slots,
+//! PLC racks and cards: stations with numbered slots,
 //! modules in them, and the kept `Plc` model the commands, Checks and lists read.
 //!
 //! # Semantics
@@ -9,7 +9,7 @@
 //!   from scratch after every commit (3.9 ms on the large project, under the ~5 ms bar; no update
 //!   map since 0.2.3). What changed is found by comparing with the model before.
 //!
-//! Excludes: the PLC manager and the rack overview (brief 2.8), any PLC-vendor knowledge.
+//! Excludes: the PLC manager and the rack overview, any PLC-vendor knowledge.
 
 pub mod address;
 pub mod channels;
@@ -36,7 +36,7 @@ use serde_json::json;
 use crate::checks::{Check, Fix, Kind, Object};
 use rack::{CardType, RackRef};
 
-/// What a PLC Checks row's buttons do (design 045 §9), with [`Fix::Plc`].
+/// What a PLC Checks row's buttons do, with [`Fix::Plc`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PlcFix {
     /// `slot-twice`: **Move to slot n** (the next free slot of its rack).
@@ -59,12 +59,12 @@ pub enum PlcFix {
     ClearTyped(u32),
     /// `no-address`: **Show** the racks with style `none`.
     NoAddress,
-    /// Brief 056 (design 056 §9): `plc-tag-twice`, `plc-tag-chars`: **Rename** (the channel's
+    /// `plc-tag-twice`, `plc-tag-chars`: **Rename** (the channel's
     /// index; the UI focuses its Tag cell).
     Rename(u32),
 }
 
-/// The type of device `c` as a PLC card or rack, read from its stored type (design 072 §3).
+/// The type of device `c` as a PLC card or rack, read from its stored type.
 pub fn card_type_of(doc: &Document, c: DeviceId) -> Option<CardType> {
     CardType::of_type(&doc.devices().get(&c)?.device_type)
 }
@@ -118,7 +118,7 @@ pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::Connec
     out
 }
 
-/// One channel of a card in the kept model (design 045 §4, §6).
+/// One channel of a card in the kept model.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChannelData {
     /// (role, terminal, pin), roles in cell order; a role twice when the channel is drawn twice.
@@ -129,20 +129,20 @@ pub struct ChannelData {
     pub used: bool,
     pub text: Option<String>,
     pub typed: Option<String>,
-    /// Brief 056 (FP1): its PLC tag and its own safe state.
+    /// Its PLC tag and its own safe state.
     pub tag: Option<String>,
     pub safe: Option<String>,
 }
 
 impl ChannelData {
-    /// The text that makes a free channel reserved: its description, else its tag (design 056
-    /// §4.2: typing either reserves it).
+    /// The text that makes a free channel reserved: its description, else its tag
+    /// Typing either reserves it).
     pub fn mark(&self) -> Option<&str> {
         self.text.as_deref().or(self.tag.as_deref())
     }
 }
 
-/// A channel's state (design 045 §6).
+/// A channel's state.
 pub(crate) fn state_word(used: bool, text: Option<&str>) -> &'static str {
     match (used, text.is_some_and(|t| !t.is_empty())) {
         (true, _) => "used",
@@ -176,10 +176,10 @@ pub struct CardData {
     pub page: Option<PageId>,
     pub part_number: Option<String>,
     pub maker: Option<String>,
-    /// Brief 045b: its channels with points, text or a typed address, by index.
+    /// Its channels with points, text or a typed address, by index.
     pub chans: BTreeMap<u32, ChannelData>,
-    /// Brief 045c: how many I/O rows it lists (`0..channels` and any channel beyond), kept for the
-    /// I/O page's sheet count (review of #84, 3).
+    /// How many I/O rows it lists (`0..channels` and any channel beyond), kept for the
+    /// I/O page's sheet count.
     pub rows: usize,
     /// Its first channel number (`plc.channel.first`).
     pub first: u32,
@@ -194,13 +194,13 @@ fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
     doc.page_order().iter().find(|p| pages.contains(p)).copied()
 }
 
-/// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
+/// The extra pages a property change on component `c` redraws: a rack's tag or
 /// slot range shows in its cards' captions.
 pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key: &str, after: Option<&str>) -> Vec<PageId> {
     if !(key == ecad_model::naming::tag::TAG_KEY || ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::Plc)) {
         return Vec::new();
     }
-    // A rack's cards from the kept index (review of #84, 3); a walk only without the models.
+    // A rack's cards from the kept index; a walk only without the models.
     let pages_of = |r: DeviceId| -> Vec<PageId> {
         let cards: Vec<DeviceId> = match kept {
             Some(p) => p.naming.get(&r).into_iter().flatten().copied().collect(),
@@ -232,8 +232,8 @@ pub(crate) fn is_plc(d: &ecad_model::Device) -> bool {
     CardType::of_type(&d.device_type).is_some()
 }
 
-/// The extra pages a `ModifyDevice` of station or module `c` redraws (design 072 §3, the update
-/// map of design 045 §11.1): a station's cards' pages (they read its tag and address style), and a
+/// The extra pages a `ModifyDevice` of station or module `c` redraws (the update
+/// map: a station's cards' pages (they read its tag and address style), and a
 /// module's old and new station's cards' pages (a slot, count or pinned block moves the addresses of
 /// the cards after it).
 pub(crate) fn pages_modified(
@@ -265,7 +265,7 @@ pub(crate) fn pages_modified(
     racks.into_iter().flat_map(pages_of).collect()
 }
 
-/// Card `c`'s caption (design 045 §7.2) and whether it is shown: the registry pattern with the
+/// Card `c`'s caption and whether it is shown: the registry pattern with the
 /// rack's tag and the slot, when the card is in a rack's slot; `None` otherwise. `plc.text.caption.show`
 /// is read at the card's level.
 pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
@@ -296,7 +296,7 @@ pub fn caption_text(
     if !at.is_finite() {
         return None;
     }
-    // Brief 066d: one kind for height and style, the one `TextOf::Caption` draws in.
+    // One kind for height and style, the one `TextOf::Caption` draws in.
     let height = crate::styles::text_style::text_style(doc, crate::devices::texts::kind_of(crate::devices::texts::TextOf::Caption)).height;
     Some(crate::devices::texts::PageText {
         text: crate::devices::texts::DerivedText {
@@ -316,10 +316,10 @@ pub fn caption_text(
     })
 }
 
-// ---------------------------------------------------------------- Properties (design 045 §2.6)
+// ---------------------------------------------------------------- Properties
 
-/// Properties ▸ Card and ▸ Rack rows of device `c` (design 045 §2.6): a card's Rack (its tag,
-/// never the ID: FP1), Slot and Channels; a rack's Slots and First slot (registry values at object
+/// Properties ▸ Card and ▸ Rack rows of device `c`: a card's Rack (its tag,
+/// never the ID), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
 pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
@@ -426,7 +426,7 @@ pub(crate) fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, Channel
     out
 }
 
-/// The channel texts of cell `rid` (representation `r` at `pl`) of card `c` (design 045 §7.1): its
+/// The channel texts of cell `rid` (representation `r` at `pl`) of card `c`: its
 /// channel number, its address and its description (`Spare` for a drawn spare), at the cell's
 /// anchors. `cache` holds the racks' blocks for one page draw.
 pub(crate) fn channel_texts(
@@ -461,10 +461,10 @@ pub(crate) fn channel_texts(
     let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors::anchors(s);
     let label = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::PointLabel).height;
-    // Brief 051 (design 051 §5): the two text styles of their own.
+    // The two text styles of their own.
     let addr_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Address).height;
     let desc_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::ChannelText).height;
-    // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
+    // A cell at 180° keeps its texts upright and in their bands.
     let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
     let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
@@ -523,7 +523,7 @@ pub(crate) fn channel_texts(
 }
 
 /// The value rule of the registry's object-level `plc.*` entries written with `setprop` (design
-/// 045 §4.6), called where 034's is. A module's and station's own fields are the `setprop` rows of
+/// called where the symbol one is. A module's and station's own fields are the `setprop` rows of
 /// `crate::properties::commands::plc`. `None`: not a registry entry of this brief.
 pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let entry = crate::defaults::find(key).filter(|e| ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::Plc))?;
@@ -538,7 +538,7 @@ pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Opti
     })
 }
 
-/// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
+/// Properties ▸ Channel rows of a channel symbol: the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
 pub(crate) fn channel_rows(
     doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
@@ -567,7 +567,7 @@ pub(crate) fn channel_rows(
     let text = own.and_then(|x| x.text.as_ref()).map(ToString::to_string);
     rows.push(row(channels::ch_key(i, "text"), "Description", text.unwrap_or_default(), true, false));
     let typed = own.and_then(|x| x.address.as_ref()).map(ToString::to_string);
-    // The kept blocks when the models are built (review of #84, 3); a walk of one rack otherwise.
+    // The kept blocks when the models are built; a walk of one rack otherwise.
     let auto = address::of_channel(doc, c, i, kept, &mut BTreeMap::new()).0.unwrap_or_default();
     let inherited = typed.is_none();
     rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));

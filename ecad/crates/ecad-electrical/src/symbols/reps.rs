@@ -1,14 +1,12 @@
-//! Representation types and the relations between a device's representations (brief 052,
-//! design 052 §3).
+//! Representation types and the relations between a device's representations.
 //!
 //! # Semantics
-//! - A device is the master and is never drawn; every representation (symbol) of it is equal
-//!   (design 052 FP1).
+//! - A device is the master and is never drawn; every representation (symbol) of it is equal.
 //! - A representation's **type** ([`PartRole`]) is its stored role's part ([`rep_type`]), set from
-//!   its definition when it is placed (design 072 §4.4, F3′): never from placement order or ID.
+//!   its definition when it is placed: never from placement order or ID.
 //! - Its **view** ([`View`]) is [`View::Schematic`] for every symbol today. Rev 4's panel layout
 //!   adds a variant and its source; [`views`] is ready for it.
-//! - Relations are derived within one device, never stored (FP5): [`parent`], [`children`],
+//! - Relations are derived within one device, never stored: [`parent`], [`children`],
 //!   [`siblings`], [`views`]. Each is O(the device's representations).
 //! - Ties go by **drawing order**, the one numbering uses: book position, zone column and row,
 //!   then top-left (greatest y, then least x), then ID, which is stable under random IDs
@@ -24,11 +22,10 @@ use ecad_model::{DeviceId, Document, Pt, Representation, RepresentationId, Subje
 
 use crate::symbols::{Kind, Side};
 
-/// What a representation is for its device (design 052 §3.1): its stored part (design 072
-/// §4.4, F3′).
+/// What a representation is for its device: its stored part.
 pub use ecad_model::PartRole;
 
-/// Which kind of drawing a representation belongs to (design 052 §3.3). Only the schematic
+/// Which kind of drawing a representation belongs to. Only the schematic
 /// exists today; rev 4's panel layout adds `Panel` and its source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum View {
@@ -48,13 +45,13 @@ impl View {
 }
 
 /// The starter kind a representation shows: its definition's kind (a project symbol's by its
-/// own rule, design 048 §5.2). A drawn form has none.
+/// own rule). A drawn form has none.
 pub fn kind_of(doc: &Document, r: &Representation) -> Option<Kind> {
     crate::devices::tags::rep_definition(doc, r).and_then(|(d, _)| crate::symbols::catalogue::kind_of_definition(d))
 }
 
-/// The part representation `r` plays in its device (design 052 §3.1): its stored role's part,
-/// set from its definition when it was placed (design 072 §4.4, F3′). Anything not a device's
+/// The part representation `r` plays in its device: its stored role's part,
+/// set from its definition when it was placed. Anything not a device's
 /// symbol is [`PartRole::Other`].
 pub fn rep_type(_doc: &Document, r: &Representation) -> PartRole {
     match (r.subject, r.role.part()) {
@@ -68,8 +65,7 @@ pub fn view(_doc: &Document, _r: &Representation) -> View {
     View::Schematic
 }
 
-/// [`PartRole::numbering_rank`] of `r`: the rank hook `ecad_model::naming::numbering::plan_ranked` takes
-/// (design 052 FP6).
+/// [`PartRole::numbering_rank`] of `r`: the rank hook `ecad_model::naming::numbering::plan_ranked` takes.
 pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
     rep_type(doc, r).numbering_rank()
 }
@@ -117,7 +113,7 @@ fn device_of(r: &Representation) -> Option<DeviceId> {
     }
 }
 
-// ---------------------------------------------------------------- relations (design 052 §3.2)
+// ---------------------------------------------------------------- relations
 
 /// Device `c`'s heads in the schematic, in book order. More than one only after a merge (Checks
 /// lists it); the reference rule uses the first.
@@ -125,7 +121,7 @@ pub fn heads(doc: &Document, c: DeviceId) -> Vec<RepresentationId> {
     of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == PartRole::Head)
 }
 
-/// Device `c`'s head in the schematic: its first head in book order (design 052 §3.4). A coil
+/// Device `c`'s head in the schematic: its first head in book order. A coil
 /// placed after its contacts is the head as soon as it exists.
 pub fn head(doc: &Document, c: DeviceId) -> Option<RepresentationId> {
     heads(doc, c).into_iter().next()
@@ -182,7 +178,7 @@ fn pin_names(doc: &Document, r: &Representation) -> Vec<(String, String)> {
         .collect()
 }
 
-/// The representations of `rid`'s device of the same type in other views (design 052 §3.3): the
+/// The representations of `rid`'s device of the same type in other views: the
 /// click-through schematic ↔ panel ↔ one-line. Empty until a second view exists.
 pub fn views(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
     let Some(r) = doc.representations().get(&rid) else { return Vec::new() };
@@ -191,7 +187,7 @@ pub fn views(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
     View::ALL.into_iter().filter(|w| *w != v).flat_map(|w| of_device(doc, c, w, |x| rep_type(doc, x) == t)).collect()
 }
 
-// ---------------------------------------------------------------- go-to (design 052 §4)
+// ---------------------------------------------------------------- go-to
 
 /// Where go-to lands for device `c` (display only; it decides nothing). With no side: its head,
 /// else its first representation in book order. For a connector half: its whole-half symbol,
@@ -232,7 +228,7 @@ pub(crate) fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(eca
 }
 
 /// The whole-half symbol of connector `c`'s `side`, first in book order: the half's head-like
-/// anchor (design 052 §3.4). A pin-only half has none.
+/// anchor. A pin-only half has none.
 pub fn half_anchor(doc: &Document, c: DeviceId, side: Side) -> Option<RepresentationId> {
     of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == PartRole::Half && crate::connectors::rep_side(doc, r) == Some(side)).into_iter().next()
 }

@@ -1,5 +1,5 @@
-//! The rules of brief 042's command `setdefault`, the one writer for the Standards screen and the
-//! inspector's "change at level" and Reset (design `ui-architecture.md` §11, U4c).
+//! The rules of the command `setdefault`, the one writer for the Standards screen and the
+//! inspector's "change at level" and Reset.
 //!
 //! # Semantics
 //! It writes a registry entry's value at one level through the same stored values the registry
@@ -9,7 +9,7 @@
 //! No new op and no new stored field. A call that changes nothing has no ops. A reset removes the
 //! level's value, so the entry resolves one level further out.
 //!
-//! Brief 050a: the standard level writes the project's standard's value (`SetProperty` on
+//! The standard level writes the project's standard's value (`SetProperty` on
 //! `ObjectRef::Standard`); it is refused while the project uses IEC (built in). A style choice
 //! ([`defaults::Kind::Style`]) takes a style's ID or name and stores the ID.
 //!
@@ -118,7 +118,7 @@ fn is_prefix(entry: &Entry) -> bool {
 
 /// The starter symbol key of a prefix entry.
 fn starter_key(entry: &Entry) -> Option<&'static str> {
-    // Brief 045: its new starters' prefixes are in the `plc` area.
+    // Its new starters' prefixes are in the `plc` area.
     let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal_block.")).or_else(|| entry.key.strip_prefix("plc."))?;
     let key = rest.strip_suffix(".prefix")?;
     let starter: crate::symbols::StarterKey = ecad_model::Word::parse(key)?;
@@ -137,7 +137,7 @@ pub(crate) fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<
 /// # Errors
 /// The entry has no setting this command knows (a registry entry added without a writer).
 pub(crate) fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>) -> Result<(), CmdError> {
-    // Brief 066 (F2): `None` stores "not chosen", never the built-in's value.
+    // `None` stores "not chosen", never the built-in's value.
     let number = |v: Option<&str>| v.and_then(|t| t.parse::<f64>().ok());
     // A whole number; the entry's kind has already checked its range.
     let whole =
@@ -147,7 +147,7 @@ pub(crate) fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Optio
         k if k == defaults::text::WIRE_LABEL_HEIGHT.key => s.wiring.label_height = number(value),
         k if k == defaults::wires::WIRING_LABEL_RULE.key => s.wiring.label_rule = value.map(str::to_string),
         k if k == defaults::wires::WIRING_LABEL_MIN_LENGTH.key => s.wiring.label_min_length = number(value),
-        // Brief 066c (F3): whole numbers and words; the entry's kind has checked the range.
+        // Whole numbers and words; the entry's kind has checked the range.
         k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?.map(small),
         k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
         k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
@@ -200,7 +200,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
                 Ok(if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] })
             }
         },
-        // Design 072 §5.1: a page's type is its field, changed with `ModifyPage`.
+        // A page's type is its field, changed with `ModifyPage`.
         (Level::Page, Target::Page(pg)) if entry.key == ecad_model::document::sheet::PAGE_TYPE_KEY => {
             let before = doc.pages().get(&pg).ok_or(CmdError::NotFound(Noun::Object))?;
             let mut after = before.clone();
@@ -219,7 +219,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
         (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices().get(&c).map(|c| &c.properties), entry.key.to_string()),
-        // Design 072 §4.6: a wire's own type is its field, changed with `ModifyWire`.
+        // A wire's own type is its field, changed with `ModifyWire`.
         (Level::Object, Target::Wire(c)) if entry.key == ecad_model::connectivity::wiring::WIRE_CATEGORY => {
             let before = doc.wires().get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
             let mut after = before.clone();
@@ -259,12 +259,12 @@ pub enum Chosen {
 /// # Errors
 /// Neither or both given, or a value the entry refuses.
 pub(crate) fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen, CmdError> {
-    // A style choice names a style by ID or name, resolved in the project (brief 050a).
+    // A style choice names a style by ID or name, resolved in the project.
     if let (Some(Given::Text(v)), false, defaults::Kind::Style(cat)) = (&value, reset, entry.kind) {
         return Ok(Chosen::Style(cat, v.clone()));
     }
     match (value, reset) {
-        // Brief 054 (design 054 §6.1): an empty cover heading is allowed, stored as `none`.
+        // An empty cover heading is allowed, stored as `none`.
         (Some(Given::Text(v)), false) if entry.key == defaults::pages::HEADING.key && v.trim().is_empty() => {
             Ok(Chosen::Stored(Some(defaults::pages::NO_HEADING.to_string())))
         }
@@ -310,7 +310,7 @@ pub(crate) fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Targe
         Chosen::Style(cat, v) => Some(crate::styles::find(doc, cat, &v)?.text()),
         Chosen::Stored(v) => v,
     };
-    // Brief 054 (design 054 §2.3): a generated page's type keeps its kind's position.
+    // A generated page's type keeps its kind's position.
     if let (Target::Page(pg), Some(v)) = (target, value.as_deref())
         && entry.key == defaults::pages::PAGE_TYPE.key
     {
@@ -319,7 +319,7 @@ pub(crate) fn ops_for(doc: &Document, entry: &Entry, level: Level, target: Targe
     ops(doc, entry, level, target, value)
 }
 
-// ---------------------------------------------------------------- symbol family entries (brief 048)
+// ---------------------------------------------------------------- symbol family entries
 
 /// A symbol family entry's change ([`plan_family`]).
 #[derive(Debug, Clone, PartialEq)]
@@ -332,7 +332,7 @@ pub(crate) struct FamilySet {
 }
 
 /// `setdefault {key: symbol.<key>.<field>, level?: project, value | reset: true}` for a symbol's
-/// family entry (design 048 §7): the project level only. A prefix is written to the project's
+/// family entry: the project level only. A prefix is written to the project's
 /// `tag_prefixes`, a description or rating to the project property of the entry's key. `None` when
 /// `key` names no family entry.
 ///
@@ -465,7 +465,7 @@ impl Generic for SetdefaultParams {
         let reset = self.reset.unwrap_or(false);
         let given = self.given();
         let Some(entry) = defaults::find(&key) else {
-            // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>`.
+            // A symbol's family entry, `symbol.<key>.<field>`.
             let Some(done) = plan_family(cx.doc, &key, self.level.as_deref(), given, reset)? else {
                 return Err(CmdError::refused(format!("No default \"{key}\".")));
             };
@@ -513,7 +513,7 @@ impl SetdefaultParams {
     }
 }
 
-/// `defaults {group?, key?, page?, component?, representation?}` (design 031 §10.8, read only):
+/// `defaults {group?, key?, page?, component?, representation?}` (read only):
 /// the defaults registry, resolved at a symbol, a device and a page, or the project.
 #[derive(serde::Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -555,7 +555,7 @@ impl Generic for DefaultsParams {
             .filter(|e| key.as_deref().is_none_or(|k| e.key == k))
             .map(|e| super::text::entry_json(doc, e, at))
             .collect();
-        // Brief 048 (FP6): one line per field of each project symbol, and the asked-for family entry.
+        // One line per field of each project symbol, and the asked-for family entry.
         let mut family = defaults::symbols::family_lines(doc);
         if let Some((sym, f)) = key.as_deref().and_then(|k| defaults::symbols::family(doc, k))
             && !family.contains(&(sym.clone(), f))

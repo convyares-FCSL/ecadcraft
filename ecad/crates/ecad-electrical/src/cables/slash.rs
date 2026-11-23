@@ -1,11 +1,11 @@
-//! What a cable slash crosses (design 004 §4), and the words used about cables (§5.3, §5.4).
+//! What a cable slash crosses, and the words used about cables.
 //!
 //! One function, [`crossings`], decides which conductors a straight slash takes. The JSON form of
 //! `cableslash`, its interactive preview and the crossing dots drawn over the page all use it, so
 //! what is previewed is what is committed.
 //!
 //! # Semantics
-//! Only routes on the given page are tested (design 072 §4.3; through the page's route index):
+//! Only routes on the given page are tested (through the page's route index):
 //! every segment of each route's drawing. A route stands for the wire it carries
 //! ([`crate::wires::routes::wire_of_route`]); a route carrying no wire is not tested.
 //! All tests use the project's tolerance.
@@ -32,7 +32,7 @@ use ecad_model::{CableId, CorePosition, Document, ItemId, ItemKind, PageId, Prim
 pub const MAX_CABLE_MEMBERS: usize = 10_000;
 
 /// A line the slash takes: the wire it carries, or the line itself while it has no wire yet (a
-/// loose line, owner ruling 2026-11-18).
+/// loose line).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Crossing {
     /// The route crossed.
@@ -289,10 +289,10 @@ pub fn slashes_of(doc: &Document, page: PageId, cable: CableId) -> Vec<(ItemId, 
         .collect()
 }
 
-/// Where each slash of every cable on `page` crosses one of that cable's own members (design
-/// §7.2): one point per member and slash, by the rules above, from the current geometry. A member
+/// Where each slash of every cable on `page` crosses one of that cable's own members:
+/// one point per member and slash, by the rules above, from the current geometry. A member
 /// moved away from its slash gets none. Only the slashes `shown` accepts (by slash item): a slash
-/// that is not drawn, because its cable is shown as a fan (brief 005), has no dots.
+/// that is not drawn, because its cable is shown as a fan, has no dots.
 pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, shown: impl Fn(ItemId) -> bool) -> Vec<Pt> {
     let tol = usable(tol);
     let routes = routes(doc, page);
@@ -316,10 +316,10 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
 }
 
 /// Where each slash of a cable crosses one of its own members (the
-/// [`member_crossing_points_where`] rules), with the member and the direction of its route segment there
-/// (design 009 §6): one entry per member and slash, in slash order then member order, for the
+/// [`member_crossing_points_where`] rules), with the member and the direction of its route segment there:
+/// one entry per member and slash, in slash order then member order, for the
 /// cable's `slashes` on the page and each member's route primitives there (`prims`), already
-/// gathered by the caller (one index per page, brief 009 review S4).
+/// gathered by the caller (one index per page).
 pub(crate) fn member_crossings_with<'p>(
     c: &ecad_model::Cable, slashes: &[(Pt, Pt)], prims: impl Fn(CorePosition) -> &'p [&'p Primitive], tol: f64,
 ) -> Vec<(CorePosition, Pt, Pt)> {
@@ -370,7 +370,7 @@ fn distance_to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
     p.dist(Pt::new(a.x + dx * t, a.y + dy * t))
 }
 
-// ---------------------------------------------------------------- words (§5.3, §5.4)
+// ---------------------------------------------------------------- words
 
 fn short(hex: &str) -> &str {
     hex.get(..8).unwrap_or(hex)
@@ -470,7 +470,7 @@ fn cable_label(doc: &Document, k: CableId) -> String {
     }
 }
 
-/// The echo after a slash (§5.3): the first line, then one line each for ignored objects and
+/// The echo after a slash: the first line, then one line each for ignored objects and
 /// touched wires when there are any.
 pub fn created_lines(doc: &Document, cable: CableId, members: &[CorePosition], ignored: usize, touched: usize) -> Vec<String> {
     let names: Vec<String> = members.iter().map(|c| position_name(doc, *c)).collect();

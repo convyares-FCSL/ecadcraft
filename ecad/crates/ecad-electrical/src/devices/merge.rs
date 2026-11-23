@@ -1,4 +1,4 @@
-//! Merging devices and erasing their symbols (§3.3).
+//! Merging devices and erasing their symbols.
 
 use super::*;
 
@@ -11,7 +11,7 @@ pub(crate) fn shown_connection_points(doc: &Document, c: DeviceId, r: &Represent
             let Some((def, _)) = rep_definition(doc, r) else { return Vec::new() };
             if r.connection_points.is_empty() {
                 // A terminal no other symbol shows first (a joined terminal's key can equal the
-                // definition key, review M1 2.1), else the first with the key.
+                // definition key), else the first with the key.
                 def.connection_points
                     .iter()
                     .filter_map(|td| {
@@ -31,7 +31,7 @@ pub(crate) fn shown_connection_points(doc: &Document, c: DeviceId, r: &Represent
     }
 }
 
-/// Plan merging device `from` into device `into` (design 018, owner decision 2026-11-08): every
+/// Plan merging device `from` into device `into`: every
 /// representation and terminal of `from` moves to `into` (contacts, terminals and PLC channels
 /// are renumbered as when joining), wires stay attached, and `from` is deleted. `into` keeps its
 /// tag and properties.
@@ -52,7 +52,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     let mut ops_reps = Vec::new();
     let mut exclusive_taken = crate::symbols::reps::head(doc, into).is_some();
     let who = tag_words(doc, into);
-    // `into`'s point names, unlabelled points by their key (review of #92, 1).
+    // `into`'s point names, unlabelled points by their key.
     let into_labels: BTreeSet<String> = doc.connection_points_of(into).map(|(t, _)| label_of(doc, t)).collect();
     // The name and label `old` moves under as `label`: an unlabelled point keeping its own name
     // stays unlabelled, so it prints no label (bug 1); one whose name `into` already has is
@@ -86,7 +86,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     };
     let reps: Vec<(RepresentationId, Representation)> = doc.representations_of(Subject::Device(from)).map(|(id, r)| (id, r.clone())).collect();
     let from_words = tag_words(doc, from);
-    // Brief 031 (FP5): each symbol's own text keys move with it to its new representation.
+    // Each symbol's own text keys move with it to its new representation.
     let mut renamed: Vec<(RepresentationId, RepresentationId)> = Vec::new();
     for (rid, r) in &reps {
         let shown = shown_connection_points(doc, from, r);
@@ -165,10 +165,10 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
             }
         }
     }
-    // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
+    // A rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
     crate::plc::rack::merge_into(doc, &mut ops, from, into);
-    // Design 072 §2.6: its links move to `into`.
+    // Its links move to `into`.
     ops.extend(crate::devices::commands::device_links::repoint_ops(doc, from, into));
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
@@ -185,13 +185,13 @@ pub fn label_of(doc: &Document, t: ConnectionPointId) -> String {
     term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
-// ---------------------------------------------------------------- erasing (§3.3)
+// ---------------------------------------------------------------- erasing
 
-/// What erasing device symbols adds to a drawing edit (design 018 §3.3): `erased` are the
+/// What erasing device symbols adds to a drawing edit: `erased` are the
 /// representations of starter-symbol devices the edit unlinks, read on the document before it.
 /// A device keeps its other symbols and loses the terminals only the erased ones showed (their
 /// wire ends are disconnected); a device whose last symbol goes is deleted. Representations of
-/// other components keep today's behaviour (the component stays, DOC-06).
+/// other components keep today's behaviour (the component stays).
 pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representation)]) -> (Vec<Op>, Vec<String>) {
     let mut by_component: BTreeMap<DeviceId, Vec<&(RepresentationId, Representation)>> = BTreeMap::new();
     for e in erased {
@@ -203,7 +203,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
     }
     let gone: BTreeSet<RepresentationId> = erased.iter().map(|(id, _)| *id).collect();
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
-    // A location box (brief 024) goes with its outline.
+    // A location box goes with its outline.
     let boxes: BTreeSet<ecad_model::AidId> = erased
         .iter()
         .filter_map(|(_, r)| if let Subject::Aid(a) = r.subject { Some(a) } else { None })
@@ -240,7 +240,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             }
         }
         if remaining.is_empty() {
-            // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
+            // A rack's cards leave it in the same transaction.
             let (released, n) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
@@ -252,12 +252,12 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
             notes.extend(crate::circuits::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
         } else {
-            // Brief 036 (review M1): a level's own label and a fuse position's rating go with
+            // A level's own label and a fuse position's rating go with
             // the last terminal of their level or position, never left to come back later.
             let (key_ops, key_notes) = crate::terminal_strips::terminal_blocks::orphaned_key_ops(doc, c, &drop);
             ops.extend(key_ops);
             notes.extend(key_notes);
-            // Brief 031 (FP5): an erased symbol's own text keys go with it.
+            // An erased symbol's own text keys go with it.
             for (rid, _) in &reps {
                 for (key, value) in crate::styles::text_style::symbol_text_keys(&component.properties, *rid) {
                     ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(value), after: None });
@@ -284,7 +284,7 @@ fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
     if n.len() == 1 { format!("page {}", n.join(", ")) } else { format!("pages {}", n.join(", ")) }
 }
 
-/// The tag a copy of device `c` gets (design 018 §3.3): the next automatic number of its prefix;
+/// The tag a copy of device `c` gets: the next automatic number of its prefix;
 /// `None` when its tag is not of the usual form (the copy then has no tag).
 pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<tag::Given> {
     let (prefix, _) = tag::parse(c.tag()?)?;

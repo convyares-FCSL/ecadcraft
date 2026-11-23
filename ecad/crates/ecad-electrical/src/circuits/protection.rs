@@ -1,4 +1,4 @@
-//! The protection side of the rating checks (design 072 lane B; brief 057): the protective device a
+//! The protection side of the rating checks: the protective device a
 //! rated subject is checked against, named by `protected_by` or found by the trace, with its In.
 
 use crate::circuits::*;

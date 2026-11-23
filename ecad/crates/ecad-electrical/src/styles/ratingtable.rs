@@ -1,8 +1,8 @@
-//! Rating tables (brief 057, design 057 §5, FP8): the `ratingtable` catalogue.
+//! Rating tables: the `ratingtable` catalogue.
 //!
 //! A rating table is a user's data set of ratings and factors, entered by hand or imported from a
 //! CSV they are licensed to use. It lives in the project or in a standard, like any style. There
-//! are **no built-in entries, and ECAD ships no values** (owner, Q11). The project chooses one
+//! are **no built-in entries, and ECAD ships no values**. The project chooses one
 //! with the registry key `rating.table` ([`crate::defaults::rating::TABLE`]).
 //!
 //! Fields: `source` (what the user says the values come from) and [`ROWS`] (the CSV, read by

@@ -1,4 +1,4 @@
-//! `plcaddress` (brief 045, design 045 §5): a rack's address style and starts, a card's pinned
+//! `plcaddress`: a rack's address style and starts, a card's pinned
 //! start. The rules are [`crate::plc::address`] and [`super::plan_address`]; the command is
 //! generic ([`crate::commands::run`]).
 
@@ -12,8 +12,8 @@ use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::plc::address::*;
 
-/// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`
-/// (design 045 §5.3). One transaction.
+/// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`.
+/// One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlcaddressParams {

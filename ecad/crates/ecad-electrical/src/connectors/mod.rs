@@ -1,17 +1,17 @@
-//! Connector devices (brief 044, design 044): a plug and its socket drawn as one device that mates.
+//! Connector devices: a plug and its socket drawn as one device that mates.
 //!
 //! # Semantics
 //! - A **connector** is one component (`-X10`) whose stored type is a Connector with `mating` set
 //!   (its first half's or pin's starter sets it, [`Connector::mating`]). Each pin of each half is one
-//!   terminal: label = the pin name, key = the side key `.s` (socket) or `.p` (plug) (FP1).
-//! - **Mating** is 036's per-position bridge rule (FP8a): every half definition bridges `.s` with
-//!   `.p`, so pin `n` of the socket half and pin `n` of the plug half are one net (FP2).
+//!   terminal: label = the pin name, key = the side key `.s` (socket) or `.p` (plug).
+//! - **Mating** is the per-position bridge rule: every half definition bridges `.s` with
+//!   `.p`, so pin `n` of the socket half and pin `n` of the plug half are one net.
 //! - A **half** is shown and typed as the connector's tag, a separator and a side name (`-X10.S`),
 //!   all registry defaults ([`crate::defaults::connectors`]); a pin as `-X10.S:3`.
-//! - The per-half BOM fields and location are component properties `half.<s|p>.<field>` (FP4);
+//! - The per-half BOM fields and location are component properties `half.<s|p>.<field>`;
 //!   `pins` says how many pins the part has.
-//! - A connector half embedded before brief 044 (no side bridges) is not a connector: it stays the
-//!   device it was (design 044 §3.1).
+//! - A connector half embedded before the side bridges existed (no side bridges) is not a connector: it stays the
+//!   device it was.
 //!
 //! Everything here reads the document; the planners return ops and change nothing. Excludes: the
 //! commands themselves (`ecad_engine::connectors::commands`), BOM rows (`reports.rs` reads [`half_rows`]),
@@ -39,24 +39,24 @@ use crate::terminal_strips::{self, connection_point_words};
 use crate::wires::ON_WIRE;
 use crate::wires::placing::OnRoute;
 
-/// Most pins a connector has (design 044 §2.3): a guard, not a preference.
+/// Most pins a connector has: a guard, not a preference.
 pub const MAX_PINS: usize = 64;
 /// Most characters of a pin name.
 pub const MAX_NAME_CHARS: usize = 8;
 /// Most characters of a typed pin-name list that are read.
 pub(crate) const MAX_LIST_CHARS: usize = 1_000;
-/// The component property holding the pin count (FP4).
+/// The component property holding the pin count.
 pub const PINS_KEY: &str = "pins";
-/// The component property holding a typed list of pin names, in pin order (`L,N,PE`; overseer,
-/// fix round 1: names not drawn yet are kept, never lost).
+/// The component property holding a typed list of pin names, in pin order (`L,N,PE`;
+/// names not drawn yet are kept, never lost).
 pub(crate) const PIN_NAMES_KEY: &str = "pin_names";
-/// The start of the per-half property keys (FP4).
+/// The start of the per-half property keys.
 pub(crate) const HALF_PREFIX: &str = "half.";
-/// The per-half fields the BOM reads (FP4). A half's location is the connector's override
-/// `location.socket` / `location.plug` (brief 052, FP4: `half.<s>.location` is retired).
+/// The per-half fields the BOM reads. A half's location is the connector's override
+/// `location.socket` / `location.plug` (`half.<s>.location` is retired).
 pub(crate) const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
-/// The start of a connector's ignored-warning keys (`ignore.connector-family`; overseer, fix round
-/// 1: the Checks rows' Ignore button).
+/// The start of a connector's ignored-warning keys (`ignore.connector-family`;
+/// the Checks rows' Ignore button).
 pub(crate) const IGNORE_PREFIX: &str = "ignore.";
 
 /// Connector `c`'s own data (its type's), when it is a connector.
@@ -81,11 +81,11 @@ pub fn ignores(doc: &Document, c: DeviceId, kind: CheckKind) -> bool {
 /// The keys of the pin starters.
 pub(crate) const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, StarterKey::Pinp];
 
-// ---------------------------------------------------------------- families (design 044 §1)
+// ---------------------------------------------------------------- families
 
 use ecad_model::objects::devices::ConnectorFamily;
 
-/// What a family's halves come in (design 044 §1): its sizes, its bulkhead and its whole-half
+/// What a family's halves come in: its sizes, its bulkhead and its whole-half
 /// starters.
 pub trait FamilyRules: Sized {
     /// The sizes its whole halves come in; empty for a bulkhead.
@@ -94,7 +94,7 @@ pub trait FamilyRules: Sized {
     fn bulkhead(self) -> Option<&'static str>;
     /// The starter key of its whole half of `side` with `n` pins (`socket4`, `dsub9p`, `m12s5`).
     fn half_key(self, side: Side, n: usize) -> Option<String>;
-    /// The refusal for a pin count that is not one of its sizes (design 044 §6.1).
+    /// The refusal for a pin count that is not one of its sizes.
     fn size_refusal(self) -> String;
 }
 
@@ -135,7 +135,7 @@ impl FamilyRules for ConnectorFamily {
         })
     }
 
-    /// The refusal for a pin count that is not one of its sizes (design 044 §6.1).
+    /// The refusal for a pin count that is not one of its sizes.
     fn size_refusal(self) -> String {
         let sizes: Vec<String> = self.sizes().iter().map(ToString::to_string).collect();
         let list = match sizes.as_slice() {
@@ -187,10 +187,10 @@ pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
     connector_of(doc, term.device()?).is_some_and(|x| x.mating).then_some(side)
 }
 
-/// The starter a representation draws when it is a brief-044 half or pin.
+/// The starter a representation draws when it is a connector half or pin.
 pub fn rep_half(doc: &Document, r: &Representation) -> Option<&'static Starter> {
     let (d, _) = crate::devices::tags::rep_definition(doc, r)?;
-    // A half or a pin is what the representation's stored part says (design 072 F3').
+    // A half or a pin is what the representation's stored part says.
     if !matches!(crate::symbols::reps::rep_type(doc, r), ecad_model::PartRole::Half | ecad_model::PartRole::Pin) {
         return None;
     }
@@ -202,7 +202,7 @@ pub(crate) fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
     rep_half(doc, r).and_then(Starter::side)
 }
 
-// ---------------------------------------------------------------- naming (design 044 §5)
+// ---------------------------------------------------------------- naming
 
 /// The separator and the socket and plug side names connector `c` (or the project) uses; two
 /// equal side names count as absent (the built-ins).
@@ -244,13 +244,13 @@ pub fn pin_name(doc: &Document, t: ConnectionPointId) -> Option<String> {
     Some(format!("{half}:{label}"))
 }
 
-/// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
+/// Whether a pin pair's plug-side label is hidden (a pin pair shows its pin name
 /// once, beside the socket point).
 pub(crate) fn hides_label(doc: &Document, r: &Representation, t: ConnectionPointId) -> bool {
     rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.connection_points().get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
-/// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
+/// The run class of a connector symbol for the "once per run" tag rule: one
 /// class per half, so `-X10.S` and `-X10.P` each show once per run.
 pub(crate) fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
     rep_side(doc, r).map(|s| match s {
@@ -260,7 +260,7 @@ pub(crate) fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
     })
 }
 
-/// A typed connector name (design 044 §5.1): `-X10.S`, `-X10.P:3`, or `-X10:3` on a connector.
+/// A typed connector name: `-X10.S`, `-X10.P:3`, or `-X10:3` on a connector.
 /// `None` when `text` names no connector; `Some(Err)` when it names one ambiguously.
 ///
 /// # Errors
@@ -315,7 +315,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
     })
 }
 
-// ---------------------------------------------------------------- pins (design 044 §2.3, §4.4)
+// ---------------------------------------------------------------- pins
 
 /// The pins a connector has drawn: per side, pin name → its terminals (more than one: drawn twice).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -364,7 +364,7 @@ pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
     } else {
         order.sort_by_key(|(_, t)| *t);
     }
-    // A typed list gives the pin order (tester D7).
+    // A typed list gives the pin order.
     if let Some(list) = pin_names(doc, c) {
         order.sort_by_key(|(n, _)| list.iter().position(|x| x == n).unwrap_or(usize::MAX));
     }
@@ -393,7 +393,7 @@ pub(crate) fn whole_halves(doc: &Document, c: DeviceId) -> Vec<(RepresentationId
         .collect()
 }
 
-/// How many pins connector `c` has (design 044 §2.3): `pins`, else the largest whole half drawn,
+/// How many pins connector `c` has: `pins`, else the largest whole half drawn,
 /// else the number of distinct pins drawn.
 pub fn pin_count(doc: &Document, c: DeviceId, d: &Drawn) -> usize {
     if let Some(n) = pins_prop(doc, c) {
@@ -410,7 +410,7 @@ pub enum Names {
     List(Vec<String>),
 }
 
-/// Whether `name` is a valid pin name (design 044 §2.3).
+/// Whether `name` is a valid pin name.
 ///
 /// # Errors
 /// Empty, too long, a space, comma, colon or control character.
@@ -518,7 +518,7 @@ fn candidates(doc: &Document, c: DeviceId, d: &Drawn) -> Vec<String> {
     out
 }
 
-/// The pin a pin symbol of `side` takes on connector `c` (design 044 §4.4); `taken` are pins this
+/// The pin a pin symbol of `side` takes on connector `c`; `taken` are pins this
 /// transaction already gave, per side.
 ///
 /// # Errors
@@ -581,7 +581,7 @@ pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
     }
 }
 
-/// Where go-to lands for half `side` ([`crate::symbols::reps::goto`], design 052 §4): its whole-half
+/// Where go-to lands for half `side` ([`crate::symbols::reps::goto`]): its whole-half
 /// symbol, else its first pin symbol in book order, then top-left; `None` when the half is not
 /// drawn. Display only: it decides nothing about the half.
 pub fn half_goto(doc: &Document, c: DeviceId, side: Side) -> Option<RepresentationId> {
@@ -597,7 +597,7 @@ pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> ConnectorFamily {
     connector_of(doc, c).map_or(ConnectorFamily::Plain, |x| x.family)
 }
 
-// ---------------------------------------------------------------- planning (design 044 §4)
+// ---------------------------------------------------------------- planning
 
 /// One connection point a planned symbol shows.
 #[derive(Debug, Clone, PartialEq)]
@@ -611,8 +611,8 @@ pub struct Shown {
 
 /// Plan one connector symbol of `starter` on connector `c`, its pins named `names` (a whole half:
 /// one name per point; a pin: one name): one terminal per point keyed by its side, shown through
-/// explicit connection points (design 044 §3.1, §4.6). Its role is the part its starter
-/// declares (design 072 §4.4).
+/// explicit connection points. Its role is the part its starter
+/// declares.
 ///
 /// # Errors
 /// Fewer names than points; the definition could not be built.
@@ -684,12 +684,12 @@ pub fn create_ops(
     Ok((c, tag.shown()))
 }
 
-/// The refusal for joining a device that is not a connector (design 044 §6.1).
+/// The refusal for joining a device that is not a connector.
 pub fn not_a_connector(doc: &Document, c: DeviceId) -> String {
     format!("{} is not a connector. Pick a connector, or Enter for a new one.", crate::devices::tags::tag_words(doc, c))
 }
 
-/// Check that a whole half of `side` may join connector `c` (design 044 §6.1).
+/// Check that a whole half of `side` may join connector `c`.
 ///
 /// # Errors
 /// The half already has pins.
@@ -708,7 +708,7 @@ pub fn check_whole_half(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSe
     )))
 }
 
-/// Check that pin `name` may be drawn on `side` of connector `c` (design 044 §6.1).
+/// Check that pin `name` may be drawn on `side` of connector `c`.
 ///
 /// # Errors
 /// The pin is drawn on that side (either side for a pin pair).
@@ -735,10 +735,9 @@ pub fn check_named_pin(doc: &Document, c: DeviceId, side: Side, name: &str, take
     Ok(())
 }
 
-/// Plan landing a connector pin symbol, placed at `on.at`, on its route (design 044 §4.5,
-/// design 072 §4.3): a pin pair splits the route, the part towards `.s` ending on `.s` and the
-/// other on `.p`. A one-side pin takes the part towards its point; the other part ends free.
-/// The commit's rewrite makes the wires.
+/// Plan landing a connector pin symbol, placed at `on.at`, on its route: a pin pair splits the route, the part towards
+/// `.s` ending on `.s` and the other on `.p`. A one-side pin takes the part towards its point; the other part ends
+/// free. The commit's rewrite makes the wires.
 ///
 /// # Errors
 /// [`crate::connectors::plan_land`]'s refusals.
@@ -769,7 +768,7 @@ pub fn land_pin(
     crate::connectors::plan_land_ends(doc, ids, on, a, b)
 }
 
-// ---------------------------------------------------------------- properties (FP4)
+// ---------------------------------------------------------------- properties
 
 /// The value `setprop` stores for a connector's naming default on device `c`, or `None` when `c` is
 /// not a connector or the key is not one (its pins, pin names, halves and ignored rows are fields:
@@ -892,7 +891,7 @@ pub fn with_field(d: &Device, tag: &str, key: &str, value: Option<&str>) -> Resu
     Ok(out)
 }
 
-// ---------------------------------------------------------------- BOM (design 044 §8)
+// ---------------------------------------------------------------- BOM
 
 /// One drawn half as the BOM sees it.
 #[derive(Debug, Clone, PartialEq)]
@@ -922,8 +921,8 @@ pub(crate) fn default_description(doc: &Document, family: ConnectorFamily, side:
     defaults::resolve(doc, e, Scope::project()).text().replace("{n}", &n.to_string())
 }
 
-/// One row per drawn half of connector `c` (design 044 §8.1): its half tag, own fields or the
-/// registry's description, and its location (§8.2). Empty for a connector with nothing drawn.
+/// One row per drawn half of connector `c`: its half tag, own fields or the
+/// registry's description, and its location. Empty for a connector with nothing drawn.
 pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<HalfRow> {
     if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
@@ -936,7 +935,7 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
             let v = default_description(doc, half_family(doc, c, side), side, half_size(doc, c, side, &d));
             (!v.is_empty()).then_some(v)
         });
-        // Brief 052 (design 052 §5.2): the half's override, else the connector's stored location.
+        // The half's override, else the connector's stored location.
         let location = crate::locations::half_location(doc, c, side);
         out.push(HalfRow {
             side,
@@ -951,7 +950,7 @@ pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<Half
     out
 }
 
-// ---------------------------------------------------------------- checks (design 044 §6.3)
+// ---------------------------------------------------------------- checks
 
 /// Where terminal `t` is drawn: the page and anchor of the first symbol showing it.
 fn connection_point_at(doc: &Document, t: ConnectionPointId) -> (Option<PageId>, Option<Pt>, Option<RepresentationId>) {
@@ -968,7 +967,7 @@ fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Opt
     }
 }
 
-/// The Checks rows of connector `c` (design 044 §6.3); none for any other component.
+/// The Checks rows of connector `c`; none for any other component.
 pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
     if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
@@ -1083,9 +1082,9 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
     out
 }
 
-// ---------------------------------------------------------------- references (design 044 §7)
+// ---------------------------------------------------------------- references
 
-/// The reference members of connector `c` (design 044 §7, design 052 §3.4): each half's
+/// The reference members of connector `c`: each half's
 /// whole-half symbol ([`crate::symbols::reps::half_anchor`]) is a half of that side, every other connector
 /// symbol a pin of its side (a pin pair: `Both`). A pin-only half has no half member: its pins
 /// keep their mate edges.
@@ -1107,7 +1106,7 @@ pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate:
         .collect()
 }
 
-/// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
+/// The edges between connector `c`'s members: each half's whole-half symbol shows
 /// the other half's, and a pin whose mate is drawn only on other pages shows those.
 pub fn ref_edges(
     doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::classify::Class)],
@@ -1152,7 +1151,7 @@ pub fn ref_edges(
     out
 }
 
-/// The hover line of a connector half (design 044 §7): `-X10.S (socket, 4 pins) mates with -X10.P
+/// The hover line of a connector half: `-X10.S (socket, 4 pins) mates with -X10.P
 /// on 102 C4.`, or `-X10.S has no plug half.`
 pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
     if !connector_of(doc, c).is_some_and(|x| x.mating) || side == Side::Both {
@@ -1173,12 +1172,12 @@ pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
     })
 }
 
-// ---------------------------------------------------------------- the index (design 044 §11.1)
+// ---------------------------------------------------------------- the index
 
-/// The connector index (design 044 §11.1): which connectors have a symbol on each page, and which
+/// The connector index: which connectors have a symbol on each page, and which
 /// read each naming key (separator, side names) from the project or the built-in. Built on open,
 /// reload and branch switch, and again after every commit ([`Index::build`]; 0.4 ms on the large
-/// project, so no update map: design 064 bar of ~5 ms, overseer 2026-11-21).
+/// project, so no update map: the build stays under ~5 ms).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Index {
     /// Page → the connectors with a symbol there.
@@ -1189,7 +1188,7 @@ pub struct Index {
     pages_of: BTreeMap<DeviceId, BTreeSet<PageId>>,
 }
 
-/// The naming keys a connector may hold (design 044 §10).
+/// The naming keys a connector may hold.
 fn naming_keys() -> [&'static str; 3] {
     use crate::defaults::connectors as dc;
     [dc::SEPARATOR.key, dc::SIDE_SOCKET.key, dc::SIDE_PLUG.key]
@@ -1245,7 +1244,7 @@ impl Index {
         }
     }
 
-    /// The pages showing the connectors that inherit `key` (the one wide case of §11.1).
+    /// The pages showing the connectors that inherit `key` (the one wide case).
     pub fn pages_inheriting(&self, key: &str) -> BTreeSet<PageId> {
         self.inheriting(key).iter().flat_map(|c| self.pages_of.get(c).into_iter().flatten().copied()).collect()
     }
@@ -1271,8 +1270,8 @@ pub struct Land {
     pub new: RouteId,
 }
 
-/// Plan landing terminal `t` (being placed at `on.at`) on its route (design 028 §3.1, design 072
-/// §4.3): the route is split there and both parts end on `t`; the commit's rewrite makes the
+/// Plan landing terminal `t` (being placed at `on.at`) on its route
+/// The route is split there and both parts end on `t`; the commit's rewrite makes the
 /// wires (cable membership stays with the wires it keeps).
 ///
 /// # Errors

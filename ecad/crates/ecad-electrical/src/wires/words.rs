@@ -1,4 +1,4 @@
-//! The words a wire or net is shown in (§7, §9).
+//! The words a wire or net is shown in.
 
 use super::*;
 
@@ -40,7 +40,7 @@ pub(crate) fn first_words(words: &[String], max: usize) -> String {
     s
 }
 
-/// The net line of a wire's hover lens (design 022 §7): `Net 24V-04 · 3 wires · -S02:14, …`.
+/// The net line of a wire's hover lens: `Net 24V-04 · 3 wires · -S02:14, …`.
 pub(crate) fn net_line(doc: &Document, net: &ecad_model::NetData) -> String {
     let number = ecad_model::connectivity::wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
     let n = net.wires.len();
@@ -53,7 +53,7 @@ pub(crate) fn net_line(doc: &Document, net: &ecad_model::NetData) -> String {
     }
 }
 
-/// The lines brief 022 adds to a wire's hover lens: number (fixed or not), potential, label
+/// The lines added to a wire's hover lens: number (fixed or not), potential, label
 /// values (stored, or the potential's default), and the net.
 pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     let mut lines = Vec::new();
@@ -70,7 +70,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
         let from = if pot.from_continuation { " (continuation)" } else { "" };
         lines.push(format!("Potential {p}{from}"));
     }
-    // Brief 050b: the wire's own values, else its category's (named).
+    // The wire's own values, else its category's (named).
     let draw = crate::styles::wire::wire_draw(doc, w);
     let w = &doc.settings().wiring;
     let cat = draw.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));

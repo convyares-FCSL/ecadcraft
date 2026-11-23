@@ -1,4 +1,4 @@
-//! What today's PLC symbols declare (design 072 §3, A19) and how a station's or module's stored
+//! What today's PLC symbols declare and how a station's or module's stored
 //! type reads as a [`CardType`].
 //!
 //! # Semantics
@@ -78,7 +78,7 @@ fn card_of_starter(key: K) -> Option<CardType> {
     })
 }
 
-/// What a device starter `key` begins is, with its data (design 072 §2.3, §3).
+/// What a device starter `key` begins is, with its data.
 pub(crate) fn starter_type(key: K) -> DeviceType {
     match card_of_starter(key) {
         Some(t) => of_card(t),
@@ -87,7 +87,7 @@ pub(crate) fn starter_type(key: K) -> DeviceType {
 }
 
 /// The type a new device declared `declared` is made with in `doc`: a module's channel count is
-/// the project's `plc.<type>.channels` (design 045 §2.3).
+/// the project's `plc.<type>.channels`.
 pub(crate) fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> DeviceType {
     let mut t = declared.clone();
     let Some(card) = CardType::of_type(&t) else { return t };

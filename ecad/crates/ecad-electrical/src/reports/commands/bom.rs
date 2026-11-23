@@ -1,4 +1,4 @@
-//! The rules of the BOM commands (brief 047, design 047 §7): which devices `partline` writes to and
+//! The rules of the BOM commands: which devices `partline` writes to and
 //! the lines it adds, sets or removes; the item `bomitem` adds, edits or deletes; the article
 //! numbers `article` writes. The part line, item and article rules themselves are [`crate::reports::bom`];
 //! the engine crate's shims commit the ops and answer in JSON.
@@ -247,7 +247,7 @@ fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: 
             }
             UNIT_KEY => p.unit = if parse_unit(t.unwrap_or(""))? { ItemUnit::Metres } else { ItemUnit::Pcs },
             QTY_KEY => p.qty = t.map_or(Ok(Qty::ONE), |t| parse_qty(t, p.unit == ItemUnit::Metres).map(|q| Qty(q.0)))?,
-            // Brief 052: an item's location is an entry of the project's list.
+            // An item's location is an entry of the project's list.
             "location" => {
                 p.location = match t {
                     Some(t) => {
@@ -269,7 +269,7 @@ fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: 
 }
 
 /// `bomitem {description, …}` / `{item, set}` / `{item, delete}`: an item (a loose part, design
-/// 072 §6.4) added, edited or deleted (one transaction). A typed location adds its entry to the
+/// added, edited or deleted (one transaction). A typed location adds its entry to the
 /// project's list.
 ///
 /// # Errors
@@ -361,7 +361,7 @@ pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str
             }
             ArticleTarget::Key(object, key, _) => (object, key),
         };
-        // A device's main article number is its field (lane 072 B): one `ModifyDevice`, first.
+        // A device's main article number is its field: one `ModifyDevice`, first.
         if let ObjectRef::Device(c) = object
             && let Some(f) = TextField::of_key(key)
             && let Some(d) = doc.devices().get(c)

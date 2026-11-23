@@ -1,10 +1,10 @@
-//! Device cross-references on a general reference index (brief 025, design 025).
+//! Device cross-references on a general reference index.
 //!
 //! # Semantics
 //! - A **reference** is a text that shows another drawn item's place. A **source** shows a
 //!   **target**'s place; both are representations. Sources and targets of one kind belong to one
 //!   **group** ([`Group`]): a cable's reference ends, or one device's symbols. A short rule table
-//!   ([`RefIndex`]'s edges, design 025 §3.2) decides which members of a group point at which:
+//!   ([`RefIndex`]'s edges) decides which members of a group point at which:
 //!   every cable reference end at every other end of its cable; every **child** (a symbol with
 //!   contact poles) of a device at its **head** (its exclusive symbol: coil, MCB, motor…) and the
 //!   head at every child. A device without a head has no references.
@@ -13,14 +13,14 @@
 //!   under a head (`table`): one row per pole, NO or NC, power or auxiliary, its labels and its
 //!   place, with the poles the part offers that nobody drew (**spare**) and those drawn beyond the
 //!   offer (**over**).
-//! - What a part offers is its typed contacts ([`crate::devices::traits::Contacts`], design 072 §2.2; typed
+//! - What a part offers is its typed contacts ([`crate::devices::traits::Contacts`]; typed
 //!   through `setprop`'s [`CONTACTS_KEY`] in the grammar of [`parse_set`]); where its table goes is
 //!   a switching device's `contact_table` (typed through [`MIRROR_KEY`], [`parse_mirror`]), else
-//!   the project's `contact_mirror` (FP3), else `auto`.
+//!   the project's `contact_mirror`, else `auto`.
 //! - Cable references keep their own derivation ([`crate::references::cables`]); this module only scopes
 //!   them per commit ([`Watch`]), so every cable text is exactly as before.
 //!
-//! # Update map (design 025 §6)
+//! # Update map
 //! [`RefIndex`] is built whole on open, reload and branch switch, and kept per commit, undo, redo
 //! and merge from the ops ([`RefIndex::groups_named`], [`RefIndex::refresh`]): only the groups an
 //! op names are made again (O(group)). The texts and tables to redraw are worked out by

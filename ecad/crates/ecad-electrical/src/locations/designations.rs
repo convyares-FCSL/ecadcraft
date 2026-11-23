@@ -1,4 +1,4 @@
-//! The project's list of functions and locations (brief 052, design 052 §5.9; design 072 §5.3).
+//! The project's list of functions and locations.
 //!
 //! # Semantics
 //! - The project holds one list per [`Aspect`] in [`ecad_model::Project`]. Each entry has a stable
@@ -7,11 +7,11 @@
 //!   `ModifyProject`.
 //! - Pages, the project and devices store **the id** (`Page.location`/`function`,
 //!   `Project.location`/`function`, `Device.location`/`function` with their `fixed` flags, design
-//!   072 §6.3); a device's per-type override `location.<type>` keeps its 32-hex form in the bag. Everything a person sees
+//!   a device's per-type override `location.<type>` keeps its 32-hex form in the bag. Everything a person sees
 //!   shows the code ([`code_of`]), so renaming an entry is one edit of the list.
 //! - A typed code is stored through [`Pending::store`]: a known code gives its key; an unknown one
 //!   adds an entry in the same transaction. A stored value with no entry (a key whose entry a merge
-//!   removed) shows `?` (design 052 §7).
+//!   removed) shows `?`.
 //! - The **use index** ([`Uses`]) maps each key to the objects storing it, kept from the ledger's
 //!   ops (never a rescan on an ordinary commit) and rebuilt on open and branch switch.
 //!
@@ -87,8 +87,8 @@ impl Aspect {
     /// The aspect a stored property key belongs to: `function`; `location` and `location.<type>`.
     ///
     /// `location.<t>` counts only for an override type (`socket`, `plug`, or a symbol type other
-    /// than `head`, design 052 FP3): other `location.*` keys, such as a box's `location.style`
-    /// (brief 050a), are not locations (tester 052, finding 2).
+    /// than `head`): other `location.*` keys, such as a box's `location.style`,
+    /// are not locations.
     pub fn of_property(key: &str) -> Option<Aspect> {
         if key == FUNCTION_KEY {
             Some(Aspect::Function)
@@ -363,8 +363,8 @@ pub fn code_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
 
 /// The entry `key_or_code` names: a code (starting with the aspect's sign) or a key.
 ///
-/// A code may be typed without its sign (`CP1`), as `setlocation` and `designationadd` take it
-/// (tester 052, finding 5): text that is not a key is read as a code.
+/// A code may be typed without its sign (`CP1`), as `setlocation` and `designationadd` take it:
+/// text that is not a key is read as a code.
 pub fn find(doc: &Document, a: Aspect, key_or_code: &str) -> Option<Entry> {
     let t = key_or_code.trim();
     let by_code = |c: &str| entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(c));
@@ -382,7 +382,7 @@ pub(crate) fn key_of_code(doc: &Document, a: Aspect, code: &str) -> Option<Strin
     entries(doc, a).into_iter().find(|e| e.code.eq_ignore_ascii_case(code.trim())).map(|e| e.key)
 }
 
-/// A code as typed, made canonical: trimmed, with the aspect's sign added (024's
+/// A code as typed, made canonical: trimmed, with the aspect's sign added (the
 /// `location_value`).
 ///
 /// # Errors
@@ -550,7 +550,7 @@ impl Counts {
     }
 }
 
-/// The use index: entry key → the objects storing it (design 052 §5.9). Kept from the ledger's
+/// The use index: entry key → the objects storing it. Kept from the ledger's
 /// ops; rebuilt from the document when it has not been built or the ledger was replaced.
 #[derive(Debug, Clone, Default)]
 pub struct Uses {

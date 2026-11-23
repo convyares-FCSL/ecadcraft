@@ -1,4 +1,4 @@
-//! Lane 072 D's rows of `setprop` (design 072 §4.2, brief 072 "Lanes"): a wire's and a cable's
+//! The rows of `setprop` for a wire's and a cable's
 //! keys. The keys that became [`ecad_model::Wire`] fields build one `ModifyWire`; the wire number
 //! and the potential belong to the whole net and keep their own commands; a wire's other keys are
 //! its display choices and defaults-registry values, or refused. A cable is written whole: every
@@ -48,7 +48,7 @@ pub(crate) static RULES: &[PropRule] = &[
     },
 ];
 
-/// A cable's value by `setprop` (design 072 §4.5): one `ModifyCable`. `cores` stores the cores it
+/// A cable's value by `setprop`: one `ModifyCable`. `cores` stores the cores it
 /// offers, `unused.<label>` a core's purpose, `shield` and `cable_type` the typed fields; any other
 /// key is stored as typed.
 ///
@@ -68,7 +68,7 @@ pub(crate) fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option
         crate::circuits::commands::set_cable(doc, &mut after, r, checked.as_deref());
         return Ok(Op::modify_cable(k, cab, after));
     }
-    // Design 072 §4.5: the cable type is a field; its cores follow it. A type's name or ID; an ID
+    // The cable type is a field; its cores follow it. A type's name or ID; an ID
     // naming no type is kept, as wire types are (a check row).
     if key == crate::styles::cable::CABLE_TYPE {
         after.cable_type = match value {
@@ -170,7 +170,7 @@ pub(crate) fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<
     Ok(modify(c, w, after))
 }
 
-/// A wire's own wire type (design 072 §4.6): a style reference of catalogue `wire`, or nothing
+/// A wire's own wire type: a style reference of catalogue `wire`, or nothing
 /// to clear it. A reference to a type that does not exist is kept and shown as a check row.
 ///
 /// # Errors

@@ -1,30 +1,30 @@
-//! Connectivity on the page (brief 022, design 022 §3, §7, design 072 §4.3): conductor labels,
+//! Connectivity on the page: conductor labels,
 //! continuation texts, drawing routes (lines, joins and T's) and placing continuations.
 //!
 //! # Semantics
 //! - Labels and continuation texts are derived on every projection of a page, never stored
-//!   (like 018's tag texts): only the page on screen is projected.
+//!   (like tag texts): only the page on screen is projected.
 //! - A person draws routes ([`ecad_model::Route`]); each is drawn by one polyline item whose
 //!   vertices are the route's points. A T is a route end on another route (`RouteEnd::On`):
 //!   there are no junction components. The wires come from the commit's rewrite pass
 //!   (`ecad_model::connectivity::wire_order::rewrite`); the planners here write routes.
-//! - A continuation is a tagless component made from the starter definition `continuation`
-//!   (FP4), with one connection point keyed `1`.
+//! - A continuation is a tagless component made from the starter definition `continuation`,
+//!   with one connection point keyed `1`.
 //! - Labels use the project's label height and colour style (wiring settings) and are placed so
 //!   none touches another label or another wire (`labels_on_page_with`).
 //!
-//! # Update map of the labels (design 032 §8.1)
+//! # Update map of the labels
 //! | Change | Labels |
 //! | --- | --- |
 //! | `AddRoute`, `ModifyRoute`, `RemoveRoute` (incl. a merge's) | that page's labels, when it is projected |
 //! | `CreateWire`, `DeleteWire` (nets join or split) | with the `net` rule, the pages where those nets have routes: their routes' pages are touched, marked stale, the page on screen re-projects |
 //! | a wire number, potential, cross-section or colour | the pages of the conductors it was written on (the numbering pass's included) |
 //! | wiring settings (label rule, shortest labelled wire, colour style, label height, potentials) | every page, when it is projected next |
-//! | lane T's wire-label text style or show setting (031) | as lane T's map says; here the pages of the conductors concerned |
+//! | the wire-label text style or show setting | the pages of the conductors concerned |
 //! | a cable switched to fan or traditional view | that cable's members' labels hide or show on the page on screen (display only, nothing recorded) |
 //! | anything else | nothing |
 //!
-//! # Update map of the looks-connected marks (design 032 §8.2)
+//! # Update map of the looks-connected marks
 //! Route ops on P and cable reference ops on P change P's marks,
 //! computed when P is projected ([`looks_connected_on_page`]); anything else changes nothing.
 //!
@@ -53,7 +53,7 @@ use crate::devices::texts::{DerivedText, TextOf};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::{self, Starter};
 
-/// The reserved layer of conductor labels (derived, plotted), like 009's `ECAD-CABLES`.
+/// The reserved layer of conductor labels (derived, plotted), like `ECAD-CABLES`.
 pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";
 /// The smallest clearance from the line to the label, millimetres; it grows with the label height
 /// ([`gap`]).
@@ -61,7 +61,7 @@ pub const LABEL_GAP: f64 = 0.8;
 /// The least space kept between two labels, and between a label and another wire, millimetres.
 pub(crate) const LABEL_CLEARANCE: f64 = 0.6;
 
-/// Brief 040: the layer of a two-colour wire's dashes (derived, plotted only in colour).
+/// The layer of a two-colour wire's dashes (derived, plotted only in colour).
 pub const DASH_LAYER: &str = "ECAD-WIRE-COLOUR";
 
 /// The clearance between a label of height `h` and its line.
@@ -78,14 +78,14 @@ pub const MAX_NAME_CHARS: usize = 16;
 /// Why a conductor label alone cannot be edited.
 pub const LABEL_DERIVED: &str = "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
 
-/// Why a T's dot alone cannot be edited (design 072 §4.4).
+/// Why a T's dot alone cannot be edited.
 pub const TEE_DERIVED: &str = "A T's dot is drawn from its lines; move or erase the line instead.";
 
 /// The radii (mm) of a T's dot: concentric circles, so it reads as filled at any lineweight
-/// setting (the old junction glyph's look, design 022 §3.1).
+/// setting (the old junction glyph's look).
 pub const TEE_DOT_RADII: [f64; 3] = [0.5, 0.33, 0.17];
 
-/// The continuation name rule, in words (design 022 §3.2).
+/// The continuation name rule, in words.
 pub(crate) const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
 /// The starter of a continuation.
@@ -93,7 +93,7 @@ pub fn continuation_starter() -> &'static Starter {
     symbols::catalogue::starter(symbols::StarterKey::Continuation)
 }
 
-/// A continuation (design 072 §6.2) named `name` as typed, with `caption`, both checked.
+/// A continuation named `name` as typed, with `caption`, both checked.
 ///
 /// # Errors
 /// [`NAME_RULE`], or the caption rule ([`crate::continuations::CAPTION_RULE`]).

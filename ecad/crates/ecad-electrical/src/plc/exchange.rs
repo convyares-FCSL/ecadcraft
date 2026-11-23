@@ -1,10 +1,10 @@
-//! Tag tables in and out (brief 056, design 056 §6.6, §6.7 as the owner changed them on
-//! 2026-11-14): **Export tags** writes a rack's (or every rack's) tagged channels as a tag table;
+//! Tag tables in and out:
+//! **Export tags** writes a rack's (or every rack's) tagged channels as a tag table;
 //! **Import an I/O list** fills channels' tags and descriptions from one, one way.
 //!
 //! # Semantics
 //! - Files only: nothing is kept of an imported table, and nothing is compared with a PLC
-//!   project afterwards (owner, 2026-11-14: no sync with an outside PLC).
+//!   project afterwards (no sync with an outside PLC).
 //! - Import matches a table's rows to channels by normalised address
 //!   ([`crate::plc::tagtable::normalise`]); each matched channel takes the row's name as its tag and,
 //!   when the row has a comment, the comment as its description. Rows at an address no channel has
@@ -26,7 +26,7 @@ use crate::plc::{CardData, iolist, kept::Plc, signals};
 
 /// The transaction label of an import.
 pub(crate) const IMPORT_LABEL: &str = "Import an I/O list";
-/// Longest `name` given with `text` (the review of #112, 1).
+/// Longest `name` given with `text`.
 pub const MAX_NAME: usize = 255;
 
 /// The normalised addresses of card `card`'s channels `idx`, with the rack's style and the card's
@@ -53,7 +53,7 @@ fn card_addresses(doc: &Document, plc: &Plc, card: &CardData, idx: &[u32]) -> Ve
         .collect()
 }
 
-/// The data type of a card type's channels on export (Q4): `Bool`, `Int`, `Word`.
+/// The data type of a card type's channels on export: `Bool`, `Int`, `Word`.
 pub(crate) fn data_type(t: crate::plc::rack::CardType) -> &'static str {
     use crate::plc::rack::CardType;
     match t {
@@ -89,7 +89,7 @@ impl Export {
     }
 }
 
-/// The export rows of rack `rack` (all racks and unracked cards when `None`), design 056 §6.6:
+/// The export rows of rack `rack` (all racks and unracked cards when `None`):
 /// used and reserved channels with a tag and an address, one row each (IO-Link: one per
 /// direction).
 pub(crate) fn export_rows(doc: &Document, plc: &Plc, rack: Option<DeviceId>, f: &dyn TagFormat) -> Export {
@@ -156,7 +156,7 @@ pub(crate) fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) ->
     f.read(bytes, &Caps::default())
 }
 
-/// What an import would set (design 056 §6.7, owner's change).
+/// What an import would set.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Fill {
     pub ops: Vec<Op>,

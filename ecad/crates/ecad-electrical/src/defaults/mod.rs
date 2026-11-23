@@ -1,13 +1,13 @@
-//! The defaults registry (design 031 §3.5, owner principle 2026-11-12).
+//! The defaults registry.
 //!
 //! Every default a v0.15 lane adds (a size, a weight, a show rule, a gap…) is **one entry** here.
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
 //! [`crate::styles::text_style::text_style`]); it never writes the number where it is used. The read-only
-//! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
+//! `defaults` command and Settings ▸ Standards list the entries; `setdefault`
 //! (`ecad_engine::commands::default`) writes them at a level.
 //!
-//! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
-//! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
+//! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs`,
+//! `wires.rs` (W), `print.rs` (P), `symbols.rs` (S). [`all`] chains them and does
 //! not change when a lane adds an entry, so two lanes never edit one file.
 //!
 //! Not entries: hostile-input bounds (most candidates, most texts per page…). They are guards, not
@@ -18,7 +18,7 @@
 //! Narrowest level first, only the levels the entry allows: object (a symbol's
 //! `text.<rep>.<rest>` key on its component, then the component's or conductor's own `key`) →
 //! page → project (the project property `key`, or [`ProjectSource::Settings`]) → standard (the
-//! project's standard's values, brief 050a) → the built-in. A stored value that does not parse or
+//! project's standard's values) → the built-in. A stored value that does not parse or
 //! is out of range counts as absent, so a hostile file never gives a value outside the entry's
 //! range. A style choice ([`Kind::Style`]) also counts as absent when no style of that ID exists
 //! in its catalogue.
@@ -26,8 +26,8 @@
 pub use data::{DefaultsError, Slot};
 use ecad_model::{DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject, WireId};
 
-/// The areas a key may start with (overseer ruling, 2026-11-12): the words of
-/// [`ecad_model::naming::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
+/// The areas a key may start with: the words of
+/// [`ecad_model::naming::keys::Area::REGISTRY`], in its order. Keys already approved
 /// before the registry keep their names; the key-rule test reads this one list.
 pub const AREAS: &[&str] = <ecad_model::naming::keys::Area as ecad_model::Word>::WORDS.split_at(ecad_model::naming::keys::Area::REGISTRY.len()).0;
 
@@ -57,10 +57,10 @@ pub struct Entry {
     pub label: &'static str,
     /// Group heading on the Standards screen: `"Text"`, `"Wire labels"`…
     pub group: &'static str,
-    /// The brief that added it: `"031"`.
+    /// A short code naming the area that added it.
     pub brief: &'static str,
     pub kind: Kind,
-    /// Its built-in value, read from the data files on first use ([`Entry::builtin`], brief 066):
+    /// Its built-in value, read from the data files on first use ([`Entry::builtin`]):
     /// the value itself is never written in Rust.
     pub slot: Slot<Value<'static>>,
     /// The levels that may override it.
@@ -79,7 +79,7 @@ pub enum Kind {
     Number { min: f64, max: f64 },
     /// One of these words (compared without case; the registered spelling is returned).
     Choice(&'static [&'static str]),
-    /// A switch (design 072 F4): stored as exactly `yes` or `no`; typed as any word
+    /// A switch: stored as exactly `yes` or `no`; typed as any word
     /// [`ecad_model::naming::words::flag`] reads.
     Flag,
     /// Free text of 1 to this many characters, no control characters.
@@ -87,7 +87,7 @@ pub enum Kind {
     /// Text of 1 to `max_chars` characters, no control characters, that `parse` accepts (a
     /// declared parser, e.g. a tag prefix or a revision pattern).
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
-    /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
+    /// A style of this catalogue: its ID, a built-in word or
     /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
     Style(ecad_model::StyleCatalogue),
 }
@@ -105,20 +105,20 @@ pub enum Value<'a> {
     /// A [`Kind::Text`] or [`Kind::Parsed`] value, or a [`Kind::Style`] value naming a built-in
     /// style by its word.
     Text(&'a str),
-    /// A [`Kind::Style`] value naming an own style (a standard's or the project's) by its ID
-    /// (design 072 §5.1): held as the ID, so a value read from a typed field needs no stored text.
+    /// A [`Kind::Style`] value naming an own style (a standard's or the project's) by its ID:
+    /// held as the ID, so a value read from a typed field needs no stored text.
     OwnStyle(u128),
-    /// A typed style field's wire size (design 072 §8): a wire type's `size`.
+    /// A typed style field's wire size: a wire type's `size`.
     Size(ecad_model::objects::wire::WireSize),
-    /// A typed style field's ordered colours (design 072 §8): a wire type's `colours`.
+    /// A typed style field's ordered colours: a wire type's `colours`.
     Colours(&'a ecad_model::objects::wire::Colours),
-    /// A typed style field's colour (design 072 §8): a text, location or frame style's.
+    /// A typed style field's colour: a text, location or frame style's.
     Colour(ecad_model::objects::styles::StyleColour),
-    /// A typed style field's sheet (design 072 §8): a page type's or a frame style's own sheet.
+    /// A typed style field's sheet: a page type's or a frame style's own sheet.
     Sheet(ecad_model::document::sheet::SheetSpec),
-    /// A typed style field's margins (design 072 §8): a frame style's.
+    /// A typed style field's margins: a frame style's.
     Margins(ecad_model::document::sheet::Margins),
-    /// A typed style field's core colours (design 072 §8): a cable type's.
+    /// A typed style field's core colours: a cable type's.
     CoreColours(&'a ecad_model::objects::styles::cable::CoreColours),
 }
 
@@ -153,7 +153,7 @@ impl Value<'_> {
 /// A level that may override an entry's built-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
-    /// The project's standard (brief 050a): its values, `Document.standard.values`.
+    /// The project's standard: its values, `Document.standard.values`.
     Standard,
     Project,
     Page,
@@ -172,7 +172,7 @@ pub enum Source {
     Object,
     /// The symbol's key on its component (`text.<rep>.<rest>`).
     Symbol,
-    /// A project symbol's own value in its definition (brief 048, FP6): the built-in of a
+    /// A project symbol's own value in its definition: the built-in of a
     /// `symbol.<key>.*` entry of a symbol made in the project ([`symbols::resolve_for`]).
     Definition,
 }
@@ -193,7 +193,7 @@ impl Source {
 }
 
 /// Where the project level of an entry is stored. One path only: an entry backed by a setting
-/// never also reads a project property (overseer ruling, 2026-11-12).
+/// never also reads a project property.
 #[derive(Clone, Copy)]
 pub enum ProjectSource {
     /// The project property named by the entry's key.
@@ -316,7 +316,7 @@ impl Resolved<'_> {
 }
 
 impl Entry {
-    /// The built-in value, from the data files (brief 066, design 066 §3): read once, then a
+    /// The built-in value, from the data files: read once, then a
     /// field read. A missing or damaged built-in gives the kind's safe value
     /// ([`data::safe_value`]), never a crash.
     pub fn builtin(&self) -> Value<'static> {
@@ -362,7 +362,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
             (Kind::Style(_), Value::OwnStyle(_)) => true,
-            // A typed style field read back (design 072 §8): its text must pass the field's rule.
+            // A typed style field read back: its text must pass the field's rule.
             (
                 Kind::Parsed { parse, .. },
                 Value::Size(_)
@@ -401,7 +401,7 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
         Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
         Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
-        // Stored strictly: the written words only, as they are (F4).
+        // Stored strictly: the written words only, as they are.
         Kind::Flag => [true, false].into_iter().find(|b| ecad_model::naming::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
@@ -454,7 +454,7 @@ pub fn symbol_key(key: &str, rep: RepresentationId) -> String {
     }
 }
 
-/// Every registered entry, lane by lane: one line per area (overseer ruling, 2026-11-13), so lanes
+/// Every registered entry: one line per area, so areas
 /// adding an area each add one line and merge without conflict.
 #[rustfmt::skip]
 pub fn all() -> impl Iterator<Item = &'static Entry> {
@@ -524,8 +524,8 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     Resolved { value: entry.builtin(), from: Source::Builtin }
 }
 
-/// `entry`'s value stored on `page`: its display bag, or for the page type the page's field
-/// (design 072 §5.1), read with the same rule as `ecad_model::document::sheet::page_type_of` (a type that
+/// `entry`'s value stored on `page`: its display bag, or for the page type the page's field,
+/// read with the same rule as `ecad_model::document::sheet::page_type_of` (a type that
 /// does not exist reads as absent), so the two never disagree.
 fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> Option<Value<'a>> {
     if entry.key == ecad_model::document::sheet::PAGE_TYPE_KEY {
@@ -535,7 +535,7 @@ fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> 
 }
 
 /// `entry`'s value stored on wire `w`: its display bag, or for the wire type its field (design
-/// 072 §4.6); a type that does not exist reads as absent.
+/// A type that does not exist reads as absent.
 fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Option<Value<'a>> {
     if entry.key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
         return w.wire_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)).map(Value::of_style);
@@ -544,17 +544,16 @@ fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Opt
 }
 
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
-/// 050a, design 050 §2.4).
 pub fn standard_value<'a>(doc: &'a Document, entry: &Entry) -> Option<Value<'a>> {
     doc.standard()?.values.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
-/// The chain of `entry` at `at`, broadest first (brief 042, screen e): the built-in, then each
+/// The chain of `entry` at `at`, broadest first (screen e): the built-in, then each
 /// level that holds a value at `at` or that the entry allows (push-back 8), with the value it holds
 /// there, if any. The standard (reserved: IEC, built in) holds none of its own yet. The object
 /// level is the symbol's own value when `at` names a representation and it holds one, else the
 /// component's or conductor's. [`resolve`] uses the narrowest level that holds a valid value. The
-/// standard's value is its own (brief 050a), when the project has a standard.
+/// standard's value is its own, when the project has a standard.
 /// Read only; allocates the list and at most one symbol key.
 pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Option<Value<'a>>)> {
     let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
@@ -590,7 +589,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
 /// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
 pub fn users_noun(entry: &Entry) -> &'static str {
     let area = entry.key.split('.').next().unwrap_or_default();
-    // Brief 046: a page style is counted by page, though its key is in the `connection_point` area.
+    // A page style is counted by page, though its key is in the `connection_point` area.
     if entry.key == strip_pages::STYLE.key {
         return "pages";
     }
@@ -601,7 +600,7 @@ pub fn users_noun(entry: &Entry) -> &'static str {
     }
 }
 
-/// How many objects use the project's value of `entry` (brief 042, "consequences said first"):
+/// How many objects use the project's value of `entry`:
 /// for a tag prefix, the devices whose tag starts with the prefix the project resolves to; for
 /// another entry counted by device or wire ([`users_noun`]), the devices or conductors with no
 /// value of their own; otherwise the pages. Read only; one pass over the project's devices,
@@ -620,7 +619,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
             })
             .count();
     }
-    // A style choice (brief 050a): the users of the style the project resolves to.
+    // A style choice: the users of the style the project resolves to.
     if let Kind::Style(cat) = entry.kind
         && let Some(id) = ecad_model::StyleRef::parse(&resolve(doc, entry, Scope::project()).text())
     {
@@ -777,7 +776,7 @@ mod tests {
 mod kind_tests {
     use super::*;
 
-    /// Design 072 A2: each choice declared as a word enum keeps the words, in the order, of the
+    /// Each choice declared as a word enum keeps the words, in the order, of the
     /// list it replaced (the first word is the entry's fallback).
     #[test]
     fn choice_enums_keep_their_words() {
@@ -901,7 +900,7 @@ mod kind_tests {
 
     #[test]
     fn an_entry_with_no_data_takes_its_safe_value() {
-        // Not in any file: the kind's safe value, never a crash (design 066 §7).
+        // Not in any file: the kind's safe value, never a crash.
         assert_eq!(CHOICE.builtin(), Value::Choice("net"));
         assert_eq!(PAGE_ONLY.builtin(), Value::Length(0.0));
     }

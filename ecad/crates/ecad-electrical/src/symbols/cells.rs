@@ -4,12 +4,12 @@ use super::*;
 
 use crate::plc::rack::CardType as CT;
 
-/// A PLC channel cell (brief 045): `Kind::Channel`, every point quiet.
+/// A PLC channel cell: `Kind::Channel`, every point quiet.
 pub(super) const fn cell(key: StarterKey, name: &'static str, aliases: &'static [&'static str], t: CT, id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::Channel(t), id).of(Family::Plc).quiet_at(Quiet::All)
 }
 
-/// A cell's width and its points (role, x) (design 045 §4.1; brief 051, design 051 §2.2: the
+/// A cell's width and its points (role, x) (the
 /// pack's pitch, 20 mm per single-point channel).
 pub(crate) fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)])> {
     Some(match key {
@@ -127,13 +127,13 @@ pub(crate) fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static st
     })
 }
 
-/// The line of a cell's points: its top edge (design 051 §2.2), local y.
+/// The line of a cell's points: its top edge, local y.
 pub(crate) const CELL_TOP: f64 = 5.0;
 /// The header band under the top edge (the dividers), mm.
 pub(crate) const HEADER_BAND: f64 = 10.0;
 /// The mark band under the header, mm; a cell's mark sits at its centre.
 pub(crate) const MARK_BAND: f64 = 15.0;
-/// The name band at the built-in text styles, mm (design 051 §2.5: at least 12.5).
+/// The name band at the built-in text styles, mm (at least 12.5).
 pub(crate) const NAME_BAND: f64 = 12.5;
 /// A channel text's end under the frame's bottom edge, mm.
 pub(crate) const OUTSIDE_GAP: f64 = 2.0;
@@ -142,7 +142,7 @@ pub(crate) const FRAME_DEPTH: f64 = HEADER_BAND + MARK_BAND + NAME_BAND;
 /// The height of a role name drawn under its pin, mm (`point_label`'s built-in).
 const ROLE_H: f64 = 1.5;
 
-/// A cell's graphics (brief 051, design 051 §2.2): its share of the card's top edge through its
+/// A cell's graphics: its share of the card's top edge through its
 /// points, its two dividers down the header band (adjacent cells draw theirs on one line), the role
 /// names under the pins of a multi-point cell, and its mark at the centre of the mark band. No
 /// bottom edge and no leads: the card's frame closes the box.
@@ -153,11 +153,11 @@ pub(super) fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
     let mut g = vec![line((-h, CELL_TOP), (h, CELL_TOP)), line((-h, CELL_TOP), (-h, div)), line((h, CELL_TOP), (h, div))];
     if points.len() > 1 {
         for (role, x) in points {
-            // Under the pin, which 031's rule puts right of the point, 2.5 under the edge.
+            // Under the pin label, which sits right of the point, 2.5 under the edge.
             g.push(text((*x + 1.0, CELL_TOP - 6.5), ROLE_H, role));
         }
     }
-    // The marks: new drawings for ECAD (034 §2.1's rules: mm, no arcs).
+    // The marks: new drawings for ECAD (rules: mm, no arcs).
     let c = CELL_TOP - HEADER_BAND - MARK_BAND / 2.0;
     let into = |dy: f64| poly(&[(-1.5, c + 1.5 + dy), (0.0, c - 1.5 + dy), (1.5, c + 1.5 + dy)], false);
     let out = |dy: f64| poly(&[(-1.5, c - 1.5 + dy), (0.0, c + 1.5 + dy), (1.5, c - 1.5 + dy)], false);
@@ -281,4 +281,4 @@ pub(super) fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
     g
 }
 
-// Brief 036's aliases.
+// Aliases.

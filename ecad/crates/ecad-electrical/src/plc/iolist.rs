@@ -1,4 +1,4 @@
-//! The I/O list (design 045 §8): one row per channel of every card with channels, drawn or not,
+//! The I/O list: one row per channel of every card with channels, drawn or not,
 //! as `iolist` (read only), the generated page `iolist`, the release CSV and Lists ▸ I/O.
 //!
 //! # Semantics
@@ -16,7 +16,7 @@ use crate::plc::rack::RackRef;
 use crate::plc::{CardData, channels, kept::Plc, state_word};
 use crate::reports::{Cell, Table};
 
-/// Said by the release when the project has no card with channels (design 045 §8.3).
+/// Said by the release when the project has no card with channels.
 pub const NO_CARDS: &str = "No PLC cards with channels.";
 /// Most targets one row names.
 pub(crate) const MAX_TARGETS: usize = 8;
@@ -30,14 +30,14 @@ pub struct Target {
     pub device: String,
     pub point: String,
     pub place: String,
-    /// Brief 056 (design 056 §4.5): a terminal or connector half, which the channel passes through.
+    /// A terminal or connector half, which the channel passes through.
     pub through: bool,
     /// Where it is drawn (a go-to).
     pub page: Option<PageId>,
     pub at: Option<Pt>,
 }
 
-/// One I/O row (design 045 §8.1).
+/// One I/O row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub card: DeviceId,
@@ -61,12 +61,12 @@ pub struct Row {
     pub at: Option<Pt>,
     pub targets: Vec<Target>,
     pub wire: Option<String>,
-    /// Brief 056 (design 056 §4.3, §4.4): the PLC tag, the own safe state, and the default an
+    /// The PLC tag, the own safe state, and the default an
     /// output without one takes (`None` for inputs).
     pub tag: Option<String>,
     pub safe: Option<String>,
     pub safe_default: Option<String>,
-    /// The Test column (design 056 §4.6), from the Tests brief; always `None` in 056.
+    /// The Test column, always `None` for now.
     pub test: crate::plc::signals::TestState,
 }
 
@@ -84,7 +84,7 @@ pub enum Field {
 }
 
 impl Row {
-    /// The `plcchannel` line an edit of `field` to `value` writes (design 051 §3.7), or `None`
+    /// The `plcchannel` line an edit of `field` to `value` writes, or `None`
     /// when the edit changes nothing or is refused: an input has no safe state, the placeholder of
     /// a free channel is not a tag, the own safe state typed again changes nothing, and pins that
     /// are not `role:pin` pairs (see [`crate::input::pin_pairs`]).
@@ -210,7 +210,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let Some(device) = term.device().filter(|c| crate::devices::tags::tag_of(doc, *c).is_some()) else {
                     continue;
                 };
-                // Brief 056: pass-throughs and end devices are capped apart, so terminals never
+                // Pass-throughs and end devices are capped apart, so terminals never
                 // crowd out what the channel drives.
                 let through = crate::plc::signals::is_pass_through(doc, device);
                 if targets.iter().filter(|t: &&Target| t.through == through).count() >= MAX_TARGETS {
@@ -306,7 +306,7 @@ pub fn row_json(r: &Row) -> Value {
         "place": r.place,
         "targets": r.targets.iter().map(|t| json!({"device": t.device, "point": t.point, "place": t.place})).collect::<Vec<_>>(),
         "wire": r.wire,
-        // Brief 056 (design 056 §10): `tag` is the card's already, so the PLC tag is `plc_tag`.
+        // `tag` is the card's already, so the PLC tag is `plc_tag`.
         "plc_tag": r.tag,
         "safe": r.safe_shown().map(|(s, _)| s),
         "safe_default": r.safe_shown().is_some_and(|(_, d)| d),
@@ -322,7 +322,7 @@ pub fn summary(rows: &[Row]) -> (usize, usize, usize) {
     (n("used"), n("reserved"), n("spare"))
 }
 
-/// A card's heading line on the page (design 045 §8.2).
+/// A card's heading line on the page.
 pub fn heading(card: &CardData, rows: &[Row], plc: &Plc) -> String {
     let (u, r, s) = summary(rows);
     let place = match card.rack {
@@ -354,7 +354,7 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
                     r.card_tag.clone(),
                     r.channel.to_string(),
                     address_words(r),
-                    // Brief 056 (Q9): the tag and the safe state.
+                    // The tag and the safe state.
                     r.tag.clone().unwrap_or_default(),
                     desc,
                     r.safe_shown().map(|(s, _)| crate::plc::signals::safe_words(s)).unwrap_or_default(),
@@ -369,7 +369,7 @@ pub fn page_lines(doc: &Document, plc: &Plc) -> Vec<(bool, Vec<String>)> {
     out
 }
 
-/// The page's columns with their A3 widths (brief 056, Q9: Tag and Safe; Description narrower).
+/// The page's columns with their A3 widths (Tag and Safe; Description narrower).
 pub(crate) const PAGE_COLUMNS: [(&str, f64); 11] = [
     ("Slot", 14.0),
     ("Card", 22.0),
@@ -384,7 +384,7 @@ pub(crate) const PAGE_COLUMNS: [(&str, f64); 11] = [
     ("Place", 52.0),
 ];
 
-/// The release CSV (design 045 §8.3), `None` when no card has channels.
+/// The release CSV, `None` when no card has channels.
 pub(crate) fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
     let cards = cards_in_order(plc);
     if cards.is_empty() {
@@ -410,7 +410,7 @@ pub(crate) fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
                 c(r.place.clone().unwrap_or_default()),
                 c(targets_words(&r.targets)),
                 c(r.wire.clone().unwrap_or_default()),
-                // Brief 056 (design 056 §7.3): the tag and the safe state.
+                // The tag and the safe state.
                 c(r.tag.clone().unwrap_or_default()),
                 c(r.safe_shown().map(|(s, _)| s.to_string()).unwrap_or_default()),
             ]);

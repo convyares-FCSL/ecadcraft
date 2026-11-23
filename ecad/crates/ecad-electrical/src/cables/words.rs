@@ -1,4 +1,4 @@
-//! The words and codes of cables and wires (design 065 §3, cut 3): core-label and colour-code
+//! The words and codes of cables and wires: core-label and colour-code
 //! limits, IEC 60757 colour codes and the colours they draw in, shortened text, and which
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
 //! drawing that uses them stays in `draw`.
@@ -11,7 +11,7 @@ use ecad_model::{Document, PageId, Pt, WireId};
 pub const MAX_CORE_CHARS: usize = 32;
 
 /// `text` as drawn: control characters become `?`, and text longer than `max` characters is cut
-/// to `max - 1` characters and `…` (design §4.5). The stored value is never changed.
+/// to `max - 1` characters and `…`. The stored value is never changed.
 pub fn shorten(text: &str, max: usize) -> String {
     let clean: Vec<char> = text.chars().map(|c| if c.is_control() { '?' } else { c }).collect();
     if clean.len() <= max {
@@ -22,7 +22,7 @@ pub fn shorten(text: &str, max: usize) -> String {
     out
 }
 
-/// `ecad.wire_colour.*` (design `040.md` §2): the colour each conductor colour draws in, on the
+/// `ecad.wire_colour.*`: the colour each conductor colour draws in, on the
 /// paper and the dark sheet, in [`ConductorColour::ALL`]'s order (so a colour's index is
 /// `colour as usize`). Black draws in ink, so it shows on both sheets; white draws as a warm grey
 /// on paper. A colour's words come from [`ConductorColour::forms`], never from here.
@@ -93,7 +93,7 @@ pub fn drawn(c: ConductorColour, sheet: &ecad_drawing_style::Sheet) -> ecad_draw
     if dark { on_dark } else { paper }
 }
 
-/// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
+/// The colour code a conductor's route is drawn in: its wire
 /// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
 /// or a code). `None` when it is drawn in ink.
 pub fn conductor_colour(doc: &Document, c: WireId) -> Option<Colours> {
@@ -212,8 +212,8 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
 }
 
 /// The height the cable look is laid out for (label spacing, box pitch and padding, flags, and the
-/// width [`stroke_label_width`] measures): the `CableText` text style's, in drawing units (brief
-/// 066d: the cable look never has a text size of its own).
+/// width [`stroke_label_width`] measures): the `CableText` text style's, in drawing units
+/// (the cable look never has a text size of its own).
 pub fn label_height(doc: &ecad_model::Document) -> f64 {
     crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::CableText).height
 }
@@ -222,7 +222,7 @@ pub fn label_height(doc: &ecad_model::Document) -> f64 {
 pub const WIRE_WEIGHT: u16 = 25;
 
 /// The side of its reference point a reference end's flag sits on, pointing away from the cable's
-/// wires (design 009 §7.2, with design 010 §6.2's direction u: the opposite of the mean direction in
+/// wires (with direction u: the opposite of the mean direction in
 /// which the member routes on the page run away from the point). The flat end faces the wires.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlagSide {
@@ -238,7 +238,7 @@ pub enum FlagSide {
 
 impl FlagSide {
     /// The side for direction `u` (away from the wires), by its larger component; a tie, a zero or
-    /// a non-finite direction is horizontal, and `u.x = 0` horizontal is `Right` (design 010's
+    /// a non-finite direction is horizontal, and `u.x = 0` horizontal is `Right` (the
     /// left-aligned text when `u.x ≥ 0`).
     pub fn away(u: Pt) -> FlagSide {
         if !u.is_finite() || u.x.abs() >= u.y.abs() {
@@ -287,7 +287,7 @@ pub fn flag_shape(at: Pt, w: f64, side: FlagSide, h: f64) -> FlagShape {
     FlagShape { lo, hi, text_at, outline, attach }
 }
 
-/// Typed coordinates beyond this (or not finite) are refused (design §9).
+/// Typed coordinates beyond this (or not finite) are refused.
 pub const MAX_COORD: f64 = 1e12;
 
 /// Refusal of a point that is not finite or out of range.
@@ -304,7 +304,7 @@ pub(crate) fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text
 }
 
 /// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
-/// pick of the marker hits (brief 010's pick-first rule; `draw::marker_box`).
+/// pick of the marker hits (the pick-first rule; `draw::marker_box`).
 pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
     let f = flag_shape(at, w, side, h);
     let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));
@@ -315,7 +315,7 @@ pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
 /// Most handles (or objects) one call may name.
 pub const MAX_HANDLES: usize = 100_000;
 
-/// One Properties row (brief 019, `crate::properties`): a label and a value box.
+/// One Properties row (`crate::properties`): a label and a value box.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     /// The property key it edits (`number`, `title`, `description`…).
@@ -330,7 +330,7 @@ pub struct Row {
     pub varies: bool,
     /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
     pub choices: Vec<String>,
-    /// Brief 052 (design 052 §9.1): an unset function or location's proposal from the selected
+    /// An unset function or location's proposal from the selected
     /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
     /// **Use +CP1** link that sets it.
     pub proposal: Option<(String, String)>,

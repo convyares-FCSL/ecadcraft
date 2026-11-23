@@ -1,4 +1,4 @@
-//! The strip model (design 028 §5, §11): a strip's rows and accessories as derived from the drawing,
+//! The strip model: a strip's rows and accessories as derived from the drawing,
 //! and [`Strips`], the set kept with the report models and its update map.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -24,23 +24,23 @@ pub struct SideCell {
     pub far: Option<DeviceId>,
 }
 
-/// One row of a strip's plan: one level of a position (brief 036 §7.3; a one-level position is
-/// one row, as in 028).
+/// One row of a strip's plan: one level of a position (a one-level position is
+/// one row).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermRow {
     /// The level's terminal (the in point of a two-point level); `None` for a free or spare row.
     pub connection_point: Option<ConnectionPointId>,
-    /// The out point of a two-point level (its outside cells come from it, Q6).
+    /// The out point of a two-point level (its outside cells come from it).
     pub out: Option<ConnectionPointId>,
     /// The **position** label (what jumper bars, accessories and renumbering name).
     pub label: String,
-    /// The shown label (§4.1): `1.L`, or the level's own label.
+    /// The shown label: `1.L`, or the level's own label.
     pub shown: String,
     pub label_overridden: bool,
     /// The level number (1 = top deck) and its name.
     pub level: u32,
     pub level_name: String,
-    /// The position's type (§2.2).
+    /// The position's type.
     pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
     /// A level of a drawn position that no symbol draws.
     pub free: bool,
@@ -102,7 +102,7 @@ impl TermRow {
     }
 }
 
-/// One terminal type on a strip: positions drawn and spare, and its BOM part data (§7.2).
+/// One terminal type on a strip: positions drawn and spare, and its BOM part data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeCount {
     pub ty: &'static crate::terminal_strips::terminal_blocks::TermType,
@@ -110,7 +110,7 @@ pub struct TypeCount {
     pub spare: usize,
     pub part_number: Option<String>,
     pub maker: Option<String>,
-    /// Brief 047 (design 047 §5): read at the level its part number came from.
+    /// Read at the level its part number came from.
     pub article_number: Option<String>,
     pub description: String,
 }
@@ -141,9 +141,9 @@ pub struct StripData {
     pub maker_pe: Option<String>,
     pub description: Option<String>,
     /// Terminals drawn with a label an earlier one has: (label, the second terminal); a level
-    /// drawn twice (brief 036: `level-twice`).
+    /// drawn twice (`level-twice`).
     pub twice: Vec<(String, ConnectionPointId)>,
-    /// Brief 036: positions and their BOM part data per type, in catalogue order (types with
+    /// Positions and their BOM part data per type, in catalogue order (types with
     /// positions only).
     pub types: Vec<TypeCount>,
     /// Positions whose levels are drawn by symbols of another type: (position, a terminal).
@@ -152,15 +152,15 @@ pub struct StripData {
     pub level_missing: Vec<(u32, Vec<String>)>,
     /// Fuse positions with no rating.
     pub no_rating: usize,
-    /// Each row's position index (brief 036).
+    /// Each row's position index.
     pos_of_row: Vec<usize>,
     /// The type word of each `mixed` terminal's own symbol.
     mixed_types: BTreeMap<ConnectionPointId, &'static str>,
-    /// Sheets of its terminal plan section and rows of its BOM (review of PR #55, finding 1):
+    /// Sheets of its terminal plan section and rows of its BOM:
     /// kept with the strip, so sheet counts never walk the rows.
     pub sheets: usize,
     pub bom_rows: usize,
-    /// Brief 030: the accessories placed and the jumper bars (design 030 §7, §11.1).
+    /// The accessories placed and the jumper bars.
     pub acc: crate::terminal_strips::accessories::StripAcc,
     /// What this strip's rows read, for the update map.
     wires: BTreeSet<WireId>,
@@ -184,10 +184,10 @@ impl StripData {
         (q("ft"), q("pe"))
     }
 
-    /// The types whose drawn positions are more than the offer gives them (brief 036 §7.1).
+    /// The types whose drawn positions are more than the offer gives them.
     pub fn over_offer(&self) -> Vec<(&TypeCount, u32)> {
         let Some(o) = self.offer else { return Vec::new() };
-        // 028's rule with no type codes: feed-through and PE counted together.
+        // With no type codes: feed-through and PE counted together.
         if o.counts.iter().skip(2).all(|n| *n == 0) && self.types.iter().all(|t| t.ty.legacy()) {
             return match self.types.first() {
                 Some(t) if self.drawn > o.positions as usize => vec![(t, o.positions)],
@@ -233,8 +233,8 @@ impl StripData {
         self.rows.iter().find(|r| r.connection_point == Some(t))
     }
 
-    /// The plan in physical order (design 030 §7.1): `acc.start`'s items, each position followed
-    /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, 028's rows only.
+    /// The plan in physical order: `acc.start`'s items, each position followed
+    /// by its `acc.after` items, then `acc.end`'s items. With `accessories` off, the plain rows only.
     pub fn plan(&self, accessories: bool) -> Vec<PlanItem<'_>> {
         let mut out = Vec::with_capacity(self.rows.len() + self.acc.gap_rows());
         fn gap<'a>(out: &mut Vec<PlanItem<'a>>, on: bool, g: &'a str, items: &[crate::terminal_strips::accessories::Acc]) {
@@ -255,7 +255,7 @@ impl StripData {
     }
 
     /// The jumper bars through plan row `i`: (jumper bar, whether its level of its position is one the jumper bar
-    /// names). Brief 036: a jumper bar runs on its own level; a cross-level jumper bar only through the
+    /// names). A jumper bar runs on its own level; a cross-level jumper bar only through the
     /// levels of its position.
     pub fn jumper_bars_at(&self, i: usize) -> Vec<(&crate::terminal_strips::accessories::JumperBarInfo, bool)> {
         let Some(r) = self.rows.get(i) else { return Vec::new() };
@@ -268,7 +268,7 @@ impl StripData {
             .collect()
     }
 
-    /// The Bridge cell of a terminal row (design 030 §7.1): 028's `● n`, then one mark per jumper bar
+    /// The Bridge cell of a terminal row: `● n`, then one mark per jumper bar
     /// lane: `●` on a linked position, `┆` past a skipped one.
     pub fn bridge_cell(&self, i: usize) -> String {
         let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
@@ -307,28 +307,28 @@ pub struct Strips {
     by_far: BTreeMap<DeviceId, BTreeSet<DeviceId>>,
     by_page: BTreeMap<PageId, BTreeSet<DeviceId>>,
     by_cable: BTreeMap<CableId, BTreeSet<DeviceId>>,
-    /// Brief 030: the strips reading each project `strip_*` key (no value of their own).
+    /// The strips reading each project `strip_*` key (no value of their own).
     inherits: BTreeMap<String, BTreeSet<DeviceId>>,
-    /// Brief 030: placed accessories with no part number, over every strip (one info row).
+    /// Placed accessories with no part number, over every strip (one info row).
     pub acc_no_part: usize,
-    /// Brief 036: brief 034's fuse terminal devices (the `fuse-device` Info row).
+    /// The fuse terminal devices (the `fuse-device` Info row).
     pub fuse_devices: BTreeSet<DeviceId>,
     /// How many strips the last update recomputed (tests, bench).
     pub last_work: usize,
-    /// Kept totals (review of PR #55, finding 1): every strip's plan sheets, and BOM rows per
+    /// Kept totals: every strip's plan sheets, and BOM rows per
     /// location.
     pub sheets_total: usize,
     pub bom_rows: BTreeMap<Option<String>, usize>,
-    /// Kept Checks rows of the strips (brief 027's badge): `terminal-block-twice` errors and
+    /// Kept Checks rows of the strips (for the badge): `terminal-block-twice` errors and
     /// `too-many-terminal-blocks` warnings.
     pub check_errors: usize,
     pub check_warnings: usize,
     /// Bumped by an update that changed a strip, and the value at each strip's last change: what
-    /// a copy of the plan (Reports ▸ Terminals) is keyed on (review of PR #55, finding 2).
+    /// a copy of the plan (Reports ▸ Terminals) is keyed on.
     pub revision: u64,
     changed_at: BTreeMap<DeviceId, u64>,
     /// The strips whose data the last update changed (added, removed or different): what a shown
-    /// terminal plan page depends on (tester 028, defect 2).
+    /// terminal plan page depends on.
     pub last_changed: BTreeSet<DeviceId>,
 }
 
@@ -355,7 +355,7 @@ pub struct StripScope<'a> {
     pub wires: &'a BTreeSet<WireId>,
     pub cables: &'a BTreeSet<CableId>,
     pub pages: &'a BTreeSet<PageId>,
-    /// Brief 030: project `strip_*` keys that changed.
+    /// Project `strip_*` keys that changed.
     pub project_keys: &'a BTreeSet<String>,
 }
 
@@ -374,12 +374,12 @@ impl Strips {
         s
     }
 
-    /// Brief 036: the strips that read project key `key` (no value of their own).
+    /// The strips that read project key `key` (no value of their own).
     pub fn inheriting(&self, key: &str) -> Vec<DeviceId> {
         self.inherits.get(key).map(|s| s.iter().copied().collect()).unwrap_or_default()
     }
 
-    /// Brief 036: keep the fuse terminal devices among `devices` (the ops' devices) up to date.
+    /// Keep the fuse terminal devices among `devices` (the ops' devices) up to date.
     /// Returns whether the set changed.
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<DeviceId>) -> bool {
         let mut changed = false;
@@ -414,20 +414,20 @@ impl Strips {
         for p in scope.pages {
             out.extend(self.by_page.get(p).into_iter().flatten().copied());
         }
-        // Brief 036: a project level separator or level names relabel the strips inheriting them.
+        // A project level separator or level names relabel the strips inheriting them.
         for k in scope.project_keys.iter().filter(|k| crate::defaults::terminal_blocks::is_label_key(k)) {
             out.extend(self.inherits.get(k).into_iter().flatten().copied());
         }
         out
     }
 
-    /// Brief 030: the strips reading a changed project `strip_*` key (no value of their own), not
+    /// The strips reading a changed project `strip_*` key (no value of their own), not
     /// already in `full`: only their accessories need recomputing.
     pub fn touched_acc(&self, project_keys: &BTreeSet<String>, full: &BTreeSet<DeviceId>) -> BTreeSet<DeviceId> {
         project_keys.iter().flat_map(|k| self.inherits.get(k).into_iter().flatten().copied()).filter(|c| !full.contains(c)).collect()
     }
 
-    /// Recompute only the accessories of `which` (design 030 §11.1: a project default changes
+    /// Recompute only the accessories of `which` (a project default changes
     /// part data, never terminal rows). Adds to [`Strips::last_changed`] and `last_work`.
     pub fn recompute_acc(&mut self, doc: &Document, which: &BTreeSet<DeviceId>) {
         let mut changed = false;
@@ -435,7 +435,7 @@ impl Strips {
             let Some(old) = self.strips.get(c) else { continue };
             let Some(strip) = doc.devices().get(c) else { continue };
             let mut acc = crate::terminal_strips::accessories::strip_acc(doc, &strip.properties, &old.rows);
-            // Brief 036: a project part or description default reaches the type rows too.
+            // A project part or description default reaches the type rows too.
             let mut d = old.clone();
             acc.inherits.extend(d.refresh_types(doc, strip));
             // The level label keys a strip inherits are not this pass's (they rebuild the strip).
@@ -571,7 +571,7 @@ impl Strips {
     }
 }
 
-/// Which way a route leaves a point: `true` for up or left (inside, §5.2 step 3).
+/// Which way a route leaves a point: `true` for up or left (inside).
 fn leaves_inward(from: Pt, next: Pt) -> bool {
     let (dx, dy) = (next.x - from.x, next.y - from.y);
     if dy.abs() >= dx.abs() { dy > 0.0 } else { dx < 0.0 }
@@ -671,8 +671,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     let mut names_of: BTreeMap<crate::symbols::StarterKey, Vec<String>> = BTreeMap::new();
     let mut inherits: BTreeSet<String> = BTreeSet::new();
     let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
-    // The conductors on one terminal, sorted into inside and outside cells (§5.2; two-point levels
-    // by their point, Q6).
+    // The conductors on one terminal, sorted into inside and outside cells (two-point levels
+    // by their point).
     let mut cells = |t: ConnectionPointId, side: Option<bool>, page: Option<PageId>, row: &mut TermRow, d: &mut StripData| {
         for (w, end) in doc.ends_at(t) {
             d.wires.insert(w);
@@ -704,7 +704,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
             let core =
                 cable.as_ref().and_then(|(k, _)| doc.cables().get(k)?.cores.iter().find(|m| m.wire() == Some(w))?.label_str().map(str::to_string));
             let cell = SideCell { conductor: w, target, wire: o.wire(w).and_then(|r| r.wire_number.clone()), cable, core, far };
-            // §5.2: cable core → outside; far device's location against the strip's; geometry.
+            // Cable core → outside; far device's location against the strip's; geometry.
             let inside = match side {
                 Some(s) => s,
                 None if cell.cable.is_some() => false,
@@ -849,7 +849,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     }
     d.drawn = positions.len();
     d.drawn_pe = drawn_by_type.get(1).copied().unwrap_or(0);
-    // Spare positions (FP1): labels 1…n no drawn position has, given to the offer's types in its
+    // Spare positions: labels 1…n no drawn position has, given to the offer's types in its
     // order (feed-through first), each with its type's levels.
     let mut spare_by_type: [usize; tt::TYPE_COUNT] = [0; tt::TYPE_COUNT];
     if let Some(off) = d.offer {
@@ -858,7 +858,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         let legacy_only = off.counts.iter().skip(2).all(|n| *n == 0) && positions.iter().all(|p| p.ty.legacy());
         let mut wanted: Vec<(usize, usize)> = Vec::new();
         if legacy_only {
-            // 028's rule: the PE spares follow the last drawn PE terminal; feed-through the rest.
+            // With no type codes: the PE spares follow the last drawn PE terminal; feed-through the rest.
             let pe_wanted = (off.pe as usize).saturating_sub(d.drawn_pe).min(free.len());
             let last_pe = positions.iter().filter(|p| p.ty.code == "pe").filter_map(|p| p.label.parse::<u32>().ok()).max().unwrap_or(0);
             let spare: Vec<u32> = free.iter().copied().collect();
@@ -886,7 +886,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         for (i, want) in wanted {
             let Some(ty) = tt::TYPES.get(i) else { continue };
-            // Review 036, 3: spare multi-level positions read the separator and level names too.
+            // Spare multi-level positions read the separator and level names too.
             if want > 0 && ty.multi() {
                 if !own(crate::defaults::terminal_blocks::SEPARATOR.key) {
                     inherits.insert(crate::defaults::terminal_blocks::SEPARATOR.key.to_string());
@@ -915,7 +915,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         d.spare_pe = spare_by_type.get(1).copied().unwrap_or(0);
         rows.sort_by_cached_key(|r| (crate::references::devices::table::natural_key(&r.label), r.level, r.connection_point));
     }
-    // Part data per type (§7.2): strip, then project, then the registry's description.
+    // Part data per type: strip, then project, then the registry's description.
     for (i, ty) in tt::TYPES.iter().enumerate() {
         let (dn, sp) = (drawn_by_type.get(i).copied().unwrap_or(0), spare_by_type.get(i).copied().unwrap_or(0));
         if dn + sp == 0 {
@@ -931,7 +931,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         }
         d.pos_of_row.push(n);
     }
-    // Jumper bars naming levels their positions lack (`level-missing`, §8).
+    // Jumper bars naming levels their positions lack (`level-missing`).
     let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
     let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
     for (n, p) in ecad_model::connectivity::jumper_bars::of(props) {
@@ -963,8 +963,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
     d
 }
 
-/// The strip key of a type's part field (§7.2): feed-through keeps `part_number`, `maker`; every
-/// other type `<field>.<code>` (`part_number.lnpe`; 028's `part_number.pe` is this rule).
+/// The strip key of a type's part field: feed-through keeps `part_number`, `maker`; every
+/// other type `<field>.<code>` (`part_number.lnpe`; `part_number.pe` follows this rule).
 pub fn type_key(t: &crate::terminal_strips::terminal_blocks::TermType, field: &str) -> String {
     if t.code == "ft" { field.to_string() } else { format!("{field}.{}", t.code) }
 }
@@ -987,7 +987,7 @@ fn type_parts(
     let own_part = clean(strip.get(&type_key(ty, "part_number"))).is_some();
     let part_number = get("part_number");
     let maker = get("maker");
-    // Brief 047 (design 047 §5): a strip's own part number never shows the project's article number.
+    // A strip's own part number never shows the project's article number.
     let article_number = if own_part || part_number.is_none() {
         clean(strip.get(&type_key(ty, crate::reports::bom::ARTICLE_KEY)))
     } else {
@@ -1011,7 +1011,7 @@ impl StripData {
         self.bom_rows = self.types.iter().filter(|t| t.qty() > 0).count() + self.acc.bom.len();
     }
 
-    /// Recompute its part data per type (a project default changed, §11.1).
+    /// Recompute its part data per type (a project default changed).
     fn refresh_types(&mut self, doc: &Document, strip: &ecad_model::Device) -> BTreeSet<String> {
         let mut inherits = BTreeSet::new();
         for t in &mut self.types {

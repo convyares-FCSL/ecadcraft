@@ -1,4 +1,4 @@
-//! Multi-level terminals (brief 036, design 036 §2–§5, §7.1, §12): the terminal type catalogue,
+//! Multi-level terminals: the terminal type catalogue,
 //! the level of a terminal, the shown label, positions of a strip, offers by type, and the
 //! geometry of the level starters.
 //!
@@ -25,15 +25,15 @@ use ecad_model::{ConnectionPointDef, ConnectionPointId, DeviceId, Document, Leve
 use crate::CmdError;
 use crate::symbols::StarterKey;
 
-/// The strip property prefix of a level's own label (FP4): `term_label.<p>.<n>`.
+/// The strip property prefix of a level's own label: `term_label.<p>.<n>`.
 pub const LABEL_PREFIX: &str = "term_label.";
-/// The `setprop` key prefix of a fuse position's rating (FP5): `rating.<p>`. The rating is the
-/// strip's typed field ([`ecad_model::objects::devices::TerminalStrip::fuses`], design 072 §2.5), not a
+/// The `setprop` key prefix of a fuse position's rating: `rating.<p>`. The rating is the
+/// strip's typed field ([`ecad_model::objects::devices::TerminalStrip::fuses`]), not a
 /// property.
 pub(crate) const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
-/// Every strip property keyed by a position label (review M1): what renumbering and `terminalblocklabel`
+/// Every strip property keyed by a position label: what renumbering and `terminalblocklabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
-/// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `jumper_bar.` values name
+/// and `acc.on.` are accessory placements, `term_label.` is a level label; `jumper_bar.` values name
 /// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
 /// position's rating is the strip's field and moves with [`moved_fuses`].
 pub const POSITION_KEYED: &[&str] =
@@ -46,7 +46,7 @@ pub const MAX_LABEL_CHARS: usize = 24;
 /// Most characters of an offer read.
 pub(crate) const MAX_OFFER_CHARS: usize = 64;
 
-/// A terminal type (design 036 §2.2).
+/// A terminal type.
 #[derive(Debug)]
 pub struct TermType {
     /// The whole-terminal starter (`termlnpe`); for one-level types the starter itself.
@@ -103,7 +103,7 @@ impl TermType {
         n.filter(|_| self.multi()).and_then(|n| self.level_starters.get(usize::try_from(n).ok()?.checked_sub(1)?)).copied().unwrap_or(self.key)
     }
 
-    /// Whether it is 028's feed-through or PE terminal (one level, old keys).
+    /// Whether it is the plain feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
         self.key == StarterKey::TerminalBlock || self.key == crate::terminal_strips::PE_KEY
     }
@@ -116,7 +116,7 @@ const fn level(n: u8) -> PointKey {
     PointKey::Level { level: n, io: None }
 }
 
-/// The catalogue, in offer order (design 036 §2.2). Adding a type is a row here and its starters.
+/// The catalogue, in offer order. Adding a type is a row here and its starters.
 pub static TYPES: &[TermType] = &[
     TermType {
         key: StarterKey::TerminalBlock,
@@ -322,12 +322,12 @@ pub fn level_name(doc: &Document, c: DeviceId, t: &TermType, n: u32) -> String {
     level_names(doc, c, t).get(i).cloned().unwrap_or_else(|| n.to_string())
 }
 
-/// The key of a level's own label (FP4).
+/// The key of a level's own label.
 pub fn label_key(position: &str, n: u32) -> String {
     format!("{LABEL_PREFIX}{position}.{n}")
 }
 
-/// The key of a position's rating (FP5).
+/// The key of a position's rating.
 pub(crate) fn rating_key(position: &str) -> String {
     format!("{RATING_PREFIX}{position}")
 }
@@ -376,7 +376,7 @@ pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32)
     format!("{p}{}{}", separator(doc, c), level_name(doc, c, t, n))
 }
 
-/// The shown label of a strip terminal (design 036 §4.1); `None` for a terminal with no label.
+/// The shown label of a strip terminal; `None` for a terminal with no label.
 pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
     let term = doc.connection_points().get(&t)?;
     let p = term.label.clone()?;
@@ -388,8 +388,8 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
     if !term.key.as_ref().is_some_and(|k| k.as_def().is_none()) {
         return Some(p);
     }
-    // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
-    // by its half (`-X10.S:3`, design 044 §0).
+    // Only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
+    // by its half (`-X10.S:3`).
     if crate::terminal_strips::strip_of(doc, c).is_none() {
         return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
@@ -397,7 +397,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
 }
 
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
-/// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
+/// a terminal (no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
 /// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
 /// a note for each.
 pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {
@@ -429,7 +429,7 @@ pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[Connectio
             gone_positions.insert(p);
         }
     }
-    // Design 072 §2.5: a fuse position's rating is the strip's field; one `ModifyDevice`, first.
+    // A fuse position's rating is the strip's field; one `ModifyDevice`, first.
     if let Some(d) = doc.devices().get(&c)
         && let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type
     {
@@ -504,7 +504,7 @@ pub(crate) fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
     positions(doc, c).into_iter().filter(|p| p.ty.code == "fuse").map(|p| p.label).collect()
 }
 
-/// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one
+/// The position groups the numbering planner numbers: terminals with one
 /// label, split where a level is drawn twice (the second drawing is a group of its own).
 pub(crate) fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<ConnectionPointId>> {
     let mut out = Vec::new();
@@ -529,7 +529,7 @@ pub fn highest_number(doc: &Document, c: DeviceId) -> u64 {
     doc.connection_points_of(c).filter_map(|(_, t)| t.label.as_deref()?.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0)
 }
 
-/// Positions chosen for levels within one transaction (design 036 §3.3).
+/// Positions chosen for levels within one transaction.
 #[derive(Debug, Default, Clone)]
 pub struct Chooser {
     /// (position, level) taken by this transaction.
@@ -643,7 +643,7 @@ impl Chooser {
     }
 }
 
-// ---------------------------------------------------------------- offers (FP1, §7.1)
+// ---------------------------------------------------------------- offers
 
 /// Counts per type, in [`TYPES`] order.
 pub type Counts = [u32; TYPE_COUNT];
@@ -704,7 +704,7 @@ pub fn counts_text(c: &Counts) -> String {
     parts.join("+")
 }
 
-// ---------------------------------------------------------------- jumper bars (§5.1)
+// ---------------------------------------------------------------- jumper bars
 
 /// The text of a jumper bar item for position `p`, level `n` as every ECAD writer writes it: `p` for
 /// level 1 of an undotted position, else `p.n` (a dotted position is always written with its
@@ -718,7 +718,7 @@ pub fn jumper_bar_end(p: &str, n: u32, point: Option<char>) -> String {
 }
 
 /// Canonical jumper bar text on level `n` and point `point` for `labels` (plan order) out of `order`:
-/// runs become ranges, each end written with [`jumper_bar_end`] (review 036, 2: the point is kept).
+/// runs become ranges, each end written with [`jumper_bar_end`] (the point is kept).
 pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Option<char>) -> String {
     let base = ecad_model::connectivity::jumper_bars::canonical(labels, order);
     if n == 1 && point.is_none() && !labels.iter().any(|l| l.contains('.')) {
@@ -755,7 +755,7 @@ pub fn jumper_bar_text(labels: &[&String], order: &[String], n: u32, point: Opti
 }
 
 /// A typed jumper bar value with level names (`1.N-3.N`) written with level numbers (`1.2-3.2`), by
-/// the names of each position's type on strip `c` (§5.1: names are accepted when typed and stored
+/// the names of each position's type on strip `c` (names are accepted when typed and stored
 /// as numbers, so renaming a level never breaks a jumper bar). An end that already reads as a level, or
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
@@ -786,7 +786,7 @@ pub(crate) fn jumper_bar_names_to_numbers(doc: &Document, c: DeviceId, text: &st
 }
 
 /// When jumper bar value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
-/// exists (§5.1, Q5): `Jumper bar -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
+/// exists: `Jumper bar -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
 pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
     let p = ecad_model::connectivity::jumper_bars::parse(text).ok()?;
     let labels: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
@@ -806,7 +806,7 @@ pub(crate) fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> 
     (!words.is_empty()).then(|| format!("Jumper bar {} {}.", crate::devices::tags::tag_words(doc, c), words.join("; ")))
 }
 
-// ---------------------------------------------------------------- geometry (§3.1)
+// ---------------------------------------------------------------- geometry
 
 fn p(x: f64, y: f64) -> Pt {
     Pt::new(x, y)
@@ -824,7 +824,7 @@ fn circle(c: (f64, f64), radius: f64) -> Primitive {
     Primitive::Circle { center: p(c.0, c.1), radius }
 }
 
-/// 028's earth mark beside a circle at height `y`.
+/// The earth mark beside a circle at height `y`.
 fn pe_mark(y: f64) -> Vec<Primitive> {
     vec![line((2.5, y - 1.2), (2.5, y + 1.2)), line((3.2, y - 0.8), (3.2, y + 0.8)), line((3.9, y - 0.4), (3.9, y + 0.4))]
 }
@@ -893,7 +893,7 @@ pub fn connection_points(key: StarterKey) -> Option<Vec<ConnectionPointDef>> {
     })
 }
 
-/// The internal bridges of a new starter's definition (§6): its type's groups.
+/// The internal bridges of a new starter's definition: its type's groups.
 pub fn bridges(key: StarterKey) -> Vec<Vec<PointKey>> {
     of_starter(key).map(|(t, _)| t.bridges.iter().map(|g| g.to_vec()).collect()).unwrap_or_default()
 }
@@ -911,14 +911,14 @@ pub fn short(hex: &str) -> &str {
 
 /// A terminal's name: its label, or `terminal <first 8 hex digits>`.
 pub fn connection_point_name(doc: &Document, t: ConnectionPointId) -> String {
-    // Brief 036 (design 036 §4.1): a strip level's shown label (`1.L`, or its own label).
+    // A strip level's shown label (`1.L`, or its own label).
     match crate::terminal_strips::terminal_blocks::shown_label(doc, t) {
         Some(l) => l,
         None => format!("connection point {}", short(&t.hex())),
     }
 }
 
-/// The stored label of a terminal: a strip terminal's **position** (brief 036), what jumper bars,
+/// The stored label of a terminal: a strip terminal's **position**, what jumper bars,
 /// accessories and renumbering name. [`connection_point_name`] is what a person sees.
 pub fn position_label(doc: &Document, t: ConnectionPointId) -> String {
     match doc.connection_points().get(&t).and_then(|x| x.label.clone()) {

@@ -1,12 +1,12 @@
-//! The rules of brief 059's cable manager (design 059 §4): `cablenew` and `cableedit` (every value
+//! The rules of cable manager: `cablenew` and `cableedit` (every value
 //! checked first; any refusal writes nothing), `cableremove` (refused for a drawn cable), and the
 //! assign rule a slash onto a cable not drawn follows. The three commands are generic
 //! ([`crate::commands::run`]).
 //!
 //! # Semantics
-//! - Every refusal is a [`CmdError`] whose words are design 059 §9's, every echoed value clipped
+//! - Every refusal is a [`CmdError`] whose words are fixed, every echoed value clipped
 //!   ([`clip`]) and the whole cut at [`MAX_WORDS`] characters.
-//! - Every key read or written is named by [`CableField::key`] (design 059 §2.3).
+//! - Every key read or written is named by [`CableField::key`].
 //!
 //! Excludes: the pickers and the UI (the Cables tab).
 
@@ -73,7 +73,7 @@ fn clip_quoted(m: &str) -> String {
     out
 }
 
-/// The refusal of `value` for `field` (design 059 §9).
+/// The refusal of `value` for `field`.
 pub(crate) fn bad_value(field: CableField, value: &str, reason: &BadReason) -> CmdError {
     let shown = clip(value);
     said(match (field, reason) {
@@ -161,14 +161,14 @@ fn as_text(field: CableField, v: Option<&str>) -> Result<Option<String>, CmdErro
     match v {
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
-        // Tester 059a: no control or invisible character in any value (a planned code, a maker…).
+        // No control or invisible character in any value (a planned code, a maker…).
         Some(s) if ecad_model::naming::text::has_hidden(s) => Err(bad_value(field, s, &BadReason::NotAWord)),
         Some(s) => Ok(Some(s.trim().to_string())),
     }
 }
 
 /// Check one value and give the text stored (`None` clears). A planned code not in the project's
-/// list adds its entry (052's rule) through `pending`.
+/// list adds its entry through `pending`.
 fn checked(
     doc: &Document, ids: &mut IdAllocator, pending: &mut designations::Pending, field: CableField, v: Option<&str>, ops: &mut Vec<Op>,
 ) -> Result<Option<String>, CmdError> {
@@ -217,7 +217,7 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
     crate::references::cables::cable_tagged(doc, t).ok_or_else(|| no_cable(&t.chars().take(32).collect::<String>()))
 }
 
-/// Whether core `m` is on a line: a stored unplaced core (design 072 §4.5) is offered, not in use.
+/// Whether core `m` is on a line: a stored unplaced core is offered, not in use.
 fn placed(m: &ecad_model::Core) -> bool {
     m.position != ecad_model::CorePosition::Unplaced
 }
@@ -228,7 +228,7 @@ fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     cab.cores.iter().enumerate().filter(|(_, m)| placed(m)).map(|(i, m)| m.label_str().map_or_else(|| (i + 1).to_string(), str::to_string)).collect()
 }
 
-/// Q6: a new offer (from `next`, the cable as it would be written) must hold every core cable
+/// A new offer (from `next`, the cable as it would be written) must hold every core cable
 /// `k`'s members use.
 fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(), CmdError> {
     let Some(cab) = doc.cables().get(&k) else { return Ok(()) };
@@ -281,12 +281,12 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
 }
 
 /// `cable` with the shield and the cable type moved from its properties (where the checked inputs
-/// put them) to their fields (design 072 §4.5): a field is cleared when the properties hold none.
+/// put them) to their fields: a field is cleared when the properties hold none.
 /// The tag's `state` is given, never read off the text.
 fn take_fields(mut cable: ecad_model::Cable, state: ecad_model::naming::tag::TagState) -> ecad_model::Cable {
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
     cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
-    // The tag, its state and the description, likewise (#2).
+    // The tag, its state and the description, likewise.
     let tag = cable.properties.remove(CableField::Tag.key());
     cable.tag = ecad_model::naming::tag::TagSlot::of_text(tag.as_deref().map(str::trim), state);
     cable.description = cable
@@ -309,7 +309,7 @@ pub struct NewCable {
     pub added: Option<String>,
 }
 
-/// `cablenew` (design 059 §4.1): a cable not drawn, the next free -W unless `tag`.
+/// `cablenew`: a cable not drawn, the next free -W unless `tag`.
 ///
 /// # Errors
 /// A bad value or a taken tag; nothing is written.
@@ -330,7 +330,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
             props.insert(field.key().to_string(), t);
         }
     }
-    // A cable type fills `type` when none was given (design 059 §3).
+    // A cable type fills `type` when none was given.
     if !props.contains_key(CableField::Type.key())
         && let Some(id) = props.get(CableField::CableType.key()).and_then(|v| StyleRef::parse(v))
         && let Some(n) = type_notation(doc, &id)
@@ -373,7 +373,7 @@ pub(crate) fn edit_ops(
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {
             match as_text(field, v)? {
-                // Tester 059a, rule 1: clearing the tag would leave the cable without one.
+                // Clearing the tag would leave the cable without one.
                 None => return Err(bad_value(field, "", &BadReason::Empty)),
                 Some(t) => {
                     refuse_taken(doc, &t, Some(k))?;
@@ -386,7 +386,7 @@ pub(crate) fn edit_ops(
                         ),
                         ecad_model::naming::tag::Entry::Tag(g) => g,
                     };
-                    // A typed tag is fixed (026), as Set property on `tag` makes it.
+                    // A typed tag is fixed, as Set property on `tag` makes it.
                     state = given.state;
                     Some(given.text)
                 }
@@ -400,7 +400,7 @@ pub(crate) fn edit_ops(
         };
         changed.push(field);
     }
-    // Design 059 §3: choosing a cable type sets `type` from its notation when `type` was empty or
+    // Choosing a cable type sets `type` from its notation when `type` was empty or
     // came from the old type (and `type` was not given here).
     if set.cable_type.is_some() && set.kind.is_none() {
         let old_type = cab.cable_type.clone();
@@ -415,7 +415,7 @@ pub(crate) fn edit_ops(
             };
         }
     }
-    // Q6: never fewer cores than those in use.
+    // Never fewer cores than those in use.
     check_offer(doc, k, &take_fields(ecad_model::Cable { properties: after.clone(), ..cab.clone() }, state))?;
     let mut cable = take_fields(ecad_model::Cable { properties: after, ..cab.clone() }, state);
     crate::styles::cable::sync_offered_cores(doc, cab, &mut cable);
@@ -423,7 +423,7 @@ pub(crate) fn edit_ops(
     Ok((ops, changed, pending.words()))
 }
 
-/// A drawn cable, which the list cannot remove (Q1): its title and the pages it is drawn on (the
+/// A drawn cable, which the list cannot remove: its title and the pages it is drawn on (the
 /// UI's Go to links).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Drawn {
@@ -444,7 +444,7 @@ pub fn drawn(doc: &Document, k: CableId) -> Option<Drawn> {
     (doc.cables().contains_key(&k) && is_drawn(doc, k)).then(|| Drawn { tag: crate::cables::cable_title(doc, k), pages: drawn_pages(doc, k) })
 }
 
-/// Whether cable `k` may be removed from the list (Q1): only when it is not drawn.
+/// Whether cable `k` may be removed from the list: only when it is not drawn.
 ///
 /// # Errors
 /// No such cable, or it is drawn ([`Drawn::words`]; [`drawn`] gives its pages).
@@ -462,7 +462,7 @@ pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
 /// `1…n` with no offer.
 ///
 /// # Errors
-/// No such cable, or the offer has fewer free cores than `n` (Q6).
+/// No such cable, or the offer has fewer free cores than `n`.
 pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<String>>, CmdError> {
     let Some(count) = crate::terminal_strips::cores::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
     if count.offer.is_none() {
@@ -493,7 +493,7 @@ pub fn too_many() -> CmdError {
     said(crate::cables::slash::too_many())
 }
 
-/// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
+/// Board 2.06's **Add a core**: cable `k`'s offer plus one core (`4G` → `5G`,
 /// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
 pub fn next_offer(doc: &Document, k: CableId) -> String {
     let members = doc.cables().get(&k).map_or(0, |c| c.cores.len());
@@ -512,7 +512,7 @@ pub fn next_offer(doc: &Document, k: CableId) -> String {
     v.join(",")
 }
 
-/// One item of the slash and Add to cable pickers (design 059 §5.6).
+/// One item of the slash and Add to cable pickers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PickItem {
     pub cable: CableId,
@@ -524,9 +524,9 @@ pub struct PickItem {
     pub matches: bool,
 }
 
-/// The picker's cables on `page` (Q7): not drawn first (those whose planned end location matches
+/// The picker's cables on `page`: not drawn first (those whose planned end location matches
 /// the page's location, or one of its location boxes', before the rest, marked), then drawn cables
-/// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
+/// not slashed on this page. Each group by tag. O(cables), built once when a picker opens.
 pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
     let page_loc = doc.pages().get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
@@ -559,7 +559,7 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The commands (generic: crate::commands::run; design 059 §4.1, §4.2)
+// The commands (generic: crate::commands::run)
 
 /// An end's plan and gland.
 #[derive(Debug, Default, Deserialize, JsonSchema)]

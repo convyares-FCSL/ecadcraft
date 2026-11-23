@@ -1,4 +1,4 @@
-//! The rules of brief 044's commands (design 044 §4, §5.3): `connector` (Place ▸ Connector: a row of
+//! The rules of commands: `connector` (Place ▸ Connector: a row of
 //! whole halves, pins on wires, or a bulkhead) and `pinlabel` (rename a pin on both halves, or move
 //! one drawn pin to its half's next free pin). Each function reads the document and returns the ops
 //! to commit and what to report; the engine crate's shims read the parameters, commit and answer
@@ -176,7 +176,7 @@ pub struct Made {
     pub ops: Vec<Op>,
 }
 
-/// What `connector` is asked to place (design 044 §4.3); absent words take the registry's
+/// What `connector` is asked to place; absent words take the registry's
 /// `connector.maker.*` answers.
 #[derive(Debug, Clone, Default)]
 pub struct ConnectorInput {
@@ -214,7 +214,7 @@ pub struct Connector {
     pub pins_layout: bool,
 }
 
-/// Plan `connector` (design 044 §4.3) on `active` (or the page the input names).
+/// Plan `connector` on `active` (or the page the input names).
 ///
 /// # Errors
 /// A word, page or device that does not read, or a refusal of the placement.
@@ -268,7 +268,7 @@ pub fn plan_connector(
     Ok(Connector { made, label, family, halves, pins_layout })
 }
 
-/// The echo after a commit (design 044 §4.2), read from the document with the placement in.
+/// The echo after a commit, read from the document with the placement in.
 pub fn echo(doc: &Document, c: &Connector) -> String {
     let m = &c.made;
     let side_names = |side: Side| -> Vec<String> { m.shown.iter().filter(|x| x.side == side).map(|x| x.name.clone()).collect() };
@@ -314,7 +314,7 @@ fn route_point(doc: &Document, r: RouteId) -> Option<Pt> {
     best.map(|(_, p)| p)
 }
 
-/// A bulkhead (RJ45, USB): 034's one-piece symbol, a new device, as Find Symbol places it.
+/// A bulkhead (RJ45, USB): the one-piece symbol, a new device, as Find Symbol places it.
 #[allow(clippy::too_many_arguments)]
 fn place_bulkhead(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: Degrees,
@@ -353,7 +353,7 @@ struct Row<'a> {
     swap: bool,
 }
 
-/// Row: whole halves (design 044 §4.2): Both places the plug at `at` and the socket 5 mm above it
+/// Row: whole halves: Both places the plug at `at` and the socket 5 mm above it
 /// in the pair's frame (below with `swap`), so their bodies share an edge.
 fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, r: Row<'_>) -> Result<Made, CmdError> {
     let doc = ledger.document();
@@ -436,7 +436,7 @@ struct Pins<'a> {
     route: Option<RouteId>,
 }
 
-/// Pins: one pin symbol on each wire the line crosses (design 044 §4.2, §4.4, §4.5).
+/// Pins: one pin symbol on each wire the line crosses.
 fn place_pins(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, a: Pins<'_>, tol: f64,
 ) -> Result<Made, CmdError> {
@@ -545,7 +545,7 @@ fn place_pins(
     Ok(Made { component, tag, new, shown: shown_all, splits, ops })
 }
 
-// ---------------------------------------------------------------- pinlabel (§5.3)
+// ---------------------------------------------------------------- pinlabel
 
 /// What `pinlabel` is asked to rename.
 #[derive(Debug, Clone, Default)]
@@ -571,7 +571,7 @@ pub enum Pinlabel {
     Renamed { component: DeviceId, tag: String, from: String, to: String, ops: Vec<Op>, label: String },
 }
 
-/// Plan `pinlabel` (design 044 §5.3).
+/// Plan `pinlabel`.
 ///
 /// # Errors
 /// No such device or connection point, not a connector, a name that does not read or is taken.

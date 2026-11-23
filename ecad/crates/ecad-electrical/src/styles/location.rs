@@ -1,6 +1,6 @@
-//! The location and box style catalogue (`location`, design 050 §4.2).
+//! The location and box style catalogue (`location`).
 //!
-//! The built-in `box` ("Location box") is exactly 024's look: a dashed outline at the wire weight
+//! The built-in `box` ("Location box") is a dashed outline at the wire weight
 //! in ink, labelled in the `location` text style. `fill` is a reserved field: it is stored and
 //! listed, and drawn as `none` (CADCraft draws no fill behind other entities on a layer yet; the
 //! quick start says so).
@@ -76,7 +76,7 @@ pub fn linetype(word: &str) -> &'static str {
     }
 }
 
-/// The look of location box `a`: its own style when it names one that exists (brief 050a), else
+/// The look of location box `a`: its own style when it names one that exists, else
 /// the project's location style, the standard's, the built-in `box`.
 pub fn box_draw(doc: &Document, a: AidId) -> BoxDraw {
     draw_of(doc, &box_style(doc, a))

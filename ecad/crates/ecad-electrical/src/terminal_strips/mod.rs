@@ -1,27 +1,27 @@
-//! Terminal strips and cable cores (brief 028, design 028 §2–§9): the terminal plan per strip
+//! Terminal strips and cable cores: the terminal plan per strip
 //! and the core count per cable, derived from the drawing and never stored.
 //!
 //! # Semantics
 //! - A **strip** is a device whose definition is a terminal starter (`connection_point`, `terminal_block_pe`);
-//!   each terminal is one symbol with one connection point (018's model, owner answer Q1). Its
+//!   each terminal is one symbol with one connection point. Its
 //!   **type** is its symbol's: `terminal_block_pe` is PE, anything else feed-through.
 //! - The strip's **offer** is its `connection_points` property, `12` or `12+2PE`: feed-through positions,
-//!   then PE positions (design 028 §3.3, owner decision 2026-11-12: `12+2PE` is 14 positions; a
+//!   then PE positions (`12+2PE` is 14 positions; a
 //!   BOM of 12 feed-through and 2 PE). Positions with no drawn terminal are **spare**.
-//! - A conductor whose two ends are on two terminals of one strip is a **bridge** (Q5). Every other
-//!   conductor on a terminal is **inside** or **outside** by §5.2's rule: a cable core is outside;
+//! - A conductor whose two ends are on two terminals of one strip is a **bridge**. Every other
+//!   conductor on a terminal is **inside** or **outside** by this rule: a cable core is outside;
 //!   else the far device's location against the strip's; else the route's direction at the
 //!   terminal (up or left is inside).
-//! - A cable's **core offer** is its `cores` property, else read from its `type` (`7G1.5` → `7G`)
-//!   (FP2, Q9). Members are matched to it by label first, then in member order: **used**,
-//!   **spare** and **over** (§6.2).
-//! - Nothing here is refused because of a check; it is flagged (§8).
-//! - **Brief 036:** a strip's rows are its **levels**, grouped by position in plan order
+//! - A cable's **core offer** is its `cores` property, else read from its `type` (`7G1.5` → `7G`).
+//!   Members are matched to it by label first, then in member order: **used**,
+//!   **spare** and **over**.
+//! - Nothing here is refused because of a check; it is flagged.
+//! - A strip's rows are its **levels**, grouped by position in plan order
 //!   ([`crate::terminal_strips::terminal_blocks::positions`]); a position whose type has more levels than are drawn
 //!   shows them as **free** rows; spare positions come per type from the offer (`12+2PE+4x3`), each
 //!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
-//! # Update map (design 028 §11.1)
+//! # Update map
 //! [`Strips`] lives inside `crate::reports::kept::ReportModels` and is updated with it from the same
 //! [`crate::reports::Scope`], after the device, wire and cable rows:
 //!
@@ -32,10 +32,10 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
-//! | brief 036: a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`, design 072 §2.5): a device in scope | that strip |
-//! | brief 036: project `terminal_block.level.separator` or `terminal_block.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
-//! | brief 036: project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
-//! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
+//! | a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`): a device in scope | that strip |
+//! | project `terminal_block.level.separator` or `terminal_block.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
+//! | project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
+//! | a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
 //! | anything else | nothing |
 //!
 //! A full build happens only with the report models: open, reload, first show.
@@ -57,11 +57,11 @@ use crate::CmdError;
 use cores::*;
 use strip_model::{StripData, TermRow};
 
-/// The strip property that offers positions (FP1).
+/// The strip property that offers positions.
 pub(crate) const OFFER_KEY: &str = "terminal_blocks";
-/// The cable property that offers cores (FP2).
+/// The cable property that offers cores.
 pub(crate) const CORES_KEY: &str = "cores";
-/// The strip properties of its PE terminals' BOM row (FP4).
+/// The strip properties of its PE terminals' BOM row.
 pub(crate) const PE_PART_KEY: &str = "part_number.pe";
 pub(crate) const PE_MAKER_KEY: &str = "maker.pe";
 /// Most positions a strip offers.
@@ -75,7 +75,7 @@ pub(crate) const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey
 
 // ---------------------------------------------------------------- strips and terminals
 
-/// Strip `c`'s own data (its type's, design 072 §2.2), when it is a terminal strip.
+/// Strip `c`'s own data (its type's), when it is a terminal strip.
 pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::TerminalStrip> {
     doc.devices().get(&c)?.device_type.as_strip()
 }
@@ -122,7 +122,7 @@ fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, Representati
     out
 }
 
-/// A strip's drawn terminals with the page and point each is drawn at (brief 030: jumper bar lines).
+/// A strip's drawn terminals with the page and point each is drawn at (for jumper bar lines).
 pub(crate) fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, PageId, Pt)> {
     drawn_at(doc, c).into_iter().filter_map(|(t, rid, _, at)| Some((t, rid, doc.representations().get(&rid)?.page, at?))).collect()
 }
@@ -144,7 +144,7 @@ pub(crate) fn bridge_of(doc: &Document, w: WireId) -> Option<DeviceId> {
     (sa == sb).then_some(sa)
 }
 
-/// A strip's offer (FP1, brief 036 §7.1): positions per terminal type.
+/// A strip's offer: positions per terminal type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Offer {
     /// Every position, of every type (`12+2PE+4x3`: 18).
@@ -190,8 +190,8 @@ pub fn offer_value(value: Option<&str>) -> Result<Option<String>, CmdError> {
     }
 }
 
-/// The offer Checks' **Offer drawn** writes (design 028 §8, brief 036 §7.1): every type at
-/// least its drawn positions; with no type codes, 028's rule (every drawn terminal, PE kept).
+/// The offer Checks' **Offer drawn** writes: every type at
+/// least its drawn positions; with no type codes, the plain rule (every drawn terminal, PE kept).
 pub fn offer_drawn_value(doc: &Document, c: DeviceId) -> String {
     use crate::terminal_strips::terminal_blocks as tt;
     let ps = tt::positions(doc, c);
@@ -233,7 +233,7 @@ pub(crate) fn plan_lines(s: &StripData) -> usize {
     1 + s.rows.iter().map(|r| r.inside.len().max(r.outside.len()).max(1)).sum::<usize>() + s.acc.gap_rows()
 }
 
-/// A core label as given (design 009 §5.4): trimmed; empty or only spaces clears it (`None`).
+/// A core label as given: trimmed; empty or only spaces clears it (`None`).
 ///
 /// # Errors
 /// Longer than [`crate::cables::words::MAX_CORE_CHARS`] characters, or a control character, in words.
@@ -251,7 +251,7 @@ pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 /// `-X01:3`.
 pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     let c = doc.connection_points().get(&t).and_then(|x| x.device());
-    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    // A connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;
     }
@@ -259,16 +259,16 @@ pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     format!("{tag}:{}", crate::terminal_strips::terminal_blocks::connection_point_name(doc, t))
 }
 
-/// Fuse terminal device `c`'s fuse (brief 034's `fuseterminalblock`): its stored
-/// [`ecad_model::objects::devices::Protection::FuseTerminalBlock`] (design 072 §2.2).
+/// Fuse terminal device `c`'s fuse (a `fuseterminalblock`): its stored
+/// [`ecad_model::objects::devices::Protection::FuseTerminalBlock`].
 pub fn fuse_terminal_block_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::devices::Fuse> {
     doc.devices().get(&c)?.device_type.as_protection()?.as_fuse_terminal_block()
 }
 
-/// Level stagger (§3.1): level *n* is raised by (*n* − 1) × this.
+/// Level stagger: level *n* is raised by (*n* − 1) × this.
 pub(crate) const STAGGER_MM: f64 = 1.5;
 
-/// How far level `r` is raised (§3.1).
+/// How far level `r` is raised.
 pub fn raise(r: &TermRow) -> f64 {
     if r.ty.multi() { f64::from(r.level.saturating_sub(1).min(16)) * STAGGER_MM } else { 0.0 }
 }

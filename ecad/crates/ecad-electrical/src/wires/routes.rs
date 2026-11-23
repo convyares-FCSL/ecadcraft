@@ -1,4 +1,4 @@
-//! Routes (design 072 §4.3) and the wires a route carries.
+//! Routes and the wires a route carries.
 
 use super::*;
 
@@ -10,7 +10,7 @@ pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemI
     })
 }
 
-/// The T's on `page` (design 072 §4.4): each route end that lands on another route
+/// The T's on `page`: each route end that lands on another route
 /// (`RouteEnd::On`), as (route, end index, point). Derived from the routes, never stored; a page
 /// is drawn again when a route op touches it, so the dots follow AddRoute, ModifyRoute and
 /// RemoveRoute of that page's routes and nothing else.
@@ -41,7 +41,7 @@ pub fn route_drawing(page: PageId, style: Style, points: Vec<Pt>) -> Item {
     Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices: points, closed: false }) }
 }
 
-/// The ops that draw a new route on `page` through `points` with `ends` (design 072 §4.3): the
+/// The ops that draw a new route on `page` through `points` with `ends`: the
 /// route, its item and the representation linking them. Returns the route's and the item's IDs.
 pub fn add_route(ids: &mut IdAllocator, page: PageId, style: Style, points: Vec<Pt>, ends: [RouteEnd; 2]) -> (RouteId, ItemId, Vec<Op>) {
     let (r, i, rep): (RouteId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());

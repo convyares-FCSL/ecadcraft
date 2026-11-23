@@ -1,11 +1,11 @@
-//! Joining wires (brief 032 §2, design 072 §4.3).
+//! Joining wires.
 
 use super::*;
 
-/// The way out every join refusal names (design 032 §2.2).
+/// The way out every join refusal names.
 pub(crate) const JOIN_WAY_OUT: &str = "Draw it with join off (join: false), or end it on a connection point.";
 
-/// What one end of a new route meets (design 032 §2.1, design 072 §4.3).
+/// What one end of a new route meets.
 #[derive(Debug, Clone, PartialEq)]
 enum Meets {
     /// Nothing there: a deliberate open end.
@@ -38,7 +38,7 @@ impl Meets {
     }
 }
 
-/// A planned `wire` (design 032 §2.3, design 072 §4.3): its ops and what the result reports.
+/// A planned `wire`: its ops and what the result reports.
 #[derive(Debug, Clone)]
 pub struct WirePlan {
     pub ops: Vec<Op>,
@@ -70,7 +70,7 @@ fn straight(a: Pt, b: Pt, c: Pt) -> bool {
 }
 
 /// `a` (ending at a point P) followed by `b` (starting at P): P once, dropped when the two
-/// segments meeting there are one straight line (design 032 §2.2).
+/// segments meeting there are one straight line.
 fn joined(mut a: Vec<Pt>, b: &[Pt]) -> Vec<Pt> {
     let Some((p, rest)) = b.split_first() else { return a };
     if a.is_empty() {
@@ -99,7 +99,7 @@ fn merged_route(cv: &[Pt], open: End, add: &[Pt]) -> Vec<Pt> {
     }
 }
 
-/// Whether a route end at `at` is quiet (a cable reference end, brief 009): never joined.
+/// Whether a route end at `at` is quiet (a cable reference end): never joined.
 fn is_quiet(quiet: &[Pt], at: Pt) -> bool {
     quiet.iter().any(|q| q.near(at, ON_WIRE))
 }
@@ -120,7 +120,7 @@ fn route_net(doc: &Document, r: RouteId) -> Option<&ecad_model::NetData> {
     route_net_key(doc, r).and_then(|n| doc.connectivity().net(n))
 }
 
-/// Refuse joining route `r` with a new line of potential `potential` (design 032 §2.2).
+/// Refuse joining route `r` with a new line of potential `potential`.
 fn merge_potential(doc: &Document, r: RouteId, potential: Option<&str>) -> Result<(), CmdError> {
     let Some(net) = route_net(doc, r) else { return Ok(()) };
     let theirs = ecad_model::connectivity::wiring::net_potential(doc, net).name;
@@ -132,7 +132,7 @@ fn merge_potential(doc: &Document, r: RouteId, potential: Option<&str>) -> Resul
     Ok(())
 }
 
-/// Refuse joining routes `a` and `b` into one (design 032 §2.2): their nets carry different
+/// Refuse joining routes `a` and `b` into one: their nets carry different
 /// potentials, or both have fixed numbers that differ.
 pub(crate) fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError> {
     let (Some(ka), Some(kb)) = (route_net_key(doc, a), route_net_key(doc, b)) else { return Ok(()) };
@@ -181,7 +181,7 @@ pub(crate) fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt
     loose_ends_at(doc, page, at, ON_WIRE).into_iter().filter(|(r, e)| end_point(doc, *r, *e).is_some_and(|p| !is_quiet(quiet, p))).collect()
 }
 
-/// What the end of a new line at `at` meets (design 032 §2.1, step 2), and the point it snaps to.
+/// What the end of a new line at `at` meets, and the point it snaps to.
 fn meet_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> (Meets, Pt) {
     let loose = joinable_ends_at(doc, page, at, quiet);
     if let Some(on) = interior_route_at(doc, page, at) {
@@ -198,12 +198,12 @@ fn meet_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> (Meets, Pt) {
     }
 }
 
-/// The free ends of other routes on `page` that lie on the interior of path `v` (design 032 §2.1
-/// step 3), each as (segment index, distance along it, point, route, end), in order along the
+/// The free ends of other routes on `page` that lie on the interior of path `v`,
+/// each as (segment index, distance along it, point, route, end), in order along the
 /// path.
 fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(usize, f64, Pt, RouteId, End)> {
     let (Some(first), Some(last)) = (v.first().copied(), v.last().copied()) else { return Vec::new() };
-    // A grid of the new line's segments (overseer ruling: no segment-by-segment test of every end
+    // A grid of the new line's segments (no segment-by-segment test of every end
     // on the page): an end is tested only against the segments in its cell.
     let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
     let mut long: Vec<usize> = Vec::new();
@@ -259,7 +259,7 @@ pub struct WireInput<'a> {
     pub style: Style,
     pub points: Vec<Pt>,
     pub potential: Option<&'a str>,
-    /// Join ends that meet other routes (design 032 §2.1 steps 2 and 3).
+    /// Join ends that meet other routes.
     pub join: bool,
     /// The project tolerance (an end on a connection point).
     pub tol: f64,
@@ -269,7 +269,7 @@ pub struct WireInput<'a> {
     pub max_points: usize,
 }
 
-/// Plan drawing a line (design 032 §2, design 072 §4.3): a route whose ends land on connection
+/// Plan drawing a line: a route whose ends land on connection
 /// points, and with `join` on other routes: an end on another route's free end extends that route
 /// (two such ends make the two routes one), an end on a route's middle lands there (a T), and free
 /// ends of other routes lying on the line land on it (the reverse T). The wires come from the
@@ -277,7 +277,7 @@ pub struct WireInput<'a> {
 /// wire, to carry the tool's potential.
 ///
 /// # Errors
-/// Design 032 §2.2's refusals (potentials, fixed numbers, too many points or ends crossed);
+/// The refusals (potentials, fixed numbers, too many points or ends crossed);
 /// nothing is planned then.
 pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) -> Result<WirePlan, CmdError> {
     let WireInput { page, style, points: mut pts, potential, join, tol, quiet, max_points } = input;
@@ -359,7 +359,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     // 3. The route that holds the line.
     let (holder, item, created) = match (&ma, &mb) {
         (Meets::Merge { route: r1, end: e1 }, Meets::Merge { route: r2, end: e2 }) => {
-            // Both ends meet free ends of two routes: one route (§2.2), the one at end A.
+            // Both ends meet free ends of two routes: one route, the one at end A.
             let o = doc.routes().get(r2).ok_or(CmdError::NotFound(Noun::Wire))?;
             let o_from_end = if *e2 == End::A { o.points.clone() } else { reversed(&o.points) };
             let far = o.ends.get(end_index(e2.other())).copied().unwrap_or(RouteEnd::Free);
@@ -443,7 +443,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
     Ok(WirePlan { ops, route: holder, item, created, joined: joined_ends, removed, attached, tees: landed, wire })
 }
 
-/// A planned merge of two free route ends that meet (`joinwires`, design 032 §2.5).
+/// A planned merge of two free route ends that meet (`joinwires`).
 #[derive(Debug, Clone)]
 pub struct EndJoin {
     pub ops: Vec<Op>,
@@ -451,13 +451,13 @@ pub struct EndJoin {
     pub removed: RouteId,
 }
 
-/// Plan merging the free ends `a` and `b` of two routes that meet into one route (design 032
-/// §2.5): the lower route ID survives and takes the other's points and far end; routes landing on
+/// Plan merging the free ends `a` and `b` of two routes that meet into one route:
+/// the lower route ID survives and takes the other's points and far end; routes landing on
 /// the other land on it; the other is removed. `Ok(None)` when one of them lands on the other (the
 /// caller lands one end on the other route instead).
 ///
 /// # Errors
-/// One route's two ends; a route too long; §2.2's refusals.
+/// One route's two ends; a route too long; the refusals of a wire plan.
 pub fn plan_end_join(doc: &Document, a: (RouteId, End), b: (RouteId, End), max_points: usize) -> Result<Option<EndJoin>, CmdError> {
     if a.0 == b.0 {
         return Err(CmdError::refused(format!("Both ends belong to one wire: joining them would close it into a loop. {JOIN_WAY_OUT}")));
@@ -493,7 +493,7 @@ pub fn plan_end_join(doc: &Document, a: (RouteId, End), b: (RouteId, End), max_p
 }
 
 /// The nearest free route end on `page` within `tol` of `p` that a new line may join (not a quiet
-/// one): the Wire tool snaps a click there (design 032 §2.4).
+/// one): the Wire tool snaps a click there.
 pub fn open_end_near(doc: &Document, page: PageId, p: Pt, tol: f64, quiet: &[Pt]) -> Option<Pt> {
     let mut best: Option<(f64, Pt)> = None;
     for r in doc.routes_on(page) {
@@ -509,7 +509,7 @@ pub fn open_end_near(doc: &Document, page: PageId, p: Pt, tol: f64, quiet: &[Pt]
     best.map(|(_, q)| q)
 }
 
-/// What the Wire tool shows at an end point `at` (design 032 §2.4): the point, the word (`join`,
+/// What the Wire tool shows at an end point `at`: the point, the word (`join`,
 /// `tee`, or the first words of a refusal such as `0V ≠ 24V`) and whether it is refused; `None`
 /// when the end would stay open.
 pub fn join_preview(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], potential: Option<&str>) -> Option<(Pt, String, bool)> {
@@ -537,12 +537,12 @@ fn looks_cell(p: Pt) -> Option<(i64, i64)> {
     p.is_finite().then(|| ((p.x / LOOKS_CELL_MM).floor() as i64, (p.y / LOOKS_CELL_MM).floor() as i64))
 }
 
-/// The free route ends on `page` that look connected (design 032 §2.6): lying on another route's
+/// The free route ends on `page` that look connected: lying on another route's
 /// end or interior, not quiet (a cable reference end). One point per place, in route order.
 ///
 /// # Semantics
 /// Computed during the page's projection from that page's routes only (the page index), with a
-/// grid of their segments, so the cost follows the page, never the project (update map §8.2).
+/// grid of their segments, so the cost follows the page, never the project.
 pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Vec<Pt> {
     let routes: Vec<&Route> = doc.routes_on(page).filter_map(|r| doc.routes().get(&r)).collect();
     let mut grid: std::collections::HashMap<(i64, i64), Vec<(usize, usize)>> = std::collections::HashMap::new();

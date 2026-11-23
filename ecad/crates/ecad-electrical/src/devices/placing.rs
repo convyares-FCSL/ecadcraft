@@ -1,4 +1,4 @@
-//! Joining labels (§3.1) and placing a symbol.
+//! Joining labels and placing a symbol.
 
 use super::*;
 
@@ -11,40 +11,40 @@ pub fn labels_of(doc: &Document, c: DeviceId) -> BTreeSet<String> {
 /// are labels already given in the same transaction.
 ///
 /// # Errors
-/// Design 018 §3.1's refusals (T3).
+/// The joining refusals.
 pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
     let mut used = labels_of(doc, c);
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
-    // Brief 044: a connector holds connector halves and pins only.
+    // A connector holds connector halves and pins only.
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
         return Err(CmdError::refused(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device.")));
     }
     match s.kind {
         Kind::Contact { make } => {
-            // Brief 025 (owner answer Q4): the part's next free offered contact of this kind.
+            // The part's next free offered contact of this kind.
             if let Some(labels) = crate::references::devices::table::offer_labels(doc, c, make, &used) {
                 return Ok(labels);
             }
-            // Brief 034: the digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
+            // The digit rule lives in the catalogue (a fuse bank's outputs are not contacts).
             symbols::rules::sequence_labels(&used, &symbols::rules::bank_outputs(doc, c), if make { &['3', '4'] } else { &['1', '2'] }, &who)
         }
         Kind::TerminalBlock => {
             let highest = used.iter().filter_map(|l| l.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
             Ok(vec![(highest + 1).to_string()])
         }
-        // Brief 045 (FP7): a channel joins a card as its next free channel; its labels are pins.
+        // A channel joins a card as its next free channel; its labels are pins.
         Kind::Channel(_) => crate::plc::channels::join_labels(doc, c, s, extra),
         Kind::Tagless => Err(CmdError::refused(format!("A {} is not part of a device; place it on its own.", s.name.to_lowercase()))),
-        // Brief 034: the label rule lives in the catalogue.
+        // The label rule lives in the catalogue.
         Kind::ChangeOver => symbols::rules::sequence_labels(&used, &symbols::rules::bank_outputs(doc, c), &['1', '2', '4'], &who),
-        // Brief 044: a connector half joins by its own rules (design 044 §4.4), through `place`.
+        // A connector half joins by its own rules, through `place`.
         Kind::ConnectorHalf { .. } => Err(CmdError::refused(format!(
             "A {} joins a connector only: place it with Place ▸ Connector, or name a connector.",
             s.name.to_lowercase()
         ))),
         Kind::Fixed { exclusive } => {
-            // Design 052 §3.4: the device's head by type, whichever symbol was placed first.
+            // The device's head by type, whichever symbol was placed first.
             if exclusive && let Some(h) = crate::symbols::reps::head(doc, c) {
                 return Err(CmdError::refused(format!("{who} already has a {}.", head_noun(doc, h))));
             }
@@ -84,10 +84,10 @@ pub struct Placed {
     pub connection_points: Vec<(PointKey, String, ConnectionPointId)>,
 }
 
-/// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
+/// Plan placing starter symbol `s` at `placement` on `page`.
 ///
 /// # Errors
-/// The refusals of §3.1 (joining), an unknown device, no tag number left.
+/// The refusals (joining), an unknown device, no tag number left.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_place(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, s: &Starter, placement: Placement, target: Target,
@@ -107,7 +107,7 @@ pub fn plan_place(
     let target = match target {
         Target::New(Some(tag::Entry::Tag(g))) => match holder_of(doc, &g.key(), None) {
             Some(c) => Target::Join(c),
-            // Devices and cables share one namespace (brief 026).
+            // Devices and cables share one namespace.
             None if !doc.cables_with(&g.key()).is_empty() => {
                 return Err(CmdError::refused(format!("Tag {} is a cable's; choose another tag for a device.", g.shown())));
             }
@@ -120,7 +120,7 @@ pub fn plan_place(
     let mut connection_points = Vec::new();
     match target {
         Target::New(t) => {
-            // `-K?` typed: the next provisional number (brief 026).
+            // `-K?` typed: the next provisional number.
             let t = high.given(ledger, t, &prefix_for(doc, s))?;
             let c: DeviceId = ids.fresh();
             ops.push(Op::CreateDevice {
@@ -199,7 +199,7 @@ pub fn plan_place(
                     connection_points: cps,
                 },
             });
-            // Design 072 §3: a PLC card's body is its symbol (a card a channel cell made had the
+            // A PLC card's body is its symbol (a card a channel cell made had the
             // cell's), so its points are its symbol's.
             if crate::plc::rack::CardType::of_symbol(s).is_some()
                 && let Some(d) = doc.devices().get(&c)

@@ -1,6 +1,6 @@
-//! The merge dialog's rules over the document (brief 020b, design 020 §5.2): what a value typed in a
-//! conflict's Edit field is stored as. The engine's `merging` module runs the merge (brief 074
-//! moved this rule here).
+//! The merge dialog's rules over the document: what a value typed in a
+//! conflict's Edit field is stored as. The engine's `merging` module runs the merge:
+//! this rule lives here.
 //!
 //! This module excludes reading branches, planning and writing the merge.
 
@@ -9,7 +9,7 @@ use ecad_model::Document;
 use ecad_model::merge::state::Obj;
 
 /// Check a value typed in a conflict's Edit field as an ordinary property edit of that object
-/// would be (design §5.2: the property's own rules from 018/019/022): `Ok(value)` as stored.
+/// would be (the property's own rules): `Ok(value)` as stored.
 ///
 /// # Errors
 /// The property's own refusal, or an empty value.

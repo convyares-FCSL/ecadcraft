@@ -1,4 +1,4 @@
-//! The grammar of what a part offers and where its contact table goes (FP1, FP2): `3P+1NO+1NC`, `at 12,-30`.
+//! The grammar of what a part offers and where its contact table goes: `3P+1NO+1NC`, `at 12,-30`.
 
 use crate::CmdError;
 use crate::devices::traits::DeviceKind;
@@ -7,13 +7,13 @@ use ecad_model::objects::devices::contacts::{MAX_OFFSET_MM, MAX_POLES};
 use ecad_model::objects::devices::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
 use ecad_model::{ContactMirror, Device as StoredDevice, DeviceId, DeviceType, Document, Pt};
 
-/// The `setprop` key of the contacts a part offers (FP1): `3P+1NO+1NC`. A typed field, never in a
+/// The `setprop` key of the contacts a part offers: `3P+1NO+1NC`. A typed field, never in a
 /// property bag.
 pub const CONTACTS_KEY: &str = "contacts";
-/// The `setprop` key of where a switching device's contact table goes (FP2). A typed field.
+/// The `setprop` key of where a switching device's contact table goes. A typed field.
 pub const MIRROR_KEY: &str = "mirror";
 
-// ---------------------------------------------------------------- offer grammar (FP1)
+// ---------------------------------------------------------------- offer grammar
 
 /// One pole a part offers, with its labels.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +30,7 @@ pub(crate) fn not_a_contact_list(text: &str) -> String {
     format!("\"{shown}\" is not a contact list. Write it like 3P+1NO+1NC, or 13/14 NO, 21/22 NC.")
 }
 
-/// Read a typed offer (design 025 FP1): entries separated by `+` or `,`, case-insensitive, spaces
+/// Read a typed offer: entries separated by `+` or `,`, case-insensitive, spaces
 /// ignored. `3P` (power NO poles), `1PNC` (power NC poles), `1NO` / `2NC` (auxiliary contacts), or
 /// one contact with explicit labels: `13/14 NO`, `21/22 NC`, `L1/T1 P`, `1/2 PNC`.
 ///
@@ -80,7 +80,7 @@ pub(crate) fn parse_set(text: &str) -> Result<ContactSet, CmdError> {
     Ok(ContactSet::new(out))
 }
 
-/// The poles `set` offers, numbered (design 025 FP1): power NO poles `1/2`, `3/4`…, power NC poles
+/// The poles `set` offers, numbered: power NO poles `1/2`, `3/4`…, power NC poles
 /// continuing the power numbering, auxiliary contacts with the IEC sequence digit in written order
 /// (`13/14` NO, `21/22` NC). A counted pole skips labels already offered.
 pub(crate) fn poles_offered(set: &ContactSet) -> Vec<OfferedPole> {
@@ -153,7 +153,7 @@ pub fn with_contacts(d: &StoredDevice, who: &str, text: Option<&str>) -> Result<
     Ok(out)
 }
 
-// ---------------------------------------------------------------- placement (FP2, FP3)
+// ---------------------------------------------------------------- placement
 
 /// Where a device's table goes.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -223,7 +223,7 @@ pub(crate) fn not_a_placement(text: &str) -> String {
     format!("\"{shown}\" is not a table placement. Use auto, below, right, off, or at dx,dy in millimetres.")
 }
 
-/// Read a `mirror` value (design 025 FP2).
+/// Read a `mirror` value.
 ///
 /// # Errors
 /// Not one of the words, or an offset that is not two finite numbers within [`MAX_OFFSET_MM`].

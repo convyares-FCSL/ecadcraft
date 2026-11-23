@@ -1,4 +1,4 @@
-//! The circuit side of the rating checks (design 072 lane D; brief 057): a subject's Iz, its
+//! The circuit side of the rating checks: a subject's Iz, its
 //! factors and volt drop, worked out from the wire or cable, its table and its load. The
 //! protective device it is checked against is [`crate::circuits::protection`]'s.
 
@@ -9,13 +9,13 @@ pub(crate) fn half_up(x: f64, dp: i32) -> f64 {
     ((x * m) + 0.5 + 1e-9).floor() / m
 }
 
-/// A factor rounded to 2 dp (design 057 §3.6).
+/// A factor rounded to 2 dp.
 pub(crate) fn round2(x: f64) -> f64 {
     half_up(x, 2)
 }
 
 /// The temperature factor of the IEC derivation, `round2(√((θmax − θ)/(θmax − θref)))`, or `None`
-/// when θ ≥ θmax (too hot) or the reference is not below θmax. `cap` limits it to 1.00 (Q6).
+/// when θ ≥ θmax (too hot) or the reference is not below θmax. `cap` limits it to 1.00.
 pub fn k_temp(theta_max: f64, theta_ref: f64, theta: f64, cap: bool) -> Option<f64> {
     if theta >= theta_max || theta_ref >= theta_max {
         return None;
@@ -24,7 +24,7 @@ pub fn k_temp(theta_max: f64, theta_ref: f64, theta: f64, cap: bool) -> Option<f
     k.is_finite().then_some(if cap { k.min(1.0) } else { k })
 }
 
-/// Volt drop of a copper conductor (design 057 §3.5): `(volts, percent)`.
+/// Volt drop of a copper conductor: `(volts, percent)`.
 pub fn volt_drop(r20: f64, theta_max: f64, three_phase: bool, amps: f64, metres: f64, volts: f64) -> Option<(f64, f64)> {
     let r = r20 * (1.0 + 0.00393 * (theta_max - 20.0));
     let mv = if three_phase { 3f64.sqrt() * r } else { 2.0 * r };
@@ -34,11 +34,11 @@ pub fn volt_drop(r20: f64, theta_max: f64, three_phase: bool, amps: f64, metres:
 }
 
 /// A current as shown: 0.1 A, half up, trailing `.0` dropped (`18.8`, `27`); with the extra digit
-/// when within 0.05 A of `against` (§3.6).
+/// when within 0.05 A of `against`.
 pub fn fmt_amps(x: f64, against: Option<f64>) -> String {
     let near = against.is_some_and(|a| (x - a).abs() < 0.05 && (x - a).abs() > 1e-9);
     if near {
-        // §3.6: a pass never reads the same as a fail (`21.60 A` against `21.6 A`).
+        // A pass never reads the same as a fail (`21.60 A` against `21.6 A`).
         return format!("{:.2}", half_up(x, 2));
     }
     crate::devices::ratings::dataset::fmt_num(half_up(x, 1))
@@ -54,7 +54,7 @@ pub fn fmt_factor(x: f64) -> String {
     format!("{x:.2}")
 }
 
-/// One factor of a result, with its input and where it came from (§8.2).
+/// One factor of a result, with its input and where it came from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Factor {
     /// `panel`, `bundling`, `ambient`, `grouping`.
@@ -151,14 +151,14 @@ pub struct Rating {
     pub voltdrop: Option<VoltDrop>,
     /// The cross-section used.
     pub size: Option<f64>,
-    /// A wire's ends' locations as entry keys (brief 052; the `at` index, design 057 §10); the first is the one whose
+    /// A wire's ends' locations as entry keys (the `at` index); the first is the one whose
     /// temperature was used, when one was.
     pub locations: Vec<String>,
     pub issues: Vec<Issue>,
 }
 
 impl Rating {
-    /// The folded summary (§2.1, §2.2): `18.8 A ≥ 4 A`, `3.5 A < 4 A`, `no data`; a cable adds its
+    /// The folded summary: `18.8 A ≥ 4 A`, `3.5 A < 4 A`, `no data`; a cable adds its
     /// volt drop.
     pub fn summary(&self) -> String {
         let mut s = match (self.iz, self.device.as_ref().and_then(|d| d.amps)) {
@@ -179,7 +179,7 @@ impl Rating {
         self.issues.iter().any(|i| matches!(i, Issue::Under { .. } | Issue::TooHot { .. }))
     }
 
-    /// The Status words of the wires table (§2.1): `underrated`, `load > -Q01`, else `None`.
+    /// The Status words of the wires table: `underrated`, `load > -Q01`, else `None`.
     pub fn status(&self) -> Option<String> {
         if self.fails() {
             return Some("underrated".into());
@@ -198,10 +198,10 @@ impl Rating {
 pub struct Context {
     pub draws: wire::WireDraws,
     /// Location entry key → its panel temperature (location boxes with a panel temperature;
-    /// brief 052: a stored location is an entry key, shown as its code).
+    /// A stored location is an entry key, shown as its code).
     temps: BTreeMap<String, f64>,
     boxes: crate::locations::BoxCache,
-    /// The chosen rating table, parsed once and shared (design 057 FP8: the rows are user data
+    /// The chosen rating table, parsed once and shared (the rows are user data
     /// of up to 256 KiB, parsed lazily and kept off per-frame paths).
     pub table: Option<std::sync::Arc<ratingtable::Table>>,
     loads: TypedLoads,
@@ -246,11 +246,11 @@ impl Context {
     }
 }
 
-/// A location box's panel temperature (FP6): its location, and the value or the text that did not
+/// A location box's panel temperature: its location, and the value or the text that did not
 /// read (`rating-bad-value`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxTemp {
-    /// The box's stored location: an entry key of the project's list (brief 052).
+    /// The box's stored location: an entry key of the project's list.
     pub location: String,
     pub temp: Temp,
 }
@@ -274,7 +274,7 @@ pub fn box_temp(doc: &Document, a: ecad_model::AidId) -> Option<BoxTemp> {
     Some(BoxTemp { location, temp })
 }
 
-/// The code of location entry `key` (brief 052), or the key itself when the list has no entry.
+/// The code of location entry `key`, or the key itself when the list has no entry.
 pub fn location_code(doc: &Document, key: &str) -> String {
     crate::locations::designations::code_of(doc, crate::locations::designations::Aspect::Location, key).unwrap_or_else(|| key.to_string())
 }
@@ -334,7 +334,7 @@ pub(super) fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: O
     }
 }
 
-/// Whether conductor `c` is a rated subject (design 057 §7).
+/// Whether conductor `c` is a rated subject.
 pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     if !is_panel_wire(doc, c) {
         return false;
@@ -347,7 +347,7 @@ pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
     sheet(doc, ecad_model::StyleCatalogue::Wire, cat.as_ref()).rated.is_some()
 }
 
-/// Whether cable `k` is a rated subject (design 057 §7).
+/// Whether cable `k` is a rated subject.
 pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
     let Some(x) = doc.cables().get(&k) else { return false };
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
@@ -356,7 +356,7 @@ pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool 
     ctx.table.is_some() && x.type_text().and_then(crate::terminal_strips::cores::notation_size).is_some()
 }
 
-/// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
+/// The panel temperature of a wire: the hottest of its ends' locations, else
 /// the project's; with where it came from.
 pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, FactorSource) {
     let (t, from, _) = panel_temperature_at(doc, ctx, c);
@@ -370,7 +370,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     if let Some(x) = doc.wires().get(&c) {
         for t in &x.ends {
             let Some(comp) = doc.connection_points().get(t).and_then(|t| t.device()) else { continue };
-            // Brief 052: the device's stored location is an entry key; boxes match by key, and the
+            // The device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.
             let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };
             if let Some(temp) = ctx.temps.get(&loc).copied()
@@ -626,7 +626,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
         },
     };
     let iz = iz.filter(|x| x.is_finite());
-    // The overload checks (§3.4), on unrounded values.
+    // The overload checks, on unrounded values.
     if let (Some(iz), Some(i)) = (iz, i_n)
         && iz < i
         && !issues.iter().any(|x| matches!(x, Issue::TooHot { .. }))
@@ -639,7 +639,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
     {
         issues.push(Issue::LoadOver);
     }
-    // Volt drop (cables only, §3.5).
+    // Volt drop (cables only).
     let voltdrop =
         if is_cable { volt_drop_of(doc, ctx, circuit, &inp, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
     Rating {

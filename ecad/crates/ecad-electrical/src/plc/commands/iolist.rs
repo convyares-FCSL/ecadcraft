@@ -1,4 +1,4 @@
-//! `iolist` (brief 045, design 045 §7): the I/O list rows, read only. The rows are
+//! `iolist`: the I/O list rows, read only. The rows are
 //! [`crate::plc::iolist`]; the command is generic ([`crate::commands::run`]).
 
 use schemars::JsonSchema;
@@ -32,7 +32,7 @@ impl StateParam {
     }
 }
 
-/// `iolist {rack?, card?, state?, limit?, after?}` (design 045 §8.1): the cards and their rows;
+/// `iolist {rack?, card?, state?, limit?, after?}`: the cards and their rows;
 /// read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

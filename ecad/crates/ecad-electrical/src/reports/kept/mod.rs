@@ -243,11 +243,11 @@ impl CableColumn {
 #[derive(Debug, Clone, Default)]
 pub struct ReportModels {
     devices: BTreeMap<DeviceId, DeviceRow>,
-    /// Brief 047: items whose location is the project's, or none: a project location set reaches
-    /// them. Devices never are (brief 052: a device's location is stored).
+    /// Items whose location is the project's, or none: a project location set reaches
+    /// them. Devices never are (a device's location is stored).
     from_project: BTreeSet<LoosePartId>,
     from_none: BTreeSet<LoosePartId>,
-    /// Brief 047 (design 047 §4, §10): the BOM entries (main parts, part lines, items) and the
+    /// The BOM entries (main parts, part lines, items) and the
     /// rows they make, kept by key.
     entries: BTreeMap<(Owner, u8), Entry>,
     by_location: BTreeMap<(LocKey, PartKey), BTreeSet<EntrySort>>,
@@ -257,7 +257,7 @@ pub struct ReportModels {
     nested: BTreeMap<(LocKey, PartKey), BTreeSet<EntrySort>>,
     loc_nested_rows: BTreeMap<LocKey, usize>,
     loc_lines: BTreeMap<LocKey, usize>,
-    /// Part key → its article numbers with how many entries carry each (§4.3).
+    /// Part key → its article numbers with how many entries carry each.
     articles: BTreeMap<PartKey, BTreeMap<String, usize>>,
     /// Part keys with two or more article numbers.
     article_conflicts: BTreeSet<PartKey>,
@@ -286,45 +286,45 @@ pub struct ReportModels {
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
     no_location: usize,
-    /// Brief 052: devices with no function (one count row when some device has one).
+    /// Devices with no function (one count row when some device has one).
     no_function: usize,
-    /// Brief 028: the terminal strips (design 028 §11.1).
+    /// The terminal strips.
     pub strips: crate::terminal_strips::strip_model::Strips,
-    /// Brief 045: the PLC racks and cards (design 045 §11.1).
+    /// The PLC racks and cards.
     pub plc: crate::plc::kept::Plc,
-    /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
+    /// The graphic strip pages' kept layout and indexes.
     pub strip_pages: crate::terminal_strips::pages::StripPages,
-    /// Brief 028: whether the last update changed a cable row (what a shown cable schedule page
-    /// depends on; tester 028, defect 2).
+    /// Whether the last update changed a cable row (what a shown cable schedule page
+    /// depends on).
     pub last_cables_changed: bool,
     /// The pages drawn from these models (BOM, terminal plan, cable schedule), kept from the page
-    /// ops (review of PR #55, finding 1: no page scan per commit).
+    /// ops (no page scan per commit).
     generated: BTreeSet<PageId>,
     /// Which build these models are (unique in the run): a copy keyed on kept revisions also
     /// keys on this, so a rebuild (reload, branch switch) is never mistaken for the old models.
     pub build_id: u64,
     /// How many sorted row lists were made (tests: an unrelated edit makes none).
     pub sorts: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    /// The location box rows by severity (warnings, info): kept with the rows (brief 027's badge).
+    /// The location box rows by severity (warnings, info): kept with the rows (the badge).
     box_counts: [usize; 2],
-    /// Bumped only when the check rows may read differently (brief 027's Release dialog).
+    /// Bumped only when the check rows may read differently (the Release dialog).
     pub checks_changed: u64,
-    /// Brief 028's cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
+    /// Cable Checks rows, kept: `too-many-cores` warnings, `core-twice` warnings, and
     /// cables with no core count (one info row when any).
     cable_checks: [usize; 3],
-    /// Brief 044 (design 044 §8): each connector's BOM rows, one per drawn half.
+    /// Each connector's BOM rows, one per drawn half.
     connectors: BTreeMap<DeviceId, Vec<BomRow>>,
-    /// Brief 044 (review of #81, 2): the half rows' groups, kept beside `loc_rows` / `by_part`:
+    /// The half rows' groups, kept beside `loc_rows` / `by_part`:
     /// (location, group) and group → how many halves; location → how many groups.
     half_loc: BTreeMap<(LocKey, HalfKey), usize>,
     half_part: BTreeMap<HalfKey, usize>,
     half_loc_rows: BTreeMap<LocKey, usize>,
     /// How many times the half rows were grouped (tests: an unrelated edit groups none).
     pub half_groupings: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    /// Brief 030 (review of PR #57, 4): devices that are not strips but carry `jumper_bar.<n>` keys.
+    /// Devices that are not strips but carry `jumper_bar.<n>` keys.
     jumper_bars_off_strip: BTreeSet<DeviceId>,
     jumper_bar_keys: BTreeMap<DeviceId, Vec<String>>,
-    /// Brief 033 (review of #64, 2): the `continuation-clash` rows, kept. Worked out again only
+    /// The `continuation-clash` rows, kept. Worked out again only
     /// when a page is added, removed or renumbered, an issue changes the revision list, or a kept
     /// generated page's sheet count moves.
     continuation: Vec<Check>,
@@ -334,7 +334,7 @@ pub struct ReportModels {
     pub revision: u64,
     /// How many rows the last update recomputed (tests and bench: never the whole project).
     pub last_work: usize,
-    /// Brief 046 (review): the last update's ops could move a page number or a sheet count that
+    /// The last update's ops could move a page number or a sheet count that
     /// the document alone decides (a page's style or sheet): the frame's Total is worked out again.
     pub numbers_moved: bool,
 }
@@ -382,7 +382,7 @@ impl ReportModels {
         for (_, c) in doc.tagged() {
             o.set_device(doc, c, &mut cache);
         }
-        // Brief 047: items (loose parts, design 072 §6.4: on no page).
+        // Items (loose parts, on no page).
         for id in doc.loose_parts().keys() {
             o.set_loose(doc, *id);
         }
@@ -406,7 +406,7 @@ impl ReportModels {
         o
     }
 
-    /// Work out the `continuation-clash` rows (design 033 §5.3).
+    /// Work out the `continuation-clash` rows.
     fn refresh_continuation(&mut self, doc: &Document) {
         let rows = crate::pages::generated::continuation_checks(doc, Some(&*self));
         self.continuation_builds += 1;
@@ -427,7 +427,7 @@ impl ReportModels {
         use ecad_model::document::effect::Effect;
         let style = crate::defaults::strip_pages::STYLE.key;
         match effect {
-            // Brief 046 (review): a page's style or sheet changes its sheet count on the document
+            // A page's style or sheet changes its sheet count on the document
             // alone, so the count before cannot be compared.
             Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {
                 before.number != after.number || before.sheet != after.sheet || before.display.get(style) != after.display.get(style)
@@ -496,7 +496,7 @@ impl ReportModels {
     /// How many BOM rows `group` lists, from kept counts (no rows made).
     pub fn bom_count(&self, group: Group) -> usize {
         let strips: usize = self.strips.bom_rows.values().sum();
-        // Brief 044: grouped as `bom` groups them (O(connectors)).
+        // Grouped as `bom` groups them (O(connectors)).
         let halves = match group {
             Group::Location => self.half_loc.len(),
             Group::Part => self.half_part.len(),

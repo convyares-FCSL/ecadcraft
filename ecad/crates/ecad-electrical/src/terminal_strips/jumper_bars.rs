@@ -1,4 +1,4 @@
-//! Jumper bar lines (brief 030, design 030 §5.3): the dashed line a strip's jumper bar draws through its
+//! Jumper bar lines: the dashed line a strip's jumper bar draws through its
 //! terminals on every page that shows them. Derived on every draw of the page, never stored and
 //! never edited as geometry; erasing one deletes its jumper bar.
 //!
@@ -66,7 +66,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
             continue;
         }
         let order = crate::terminal_strips::accessories::positions(doc, c);
-        // Brief 036: each level's symbols; the in point stands for a two-point level.
+        // Each level's symbols; the in point stands for a two-point level.
         let here: BTreeMap<(String, u32), Pt> = crate::terminal_strips::drawn_points(doc, c)
             .into_iter()
             .filter(|(t, _, p, _)| *p == page && crate::terminal_strips::terminal_blocks::level_of(doc, *t).1 != Some('o'))
@@ -74,7 +74,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
                 ((crate::terminal_strips::terminal_blocks::position_label(doc, t), crate::terminal_strips::terminal_blocks::level_of(doc, t).0), at)
             })
             .collect();
-        // Cross-level jumper bars (design 036 §5.4): a dog-leg between the levels shown, else stubs.
+        // Cross-level jumper bars: a dog-leg between the levels shown, else stubs.
         for (n, p) in &found {
             for sp in p.spans() {
                 let jumper_bars::Span::Levels { position, lo, hi } = sp else { continue };
@@ -93,7 +93,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
                 }
             }
         }
-        // Lanes over the whole strip, as the plan's (§5.3), per level (brief 036).
+        // Lanes over the whole strip, as the plan's, per level.
         let mut spans: Vec<(u32, usize, usize, u32, Vec<String>)> = found
             .iter()
             .filter(|(_, p)| !p.crosses_levels())
@@ -156,13 +156,13 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<JumperBarPart> {
     out
 }
 
-/// The hover line of a jumper bar (§5.3): `-X01 jumper bar 1-4 (4 positions, 1 bar JB-10)`.
+/// The hover line of a jumper bar: `-X01 jumper bar 1-4 (4 positions, 1 bar JB-10)`.
 pub fn hover(doc: &Document, data: Option<&crate::terminal_strips::strip_model::StripData>, c: DeviceId, n: u32) -> String {
     let tag = crate::devices::tags::tag_words(doc, c);
     let Some(l) = data.and_then(|d| d.acc.jumper_bars.iter().find(|l| l.n == n)) else { return format!("{tag} jumper bar {n}") };
     let bars = if l.bars == 1 { "1 bar".to_string() } else { format!("{} bars", l.bars) };
     let part = l.part_number.clone().map_or_else(String::new, |p| format!(" {p}"));
-    // Brief 036: the level a jumper bar runs on (`level N`) when its strip has levels.
+    // The level a jumper bar runs on (`level N`) when its strip has levels.
     let level = match (l.level, data) {
         (Some(n), Some(d)) => d.rows.iter().find(|r| r.level == n && r.ty.multi()).map(|r| format!("level {}, ", r.level_name)),
         (None, _) => Some("levels of one position, ".to_string()),

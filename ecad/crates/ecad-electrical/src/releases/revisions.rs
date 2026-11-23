@@ -1,4 +1,4 @@
-//! Project revisions (brief 019, design 019 §7.2, decision FP4; design 072 §5.3): the project's
+//! Project revisions: the project's
 //! revision rows ([`ecad_model::Revision`]), `n` = 1, 2… in issue order, changed through
 //! `ModifyProject`.
 //!
@@ -27,12 +27,12 @@ pub const SIX: [&str; 6] = ["rev", "date", "description", "drawn", "checked", "a
 pub const PREFIX: &str = ecad_model::document::project::REVISIONS_KEY;
 /// The field set by issuing.
 pub(crate) const ISSUED: &str = "issued";
-/// The field set by issuing through a release (brief 027, FP1): the release folder, relative to
+/// The field set by issuing through a release: the release folder, relative to
 /// the project file's folder (absolute on another drive). Unknown to older builds, which skip it.
 pub const RELEASED: &str = "released";
 /// Most revisions a project may hold (a bound on hostile files).
 pub const MAX_REVISIONS: usize = ecad_model::document::project::MAX_REVISIONS;
-/// The fields issuing needs (owner answer Q7).
+/// The fields issuing needs.
 pub(crate) const NEEDED: [&str; 3] = ["rev", "description", "drawn"];
 /// Said when a needed field is empty.
 pub const FILL_FIRST: &str = "Fill in Rev, Description and Drawn first.";
@@ -50,7 +50,7 @@ pub struct Revision {
     pub extra: std::collections::BTreeMap<String, String>,
     /// Whether it was issued.
     pub issued: bool,
-    /// The release folder, when it was issued by a release (FP1).
+    /// The release folder, when it was issued by a release.
     pub released: Option<String>,
 }
 
@@ -171,11 +171,11 @@ pub fn set_released(ops: &mut [Op], n: u32, folder: &str) {
     }
 }
 
-// ---------------------------------------------------------------- columns (brief 033, design 033 §7)
+// ---------------------------------------------------------------- columns
 
-/// The project property of the revision table's columns (FP2).
+/// The project property of the revision table's columns.
 pub const COLUMNS_KEY: &str = "revisions.columns";
-/// The project property of the pending-revision marker (FP3): `star`, `draft` or `off`.
+/// The project property of the pending-revision marker: `star`, `draft` or `off`.
 pub const PENDING_KEY: &str = "revisions.pending";
 /// Most columns.
 pub(crate) const MAX_COLUMNS: usize = 10;
@@ -186,9 +186,9 @@ pub const MIN_WIDTH_MM: f64 = 6.0;
 pub const MAX_WIDTH_MM: f64 = 200.0;
 /// Most characters of a stored column list (a bound on hostile values).
 pub(crate) const MAX_COLUMNS_CHARS: usize = 600;
-/// Description is never narrowed below this before the other columns are (design 033 §7.1).
+/// Description is never narrowed below this before the other columns are.
 pub const MIN_DESCRIPTION_MM: f64 = 30.0;
-/// The revision table's width on A3, millimetres (design 019 §4).
+/// The revision table's width on A3, millimetres.
 pub(crate) const A3_TABLE_MM: f64 = 200.0;
 /// Said when the fixed widths leave Description too narrow.
 pub const NARROWED: &str = "Columns are narrowed to fit the 200 mm revision table on A3.";
@@ -214,7 +214,7 @@ pub struct ColumnSpec {
     pub width: Option<f64>,
 }
 
-/// Read a column list `field[:Header][@width], …` (design 033 §7.1). Empty: no columns (the
+/// Read a column list `field[:Header][@width], …`. Empty: no columns (the
 /// caller uses the built-in six).
 ///
 /// # Errors
@@ -310,7 +310,7 @@ pub fn columns(doc: &Document) -> Vec<Column> {
         .collect()
 }
 
-/// The widths of `cols` across `total` millimetres (design 033 §7.1): fixed widths as given,
+/// The widths of `cols` across `total` millimetres: fixed widths as given,
 /// Description the rest; when that leaves Description under [`MIN_DESCRIPTION_MM`], every fixed
 /// width scales down. Also whether they were narrowed.
 pub fn widths(cols: &[Column], total: f64) -> (Vec<f64>, bool) {
@@ -322,7 +322,7 @@ pub fn widths(cols: &[Column], total: f64) -> (Vec<f64>, bool) {
     (cols.iter().map(|c| c.width.map_or(rest, |w| w * scale)).collect(), narrowed)
 }
 
-// ---------------------------------------------------------------- pending marker (design 033 §6)
+// ---------------------------------------------------------------- pending marker
 
 ecad_model::word_enum! {
     /// How the title block marks a pending revision ([`PENDING_KEY`]).
@@ -349,7 +349,7 @@ impl PendingStyle {
 pub(crate) const MAX_PENDING_WALK: usize = 10_000;
 
 /// Whether `ops` only fill in the pending row `pending` or set the revision table's own
-/// settings: not a drawing change (design 033 §6.1).
+/// settings: not a drawing change.
 fn fills_pending_row(ops: &[Op], pending: u32) -> bool {
     let at = usize::try_from(pending).ok().and_then(|n| n.checked_sub(1));
     ops.iter().all(|op| match op {
@@ -365,7 +365,7 @@ fn fills_pending_row(ops: &[Op], pending: u32) -> bool {
 }
 
 /// Whether the project holds a change still in effect after its newest issued revision (design
-/// 033 §6.1, overseer ruling 4): the undo stack is walked from the top; an issue ends it (not
+/// the undo stack is walked from the top; an issue ends it (not
 /// pending); any other edit or merge ends it (pending), except one that only fills in the
 /// pending row. With no issued revision there is no marker. A transaction the ledger cannot
 /// read, or a walk longer than [`MAX_PENDING_WALK`], counts as pending.
@@ -391,7 +391,7 @@ pub fn is_pending(ledger: &ecad_model::Ledger) -> bool {
     false
 }
 
-/// The Rev box's text (design 033 §6.2): the newest issued rev (`-` with none), marked when
+/// The Rev box's text: the newest issued rev (`-` with none), marked when
 /// `pending`: `D*`, `E (draft)` (the pending row's rev, else the suggested next), or plain.
 pub fn rev_box(doc: &Document, pending: bool) -> String {
     let Some(newest) = issued(doc).into_iter().next() else { return "-".into() };
@@ -452,8 +452,8 @@ pub fn pending_rev(doc: &Document) -> String {
     }
 }
 
-/// Print Book's note for a project whose drawing changed since its newest issue (design 033
-/// §6.2), unless the marker is off.
+/// Print Book's note for a project whose drawing changed since its newest issue
+/// unless the marker is off.
 pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
     let newest = issued(doc).into_iter().next()?;
     if !pending || PendingStyle::of(doc) == PendingStyle::Off {

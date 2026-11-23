@@ -1,4 +1,4 @@
-//! Racks, slots and card types (design 045 §2, §3; design 072 §3): the type catalogue, a module's
+//! Racks, slots and card types: the type catalogue, a module's
 //! station and slot, and the commands `plcslot` and `plcracks`.
 //!
 //! # Semantics
@@ -27,14 +27,14 @@ use crate::defaults::{self, Scope};
 pub(crate) const RACK_KEY: &str = "plc.rack";
 /// The `setprop` name of a module's slot.
 pub(crate) const SLOT_KEY: &str = "plc.slot";
-/// The `setprop` name of a module's channel count (design 045 §2.3).
+/// The `setprop` name of a module's channel count.
 pub(crate) const CHANNELS_KEY: &str = "plc.channels";
 /// The highest slot number.
 pub const MAX_SLOT: u32 = ecad_model::objects::plc::MAX_SLOT as u32;
 /// The most channels a card has.
 pub const MAX_CHANNELS: u32 = ecad_model::objects::plc::MAX_CHANNELS as u32;
 
-/// A card type (design 045 §3.1).
+/// A card type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CardType {
     Cpu,
@@ -53,7 +53,7 @@ pub enum CardType {
     Module,
 }
 
-/// Which way a card's channels go (design 045 §3.1).
+/// Which way a card's channels go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     None,
@@ -119,7 +119,7 @@ impl CardType {
         })
     }
 
-    /// The card type a card body symbol `s` draws, from the type it declares (design 072 §2.3);
+    /// The card type a card body symbol `s` draws, from the type it declares;
     /// `None` for a channel symbol or a symbol that is not a PLC card's.
     pub fn of_symbol(s: &crate::symbols::Starter) -> Option<CardType> {
         match s.kind {
@@ -143,7 +143,7 @@ impl CardType {
         }
     }
 
-    /// The roles of one channel, in the cell's order (design 045 §4.1); empty for a type without
+    /// The roles of one channel, in the cell's order; empty for a type without
     /// channels.
     pub fn roles(self) -> &'static [ChannelRole] {
         use ChannelRole as R;
@@ -157,7 +157,7 @@ impl CardType {
         }
     }
 
-    /// Its channel cell's starter (design 045 §4.1); `None` for a type without channels.
+    /// Its channel cell's starter; `None` for a type without channels.
     pub fn cell(self) -> Option<StarterKey> {
         match self {
             CardType::Di => Some(StarterKey::Chdi),
@@ -256,7 +256,7 @@ pub fn racks(doc: &Document) -> Vec<DeviceId> {
 }
 
 /// The cards whose module names `rack` (a station or not), with their slots, by slot then tag:
-/// the index's station → modules map (design 072 §3, `PlcRack::modules`).
+/// the index's station → modules map (`PlcRack::modules`).
 pub(crate) fn cards_naming(doc: &Document, rack: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
     let mut v: Vec<(DeviceId, Option<u32>)> = doc.plc_modules(rack).map(|c| (c, slot_of(doc, c))).collect();
     v.sort_by_key(|(c, s)| (*s, crate::devices::tags::tag_words(doc, *c)));
@@ -284,7 +284,7 @@ pub(crate) fn type_words(doc: &Document, c: DeviceId) -> String {
     }
 }
 
-/// The refusal of a taken slot, with the way out (design 045 §2.4).
+/// The refusal of a taken slot, with the way out.
 pub(crate) fn taken_words(doc: &Document, rack: DeviceId, slot: u32, holder: DeviceId) -> String {
     // The card's own slot counts as taken: Enter offers a slot it is not in.
     let next = next_free_slot(doc, rack, None).map_or_else(|| "none is free".to_string(), |s| s.to_string());
@@ -311,7 +311,7 @@ pub(crate) fn slot_ops(doc: &Document, card: DeviceId, to: Option<(DeviceId, u32
     ops
 }
 
-/// What deleting rack `rack` adds (design 045 §2.2, Q1, FP1 condition 2): every card naming it
+/// What deleting rack `rack` adds: every card naming it
 /// taken out of its slot, and how many cards that is. Nothing when `rack` is not named by any card.
 pub(crate) fn release_cards(doc: &Document, rack: DeviceId) -> (Vec<Op>, usize) {
     let cards = cards_naming(doc, rack);
@@ -398,10 +398,10 @@ pub(crate) fn slot_number(text: &str) -> Result<u32, CmdError> {
         .ok_or_else(|| CmdError::refused(format!("A slot is a whole number from 0 to {MAX_SLOT}.")))
 }
 
-/// Where a card goes, worked out against `doc` (design 045 §2.4, §2.5).
+/// Where a card goes, worked out against `doc`.
 ///
 /// # Errors
-/// The refusals of §2.4: no rack, a taken slot (unless `swap`), a slot outside the rack.
+/// The refusals: no rack, a taken slot (unless `swap`), a slot outside the rack.
 pub(crate) fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, slot: Option<u32>, swap: bool) -> Result<Vec<Op>, CmdError> {
     let rack = match rack {
         Some(r) => r,
@@ -412,7 +412,7 @@ pub(crate) fn plan_slot(doc: &Document, card: DeviceId, rack: Option<DeviceId>, 
     let rack_words = crate::devices::tags::tag_words(doc, rack);
     let slot = match slot {
         Some(s) => s,
-        // Design 045 §2.5 (tester 045a): `slot` absent is the next free slot; the card's own slot
+        // `slot` absent is the next free slot; the card's own slot
         // counts as taken, so a card already in the rack moves.
         None => next_free_slot(doc, rack, None).ok_or_else(|| {
             CmdError::refused(format!("{rack_words}'s {n} slots are all taken. Raise its slot count (plc.slots), or pick another rack."))
@@ -448,7 +448,7 @@ pub fn place_words(doc: &Document, card: DeviceId) -> String {
     }
 }
 
-/// Where a card body `place`d goes (design 045 §2.4): `rack` (`None`: absent, the rack of the
+/// Where a card body `place`d goes: `rack` (`None`: absent, the rack of the
 /// last card placed, else the only rack, else none; `Some(None)`: null, no rack; else an ID or a
 /// tag) and `slot` as written (absent: the next free one). `Ok(None)` when the card goes in no rack.
 ///
@@ -500,8 +500,8 @@ pub fn put_new_card(doc: &Document, ops: &mut Vec<Op>, card: DeviceId, rack: Dev
     put(doc, ops, card, Some((rack, slot)));
 }
 
-/// What merging device `from` into `into` adds to `ops` (the merge's ops so far) for rack `from`
-/// (FP1 condition 2): `into` takes `from`'s station data with its rack body, unless it is a
+/// What merging device `from` into `into` adds to `ops` (the merge's ops so far) for rack `from`:
+/// `into` takes `from`'s station data with its rack body, unless it is a
 /// station already, and `from`'s cards are re-pointed to it (a slot clash then shows as
 /// `slot-twice`, with its fix). Nothing when `from` is not a rack.
 pub(crate) fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into: DeviceId) {
@@ -518,8 +518,8 @@ pub(crate) fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into
     }
 }
 
-/// The I/O card types a card's type may be changed among (design 056 §5, owner's change of
-/// 2026-11-14): their bodies have the same connection points (`L+`, `M`) at the same places, so the
+/// The I/O card types a card's type may be changed among:
+/// their bodies have the same connection points (`L+`, `M`) at the same places, so the
 /// body's symbol is swapped and nothing it is wired to moves.
 pub const IO_TYPES: [CardType; 6] = [CardType::Di, CardType::Dq, CardType::Ai, CardType::Ao, CardType::Rtd, CardType::Iol];
 

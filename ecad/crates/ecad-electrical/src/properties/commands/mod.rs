@@ -1,4 +1,4 @@
-//! The rules of `setprop` (brief 070 item 3; design 018 §6.1, 026 §4 and §7, 052 §5.7; brief 060):
+//! The rules of `setprop`:
 //! [`PROP_RULES`], one table saying, per property key, which rule checks the value and builds the
 //! change. `setprop` on one object and on several devices (`devices`) both walk it
 //! ([`rule_for`]), so the two paths cannot drift apart.
@@ -28,7 +28,7 @@ use crate::locations::designations::Aspect;
 /// The refusal of `tag` on several devices at once.
 pub(crate) const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
 
-/// The refusal of changing a provisional tag's state (design 026 §4): Finalise or Renumber gives it
+/// The refusal of changing a provisional tag's state: Finalise or Renumber gives it
 /// its number, and typing `-K?` makes one.
 pub(crate) const PROVISIONAL_FIXED: &str = "A provisional tag's state can't be set; give it a number first (Finalise).";
 
@@ -38,26 +38,26 @@ pub(crate) const NO_SUCH_OBJECT: &str = "no such object";
 /// A row's check: the value to store for `key` on `object` (`None` clears it), or the refusal.
 pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
 
-/// A row's plan for a key that became a struct field (design 072): the `Modify*` op recording the
+/// A row's plan for a key that became a struct field: the `Modify*` op recording the
 /// whole record (`None`: unchanged), or the refusal.
 pub type Plan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<Op>, CmdError>;
 
 /// How a row of [`PROP_RULES`] builds the change.
 #[derive(Clone, Copy)]
 pub enum Build {
-    /// A function or location code of the project's list (brief 052): [`crate::locations::commands::locations::plan_set`],
+    /// A function or location code of the project's list: [`crate::locations::commands::locations::plan_set`],
     /// for all the devices at once. It claims by key alone ([`crate::locations::commands::locations::aspect_property`]).
     Aspect,
-    /// The tag (design 026 §4, §7): typing one fixes it, `-K?` takes the next provisional one, a
+    /// The tag: typing one fixes it, `-K?` takes the next provisional one, a
     /// tag another device or cable holds needs a conflict answer ([`plan_tag`]). One object only.
     Tag,
-    /// A device property (design 018 §6.1): checked; a tag another device holds merges the two
+    /// A device property: checked; a tag another device holds merges the two
     /// with `merge` ([`plan_device`]).
     Device(Check),
     /// A value the check reads (and may store canonically): one `SetProperty` per object
     /// ([`plan_value`]).
     Value(Check),
-    /// A key that is a struct field (design 072): one `Modify*` op per object ([`plan_record`]).
+    /// A key that is a struct field: one `Modify*` op per object ([`plan_record`]).
     Record(Plan),
 }
 
@@ -169,7 +169,7 @@ fn tagged(o: ObjectRef) -> bool {
     matches!(o, ObjectRef::Device(_) | ObjectRef::Cable(_))
 }
 
-/// Whether `key` on `object` is one of design 018 §6.1's device properties.
+/// Whether `key` on `object` is one of the device properties.
 pub(crate) fn is_device_property(object: ObjectRef, key: &str) -> bool {
     is_component(object) && crate::devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
@@ -247,8 +247,7 @@ fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
 
 // ---------------------------------------------------------------- the key
 
-/// Refuse a key `setprop` never writes: `text.` keys are written by the text commands only
-/// (brief 031, §10.6).
+/// Refuse a key `setprop` never writes: `text.` keys are written by the text commands only.
 ///
 /// # Errors
 /// [`crate::styles::text_style::RESERVED_KEY`].
@@ -273,7 +272,7 @@ pub(crate) fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
 // ---------------------------------------------------------------- values (Device and Value rows)
 
 /// The value `setprop` stores for `key` on `object` by its row of [`PROP_RULES`] (a `Device` or
-/// `Value` row): an item first refuses the keys it cannot take (brief 047, design 047 §3).
+/// `Value` row): an item first refuses the keys it cannot take.
 ///
 /// # Errors
 /// The rule's refusal; a key decided by an `Aspect` or `Fixed` row is refused (those build their
@@ -303,7 +302,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
 pub(crate) struct ValueSet {
     /// The op, `None` when the value is already stored.
     pub op: Option<Op>,
-    /// What the value meant, when it could be read two ways (brief 036 §5.1: a typed `2.1` is
+    /// What the value meant, when it could be read two ways (a typed `2.1` is
     /// position 2, level 1).
     pub note: Option<String>,
 }
@@ -332,8 +331,8 @@ pub(crate) fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Op
 }
 
 /// `setprop {devices: [id…], key, value}`: a property written to several devices in one
-/// transaction (design 019 §8.2). Each device walks [`PROP_RULES`] as one would on its own
-/// (brief 060): a refusal on any refuses all. A tag is one per device, so `tag` is refused.
+/// transaction. Each device walks [`PROP_RULES`] as one would on its own:
+/// a refusal on any refuses all. A tag is one per device, so `tag` is refused.
 ///
 /// # Errors
 /// [`ONE_TAG_PER_DEVICE`], [`NO_SUCH_OBJECT`], or the first rule that refuses.
@@ -362,7 +361,7 @@ pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Optio
     Ok(ops)
 }
 
-// ---------------------------------------------------------------- device properties (design 018 §6)
+// ---------------------------------------------------------------- device properties
 
 /// A device property's change ([`plan_device`]).
 #[derive(Debug, Clone, PartialEq)]
@@ -375,8 +374,8 @@ pub(crate) enum DeviceSet {
     Merged { ops: Vec<Op>, holder: DeviceId, into: String, before: Option<String> },
 }
 
-/// `setprop {component, key, value, merge?}` of a device property (design 018 §6, owner decisions
-/// 2026-11-08): the value rules of §6.1; a tag another device holds is refused with the ways
+/// `setprop {component, key, value, merge?}` of a device property
+/// the value rules; a tag another device holds is refused with the ways
 /// forward, unless `merge`, which makes this device part of that one.
 ///
 /// # Errors
@@ -410,7 +409,7 @@ pub(crate) fn plan_device(
     }
     let label = if key == TAG_KEY { "Set tag" } else { "Set property" };
     let op = if key == TAG_KEY {
-        // A typed tag is fixed with it (Q4).
+        // A typed tag is fixed with it.
         let after = component.with_tag(value.as_deref(), TagState::Fixed);
         Op::ModifyDevice { id: c, before: component.clone(), after }
     } else {
@@ -429,9 +428,9 @@ pub(crate) fn merged_device_words(doc: &Document, before: Option<&str>, holder: 
     )
 }
 
-// ---------------------------------------------------------------- tags (design 026 §4, §7)
+// ---------------------------------------------------------------- tags
 
-/// How a taken tag is resolved (design 026 §7.1).
+/// How a taken tag is resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Conflict {
     Swap,
@@ -456,7 +455,7 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
     Ok(c.or(merge.then_some(Conflict::Merge)))
 }
 
-/// The tag `o` holds with its state: a device's fields (design 072 §2.1), a cable's fields. The
+/// The tag `o` holds with its state: a device's fields, a cable's fields. The
 /// outer `None` is anything else, or an object that is not there.
 fn tag_of(doc: &Document, o: ObjectRef) -> Option<Option<tag::Given>> {
     let held = |t: Option<&str>, s: TagState| t.map(|t| tag::Given::new(t, s));
@@ -501,7 +500,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
-/// The refusal of a taken tag with all three ways (design 026 §7.1, 022's wording pattern).
+/// The refusal of a taken tag with all three ways.
 fn taken_words(doc: &Document, tag_high: &TagHigh, o: ObjectRef, given: &tag::Given, holder: Holder) -> String {
     let t = given.shown();
     let next = tag::prefix_of(&given.text).and_then(|px| tag_high.peek(doc, &px).ok());
@@ -531,8 +530,8 @@ pub(crate) enum TagSet {
     Next { ops: Vec<Op>, value: String, slot: TagSlot, line: String },
 }
 
-/// `setprop {component|cable, key: "tag", value, conflict?}` (design 026 §4, §7): the typed text is
-/// read once ([`tag::enter`]); a typed tag is fixed with it (Q4); `-K?` takes the next provisional
+/// `setprop {component|cable, key: "tag", value, conflict?}`: the typed text is
+/// read once ([`tag::enter`]); a typed tag is fixed with it; `-K?` takes the next provisional
 /// number; a tag another device or cable holds needs `conflict`. Merging two devices is
 /// [`plan_device`]'s (labels, contacts, connection points), so `Conflict::Merge` on a device does not
 /// come here. `tag_high` is caught up.
@@ -568,7 +567,7 @@ pub(crate) fn plan_tag(
     {
         return Err(CmdError::refused(PROVISIONAL_FIXED));
     }
-    // Brief 044 (design 044 §5.1): a connector's half tag is not free for another device.
+    // A connector's half tag is not free for another device.
     if !given.state.is_provisional()
         && let Some(Ok((c, Some(side), None))) = crate::connectors::resolve(doc, &given.text)
         && ObjectRef::Device(c) != o
@@ -601,14 +600,14 @@ pub(crate) fn plan_tag(
             Ok(TagSet::Swapped { ops, value: t, other: h, other_value: mine.shown(), line })
         }
         Some(Conflict::Merge) => {
-            // Two cables: the members join the holder (design §7.1); the slash follows.
+            // Two cables: the members join the holder; the slash follows.
             let (ObjectRef::Cable(from), Holder::Cable(into)) = (o, holder) else {
                 return Err(CmdError::refused(format!(
                     "{t} is a {}; only two of a kind can be one. Give conflict: \"next\".",
                     noun(holder.object())
                 )));
             };
-            // One join for the merge and for setprop (reviewer 026, 2).
+            // One join for the merge and for setprop.
             let ops = ecad_model::document::doc::cable::join_cables(doc, from, into)?;
             Ok(TagSet::MergedCable { ops, into, tag: t, before: before.map(|g| g.shown()) })
         }
@@ -658,7 +657,7 @@ pub struct SetpropParams {
     /// Several devices, in one transaction.
     #[serde(default)]
     devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
-    /// Drawing aids (design 072 §6.2), in one transaction: continuations' `name` or `caption`,
+    /// Drawing aids, in one transaction: continuations' `name` or `caption`,
     /// location boxes' `function`, `location` or `panel_temperature`.
     #[serde(default)]
     aids: Option<Bounded<AidId, 0, MAX_HANDLES>>,
@@ -682,7 +681,7 @@ pub struct SetpropParams {
     merge: Option<bool>,
 }
 
-/// The devices a function or location `setprop` names (brief 052, design 052 §5.9).
+/// The devices a function or location `setprop` names.
 fn location_objects(component: Option<DeviceId>, devices: Option<&[DeviceId]>) -> Result<Vec<DeviceId>, CmdError> {
     match devices {
         Some(cs) if cs.len() > MAX_DEVICES => Err(CmdError::refused(format!("at most {MAX_DEVICES} entries in `devices` per call"))),
@@ -705,7 +704,7 @@ fn one_object(p: &SetpropParams) -> Result<ObjectRef, CmdError> {
 }
 
 impl SetpropParams {
-    /// Whether this sets a function or location on devices (brief 052).
+    /// Whether this sets a function or location on devices.
     fn sets_location(&self) -> bool {
         (self.component.is_some() || self.devices.is_some()) && locations::aspect_property(&self.key).is_some()
     }
@@ -733,7 +732,7 @@ impl Generic for SetpropParams {
         let object = one_object(&self);
         let key = self.key;
         let typed = self.value.flatten();
-        // Brief 052 (design 052 §5.9): a function or location (PROP_RULES' first row, which claims by
+        // A function or location (PROP_RULES' first row, which claims by
         // key alone) is stored as an entry key of the project's list, for all the devices at once.
         if (self.component.is_some() || self.devices.is_some())
             && let Some(prop) = locations::aspect_property(&key)
@@ -743,7 +742,7 @@ impl Generic for SetpropParams {
             let plan = locations::plan_set(cx.doc, cx.ids, &objects, &prop, typed.as_deref())?;
             return Ok(locations::set_outcome(cx.doc, a, plan, "devices", &mut cx.state));
         }
-        // Drawing aids (design 072 §6.2), one transaction: a continuation's name or caption; a
+        // Drawing aids, one transaction: a continuation's name or caption; a
         // location box's function or location (with its proposals, as `setlocation`) or panel
         // temperature.
         if let Some(aids) = self.aids {
@@ -760,7 +759,7 @@ impl Generic for SetpropParams {
                 _ => Outcome::edit("Set property", ops, json!({"changed": true, "aids": n})),
             });
         }
-        // Several devices at once (brief 019, the Properties panel): one transaction for all.
+        // Several devices at once (the Properties panel): one transaction for all.
         if let Some(cs) = self.devices {
             let ops = plan_many(cx.doc, &cs.0, &key, typed.as_deref())?;
             let n = ops.len();
@@ -781,7 +780,7 @@ impl Generic for SetpropParams {
             Build::Tag => {
                 let conflict = conflict(word.as_deref(), merge)?;
                 match (conflict, object) {
-                    // Merging two devices keeps 018's path (labels, contacts, connection points).
+                    // Merging two devices keeps the usual path (labels, contacts, connection points).
                     (Some(Conflict::Merge), ObjectRef::Device(c)) => set_device(cx, c, TAG_KEY, typed.as_deref(), true),
                     _ => set_tag(cx, object, typed.as_deref(), conflict),
                 }
@@ -794,7 +793,7 @@ impl Generic for SetpropParams {
             Build::Record(_) => {
                 let op = plan_record(doc, object, &key, typed.as_deref())?;
                 let changed = op.is_some();
-                // Design 072 §2.2: every way in shows what a rating read as.
+                // Every way in shows what a rating read as.
                 let answer = move |doc: &Document| {
                     let mut answer = record_answer(doc, object, &key, changed);
                     if let ObjectRef::Device(c) = object
@@ -833,7 +832,7 @@ fn set_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) 
     })
 }
 
-/// A device property (design 018 §6), merging with `merge`.
+/// A device property, merging with `merge`.
 fn set_device(cx: &mut Cx<'_>, c: DeviceId, key: &str, typed: Option<&str>, merge: bool) -> Result<Outcome, CmdError> {
     Ok(match plan_device(cx.doc, cx.ids, cx.tag_high, c, key, typed, merge)? {
         DeviceSet::Unchanged(value) => Outcome::answer(json!({"changed": false, "value": value})),
@@ -845,7 +844,7 @@ fn set_device(cx: &mut Cx<'_>, c: DeviceId, key: &str, typed: Option<&str>, merg
     })
 }
 
-/// The tag of a device or cable (design 026 §4, §7).
+/// The tag of a device or cable.
 /// A value of the `tag` key (S6, #3): typed text ([`tag::enter`]), or the stored form
 /// `{"state": "automatic"|"fixed"|"provisional", "tag": "-K1"}` ([`TagSlot`]), which names its own state.
 ///

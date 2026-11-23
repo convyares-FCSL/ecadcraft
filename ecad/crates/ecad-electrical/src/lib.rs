@@ -1,20 +1,38 @@
-//! ecad-electrical
+//! ecad-electrical: the electrical rules of an ECAD project, decided from the document alone.
 //!
-//! The electrical rules of an ECAD project, decided from the document alone (design 065 §1, Core):
-//! devices, wires, cables, terminal strips, connectors and accessories; cross-references,
-//! continuations and link lines; project checks and proposed fixes; the rating dataset; the
-//! reports (bill of materials, device list, outputs, PLC lists) and the layout of every generated
-//! page, title block and frame; page types, locations, revisions, styles and project defaults; and
-//! the shared vocabulary (symbols, representations, kinds, words, designations, text styles).
+//! It reads [`ecad_model`]'s document and the drawing style ([`ecad_drawing_style`]) and returns plain data
+//! (positions in mm, texts, styles, model ids) or ops; `ecad-engine` turns that into drawing entities and runs it
+//! inside commands. One folder per feature area:
 //!
-//! It works on [`ecad_model`]'s document and the drawing style ([`ecad_drawing_style`]). What it
-//! decides is plain data: positions in mm, texts, styles and model ids. The engine crate
-//! (`ecad-engine`) turns that into drawing entities and runs it inside commands.
+//! - [`cables`]: the cable planning model, cable slash and cable layout.
+//! - [`checks`]: the Checks list (open ends, loose wires, single-point nets, number and potential conflicts).
+//! - [`circuits`]: wire and cable sizing (Ib ≤ In ≤ Iz, volt drop), each result a Checks row.
+//! - [`commands`]: the generic command runner and the typed command input shared by every area.
+//! - [`connectors`]: plug and socket pairs drawn as one mating device.
+//! - [`continuations`]: continuation arrows and where their other ends are.
+//! - [`defaults`]: the defaults registry, one entry per project default and its levels.
+//! - [`devices`]: devices and tags, device kinds, ratings, the device list and placing.
+//! - [`error`]: the crate's error type and the refusals said in more than one place.
+//! - [`input`]: the grammars of text typed into a field, each refusing with a named error.
+//! - [`locations`]: device locations and functions, location boxes and designations.
+//! - [`merge`]: what a value typed in a merge conflict is stored as.
+//! - [`numbering`]: renumbering, fixed and provisional tags.
+//! - [`pages`]: page types, folders, frames, generated pages and the cover.
+//! - [`plc`]: PLC racks, cards and channels, and the PLC lists and sheets.
+//! - [`properties`]: the ECAD section of the Properties palette and the edits its rows write.
+//! - [`references`]: device and cable references.
+//! - [`releases`]: revisions, issue, release and the pre-release check.
+//! - [`reports`]: the report models: BOM, wire report and cable report.
+//! - [`styles`]: style catalogues and text styles.
+//! - [`symbols`]: the starter symbols, the symbol builder and symbol offers.
+//! - [`terminal_strips`]: terminal strips, terminal blocks, jumper bars, accessories and cable cores.
+//! - [`title_blocks`]: title blocks: frame parts, field values, the house block and DXF import.
+//! - [`views`]: the one update pipeline for every derived view.
+//! - [`wires`]: wires on the page: conductor labels, routes, joins and continuation texts.
 //!
-//! This crate intentionally contains **no** drawing engine (no `cadcraft-*` crate, no entities or
-//! handles), **no** UI, **no** OS access (no files, clock, environment or process: callers pass the
-//! time in) and **no** font lookup: text is measured through
-//! [`crate::styles::text_style::fonts::TextMetrics`], which the caller supplies.
+//! It contains **no** drawing engine (no `cadcraft-*` crate, no entities or handles), **no** UI, **no** OS access
+//! (no files, clock, environment or process: callers pass the time in) and **no** font lookup: text is measured
+//! through [`crate::styles::text_style::fonts::TextMetrics`], which the caller supplies.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub use crate::error::{CmdError, msg};
