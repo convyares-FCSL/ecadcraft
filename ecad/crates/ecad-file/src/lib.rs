@@ -2,7 +2,12 @@
 //!
 //! - **Records** ([`records`], [`record`]): the transaction records every file stores, at the schema version
 //!   [`record::SCHEMA_VERSION`], separate from `ecad-model` and converted explicitly, so a model change never
-//!   silently changes the format. Ops are written flat, `{"op": name, "v": n, ...}`; any op version but the
+//!   silently changes the format. The exceptions are stored as the model writes them: a device's type
+//!   (`DeviceType`, with its ratings), tag (`TagSlot`), location and function (`Place`) and user values
+//!   (`UserValue`), whose words and fields are strict already; a second copy of them would only have to be kept
+//!   in step. The golden fixture holds one device of each type with every field written out, so a field added
+//!   to a device type does not compile until the fixture names it, and a changed word or field changes the
+//!   pinned hash that asks for a new schema version. Ops are written flat, `{"op": name, "v": n, ...}`; any op version but the
 //!   current one is refused (no upcasts before v1).
 //! - **Integrity** ([`canonical`], [`chain`]): RFC 8785 canonical form (the bytes stored and hashed), and an
 //!   unkeyed SHA-256 history chain with domain-separated seeds for projects and libraries. It detects

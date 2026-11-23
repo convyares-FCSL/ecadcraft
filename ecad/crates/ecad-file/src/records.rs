@@ -1,7 +1,9 @@
-//! Schema version 1 records: the file format's own types.
+//! The records at [`crate::record::SCHEMA_VERSION`]: the file format's own types.
 //!
 //! These mirror `ecad-model` deliberately: the model may change shape freely, while these types
-//! change only with a schema version and an upcast. Every struct refuses unknown fields.
+//! change only with a schema version. The model types a record holds as they are (a device's
+//! `DeviceType`, `TagSlot`, `Place`, `UserValue`) are the format too; the crate doc says why and
+//! how the golden fixture guards them. Every struct refuses unknown fields.
 //! IDs use the model's ID types, whose serialised form (32 hex digits) is itself part of this
 //! schema and fixed by the golden-file test.
 

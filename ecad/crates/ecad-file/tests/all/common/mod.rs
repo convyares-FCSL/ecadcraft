@@ -1,6 +1,7 @@
 //! A deterministic project history exercising every kind of record value: awkward numbers,
-//! non-ASCII property keys, embedded definitions (two instances of one, a second version),
-//! conductors, cables, settings, a named version, undo and redo.
+//! non-ASCII property keys, embedded definitions (two instances of one, a second version), one
+//! device of every device type with each field set, conductors, cables, settings, a named version,
+//! undo and redo.
 
 #![allow(dead_code)]
 
@@ -212,6 +213,8 @@ pub fn fixture() -> Fixture {
         "Cable",
         vec![Op::CreateCable { id: cable, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } }],
     );
+    let ops = device_types(&mut f);
+    f.commit("Device types", ops);
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
     for (key, value) in [("note", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
         f.commit("Set property", vec![Op::SetProperty { object: ObjectRef::Device(c1), key: key.into(), before: None, after: Some(value.into()) }]);
@@ -223,6 +226,160 @@ pub fn fixture() -> Fixture {
     f.time += 1000;
     f.ledger.redo_at(Author::Agent("assistant".into()), Some(f.time)).unwrap();
     f
+}
+
+/// One device of every device type (and of every protection and supply kind), each field set.
+/// A device's type is the model's own `DeviceType`, stored as it is (no mirror in the records):
+/// these literals list every field with no `..`, so a field added to a device type does not
+/// compile until it is named here, and the pinned head hash then shows the format changed.
+fn device_types(f: &mut Fixture) -> Vec<Op> {
+    use ecad_model::geometry::units::{Amps, Current, KiloAmps, MilliAmps, Percent, RatedVoltage, VoltAmps, Volts, Watts};
+    use ecad_model::naming::text::Text;
+    use ecad_model::objects::devices::*;
+    use ecad_model::objects::plc::*;
+    let v = |volts: f64, current: Current| Some(RatedVoltage { volts: Volts(volts), current });
+    let contacts = || {
+        ContactSet::new(vec![
+            ContactEntry { poles: ContactPoles::Count(std::num::NonZeroU8::new(3).unwrap()), kind: PoleKind::No, power: true },
+            ContactEntry {
+                poles: ContactPoles::Labels([ContactLabel::new("21").unwrap(), ContactLabel::new("22").unwrap()]),
+                kind: PoleKind::Nc,
+                power: false,
+            },
+        ])
+    };
+    let fuse = || Fuse { rated_current: Some(Amps(10.0)), class: Some(FuseClass::Gg), breaking: Some(KiloAmps(50.0)) };
+    let rack: DeviceId = f.ids.fresh();
+    let types = vec![
+        (
+            rack,
+            DeviceType::PlcRack(PlcRack {
+                network: Some(Text::new("plant").unwrap()),
+                address: Some(NetAddress::Ip(core::net::Ipv4Addr::new(192, 168, 0, 10))),
+                head: RackHead::Coupler { protocol: Protocol::Profinet },
+                address_style: Some(AddressStyle::ByteBit),
+            }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::PlcModule(PlcModule {
+                rack: Some(rack),
+                slot: Some(2),
+                function: ModuleFunction::Drive(Drive { kind: DriveKind::Servo, axes: 2 }),
+                attributes: ModuleAttributes { safety_rated: true, intrinsically_safe: true, calibration_certificate: true },
+                address: AddressPin { start: Some(4), size: Some(8) },
+                supply: v(24.0, Current::Dc),
+            }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::PowerSupply(PowerSupply::Psu(Psu {
+                input: v(230.0, Current::Ac),
+                output: v(24.0, Current::Dc),
+                output_current: Some(Amps(5.0)),
+                output_power: Some(Watts(120.0)),
+            })),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::PowerSupply(PowerSupply::Transformer(Transformer {
+                input: v(400.0, Current::Ac),
+                output: v(230.0, Current::Ac),
+                rated_power: Some(VoltAmps(630.0)),
+            })),
+        ),
+        (f.ids.fresh(), DeviceType::Protection(Protection::Fuse(fuse()))),
+        (f.ids.fresh(), DeviceType::Protection(Protection::FuseTerminalBlock(fuse()))),
+        (
+            f.ids.fresh(),
+            DeviceType::Protection(Protection::Mcb(Breaker {
+                rated_current: Some(Amps(16.0)),
+                curve: Some(TripCurve::C),
+                breaking: Some(KiloAmps(6.0)),
+                poles: Some(Poles::Three),
+                contacts: contacts(),
+            })),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Protection(Protection::Rcd(Rcd {
+                rated_current: Some(Amps(40.0)),
+                residual: Some(MilliAmps(30.0)),
+                poles: Some(Poles::Four),
+                contacts: contacts(),
+            })),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Protection(Protection::Rcbo(Rcbo {
+                rated_current: Some(Amps(20.0)),
+                curve: Some(TripCurve::B),
+                residual: Some(MilliAmps(30.0)),
+                breaking: Some(KiloAmps(10.0)),
+                poles: Some(Poles::OneN),
+                contacts: contacts(),
+            })),
+        ),
+        (f.ids.fresh(), DeviceType::Protection(Protection::FuseBank(FuseBank { outputs: [(1, fuse()), (2, fuse())].into_iter().collect() }))),
+        (
+            f.ids.fresh(),
+            DeviceType::Switching(Switching {
+                operator: Operator::Coil(Control { voltage: v(24.0, Current::Dc), power: Some(Watts(3.5)) }),
+                ac3_current: Some(Amps(12.0)),
+                ac3_power: Some(Watts(5500.0)),
+                contacts: contacts(),
+                contact_table: Some(ContactTable::At { dx: 12.5, dy: -4.0 }),
+            }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Sensor(Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: v(24.0, Current::Dc), contacts: contacts() }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Motor(Motor {
+                phases: Phases::Three,
+                rated_power: Some(Watts(7500.0)),
+                rated_current: Some(Amps(15.2)),
+                power_factor: Some(0.85),
+                efficiency: Some(Percent(91.0)),
+                starting: Some(Starting::StarDelta),
+            }),
+        ),
+        (f.ids.fresh(), DeviceType::Load(Load { rated_power: Some(Watts(2000.0)) })),
+        (
+            f.ids.fresh(),
+            DeviceType::Indicator(Indicator {
+                signal: SignalType::Flashing,
+                colour: Some(IndicatorColour::Green),
+                rated_voltage: v(24.0, Current::Dc),
+                power: Some(Watts(1.2)),
+            }),
+        ),
+        (f.ids.fresh(), DeviceType::TerminalStrip(TerminalStrip { fuses: [(PositionLabel::new("3").unwrap(), fuse())].into_iter().collect() })),
+        (
+            f.ids.fresh(),
+            DeviceType::Connector(Box::new(Connector {
+                family: ConnectorFamily::Dsub,
+                pins: Some(std::num::NonZeroU8::new(9).unwrap()),
+                pin_names: vec![PinName::new("TX").unwrap(), PinName::new("RX").unwrap()],
+                socket: HalfPart {
+                    description: Some(Description::new("socket").unwrap()),
+                    manufacturer: Some(PartText::new("maker").unwrap()),
+                    part_number: Some(PartText::new("S-9").unwrap()),
+                },
+                plug: HalfPart {
+                    description: Some(Description::new("plug").unwrap()),
+                    manufacturer: Some(PartText::new("maker").unwrap()),
+                    part_number: Some(PartText::new("P-9").unwrap()),
+                },
+                mating: true,
+                ignored: [ConnectorCheck::Size].into_iter().collect(),
+            })),
+        ),
+        (f.ids.fresh(), DeviceType::General),
+    ];
+    types.into_iter().map(|(id, device_type)| Op::CreateDevice { id, device: Device { device_type, ..Device::default() } }).collect()
 }
 
 /// Write `ledger`'s whole history as a new project file in memory and open it again from its
