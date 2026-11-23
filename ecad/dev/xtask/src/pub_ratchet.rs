@@ -25,7 +25,7 @@ const ALLOWED: &[(&str, usize)] = &[
     ("ecad-electrical", 177),
     ("ecad-engine", 26),
     ("ecad-file", 23),
-    ("ecad-model", 62),
+    ("ecad-model", 60),
     ("ecad-store", 3),
     ("ecad-widgets", 33),
 ];
