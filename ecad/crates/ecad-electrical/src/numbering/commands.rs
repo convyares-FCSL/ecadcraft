@@ -13,31 +13,49 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::nullable;
+use crate::commands::input::{Said, Words, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, Pages};
 use crate::devices::tags::TagHigh;
 use crate::devices::{self};
 use crate::error::CmdError;
 
+/// What a `renumber` call renumbers, as it names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RenumberKind {
+    Devices,
+    Cables,
+    Wires,
+    /// Terminal block labels, per strip.
+    TerminalBlocks,
+    /// Devices, cables and wires (not terminal blocks).
+    All,
+}
+
+/// A kind as a call names it: its word, the singular, or a short form (`dev`, `cbl`, `trm`).
+impl Words for RenumberKind {
+    const WORDS: &'static [&'static str] = &["devices", "cables", "wires", "terminal_blocks", "all"];
+
+    fn read(text: &str) -> Option<RenumberKind> {
+        Some(match text.trim().to_ascii_lowercase().as_str() {
+            "devices" | "device" | "dev" => RenumberKind::Devices,
+            "cables" | "cable" | "cbl" => RenumberKind::Cables,
+            "wires" | "wire" => RenumberKind::Wires,
+            "terminal_blocks" | "terminal_block" | "trm" => RenumberKind::TerminalBlocks,
+            "all" => RenumberKind::All,
+            _ => return None,
+        })
+    }
+}
+
 /// The kinds `kind` names (absent: devices); `all` is devices, cables and wires.
-///
-/// # Errors
-/// Any other word.
-pub fn kinds(word: Option<&str>) -> Result<BTreeSet<Kind>, CmdError> {
-    let k = word.unwrap_or("devices").trim().to_ascii_lowercase();
-    Ok(match k.as_str() {
-        "devices" | "device" | "dev" => [Kind::Devices].into(),
-        "cables" | "cable" | "cbl" => [Kind::Cables].into(),
-        "wires" | "wire" => [Kind::Wires].into(),
-        // Terminal block labels per strip ("all" keeps its usual meaning: tags and wires).
-        "terminal_blocks" | "terminal_block" | "trm" => [Kind::TerminalBlocks].into(),
-        "all" => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
-        other => {
-            return Err(CmdError::refused(format!(
-                "`kind` must be \"devices\", \"cables\", \"wires\", \"terminal_blocks\" or \"all\", not {other:?}"
-            )));
-        }
-    })
+pub(crate) fn kinds(kind: Option<RenumberKind>) -> BTreeSet<Kind> {
+    match kind.unwrap_or(RenumberKind::Devices) {
+        RenumberKind::Devices => [Kind::Devices].into(),
+        RenumberKind::Cables => [Kind::Cables].into(),
+        RenumberKind::Wires => [Kind::Wires].into(),
+        RenumberKind::TerminalBlocks => [Kind::TerminalBlocks].into(),
+        RenumberKind::All => [Kind::Devices, Kind::Cables, Kind::Wires].into(),
+    }
 }
 
 /// A renumber's `scope` as given: a word, or an object. Each of the object's entries: absent
@@ -54,7 +72,7 @@ pub(crate) enum ScopeInput {
 /// wire; a strip or one of its terminal blocks); `Some(None)`: given as null.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RenumberInput {
-    pub kind: Option<String>,
+    pub kind: Option<RenumberKind>,
     pub scope: Option<ScopeInput>,
     pub objects: Option<Option<Vec<String>>>,
     pub strips: Option<Option<Vec<String>>>,
@@ -182,9 +200,9 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
 /// most strips read from `strips`).
 ///
 /// # Errors
-/// As [`kinds`], [`scope`] and [`strips`]; digits that are not a small whole number.
+/// As [`scope`] and [`strips`]; digits that are not a small whole number.
 pub(crate) fn request(doc: &Document, input: &RenumberInput, max_named: usize) -> Result<Request, CmdError> {
-    let kinds = kinds(input.kind.as_deref())?;
+    let kinds = kinds(input.kind);
     let scope = scope(doc, input, max_named)?;
     let digits = match input.digits {
         None => None,
@@ -600,9 +618,10 @@ pub enum ScopeParam {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RenumberParams {
-    /// What to renumber: devices, cables, wires, terminal blocks or all (default devices).
+    /// What to renumber: devices (default), cables, wires, terminal blocks or all (devices, cables
+    /// and wires); the singular and `dev`, `cbl` and `trm` read too.
     #[serde(default)]
-    kind: Option<String>,
+    kind: Option<Said<RenumberKind>>,
     /// Terminal blocks with scope "selection": the strips (or terminal blocks of them), as hex ids.
     #[serde(default, deserialize_with = "nullable")]
     strips: Option<Option<Vec<String>>>,
@@ -741,7 +760,8 @@ impl Generic for RenumberParams {
             ScopeParam::Word(w) => ScopeInput::Word(w),
             ScopeParam::Pick(p) => ScopeInput::Pick { prefix: p.prefix, folder: p.folder, pages: p.pages },
         });
-        let input = RenumberInput { kind: self.kind, scope, objects: self.objects, strips: self.strips, start: self.start, digits: self.digits };
+        let input =
+            RenumberInput { kind: self.kind.map(|k| k.0), scope, objects: self.objects, strips: self.strips, start: self.start, digits: self.digits };
         let how = How { preview: self.preview.unwrap_or(false), based_on: self.based_on, for_new: self.digits_for_new.unwrap_or(false) };
         renumber_with(cx, Some(&input), how)
     }

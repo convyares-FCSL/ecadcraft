@@ -464,21 +464,23 @@ pub enum Conflict {
     Next,
 }
 
-/// The conflict answer `word` names; `merge: true` is `merge`.
-///
-/// # Errors
-/// Any other word.
-pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, CmdError> {
-    let c = match word.map(|w| w.trim().to_ascii_lowercase()) {
-        None => None,
-        Some(w) => Some(match w.as_str() {
-            "swap" => Conflict::Swap,
-            "merge" | "same" | "one" => Conflict::Merge,
-            "next" | "another" => Conflict::Next,
-            other => return Err(CmdError::refused(format!("`conflict` must be \"swap\", \"merge\" or \"next\", not {other:?}"))),
-        }),
-    };
-    Ok(c.or(merge.then_some(Conflict::Merge)))
+/// A conflict answer as a call names it (`same` and `one` are merge, `another` is next).
+impl crate::commands::input::Words for Conflict {
+    const WORDS: &'static [&'static str] = &["swap", "merge", "next"];
+
+    fn read(text: &str) -> Option<Conflict> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "swap" => Some(Conflict::Swap),
+            "merge" | "same" | "one" => Some(Conflict::Merge),
+            "next" | "another" => Some(Conflict::Next),
+            _ => None,
+        }
+    }
+}
+
+/// The conflict answer given; `merge: true` is merge.
+pub fn conflict(answer: Option<Conflict>, merge: bool) -> Option<Conflict> {
+    answer.or(merge.then_some(Conflict::Merge))
 }
 
 /// The tag `o` holds with its state: a device's fields, a cable's fields. The
@@ -699,9 +701,10 @@ pub struct SetpropParams {
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]
     value: Option<Option<String>>,
-    /// A tag another device or cable holds: swap, merge or next.
+    /// A tag another device or cable holds: swap, merge (also `same` or `one`) or next (also
+    /// `another`).
     #[serde(default)]
-    conflict: Option<String>,
+    conflict: Option<crate::commands::input::Said<Conflict>>,
     /// A device tag another device holds: make this the same device (as conflict merge).
     #[serde(default)]
     merge: Option<bool>,
@@ -794,7 +797,7 @@ impl Generic for SetpropParams {
             });
         }
         let object = object?;
-        let (word, merge) = (self.conflict, self.merge.unwrap_or(false));
+        let (answer, merge) = (self.conflict.map(|c| c.0), self.merge.unwrap_or(false));
         let doc = cx.doc;
         // Pack re-run, bug 7: on a PLC card with channels, `channels` is its channel count.
         let key = match object {
@@ -803,7 +806,7 @@ impl Generic for SetpropParams {
         };
         match rule_for(doc, object, &key).build {
             Build::Tag => {
-                let conflict = conflict(word.as_deref(), merge)?;
+                let conflict = conflict(answer, merge);
                 match (conflict, object) {
                     // Merging two devices keeps the usual path (labels, contacts, connection points).
                     (Some(Conflict::Merge), ObjectRef::Device(c)) => set_device(cx, c, TAG_KEY, typed.as_deref(), true),

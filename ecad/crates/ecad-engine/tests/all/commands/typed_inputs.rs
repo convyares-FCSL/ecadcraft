@@ -108,6 +108,8 @@ fn closed_word_sets_are_listed() {
         ("release", r#"colour?: "mono"|"colour""#),
         ("prerelease", r#"accept?: "errors""#),
         ("issuerevision", r#"provisional?: "finalise"|"issue""#),
+        ("renumber", r#"kind?: "devices"|"cables"|"wires"|"terminal_blocks"|"all""#),
+        ("setprop", r#"conflict?: "swap"|"merge"|"next""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
@@ -926,7 +928,7 @@ fn the_typed_plc_commands_still_work() {
 #[test]
 fn the_numbering_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("renumber", json!({"kind": 1}), "`kind` must be text, or null"),
+        ("renumber", json!({"kind": 1}), r#"`kind` must be one of "devices", "cables", "wires", "terminal_blocks", "all", or null"#),
         ("renumber", json!({"start": "x"}), "`start` must be a whole number, or null"),
         ("renumber", json!({"preview": "yes"}), "`preview` must be true or false, or null"),
         ("renumber", json!({"objects": "x"}), "`objects` must be a list of texts, or null"),
@@ -944,7 +946,7 @@ fn the_numbering_commands_refuse_input_uniformly() {
 #[test]
 fn the_numbering_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("renumber", json!({"kind": "lamps"}), "`kind` must be \"devices\", \"cables\", \"wires\", \"terminal_blocks\" or \"all\", not \"lamps\""),
+        ("renumber", json!({"kind": "lamps"}), r#"`kind` must be one of "devices", "cables", "wires", "terminal_blocks", "all", or null"#),
         (
             "renumber",
             json!({"scope": "some"}),
@@ -1740,7 +1742,10 @@ fn setprop_refuses_input_uniformly() {
             json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "-K1", "merge": "yes"}),
             "`merge` must be true or false, or null",
         ),
-        (json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "-K1", "conflict": 1}), "`conflict` must be text, or null"),
+        (
+            json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "-K1", "conflict": 1}),
+            r#"`conflict` must be one of "swap", "merge", "next", or null"#,
+        ),
         (json!({"key": "description", "value": "x"}), "`component`, `conductor` or `cable` (hex id) is required"),
     ];
     let mut h = H::new(7071);
@@ -1762,7 +1767,7 @@ fn setprop_keeps_its_rule_words() {
         (json!({"component": a, "key": "tag", "value": "{\"state\":\"maybe\",\"tag\":\"-K9\"}"}), "A tag value is text, or"),
         (
             json!({"component": a, "key": "tag", "value": tag_b, "conflict": "sideways"}),
-            "`conflict` must be \"swap\", \"merge\" or \"next\", not \"sideways\"",
+            r#"`conflict` must be one of "swap", "merge", "next", or null"#,
         ),
         (json!({"component": a, "key": "tag", "value": tag_b}), "is used by"),
         (json!({"component": "000000000000000000000000000000ab", "key": "description", "value": "x"}), "No such object."),
