@@ -24,7 +24,8 @@ use crate::devices::texts::TextOf;
 use crate::devices::{self};
 use crate::error::CmdError;
 use crate::styles::text_style::fonts::{Fonts, TextMetrics};
-use crate::styles::text_style::{self, Shown, TextKind, kind_words};
+use crate::styles::text_style::{self, Shown, kind_words};
+use ecad_model::look::TextKind;
 use ecad_model::registry::Scope;
 
 /// Refusals.
@@ -148,7 +149,7 @@ fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
         return Err(CmdError::refused(BAD_FONT));
     }
     if let Some(Some(w)) = &show {
-        let entry = kind.show_entry().ok_or_else(|| CmdError::refused(format!("{} has no Shown setting.", kind.word())))?;
+        let entry = crate::styles::text_style::show_entry(kind).ok_or_else(|| CmdError::refused(format!("{} has no Shown setting.", kind.word())))?;
         if entry.parse(w).is_none() {
             return Err(CmdError::refused(BAD_SHOW));
         }
@@ -225,7 +226,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
     if let Some(w) = &c.weight {
         put("weight", w.clone());
     }
-    if let (Some(entry), Some(w)) = (k.show_entry(), &c.show) {
+    if let (Some(entry), Some(w)) = (crate::styles::text_style::show_entry(k), &c.show) {
         set_project(doc, entry.key, w.clone(), ops);
     }
 }
@@ -355,7 +356,7 @@ fn kinds_at(level: ShowLevel) -> &'static [TextKind] {
 
 /// The object and key a visibility at `level` is stored under.
 pub(crate) fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, String)> {
-    let entry = kind.show_entry()?;
+    let entry = crate::styles::text_style::show_entry(kind)?;
     Some(match level {
         ShowLevel::Symbol(rep, c) => (ObjectRef::Device(c), ecad_model::registry::symbol_key(entry.key, rep)),
         ShowLevel::Device(c) => (ObjectRef::Device(c), entry.key.to_string()),
@@ -561,7 +562,7 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
             let h = f("height").unwrap_or(Resolved { value: ecad_model::registry::Value::Length(2.5), from: Source::Builtin });
             let w = f("weight").unwrap_or(Resolved { value: ecad_model::registry::Value::Choice("regular"), from: Source::Builtin });
             let colour = f("colour").map(|r| r.text());
-            let sh = k.show_entry().map(|e| ecad_model::registry::resolve(doc, e, Scope::project()));
+            let sh = crate::styles::text_style::show_entry(*k).map(|e| ecad_model::registry::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
             let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
             let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
@@ -578,7 +579,7 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
                 "builtin": {
                     "height": b("height").map_or(0.0, |v| Resolved { value: v, from: Source::Builtin }.number()),
                     "weight": b("weight").map_or("regular", |v| Resolved { value: v, from: Source::Builtin }.word()),
-                    "show": k.show_entry().map(|e| builtin(e).word()),
+                    "show": crate::styles::text_style::show_entry(*k).map(|e| builtin(e).word()),
                 },
             })
         })
@@ -746,9 +747,11 @@ impl Generic for PagetextsParams {
 /// The rows of `pagetexts` for `page`, measured with `metrics`.
 pub(crate) fn pagetexts_json(doc: &Document, page: PageId, metrics: &dyn TextMetrics) -> Value {
     use crate::styles::text_style::fonts::{DrawStyles, width_in};
-    use crate::styles::text_style::{TextStyle, Weight, justify_code, text_box};
+    use crate::styles::text_style::{justify_code, text_box};
+    use ecad_model::look::TextStyle;
+    use ecad_model::objects::styles::text::Weight;
     let draw = DrawStyles::with(doc, metrics);
-    let all = crate::devices::texts::all_texts_measured(doc, page, None, metrics);
+    let all = crate::devices::texts::all_texts_measured(doc, page, None, &crate::styles::text_style::fonts::Look(metrics));
     let more = all.len().saturating_sub(MAX_TEXT_ROWS);
     let rows: Vec<Value> = all
         .iter()
@@ -857,5 +860,7 @@ impl Generic for MovetextParams {
 
 /// The text `t` names as drawn now.
 fn current_text(doc: &Document, rep: RepresentationId, t: &MoveTarget, metrics: &dyn TextMetrics) -> Option<crate::devices::texts::PageText> {
-    crate::devices::texts::all_texts_measured(doc, t.page, None, metrics).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
+    crate::devices::texts::all_texts_measured(doc, t.page, None, &crate::styles::text_style::fonts::Look(metrics))
+        .into_iter()
+        .find(|x| x.text.rep == rep && x.text.of == t.of)
 }

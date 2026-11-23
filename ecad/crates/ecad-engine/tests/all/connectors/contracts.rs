@@ -418,7 +418,7 @@ fn half_row_groups_are_kept_not_regrouped() {
     let g1 = h.cfg(|p| p.reports().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
     let rebuilt = h.p(|p| {
-        ecad_electrical::reports::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)
+        ecad_electrical::reports::kept::ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK)
             .bom_count(ecad_electrical::reports::Group::Location)
     });
     assert_eq!(count(&mut h), rebuilt);

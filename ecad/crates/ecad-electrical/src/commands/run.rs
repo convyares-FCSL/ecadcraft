@@ -23,6 +23,7 @@ use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::StarterKey;
 use crate::symbols::proposals::Conflict;
 use crate::views::Views;
+use ecad_model::look::TextLook;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands
@@ -52,8 +53,11 @@ pub struct Cx<'a> {
     /// The name of the branch shown when it is not the release line (none: on the release line, or
     /// the project is not in a file). Revisions are edited and issued on the release line only.
     pub off_release_line: Option<String>,
-    /// This machine's fonts, to measure text.
+    /// This machine's fonts, for the commands that resolve fonts themselves (text styles, title
+    /// blocks).
     pub metrics: &'static dyn TextMetrics,
+    /// How the rules' texts look on this machine, to lay out and measure them.
+    pub look: &'static dyn TextLook,
     /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: what
     /// each read parameter's file gave, or why it could not be read. A parameter not given is
     /// absent.

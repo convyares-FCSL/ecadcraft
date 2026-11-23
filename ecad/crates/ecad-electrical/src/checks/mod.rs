@@ -38,8 +38,8 @@ use ecad_model::document::effect::Effect;
 use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::wires::{self, ON_WIRE};
+use ecad_model::look::TextLook;
 
 pub mod cables;
 pub mod devices;
@@ -1032,7 +1032,7 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
-pub fn all_measured(doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextMetrics) -> Vec<Check> {
+pub fn all_measured(doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextLook) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
     rows.extend(reports.checks());
     sort(doc, rows)

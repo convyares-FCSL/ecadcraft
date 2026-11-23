@@ -9,7 +9,7 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
 use ecad_electrical::pages::front::*;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::LAYER};
-use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 
 /// The layer the screen-only outlines are drawn on (not printed).
 const OVERLAY: &str = crate::convert::MARKER_LAYER;

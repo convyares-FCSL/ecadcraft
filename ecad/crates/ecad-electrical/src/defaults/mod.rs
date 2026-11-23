@@ -260,7 +260,7 @@ mod kind_tests {
             assert!(matches!(e.map(|e| e.kind), Some(Kind::Choice(w)) if w == *want), "{key}");
         }
         assert_eq!(<crate::styles::frame::BlockAt as ecad_model::Word>::WORDS, ["bottom_full", "bottom_right"]);
-        assert_eq!(<crate::styles::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
+        assert_eq!(<ecad_model::objects::styles::text::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
         assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
         assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
         assert_eq!(<ecad_model::objects::styles::wire::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);

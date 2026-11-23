@@ -160,7 +160,7 @@ fn rows_have(h: &mut H, kind: &str, fix: bool) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "kept BOM differs from a rebuild");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "kept BOM by part differs from a rebuild");

@@ -1,17 +1,19 @@
 //! The fonts a project's texts are drawn with, and their widths.
 //!
 //! Which fonts a machine has and how wide a text is drawn are the drawing engine's knowledge. It
-//! reaches the rules through one trait, [`TextMetrics`]: is a font found, and how wide is a text in
-//! it. ecad-engine implements it over CADCraft's fonts and keeps wrappers with the engine-free
-//! signatures (`text_style::Fonts::resolve(doc)`, `text_style::Look::new(doc)`, `width_in`,
-//! `text_width`). [`FixedWidth`] is a fixed-width implementation for tests.
+//! reaches this module through one trait, [`TextMetrics`]: is a font found, and how wide is a text
+//! in it. ecad-engine implements it over CADCraft's fonts. [`Look`] answers the rules'
+//! [`ecad_model::look::TextLook`] with it. [`FixedWidth`] is a fixed-width implementation for
+//! tests.
 //!
 //! This module looks nothing up itself and makes no OS call.
 
 use ecad_model::Document;
 
 use crate::defaults::text as d;
-use crate::styles::text_style::{TextKind, TextStyle, Weight, default_family, kind_font, text_style};
+use crate::styles::text_style::{default_family, kind_font, text_style, text_style_at};
+use ecad_model::look::{TextKind, TextLook, TextStyle};
+use ecad_model::objects::styles::text::Weight;
 use ecad_model::registry::Scope;
 
 /// What the drawing engine knows about fonts on this machine: whether a font is found, and the
@@ -48,6 +50,48 @@ impl TextMetrics for FixedWidth {
 
     fn stroke_font(&self) -> &str {
         "stroke"
+    }
+}
+
+impl<T: TextMetrics + ?Sized> TextMetrics for &T {
+    fn found(&self, name: &str) -> bool {
+        (**self).found(name)
+    }
+
+    fn width(&self, name: &str, text: &str, height: f64) -> f64 {
+        (**self).width(name, text, height)
+    }
+
+    fn stroke_font(&self) -> &str {
+        (**self).stroke_font()
+    }
+}
+
+/// The rules' [`TextLook`] over the font metrics it holds: a kind's style is its text style
+/// ([`text_style_at`]), and a width is measured in the fonts the metrics find.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Look<M>(pub M);
+
+impl<M: TextMetrics> TextLook for Look<M> {
+    fn style(&self, doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
+        text_style_at(doc, kind, at)
+    }
+
+    fn width(&self, doc: &Document, kind: TextKind, s: TextStyle, value: &str) -> f64 {
+        width_in(&Fonts::of_kind_with(doc, kind, &self.0), s, value, &self.0)
+    }
+
+    fn family_width(&self, doc: &Document, family: Option<&str>, s: TextStyle, value: &str) -> f64 {
+        let fonts = match family {
+            Some(f) => Fonts::for_family_with(doc, f.to_string(), &self.0),
+            None => Fonts::resolve_with(doc, &self.0),
+        };
+        width_in(&fonts, s, value, &self.0)
+    }
+
+    fn stroke_width(&self, value: &str, height: f64) -> f64 {
+        let w = self.0.width(self.0.stroke_font(), value, height);
+        if w.is_finite() && w >= 0.0 { w } else { 0.0 }
     }
 }
 
@@ -160,18 +204,6 @@ impl DrawStyles {
             colour: None,
         })
     }
-
-    /// The width of `value` in `kind`'s font and `s` (a style derived from `kind`'s).
-    pub fn width(&self, kind: TextKind, s: TextStyle, value: &str, m: &dyn TextMetrics) -> f64 {
-        width_in(self.fonts_for(kind), s, value, m)
-    }
-}
-
-/// The width of `value` at `kind`'s height in the font it is drawn with. Resolves only
-/// `kind`'s style and font; a caller measuring many texts holds a [`DrawStyles`] and calls
-/// [`width_in`] instead.
-pub fn text_width(doc: &Document, kind: TextKind, value: &str, m: &dyn TextMetrics) -> f64 {
-    width_in(&Fonts::of_kind_with(doc, kind, m), text_style(doc, kind), value, m)
 }
 
 /// The width of `value` in `fonts` and `s`; a non-finite or negative width counts as
@@ -195,7 +227,7 @@ mod tests {
     #[test]
     fn a_fixed_width_text_is_its_characters_times_the_share() {
         let doc = Document::default();
-        let w = text_width(&doc, TextKind::Tag, "ABC", &FixedWidth);
+        let w = Look(FixedWidth).text_width(&doc, TextKind::Tag, "ABC");
         let h = text_style(&doc, TextKind::Tag).height;
         assert!((w - 3.0 * h * FixedWidth::SHARE).abs() < 1e-9);
         assert_eq!(Fonts::resolve_with(&doc, &FixedWidth).bold_lineweight, None);

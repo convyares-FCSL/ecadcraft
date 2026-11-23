@@ -14,8 +14,8 @@
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_electrical::defaults::{self};
-use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::Word;
+use ecad_model::look::TextKind;
 use ecad_model::palette::sheet::PAPER;
 use ecad_model::registry::{Kind, Level, Scope, Source};
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
@@ -310,9 +310,9 @@ fn a01_new_project_is_iec_with_twenty_builtin_text_styles_at_031_sizes() {
         assert_eq!(field_text(r, "font"), "project", "{word}");
         let kind = TextKind::ALL.into_iter().find(|k| k.word() == word).unwrap();
         // 031's drift test: the shared contract's signature, unchanged.
-        let st: ecad_electrical::styles::text_style::TextStyle = ecad_electrical::styles::text_style::text_style(&d, kind);
+        let st: ecad_model::look::TextStyle = ecad_electrical::styles::text_style::text_style(&d, kind);
         assert!(near(st.height, height), "{word}: text_style height {}", st.height);
-        assert_eq!(st.weight == ecad_electrical::styles::text_style::Weight::Bold, weight == "bold", "{word}: text_style weight");
+        assert_eq!(st.weight == ecad_model::objects::styles::text::Weight::Bold, weight == "bold", "{word}: text_style weight");
     }
     assert_eq!(h.head(), head, "reads record nothing");
 }
@@ -568,7 +568,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         let ops = decoded_ops(&tx);
         inject(&mut h, ops.clone());
         let st = ecad_electrical::styles::text_style::text_style(&h.doc(), TextKind::Tag);
-        assert!(near(st.height, 2.5) && st.weight == ecad_electrical::styles::text_style::Weight::Bold, "{k}={v:?}: the built-in tag style");
+        assert!(near(st.height, 2.5) && st.weight == ecad_model::objects::styles::text::Weight::Bold, "{k}={v:?}: the built-in tag style");
         let _ = styles(&mut h, "text");
         inject(&mut h, ops.iter().rev().map(Op::inverse).collect());
     }

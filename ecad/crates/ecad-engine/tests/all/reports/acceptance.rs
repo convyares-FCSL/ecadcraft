@@ -97,7 +97,7 @@ fn verify(h: &mut H, what: &str) {
     let (kept, built, doc) = h.cfg(|p| {
         let kept = p.reports().clone();
         let doc = p.ledger.document().clone();
-        (kept, ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics), doc)
+        (kept, ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK), doc)
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -794,8 +794,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
         assert!(t.iter().any(|x| x.split(", ").any(|y| y == tag)), "{tag} is on no sheet: {t:?}");
     }
     // The Total in the title block of an ordinary page counts the sheets.
-    let total =
-        ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
+    let total = ecad_electrical::pages::generated::book_sheets_of(&doc, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK)));
     assert!(texts(&doc, first).contains(&total.to_string()), "{total}: {:?}", texts(&doc, first));
     // Undo back to one sheet.
     h.run("u", Value::Null).unwrap();
@@ -820,7 +819,7 @@ fn a_continued_bom_sheet_keeps_its_rows_inside_the_drawing_area() {
         h.s.execute("place", &json!({"symbol": "coil", "at": at})).unwrap();
     }
     let doc = h.doc();
-    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK);
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, bom, Some(&o)), 3);
     // Sheet 2 (x from 470 to 890 mm): the lowest content text's row must end inside the area.
     let bottom = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&o))

@@ -78,7 +78,7 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 
 fn same_as_built(h: &mut H) {
     let (kept, built) =
-        h.cfg(|p| (p.reports().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics).plc.clone()));
+        h.cfg(|p| (p.reports().plc.clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK).plc.clone()));
     assert!(kept == built, "the kept PLC model differs from a rebuild");
 }
 

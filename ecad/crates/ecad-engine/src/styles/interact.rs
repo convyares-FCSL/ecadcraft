@@ -11,7 +11,7 @@ use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::devices::texts::TextOf;
-use ecad_electrical::styles::text_style::TextKind;
+use ecad_model::look::TextKind;
 
 const PICK_A_TEXT: &str = "Pick a tag, a label or a symbol.";
 const FREE_TEXT: &str = "That is free text; erase it to remove it.";

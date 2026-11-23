@@ -212,10 +212,10 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
 }
 
 /// The height the cable look is laid out for (label spacing, box pitch and padding, flags, and the
-/// width [`stroke_label_width`] measures): the `CableText` text style's, in drawing units
+/// width measured in the stroke font): the `CableText` text style's, in drawing units
 /// (the cable look never has a text size of its own).
 pub fn label_height(doc: &ecad_model::Document) -> f64 {
-    crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::CableText).height
+    crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::CableText).height
 }
 
 /// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).
@@ -296,13 +296,6 @@ pub const OUT_OF_RANGE: &str = "Point out of range.";
 /// Most lines a hover description shows.
 pub const MAX_HOVER_LINES: usize = 12;
 
-/// The width of `text` in the stroke font at height `h` ([`label_height`]), as the cable look
-/// measures it (`draw::font_width` with CADCraft's fonts); 0 when not finite.
-pub(crate) fn stroke_label_width(text: &str, h: f64, m: &dyn crate::styles::text_style::fonts::TextMetrics) -> f64 {
-    let w = m.width(m.stroke_font(), text, h);
-    if w.is_finite() && w >= 0.0 { w } else { 0.0 }
-}
-
 /// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
 /// pick of the marker hits (the pick-first rule; `draw::marker_box`).
 pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
@@ -346,7 +339,7 @@ pub struct Row {
 pub enum RowKind {
     Value,
     /// The visibility of one kind of text (the Texts group), shown on the Layout tab.
-    Text(crate::styles::text_style::TextKind),
+    Text(ecad_model::look::TextKind),
 }
 
 impl Row {

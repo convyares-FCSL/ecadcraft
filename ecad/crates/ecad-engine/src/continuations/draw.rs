@@ -5,19 +5,19 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{Document, PageId};
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 use {ecad_electrical::references::devices::places::Places, ecad_electrical::references::devices::table::Part};
 
 /// The parts drawn on `page`: each arrow's reference text and each caption run, laid out with
 /// CADCraft's fonts ([`ecad_electrical::continuations::parts_on_page_measured`]).
 pub fn parts_on_page(doc: &Document, places: &mut Places<'_>, page: PageId) -> Vec<Part> {
-    ecad_electrical::continuations::parts_on_page_measured(doc, places, page, &EngineMetrics)
+    ecad_electrical::continuations::parts_on_page_measured(doc, places, page, &LOOK)
 }
 
 /// What the arrows named `names` show, by page, laid out with CADCraft's fonts
 /// ([`ecad_electrical::continuations::shown_measured`]).
 pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) -> BTreeMap<PageId, Vec<Part>> {
-    ecad_electrical::continuations::shown_measured(doc, places, names, &EngineMetrics)
+    ecad_electrical::continuations::shown_measured(doc, places, names, &LOOK)
 }
 
 /// Colour a drawn continuation part (canvas colours): an
@@ -47,7 +47,7 @@ mod tests {
             rep: RepresentationId(7),
             index: 0,
             shape: Shape::Text {
-                kind: ecad_electrical::styles::text_style::TextKind::Reference,
+                kind: ecad_model::look::TextKind::Reference,
                 at: Pt::new(1.0, 2.0),
                 value: "100-B-3".into(),
                 height: 2.5,
@@ -71,7 +71,7 @@ mod tests {
             ecad_electrical::devices::TAG_LAYER,
         );
         // And in the Reference text style, as every reference text.
-        crate::styles::draw::DrawApply::apply(&draw.0, &mut before, ecad_electrical::styles::text_style::TextKind::Reference);
+        crate::styles::draw::DrawApply::apply(&draw.0, &mut before, ecad_model::look::TextKind::Reference);
         assert_eq!(format!("{:?}", crate::project::device_reference_entity(&draw, &part, h)), format!("{before:?}"));
     }
 }

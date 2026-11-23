@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 
 use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject};
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 
 /// The cable reference end at `p` on `page` within `radius`, measuring flags with CADCraft's fonts
 /// ([`ecad_electrical::references::cables::reference_at_measured`]).
 pub fn reference_at(doc: &ecad_model::Document, page: PageId, p: Pt, radius: f64) -> Option<RepresentationId> {
-    ecad_electrical::references::cables::reference_at_measured(doc, page, p, radius, &EngineMetrics)
+    ecad_electrical::references::cables::reference_at_measured(doc, page, p, radius, &LOOK)
 }
 
 /// `cableslash` with an existing cable's tag:

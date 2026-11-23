@@ -65,7 +65,7 @@ fn checks(h: &mut H, kind: &str) -> Vec<Value> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     for article in [false, true] {
         for nested in [false, true] {

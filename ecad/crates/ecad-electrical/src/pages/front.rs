@@ -23,7 +23,7 @@ use ecad_model::{DefinitionId, Document, ItemKind, ObjectRef, Op, StyleRef};
 
 use crate::CmdError;
 use crate::pages::frames::FrameInput;
-use crate::styles::text_style::TextKind;
+use ecad_model::look::TextKind;
 
 /// The project property holding the cover's notes, and its bounds: at most
 /// [`MAX_NOTES`] of [`MAX_NOTE_CHARS`] characters.

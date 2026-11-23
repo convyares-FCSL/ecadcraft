@@ -245,7 +245,7 @@ impl Generic for ContactsParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        Ok(Outcome::answer(devices::read::contacts_json_measured(cx.doc, self.component, cx.metrics)?))
+        Ok(Outcome::answer(devices::read::contacts_json_measured(cx.doc, self.component, cx.look)?))
     }
 }
 

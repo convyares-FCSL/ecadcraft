@@ -37,8 +37,9 @@ use crate::references::devices::classify::Group;
 use crate::references::devices::index::RefIndex;
 use crate::references::devices::places::Places;
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
-use crate::styles::text_style::fonts::TextMetrics;
-use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
+use crate::styles::text_style::{TextTarget, text_shown, text_style};
+use ecad_model::look::TextKind;
+use ecad_model::look::TextLook;
 use ecad_model::registry::Scope;
 
 /// The `setprop` key of a continuation's name.
@@ -289,22 +290,18 @@ pub(crate) fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
 struct Cache<'m> {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
-    /// The text styles and fonts, resolved on the first measurement (only caption runs measure).
-    draw: Option<crate::styles::text_style::fonts::DrawStyles>,
     /// What measures the texts.
-    m: &'m dyn TextMetrics,
+    m: &'m dyn TextLook,
 }
 
 impl<'m> Cache<'m> {
-    fn new(doc: &Document, m: &'m dyn TextMetrics) -> Cache<'m> {
-        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), draw: None, m }
+    fn new(doc: &Document, m: &'m dyn TextLook) -> Cache<'m> {
+        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), m }
     }
 
-    /// The width of `value` in `kind`'s style, with the fonts resolved once per derivation.
+    /// The width of `value` in `kind`'s style.
     fn width(&mut self, doc: &Document, kind: TextKind, value: &str) -> f64 {
-        let m = self.m;
-        let draw = self.draw.get_or_insert_with(|| crate::styles::text_style::fonts::DrawStyles::with(doc, m));
-        crate::styles::text_style::fonts::width_in(draw.fonts_for(kind), draw.style(kind), value, m)
+        self.m.text_width(doc, kind, value)
     }
 
     fn ends(&mut self, doc: &Document, places: &mut Places<'_>, key: &str) -> &[End] {
@@ -458,7 +455,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
 
 /// Every continuation part drawn on `page`: each arrow's reference text, then
 /// each caption run's bracket and caption. O(the page's arrows and their names' arrows).
-pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn TextLook) -> Vec<Part> {
     let arrows = arrows_on(doc, page);
     if arrows.is_empty() {
         return Vec::new();
@@ -483,7 +480,7 @@ fn page_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, pa
 
 /// What the arrows of names `names` show, by page: their reference texts, and every caption run
 /// part on a page that holds one of them. For comparing before and after a commit.
-pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
+pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>, m: &dyn TextLook) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     if names.is_empty() {
         return out;
@@ -598,7 +595,8 @@ pub(crate) fn is_wide_key(key: &str) -> bool {
 /// Whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
 pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
-    use crate::styles::text_style::{TextKind, style_of};
+    use crate::styles::text_style::style_of;
+    use ecad_model::look::TextKind;
     let at = ecad_model::registry::Scope::project();
     catalogue == ecad_model::StyleCatalogue::Text
         && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))

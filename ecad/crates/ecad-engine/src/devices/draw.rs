@@ -6,7 +6,7 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 
-use crate::styles::draw::{DrawApply as _, EngineMetrics};
+use crate::styles::draw::{DrawApply as _, LOOK};
 use ecad_electrical::symbols::Starter;
 use {
     ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::prefix_for, ecad_electrical::devices::texts::DerivedText,
@@ -17,19 +17,19 @@ use {
 /// measured with CADCraft's fonts
 /// ([`ecad_electrical::devices::texts::all_texts_measured`]).
 pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&ecad_electrical::plc::kept::Plc>) -> Vec<PageText> {
-    ecad_electrical::devices::texts::all_texts_measured(doc, page, plc, &EngineMetrics)
+    ecad_electrical::devices::texts::all_texts_measured(doc, page, plc, &LOOK)
 }
 
 /// Every derived text shown on `page` (what the page draws and prints), measured with CADCraft's
 /// fonts ([`ecad_electrical::devices::texts::texts_on_page_measured`]).
 pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
-    ecad_electrical::devices::texts::texts_on_page_measured(doc, page, &EngineMetrics)
+    ecad_electrical::devices::texts::texts_on_page_measured(doc, page, &LOOK)
 }
 
 /// The lens of device `c` hovered through its representation `here`, measured
 /// with CADCraft's fonts ([`ecad_electrical::devices::hover::hover_lines_measured`]).
 pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
-    ecad_electrical::devices::hover::hover_lines_measured(doc, c, here, &EngineMetrics)
+    ecad_electrical::devices::hover::hover_lines_measured(doc, c, here, &LOOK)
 }
 
 /// Every derived text on `page`, shown or hidden: for each symbol representation of a component,

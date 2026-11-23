@@ -461,10 +461,10 @@ pub(crate) fn channel_texts(
     let rotated =
         ecad_model::registry::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors::anchors(s);
-    let label = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::PointLabel).height;
+    let label = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::PointLabel).height;
     // The two text styles of their own.
-    let addr_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Address).height;
-    let desc_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::ChannelText).height;
+    let addr_h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Address).height;
+    let desc_h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::ChannelText).height;
     // A cell at 180° keeps its texts upright and in their bands.
     let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();

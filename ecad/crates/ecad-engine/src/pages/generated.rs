@@ -11,7 +11,7 @@ use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::pages::generated::*;
 use ecad_electrical::reports::kept::ReportModels;
-use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 
 /// Draws in paper millimetres, sheet origin at `x0`.
 pub struct Draw {

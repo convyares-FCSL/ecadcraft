@@ -23,7 +23,7 @@ pub(crate) const MAX_ALSO: usize = 4;
 /// The lens of device `c` hovered through its representation `here`.
 ///
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
-pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
+pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextLook) -> Vec<String> {
     let device = doc.devices().get(&c).cloned().unwrap_or_default();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
     let head = match device.tag_shown() {
@@ -115,6 +115,6 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
 }
 
 /// The kind a derived text is; a box label (not a symbol's text) is a location label.
-pub fn derived_text_kind(of: TextOf, symbol: bool) -> crate::styles::text_style::TextKind {
-    if symbol { kind_of(of) } else { crate::styles::text_style::TextKind::LocationLabel }
+pub fn derived_text_kind(of: TextOf, symbol: bool) -> ecad_model::look::TextKind {
+    if symbol { kind_of(of) } else { ecad_model::look::TextKind::LocationLabel }
 }

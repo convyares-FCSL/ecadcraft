@@ -139,6 +139,7 @@ fn commit<P: Generic>(
             derived: &mut proj.derived,
             off_release_line,
             metrics: &crate::styles::draw::EngineMetrics,
+            look: &crate::styles::draw::LOOK,
             read,
             state,
         };

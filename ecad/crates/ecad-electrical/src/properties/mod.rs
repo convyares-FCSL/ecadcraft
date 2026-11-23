@@ -768,7 +768,7 @@ fn shown_words(w: &str) -> &'static str {
 /// level has no value of its own. Row keys are `text.<kind>.show` (device, page) and
 /// `text.<rep>.<kind>.show` (symbol); [`edit_line`] writes them with `showtext`.
 fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
-    use crate::styles::text_style::TextKind;
+    use ecad_model::look::TextKind;
     let kinds: &[TextKind] = match at {
         TextsAt::Page(_) => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber, TextKind::ContinuationName],
         _ => &[TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber],
@@ -778,7 +778,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         _ => "Texts",
     };
     for kind in kinds {
-        let Some(entry) = kind.show_entry() else { continue };
+        let Some(entry) = crate::styles::text_style::show_entry(*kind) else { continue };
         let (key, own, inherited) = match at {
             TextsAt::Device(c) => {
                 let own = doc.devices().get(&c).and_then(|x| x.properties.get(entry.key)).cloned();
@@ -818,7 +818,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    <crate::styles::text_style::TextKind as ecad_model::Word>::parse(kind)?;
+    <ecad_model::look::TextKind as ecad_model::Word>::parse(kind)?;
     let show = value.and_then(crate::styles::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {

@@ -434,7 +434,7 @@ impl Generic for ChecksParams {
         let after = self.after.unwrap_or(0);
         // The project's kept report models (built on first use, then kept from each change).
         let reports = cx.derived.reports(cx.doc);
-        let rows: Vec<_> = crate::checks::all_measured(cx.doc, cx.tolerance, reports, cx.metrics)
+        let rows: Vec<_> = crate::checks::all_measured(cx.doc, cx.tolerance, reports, cx.look)
             .into_iter()
             .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))
             .collect();

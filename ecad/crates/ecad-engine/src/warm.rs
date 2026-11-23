@@ -4,7 +4,7 @@
 //!
 //! # Semantics
 //! - **Read, copy, release.** [`Warm::pump`] runs inside the caller's one project call: it copies
-//!   the document, the text metrics and the tolerance, starts the builds on the pool and returns.
+//!   the document, the text look and the tolerance, starts the builds on the pool and returns.
 //!   Nothing is computed under the project lock.
 //! - **Applied on a later frame.** Each call to [`Warm::pump`] first installs the builds that
 //!   finished for the state the project is in now, and says whether both views are kept.
@@ -98,14 +98,14 @@ impl Warm {
         }
         self.asked = Some(Asked { at: now, epoch });
         let doc = p.ledger.document().clone();
-        let metrics = p.derived().metrics();
+        let look = p.derived().look();
         if !have_reports {
-            let (doc, metrics) = (doc.clone(), metrics.clone());
-            self.jobs.spawn(now, move || Built::Reports(epoch, Box::new(ReportsView::build(&doc, &*metrics))));
+            let (doc, look) = (doc.clone(), look.clone());
+            self.jobs.spawn(now, move || Built::Reports(epoch, Box::new(ReportsView::build(&doc, &*look))));
         }
         if !have_checks {
             let tol = p.tolerance;
-            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*metrics))));
+            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*look))));
         }
         false
     }

@@ -188,7 +188,7 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::views::Views {
 ///
 /// [`Views::detached`]: ecad_electrical::views::Views::detached
 pub fn engine_views() -> ecad_electrical::views::Views {
-    ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { metrics: Arc::new(crate::styles::draw::EngineMetrics) })
+    ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: Arc::new(crate::styles::draw::LOOK) })
 }
 
 /// A new project's first page: titled and numbered `1`.
@@ -240,7 +240,7 @@ fn cables_layer() -> CLayer {
 /// one cable text.
 pub(crate) fn part_entity(draw: &crate::styles::draw::DrawStyles, part: &ecad_electrical::cables::layout::Part, handle: Handle) -> Entity {
     use ecad_electrical::cables::layout::{Role, Shape, Weight};
-    use ecad_electrical::styles::text_style::TextKind;
+    use ecad_model::look::TextKind;
     let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
@@ -360,7 +360,7 @@ fn placeholder_drawing() -> Drawing {
     let mut d = base_drawing();
     let handle = d.new_handle();
     // The built-in `Free` text style; the page could not be read.
-    let free = ecad_electrical::styles::text_style::text_style(&ecad_model::Document::default(), ecad_electrical::styles::text_style::TextKind::Free);
+    let free = ecad_electrical::styles::text_style::text_style(&ecad_model::Document::default(), ecad_model::look::TextKind::Free);
     let text = Text {
         insert: cadcraft_engine::geom::Vec3::new(0.0, 0.0, 0.0),
         align_pt: None,

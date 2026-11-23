@@ -23,9 +23,10 @@ use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
 
 use crate::plc::rack::{self, CardType};
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
-use crate::styles::text_style::fonts::{self, TextMetrics};
-use crate::styles::text_style::{TextKind, text_style};
+use crate::styles::text_style::text_style;
 use crate::symbols::cells::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
+use ecad_model::look::TextKind;
+use ecad_model::look::TextLook;
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
@@ -240,7 +241,7 @@ pub(crate) fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
 
 /// Every frame part on `page`, its texts measured with `m` (ecad-engine's
 /// `parts_on_page` passes CADCraft's fonts).
-pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<Part> {
     let mut out = Vec::new();
     for run in runs_on_page(doc, page) {
         frame_parts(doc, &run, m, &mut out);
@@ -248,7 +249,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
     out
 }
 
-fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Part>) {
+fn frame_parts(doc: &Document, run: &Run, m: &dyn TextLook, out: &mut Vec<Part>) {
     let c = run.card;
     let Some(ty) = crate::plc::card_type_of(doc, c) else { return };
     let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
@@ -261,8 +262,8 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Par
     let depth = HEADER_BAND + MARK_BAND + band;
     let bottom = run.top + run.dir * depth;
     // Wide enough for the name block and the type text.
-    let block_w = lines.iter().map(|(t, k)| fonts::text_width(doc, *k, t, m)).fold(0.0, f64::max);
-    let type_w = fonts::text_width(doc, TextKind::PartNumber, &ttext, m);
+    let block_w = lines.iter().map(|(t, k)| m.text_width(doc, *k, t)).fold(0.0, f64::max);
+    let type_w = m.text_width(doc, TextKind::PartNumber, &ttext);
     let need = block_w + type_w + 3.0 * INSET_X;
     let (l, mut r) = (run.left, run.right);
     let widened = r - l < need;
@@ -481,7 +482,7 @@ pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut V
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
 pub(crate) fn wide_checks(
-    doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextMetrics, out: &mut Vec<crate::checks::Check>,
+    doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextLook, out: &mut Vec<crate::checks::Check>,
 ) {
     let pin = text_style(doc, TextKind::PointLabel).height;
     let addr_h = text_style(doc, TextKind::Address).height;
@@ -495,7 +496,7 @@ pub(crate) fn wide_checks(
             } else {
                 continue;
             };
-            let wide = (first..=last).take(256).any(|i| address(i).is_some_and(|a| fonts::text_width(doc, TextKind::Address, &a, m) > cell_w - 2.0));
+            let wide = (first..=last).take(256).any(|i| address(i).is_some_and(|a| m.text_width(doc, TextKind::Address, &a) > cell_w - 2.0));
             if !(wide || deep) {
                 continue;
             }

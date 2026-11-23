@@ -71,8 +71,7 @@ impl F {
     }
 
     fn same_as_built(&mut self) {
-        let (kept, built) =
-            self.h.cfg(|p| (p.reports().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
+        let (kept, built) = self.h.cfg(|p| (p.reports().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
         assert_eq!(kept.terminal_block_table(None), built.terminal_block_table(None));

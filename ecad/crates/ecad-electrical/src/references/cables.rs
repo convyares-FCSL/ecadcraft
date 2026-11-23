@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 
 pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 
-use crate::styles::text_style::fonts::TextMetrics;
+use ecad_model::look::TextLook;
 
 /// `ecad.reference`: ACI 6, magenta (the colour of `ECAD-CABLES`, so a linked text is ByLayer).
 pub const REFERENCE_ACI: u8 = 6;
@@ -62,10 +62,7 @@ pub fn sizes(doc: &Document) -> Sizes {
         LengthUnit::Inch => 1.0 / 25.4,
     };
     // Reference text is the `Reference` text style, already in drawing units.
-    Sizes {
-        text_height: crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Reference).height,
-        spacing: STUB_SPACING_MM * k,
-    }
+    Sizes { text_height: crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Reference).height, spacing: STUB_SPACING_MM * k }
 }
 
 /// Whether `r` is a cable reference end.
@@ -204,7 +201,7 @@ pub(crate) fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Op
 /// starts exactly on its reference point and would otherwise win the pick.
 ///
 /// `m` measures the flag's text (the C wrapper `reference_at` passes CADCraft's fonts).
-pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m: &dyn TextMetrics) -> Option<RepresentationId> {
+pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m: &dyn TextLook) -> Option<RepresentationId> {
     if !(p.is_finite() && radius.is_finite() && radius >= 0.0) {
         return None;
     }
@@ -219,10 +216,10 @@ pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m
 }
 
 /// Whether `p` lies in a marker's box (the flag) grown by `pad`.
-fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics) -> bool {
+fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, look: &dyn TextLook) -> bool {
     // Draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
-    let w = crate::cables::words::stroke_label_width(&crate::cables::words::shorten(&m.text, 64), h, metrics);
+    let w = look.stroke_width(&crate::cables::words::shorten(&m.text, 64), h);
     let (lo, hi) = crate::cables::words::flag_box(m.at, w, crate::cables::words::FlagSide::away(m.text_dir), h);
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }

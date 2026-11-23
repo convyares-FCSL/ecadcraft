@@ -11,7 +11,7 @@ pub fn label_entity(
     draw: &crate::styles::draw::DrawStyles, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
     use cadcraft_engine::doc::{HAlign, VAlign};
-    use ecad_electrical::styles::text_style::TextKind;
+    use ecad_model::look::TextKind;
     let h = draw.style(TextKind::LocationLabel).height;
     let mut e = crate::devices::draw::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
     draw.apply(&mut e, TextKind::LocationLabel);
@@ -23,7 +23,7 @@ pub fn label_entity(
 pub(crate) fn styled_label_entity(
     doc: &Document, draw: &crate::styles::draw::DrawStyles, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
-    use ecad_electrical::styles::text_style::TextKind;
+    use ecad_model::look::TextKind;
     let mut e = label_entity(draw, value, at, handle);
     let Some(c) = doc.representations().get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),

@@ -9,7 +9,7 @@ use crate::pages::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
 use ecad_electrical::plc::overview::{self, Square, Tile, TileKind};
 use ecad_electrical::plc::sheets::*;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::row_mm};
-use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 use {ecad_electrical::plc::iolist, ecad_electrical::plc::kept::Plc};
 
 /// Sheet `i` of the I/O list page.

@@ -11,6 +11,7 @@
 //! - [`connectivity`]: nets, kept up to date by every op; wire order, wire numbers, potentials and labels.
 //! - [`naming`]: ids, tags, prefixes, numbering, property keys, words and checked text.
 //! - [`geometry`]: points, units, colours and connection point names.
+//! - [`look`]: the kinds of text and the [`look::TextLook`] trait the rules ask how a text looks through.
 //! - [`merge`]: the three-way merge of two branches' states.
 //! - [`error`]: the crate's error type.
 //!
@@ -24,6 +25,7 @@ mod dev;
 pub mod document;
 pub mod error;
 pub mod geometry;
+pub mod look;
 pub mod merge;
 pub mod naming;
 pub mod objects;

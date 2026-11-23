@@ -9,7 +9,8 @@ use ecad_model::document::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
 use crate::styles::text_style::fonts::{DrawStyles, TextMetrics};
-use crate::styles::text_style::{TextKind, Weight};
+use ecad_model::look::TextKind;
+use ecad_model::objects::styles::text::Weight;
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
 pub const LAYER: &str = "ECAD-FRAME";

@@ -808,7 +808,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
         let kept = p.checks().sorted(&doc);
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let row = p.reports().cable_row(k).cloned();
-        let fresh = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics).cable_row(k).cloned();
+        let fresh = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK).cable_row(k).cloned();
         (kept, built, row, fresh)
     });
     assert!(kept == built, "kept checks equal a rebuild");
@@ -834,7 +834,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
         let built = ecad_engine::project::engine_views().checks(&doc, tol).sorted(&doc);
         let o = p.reports();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
-        let f = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+        let f = ecad_electrical::reports::kept::ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK);
         let fresh = (f.cable_row(k).cloned(), f.cable_row(k2).cloned(), f.cable_count());
         (kept, built, rows, fresh)
     });

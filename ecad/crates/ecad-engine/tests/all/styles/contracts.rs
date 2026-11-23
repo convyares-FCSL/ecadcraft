@@ -12,7 +12,7 @@ use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::registry::{Scope, Source};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
-use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::text_style};
+use {ecad_electrical::styles::text_style::text_style, ecad_model::look::TextKind};
 
 const SEED: u64 = 50;
 

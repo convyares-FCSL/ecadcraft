@@ -17,8 +17,8 @@ use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 
 use crate::checks::Scope;
 use crate::checks::kept::Checks;
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::views::Inputs;
+use ecad_model::look::TextLook;
 
 /// The kept Checks list, with the tolerance it was built with.
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub struct ChecksView {
 
 impl ChecksView {
     /// The whole list, from scratch (first show), with tolerance `tol` and text measured in `m`.
-    pub fn build(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
+    pub fn build(doc: &Document, tol: f64, m: &dyn TextLook) -> Self {
         ChecksView { model: Checks::build_with(doc, tol, m), tol }
     }
 
@@ -80,7 +80,7 @@ impl<'i> DerivedView<Inputs<'i>> for ChecksView {
     fn update(&mut self, doc: &Document, scope: ChecksScope, cx: &Inputs<'i>) -> Outcome {
         let ChecksScope { scope, begun } = scope;
         if begun {
-            self.model.update(doc, scope, self.tol, &*cx.engine.metrics);
+            self.model.update(doc, scope, self.tol, &*cx.engine.look);
         }
         Outcome::default()
     }

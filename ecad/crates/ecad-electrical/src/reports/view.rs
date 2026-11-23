@@ -29,9 +29,9 @@ use ecad_model::{Document, PageId};
 use crate::pages::generated;
 use crate::plc::sheets::RackPlaces;
 use crate::reports::kept::{Noted, ReportModels};
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::views::Inputs;
 use ecad_model::GenKind;
+use ecad_model::look::TextLook;
 
 /// The kept report models.
 #[derive(Debug)]
@@ -41,7 +41,7 @@ pub struct ReportsView {
 
 impl ReportsView {
     /// Every model, from scratch (first show), with text measured in `m`.
-    pub fn build(doc: &Document, m: &dyn TextMetrics) -> Self {
+    pub fn build(doc: &Document, m: &dyn TextLook) -> Self {
         ReportsView { model: ReportModels::build_with(doc, m) }
     }
 
@@ -114,11 +114,11 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
         if !begun {
             return Outcome::default();
         }
-        let metrics = &*cx.engine.metrics;
+        let look = &*cx.engine.look;
         // The terminal plan and cable schedule pages count their sheets from the strip
         // and cable rows; only the pages drawn from the models can change their sheet count here.
         let (before, revision) = (self.sheets(doc), self.model.revision);
-        self.model.update(doc, noted, metrics);
+        self.model.update(doc, noted, look);
         // The rack sheet prints each card's place.
         let places_moved = places.touched(doc, &self.model.plc);
         let mut problems = Vec::new();

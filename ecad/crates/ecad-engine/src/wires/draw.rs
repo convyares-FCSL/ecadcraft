@@ -6,14 +6,14 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAl
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
-use crate::styles::draw::{DrawApply as _, EngineMetrics};
+use crate::styles::draw::{DrawApply as _, LOOK};
 use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::labels::WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
 /// members' routes and their labels are not shown), measured with
 /// CADCraft's fonts ([`ecad_electrical::wires::labels::labels_measured`]).
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &EngineMetrics)
+    ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &LOOK)
 }
 
 /// Draw the page's wires and cores in their colour codes: the route entity
@@ -136,8 +136,8 @@ pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handl
         }),
     };
     match &l.own {
-        Some(o) => draw.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
-        None => draw.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel),
+        Some(o) => draw.apply_own(&mut e, ecad_model::look::TextKind::WireLabel, o),
+        None => draw.apply(&mut e, ecad_model::look::TextKind::WireLabel),
     }
     // An error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {

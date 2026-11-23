@@ -200,7 +200,7 @@ fn a_moved_tag_survives_save_and_reopen() {
 #[test]
 fn apply_styles_an_entity_like_the_page_does() {
     use cadcraft_engine::doc::{Entity, EntityKind, HAlign, Handle, Lineweight, VAlign};
-    use ecad_electrical::styles::text_style::TextKind;
+    use ecad_model::look::TextKind;
     let mut doc = ecad_model::Document::default();
     let mut e: Entity = ecad_engine::devices::draw::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
     ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Tag);

@@ -4,7 +4,7 @@
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::Value;
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 use {
     ecad_electrical::references::devices::classify::Device, ecad_electrical::references::devices::places::Places,
     ecad_electrical::references::devices::table::HAlign, ecad_electrical::references::devices::table::Part,
@@ -33,13 +33,13 @@ pub(crate) fn engine_valign(v: VAlign) -> cadcraft_engine::doc::VAlign {
 /// The table under device `dev`'s head, laid out with CADCraft's fonts
 /// ([`ecad_electrical::references::devices::table::table_measured`]).
 pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
-    ecad_electrical::references::devices::table::table_measured(doc, places, dev, &EngineMetrics)
+    ecad_electrical::references::devices::table::table_measured(doc, places, dev, &LOOK)
 }
 
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads, laid out with CADCraft's fonts ([`ecad_electrical::references::devices::table::parts_on_page_measured`]).
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
-    ecad_electrical::references::devices::table::parts_on_page_measured(doc, page, &EngineMetrics)
+    ecad_electrical::references::devices::table::parts_on_page_measured(doc, page, &LOOK)
 }
 
 /// `contacts {component}`'s result, its table laid out with CADCraft's fonts
@@ -48,7 +48,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
 /// # Errors
 /// Unknown component.
 pub fn contacts_json(doc: &Document, c: DeviceId) -> Result<Value, String> {
-    ecad_electrical::references::devices::read::contacts_json_measured(doc, c, &EngineMetrics).map_err(String::from)
+    ecad_electrical::references::devices::read::contacts_json_measured(doc, c, &LOOK).map_err(String::from)
 }
 
 /// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.

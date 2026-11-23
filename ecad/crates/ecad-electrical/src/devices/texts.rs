@@ -77,7 +77,8 @@ pub struct TagSizes {
 impl TagSizes {
     /// The sizes of `doc`.
     pub fn of(doc: &Document) -> TagSizes {
-        use crate::styles::text_style::{TextKind, text_style};
+        use crate::styles::text_style::text_style;
+        use ecad_model::look::TextKind;
         let tag = text_style(doc, TextKind::Tag).height;
         let factor = ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_GAP, ecad_model::registry::Scope::project()).number();
         TagSizes { tag, label: text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
@@ -85,8 +86,8 @@ impl TagSizes {
 }
 
 /// The kind of text a derived text is.
-pub fn kind_of(of: TextOf) -> crate::styles::text_style::TextKind {
-    use crate::styles::text_style::TextKind;
+pub fn kind_of(of: TextOf) -> ecad_model::look::TextKind {
+    use ecad_model::look::TextKind;
     match of {
         TextOf::Tag => TextKind::Tag,
         TextOf::ConnectionPoint(_) => TextKind::PointLabel,
@@ -141,7 +142,7 @@ pub fn texts_for(
 /// shown ones.
 ///
 /// `m` measures the texts (the C wrapper `texts_on_page` passes CADCraft's fonts).
-pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<DerivedText> {
+pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<DerivedText> {
     all_texts_measured(doc, page, None, m).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
 }
 
@@ -190,10 +191,10 @@ pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::tex
 /// for that representation. PLC addresses are read from the kept model `plc` when there is one,
 /// and `m` measures the texts (the C wrappers
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
-pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextMetrics) -> Vec<PageText> {
+pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextLook) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
-    use crate::styles::text_style::fonts::width_in;
-    use crate::styles::text_style::{Block, Shown, TextKind, TextTarget, text_shown, text_style};
+    use crate::styles::text_style::{Block, Shown, TextTarget, text_shown, text_style};
+    use ecad_model::look::TextKind;
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in connection_point_positions(doc, page) {
         // A pin pair shows its pin name once, beside the socket point.
@@ -215,7 +216,6 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     }
     let mut out = Vec::new();
     let sizes = TagSizes::of(doc);
-    let draw = crate::styles::text_style::fonts::DrawStyles::with(doc, m);
     let pitch = ecad_model::registry::resolve(doc, &crate::defaults::text::LINE_PITCH, ecad_model::registry::Scope::project()).number();
     let firsts = crate::styles::text_style::run_firsts(doc, page);
     // Location prefixes read this page's boxes once.
@@ -285,7 +285,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
                 (at, halign, valign, moved) = (p, h, v, true);
             }
             if labels_shown {
-                let w = width_in(draw.fonts_for(TextKind::PointLabel), crate::styles::text_style::TextStyle { height, ..label_style }, &value, m);
+                let w = m.width(doc, TextKind::PointLabel, ecad_model::look::TextStyle { height, ..label_style }, &value);
                 fixed.push(crate::styles::text_style::text_box(w, height, at, halign, valign));
             }
             out.push(PageText {
@@ -310,7 +310,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // A symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
-            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, &draw, m, &mut fixed));
+            out.extend(slot_texts(doc, c, rid, r, def, &pl, sizes, &shown, &mut boxes, m, &mut fixed));
             continue;
         }
         // The tag block: the tag, then the description and part number.
@@ -349,9 +349,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| {
-                width_in(draw.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m)
-            })
+            .map(|l| m.width(doc, kind_of(l.0), ecad_model::look::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
@@ -400,12 +398,11 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
-    shown: &dyn Fn(crate::styles::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache,
-    draw: &crate::styles::text_style::fonts::DrawStyles, m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
+    shown: &dyn Fn(ecad_model::look::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, m: &dyn TextLook, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
-    use crate::styles::text_style::fonts::width_in;
-    use crate::styles::text_style::{TextKind, text_style};
+    use crate::styles::text_style::text_style;
     use ecad_model::SlotText;
+    use ecad_model::look::TextKind;
     let device = doc.devices().get(&c);
     let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
@@ -445,7 +442,7 @@ fn slot_texts(
         }
         let (ha, va) = (h(slot.h), v(slot.v));
         if on {
-            let w = width_in(draw.fonts_for(kind), crate::styles::text_style::TextStyle { height, ..style }, &value, m);
+            let w = m.width(doc, kind, ecad_model::look::TextStyle { height, ..style }, &value);
             fixed.push(crate::styles::text_style::text_box(w, height, at, ha, va));
         }
         out.push(PageText {

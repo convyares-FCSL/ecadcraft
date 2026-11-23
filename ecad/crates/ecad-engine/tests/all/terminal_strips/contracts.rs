@@ -62,7 +62,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -354,7 +354,7 @@ fn terminal_block_plan_and_cable_schedule_pages() {
     let doc = t.h.doc();
     assert_eq!(ecad_electrical::pages::generated::kind_of(&doc, plan_page), Some(ecad_model::GenKind::TerminalBlocks));
     assert_eq!(ecad_electrical::pages::generated::strip_of(&doc, plan_page), Some(x1));
-    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+    let o = ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK);
     assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
     let parts = ecad_engine::pages::generated::parts_of(&doc, plan_page, Some(&o));
     assert!(parts.len() > 20, "the plan draws its table");
@@ -432,8 +432,7 @@ fn relabelling_wired_connection_points_by_remove_and_add_needs_no_new_op() {
     let d = t.h.doc();
     assert_eq!(d.connection_points()[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
-    let built =
-        Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::EngineMetrics), &ecad_electrical::reports::PageCx::of(&d));
+    let built = Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::LOOK), &ecad_electrical::reports::PageCx::of(&d));
     assert!(built.get(id(&v, "strip")).is_some());
 }
 
@@ -566,7 +565,7 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
         assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
     }
     let (kept, doc) = t.h.cfg(|p| (p.reports().clone(), p.ledger.document().clone()));
-    let built = ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics);
+    let built = ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK);
     for page in [plan_page, cables_page] {
         let s = |o: &ReportModels| ecad_electrical::pages::generated::sheets_of(&doc, page, Some(o));
         assert_eq!(s(&kept), s(&built));

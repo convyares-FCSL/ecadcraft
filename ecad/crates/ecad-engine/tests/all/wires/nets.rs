@@ -492,7 +492,7 @@ fn wire_labels_take_the_wire_label_text_style() {
     let (bold, width) = h.p(|p| {
         let doc = p.ledger.document();
         let l = ecad_engine::wires::draw::labels_on_page(doc, page);
-        let w = l.first().map(|x| ecad_engine::styles::draw::text_width(doc, ecad_electrical::styles::text_style::TextKind::WireLabel, &x.text));
+        let w = l.first().map(|x| ecad_engine::styles::draw::text_width(doc, ecad_model::look::TextKind::WireLabel, &x.text));
         (l, w)
     });
     let l = &bold[0];
@@ -569,7 +569,7 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
         p.reports();
         let doc = p.ledger.document();
         let kept = p.kept_reports().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
-        let rebuilt = ecad_electrical::reports::kept::ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
+        let rebuilt = ecad_electrical::reports::kept::ReportModels::build_with(doc, &ecad_engine::styles::draw::LOOK);
         let fresh: Vec<_> = rebuilt.cables().into_iter().cloned().collect();
         assert_eq!(kept, fresh, "{what}: cable rows differ from a rebuild");
     });

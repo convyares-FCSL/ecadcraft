@@ -446,7 +446,7 @@ fn same_reports_as_built(h: &mut H) {
     let (kept, built, kept_checks, built_checks) = h.cfg(|p| {
         let kept = p.reports().clone();
         let doc = p.ledger.document();
-        let built = ReportModels::build_with(doc, &ecad_engine::styles::draw::EngineMetrics);
+        let built = ReportModels::build_with(doc, &ecad_engine::styles::draw::LOOK);
         let kc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &kept).iter().map(|c| c.to_json(doc).to_string()).collect();
         let bc: Vec<String> = ecad_engine::checks::all_with(doc, p.tolerance, &built).iter().map(|c| c.to_json(doc).to_string()).collect();
         (kept, built, kc, bc)

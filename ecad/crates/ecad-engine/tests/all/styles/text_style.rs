@@ -6,10 +6,7 @@ use crate::common::{H, id};
 use cadcraft_engine::doc::{Entity, EntityKind, Lineweight};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
-use {
-    ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR,
-    ecad_electrical::styles::text_style::TextKind,
-};
+use {ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR, ecad_model::look::TextKind};
 
 const SEED: u64 = 31;
 

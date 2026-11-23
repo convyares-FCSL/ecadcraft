@@ -396,7 +396,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 t.parts.get(usize::try_from(i).ok()?)?.row
             });
             match row {
-                Some(i) => ecad_electrical::references::devices::read::row_lines(doc, c, i, &crate::styles::draw::EngineMetrics)?,
+                Some(i) => ecad_electrical::references::devices::read::row_lines(doc, c, i, &crate::styles::draw::LOOK)?,
                 None if ecad_electrical::references::devices::classify::device(doc, c).head == Some(r) => {
                     ecad_electrical::references::devices::read::head_lines(doc, c, r)
                 }

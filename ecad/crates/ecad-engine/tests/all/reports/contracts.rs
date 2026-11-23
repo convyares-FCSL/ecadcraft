@@ -35,7 +35,7 @@ fn s(v: &str) -> Option<String> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part));
@@ -312,11 +312,7 @@ fn generated_pages_follow_the_project_and_print() {
     h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
     assert_eq!(
-        ecad_electrical::pages::generated::sheets_of(
-            &doc,
-            bom_page,
-            Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))
-        ),
+        ecad_electrical::pages::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK))),
         2
     );
     let parts = ecad_engine::pages::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());

@@ -16,6 +16,8 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
 
 use crate::defaults::text as d;
+use ecad_model::look::{TextColour, TextKind, TextStyle};
+use ecad_model::objects::styles::text::Weight;
 use ecad_model::registry::{Entry, Scope};
 
 pub mod fonts;
@@ -29,33 +31,6 @@ pub const STYLE_BOLD: &str = "ECAD-BOLD";
 /// exempt, keeps it).
 pub const PLACEHOLDER_STYLE: &str = STYLE_REGULAR;
 
-/// One row of the style table, resolved for this project.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TextStyle {
-    /// Height in drawing units (mm, or inches in an inch project); always finite and in range.
-    pub height: f64,
-    pub weight: Weight,
-    /// The CADCraft text style an entity of this kind names: [`STYLE_REGULAR`] or [`STYLE_BOLD`],
-    /// or, for a kind with a font of its own (`text.<kind>.font`), `ECAD-<KIND>` /
-    /// `ECAD-<KIND>-BOLD` ([`kind_style_name`]). Setting only this name on an entity is not enough
-    /// for bold in the stroke-font fallback: use `apply`.
-    pub style_name: &'static str,
-    /// The style's colour, or `None` for ink. The engine draws it in its
-    /// colour on the sheet drawn on; a mono print prints ink regardless.
-    pub colour: Option<TextColour>,
-}
-
-/// A text style's colour, before the sheet is known: a colour of its own, or a colour
-/// code whose colour depends on the sheet (the engine turns it into a
-/// CADCraft colour when it draws, `draw::text_colour_rgb`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextColour {
-    /// `#RRGGBB`.
-    Rgb(u8, u8, u8),
-    /// A colour code: its first colour, an index into [`crate::cables::words::CODE_COLOURS`].
-    Code(usize),
-}
-
 /// A colour field's value as a [`TextColour`]: `None` for `none` (ink) and anything unknown.
 pub(crate) fn text_colour(value: &str) -> Option<TextColour> {
     let t = value.trim();
@@ -67,8 +42,6 @@ pub(crate) fn text_colour(value: &str) -> Option<TextColour> {
     }
     crate::cables::words::colour_code(t).map(|(first, _)| TextColour::Code(first))
 }
-
-pub use ecad_model::objects::styles::text::Weight;
 
 /// The CADCraft text style of a weight.
 pub(crate) trait WeightStyle {
@@ -85,115 +58,26 @@ impl WeightStyle for Weight {
     }
 }
 
-ecad_model::word_enum! {
-/// A kind of text: one row of the style table. Its word is the key word in
-/// `text.<word>.height` and the commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TextKind {
-    /// A device tag beside a symbol.
-    Tag,
-    /// A connection point label (`A1`, `13`, strip `1`).
-    PointLabel,
-    /// A device's description under its tag.
-    Description,
-    /// A device's part number under its tag.
-    PartNumber,
-    /// A continuation's name.
-    ContinuationName,
-    /// Cross-reference texts.
-    Reference,
-    /// A continuation caption.
-    ContinuationCaption,
-    /// Wire labels (height stored in `settings.wiring.label_height`).
-    WireLabel,
-    /// Cable look: core labels, wire numbers at the slash, label box lines.
-    CableText,
-    /// A location box's `+A1`.
-    #[strum(serialize = "location")]
-    LocationLabel,
-    /// Title block values.
-    TitleValue,
-    /// Title block box captions.
-    TitleCaption,
-    /// Project and page title in the title block.
-    TitleMain,
-    /// Frame column and row labels.
-    Grid,
-    /// Report table cells and contact-table rows.
-    Table,
-    /// Report column headers.
-    TableHeader,
-    /// Free text: its font only (a typed height is the user's).
-    Free,
-    /// The title block's page number box.
-    TitlePage,
-    /// The title block's revision box and pending marker.
-    TitleRev,
-    /// Location and strip headings, `(continued)`.
-    TableHeading,
-    /// Cover lines.
-    Cover,
-    /// A PLC channel's function, outside its card (`Pump 1 run`, `Spare`).
-    ChannelText,
-    /// A PLC channel's address inside its cell (`I0.3`).
-    Address,
-}
+/// The registry entry choosing `kind`'s text style (`text.<kind>.style`).
+pub fn style_entry(kind: TextKind) -> &'static Entry {
+    let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
+    crate::defaults::styles::TEXT.get(i).copied().unwrap_or(&crate::defaults::styles::TAG)
 }
 
-impl TextKind {
-    /// Every kind, in the order of the style table.
-    pub const ALL: [TextKind; 23] = [
-        TextKind::Tag,
-        TextKind::PointLabel,
-        TextKind::Description,
-        TextKind::PartNumber,
-        TextKind::ContinuationName,
-        TextKind::Reference,
-        TextKind::ContinuationCaption,
-        TextKind::WireLabel,
-        TextKind::CableText,
-        TextKind::LocationLabel,
-        TextKind::TitleValue,
-        TextKind::TitleCaption,
-        TextKind::TitleMain,
-        TextKind::Grid,
-        TextKind::Table,
-        TextKind::TableHeader,
-        TextKind::Free,
-        TextKind::TitlePage,
-        TextKind::TitleRev,
-        TextKind::TableHeading,
-        TextKind::Cover,
-        TextKind::ChannelText,
-        TextKind::Address,
-    ];
-
-    /// The registry entry choosing this kind's text style (`text.<kind>.style`).
-    pub fn style_entry(self) -> &'static Entry {
-        let i = TextKind::ALL.iter().position(|k| *k == self).unwrap_or(0);
-        crate::defaults::styles::TEXT.get(i).copied().unwrap_or(&crate::defaults::styles::TAG)
-    }
-
-    /// The built-in text style of this kind: its key word.
-    pub fn builtin_style(self) -> StyleRef {
-        StyleRef::Builtin(self.word().to_string())
-    }
-
-    /// The registry entry of this kind's visibility, for the kinds that have one;
-    /// `None` for kinds that are always shown.
-    pub fn show_entry(self) -> Option<&'static Entry> {
-        match self {
-            TextKind::Tag => Some(&d::TAG_SHOW),
-            TextKind::PointLabel => Some(&d::POINT_LABEL_SHOW),
-            TextKind::Description => Some(&d::DESCRIPTION_SHOW),
-            TextKind::PartNumber => Some(&d::PART_NUMBER_SHOW),
-            TextKind::ContinuationName => Some(&d::CONTINUATION_NAME_SHOW),
-            TextKind::Reference => Some(&d::REFERENCE_SHOW),
-            TextKind::ContinuationCaption => Some(&d::CONTINUATION_CAPTION_SHOW),
-            TextKind::LocationLabel => Some(&d::LOCATION_SHOW),
-            TextKind::WireLabel => Some(&d::WIRE_LABEL_SHOW),
-            _ => None,
-        }
+/// The registry entry of `kind`'s visibility, for the kinds that have one; `None` for kinds
+/// that are always shown.
+pub fn show_entry(kind: TextKind) -> Option<&'static Entry> {
+    match kind {
+        TextKind::Tag => Some(&d::TAG_SHOW),
+        TextKind::PointLabel => Some(&d::POINT_LABEL_SHOW),
+        TextKind::Description => Some(&d::DESCRIPTION_SHOW),
+        TextKind::PartNumber => Some(&d::PART_NUMBER_SHOW),
+        TextKind::ContinuationName => Some(&d::CONTINUATION_NAME_SHOW),
+        TextKind::Reference => Some(&d::REFERENCE_SHOW),
+        TextKind::ContinuationCaption => Some(&d::CONTINUATION_CAPTION_SHOW),
+        TextKind::LocationLabel => Some(&d::LOCATION_SHOW),
+        TextKind::WireLabel => Some(&d::WIRE_LABEL_SHOW),
+        _ => None,
     }
 }
 
@@ -213,7 +97,9 @@ pub fn is_reserved_key(key: &str) -> bool {
 /// # Example
 ///
 /// ```
-/// use ecad_electrical::styles::text_style::{text_style, TextKind, Weight};
+/// use ecad_electrical::styles::text_style::text_style;
+/// use ecad_model::look::TextKind;
+/// use ecad_model::objects::styles::text::Weight;
 /// let doc = ecad_model::Document::default();
 /// let tag = text_style(&doc, TextKind::Tag);
 /// assert_eq!((tag.height, tag.weight, tag.style_name), (2.5, Weight::Bold, "ECAD-BOLD"));
@@ -266,7 +152,7 @@ pub fn family_style_name(family: &str, weight: Weight) -> String {
 /// The own text style of `kind` that the object with `props` chooses (its `text.<kind>.style`),
 /// resolved at `at`; `None` when it has no valid choice of its own.
 pub(crate) fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::Properties) -> Option<OwnStyle> {
-    let e = kind.style_entry();
+    let e = crate::styles::text_style::style_entry(kind);
     props.get(e.key).and_then(|v| e.parse_in(doc, v))?;
     let style = text_style_at(doc, kind, at);
     let id = style_of(doc, kind, at);
@@ -316,7 +202,7 @@ fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
 
 /// The text style `kind` uses at `at`.
 pub fn style_of(doc: &Document, kind: TextKind, at: Scope) -> StyleRef {
-    ecad_model::registry::styles::chosen(doc, kind.style_entry(), at)
+    ecad_model::registry::styles::chosen(doc, crate::styles::text_style::style_entry(kind), at)
 }
 
 /// The CADCraft text styles of kinds with a font of their own: `ECAD-TAG`, `ECAD-TAG-BOLD`…, in
@@ -469,7 +355,7 @@ impl TextTarget {
 /// project's `text.tag.show.strip` / `.plc`; then the built-in. `First` is only ever returned for
 /// a tag. Kinds with no visibility entry are always `On`. Never fails.
 pub(crate) fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
-    let Some(entry) = kind.show_entry() else { return Shown::On };
+    let Some(entry) = crate::styles::text_style::show_entry(kind) else { return Shown::On };
     let r = ecad_model::registry::resolve(doc, entry, target.scope());
     if r.from == ecad_model::registry::Source::Builtin && kind == TextKind::Tag {
         let rule = match target.run {
@@ -1086,7 +972,7 @@ mod tests {
             let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
             assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
             assert_eq!(<TextKind as ecad_model::Word>::parse(kind.word()), Some(kind));
-            assert_eq!(kind.style_entry().key, format!("text.{}.style", kind.word()));
+            assert_eq!(crate::styles::text_style::style_entry(kind).key, format!("text.{}.style", kind.word()));
         }
     }
 

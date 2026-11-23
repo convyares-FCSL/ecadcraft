@@ -1,6 +1,6 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
-//! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
-//! `crate::views::ChecksView` keeps it, measuring with the engine's fonts.
+//! the title block) take the text look, [`ecad_model::look::TextLook`]; `crate::views::ChecksView`
+//! keeps the list, measuring with the look the engine supplies.
 
 use super::cables::{cable_checks_in, reference_checks};
 use super::devices::component_checks_in;
@@ -12,7 +12,7 @@ use ecad_model::naming::numbering::Places;
 use ecad_model::{Document, NetKey, PageId};
 
 use crate::checks::*;
-use crate::styles::text_style::fonts::TextMetrics;
+use ecad_model::look::TextLook;
 
 /// The kept Checks list (see the module docs).
 #[derive(Debug, Clone, Default)]
@@ -39,7 +39,7 @@ pub struct Checks {
 
 impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
-    pub fn build_with(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
+    pub fn build_with(doc: &Document, tol: f64, m: &dyn TextLook) -> Self {
         let mut ch = Checks { off: ecad_model::document::sheet::checks_off_pages(doc), ..Checks::default() };
         for r in doc.routes().keys() {
             ch.grid.insert(doc, *r);
@@ -177,7 +177,7 @@ impl Checks {
     /// Re-check the subjects in `scope` on `doc`, the state after the commit. `scope` holds what
     /// each of the commit's effects names on the state before and on the state after
     /// ([`Scope::note`]; `crate::views::ChecksView` notes them).
-    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn TextMetrics) {
+    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn TextLook) {
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m) };
             return;

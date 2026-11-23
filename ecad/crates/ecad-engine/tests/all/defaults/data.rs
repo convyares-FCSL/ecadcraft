@@ -433,11 +433,7 @@ fn contact_cross_references_follow_the_reference_style() {
         ecad_engine::references::draw::devices::parts_on_page(&doc, p2)
             .into_iter()
             .filter_map(|p| match p.shape {
-                ecad_electrical::references::devices::table::Shape::Text {
-                    kind: ecad_electrical::styles::text_style::TextKind::Reference,
-                    height,
-                    ..
-                } => Some(height),
+                ecad_electrical::references::devices::table::Shape::Text { kind: ecad_model::look::TextKind::Reference, height, .. } => Some(height),
                 _ => None,
             })
             .collect()

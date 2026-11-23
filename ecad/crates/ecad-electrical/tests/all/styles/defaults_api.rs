@@ -3,7 +3,7 @@
 use ecad_electrical::defaults::{self};
 use ecad_model::registry::Scope;
 use ecad_model::{Document, ObjectRef, Op};
-use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
+use {ecad_model::look::TextKind, ecad_model::look::TextStyle, ecad_model::objects::styles::text::Weight};
 
 const KINDS: &[(TextKind, f64, Weight)] = &[
     (TextKind::Tag, 2.5, Weight::Bold),

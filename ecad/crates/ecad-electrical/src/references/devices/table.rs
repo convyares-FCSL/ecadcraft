@@ -1,6 +1,6 @@
 //! The contact mirror table: rows, their states, the parts drawn, the table box and its placement.
 
-use crate::styles::text_style::fonts::TextMetrics;
+use ecad_model::look::TextLook;
 use ecad_model::objects::devices::PoleKind;
 use ecad_model::{DeviceId, Document, Form, LengthUnit, PageId, Pt, RepresentationId, Subject};
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,7 +10,7 @@ use super::parse::{OfferedPole, Placement, offer_of, placement_of};
 use super::places::Places;
 
 /// The text style of a contact's or a connector member's reference.
-const REF: crate::styles::text_style::TextKind = crate::styles::text_style::TextKind::Reference;
+const REF: ecad_model::look::TextKind = ecad_model::look::TextKind::Reference;
 
 /// The height of reference text in drawing units: the `Reference` text style's.
 fn ref_height(doc: &Document) -> f64 {
@@ -221,7 +221,7 @@ pub enum Shape {
     /// `kind` is the text style it is drawn in: its height is that style's, and the
     /// engine applies the style's font, weight and colour.
     Text {
-        kind: crate::styles::text_style::TextKind,
+        kind: ecad_model::look::TextKind,
         at: Pt,
         value: String,
         height: f64,
@@ -333,13 +333,10 @@ impl TableShown {
 
 /// The box of a table at `top` with `rows`: from −10 mm to 12 mm plus the widest
 /// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
-pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> (Pt, Pt) {
+pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextLook) -> (Pt, Pt) {
     let k = unit(doc);
     // The widest place text in the font and size it is drawn with (drawing units).
-    let widest = rows
-        .iter()
-        .map(|r| crate::styles::text_style::fonts::text_width(doc, crate::styles::text_style::TextKind::Table, &r.place, m))
-        .fold(0.0, f64::max);
+    let widest = rows.iter().map(|r| m.text_width(doc, ecad_model::look::TextKind::Table, &r.place)).fold(0.0, f64::max);
     let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
     let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
     (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
@@ -376,7 +373,7 @@ pub(crate) fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> b
 /// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
 /// the free area starts at its top. A table the user placed (`at`) is never moved.
 pub fn settle(
-    doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextMetrics,
+    doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextLook,
 ) -> (Pt, TableShown) {
     if matches!(placement, Placement::At(_) | Placement::Off) {
         return (top, TableShown::AsPlaced);
@@ -464,7 +461,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
 
 /// The table under device `dev`'s head, or `None`: no head, `off`, or neither
 /// children nor an offer.
-pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
+pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextLook) -> Option<Table> {
     let head = dev.head?;
     let offer = offer_of(doc, dev.component);
     if dev.children.is_empty() && offer.is_none() {
@@ -491,7 +488,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
     // Contact-table rows are table text.
-    let h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Table).height;
+    let h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
     for (i, r) in rows.iter().enumerate() {
@@ -505,7 +502,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
             State::Over => Some(OVER_ACI),
         };
         let text = |x: f64, value: &str, halign: HAlign| Shape::Text {
-            kind: crate::styles::text_style::TextKind::Table,
+            kind: ecad_model::look::TextKind::Table,
             at: at(x, y),
             value: value.to_string(),
             height: h,
@@ -583,7 +580,7 @@ pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: Device
 
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
-pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<Part> {
     let mut by_component: BTreeMap<DeviceId, Vec<RepresentationId>> = BTreeMap::new();
     for (rid, r) in doc.representations_on(page) {
         if let Subject::Device(c) = r.subject {
@@ -639,7 +636,7 @@ fn boxes_overlap(a: (Pt, Pt), b: (Pt, Pt)) -> bool {
 /// when it clears the tables before it, else moves right past them; when that leaves the free
 /// area, it goes under them instead, if that stays in the free area, else stays. Deterministic,
 /// and each table moves only for tables before it.
-pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextMetrics) {
+pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextLook) {
     let Some(page) = tables.first().map(|t| t.page) else { return };
     let free = free_area(doc, page);
     let gap = SPREAD_GAP_MM * unit(doc);
@@ -686,7 +683,7 @@ pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextMetrics) {
 
 /// Device `dev`'s table where its page draws it: `table`, then moved by [`spread`] with the other
 /// tables on its page. O(devices on that page); for replies, not per commit.
-pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextMetrics) -> Option<Table> {
+pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextLook) -> Option<Table> {
     let own = table_measured(doc, places, dev, m)?;
     let mut others: BTreeSet<DeviceId> = BTreeSet::new();
     for (_, r) in doc.representations_on(own.page) {
@@ -711,7 +708,7 @@ pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device,
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
-pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
+pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextLook) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     // A connector's references.
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {

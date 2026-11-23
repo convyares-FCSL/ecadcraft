@@ -1,7 +1,7 @@
 //! What a commit changes in the device references: the devices to compare and the texts to redraw.
 
-use crate::styles::text_style::fonts::TextMetrics;
 use ecad_model::document::effect::Effect;
+use ecad_model::look::TextLook;
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId, Representation, Subject};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -99,12 +99,7 @@ impl Scope {
             }
             // A change of the text style the table text uses (its height, weight).
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
-                if **id
-                    == crate::styles::text_style::style_of(
-                        doc,
-                        crate::styles::text_style::TextKind::Table,
-                        ecad_model::registry::Scope::project(),
-                    ) =>
+                if **id == crate::styles::text_style::style_of(doc, ecad_model::look::TextKind::Table, ecad_model::registry::Scope::project()) =>
             {
                 self.wide = true;
             }
@@ -283,7 +278,7 @@ impl Watch {
     /// state before the commit, with `idx` its index. `reuse` holds what the last commit derived,
     /// for the same `doc` (the caller keeps it only while the state is unchanged): a device found
     /// there is not derived again.
-    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn TextMetrics) {
+    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn TextLook) {
         self.scope.resolve(doc, idx);
         let scope = (!self.all_cables).then_some(&self.cable_scope);
         self.cables = Some(crate::references::cables::Snapshot::take(doc, scope));
@@ -324,7 +319,7 @@ impl Watch {
 
     /// After the After notes: `doc` is the state after the commit and `idx` its index, already
     /// brought up to date. Says what changed. A watch never taken compares nothing.
-    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn TextMetrics) -> Outcome {
+    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn TextLook) -> Outcome {
         let Some(cables) = self.cables.take() else { return Outcome::default() };
         if self.rebuild {
             self.scope.wide = true;

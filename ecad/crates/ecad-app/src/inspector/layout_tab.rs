@@ -5,7 +5,7 @@
 //! to what is selected, folded the same way.
 
 use ecad_electrical::styles::commands::defaults as default_cmds;
-use ecad_electrical::styles::text_style::TextKind;
+use ecad_model::look::TextKind;
 use ecad_model::registry::Source;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, pos2, vec2};
@@ -80,8 +80,8 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
     let text_rows: Vec<(TextKind, Option<usize>, Option<usize>)> = crate::inspector::SYMBOL_KINDS
         .iter()
         .map(|k| {
-            let style = insp.rows.iter().position(|r| r.key == k.style_entry().key);
-            let show = k.show_entry().and_then(|e| insp.rows.iter().position(|r| r.key == e.key));
+            let style = insp.rows.iter().position(|r| r.key == ecad_electrical::styles::text_style::style_entry(*k).key);
+            let show = ecad_electrical::styles::text_style::show_entry(*k).and_then(|e| insp.rows.iter().position(|r| r.key == e.key));
             (*k, style, show)
         })
         .collect();

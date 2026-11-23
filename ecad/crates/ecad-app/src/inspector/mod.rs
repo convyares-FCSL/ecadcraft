@@ -49,8 +49,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_electrical::defaults::{self};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
-use ecad_electrical::styles::text_style::TextKind;
 use ecad_engine::project::Mapped;
+use ecad_model::look::TextKind;
 use ecad_model::registry::{Entry, Kind, Level, Scope, Source};
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
@@ -702,8 +702,8 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             let mut es: Vec<&'static Entry> = Vec::new();
             // A Style row per text kind, chosen for the device.
             for k in SYMBOL_KINDS {
-                es.push(k.style_entry());
-                es.extend(k.show_entry());
+                es.push(ecad_electrical::styles::text_style::style_entry(k));
+                es.extend(ecad_electrical::styles::text_style::show_entry(k));
             }
             let starter = doc
                 .devices()

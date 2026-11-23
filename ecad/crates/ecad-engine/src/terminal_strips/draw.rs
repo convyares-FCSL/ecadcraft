@@ -23,7 +23,7 @@ use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
 use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
-use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
+use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
 /// Guard: at most this many cable bar lanes; further cables share the last.

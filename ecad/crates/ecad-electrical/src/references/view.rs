@@ -42,8 +42,8 @@ use ecad_model::{Document, Op};
 
 use crate::references::devices::index::RefIndex;
 use crate::references::devices::watch::{Shown, Watch};
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::views::Inputs;
+use ecad_model::look::TextLook;
 
 /// The references view: the kept index and what the last commit derived.
 #[derive(Debug, Default)]
@@ -83,7 +83,7 @@ impl ReferencesView {
 
     /// The end of the Before phase: derive what the noted devices, names and cables show on
     /// `before`. Changes nothing kept.
-    pub fn take(&self, before: &Document, scope: &mut ReferencesScope, m: &dyn TextMetrics) {
+    pub fn take(&self, before: &Document, scope: &mut ReferencesScope, m: &dyn TextLook) {
         scope.watch.take(before, &self.index, &self.shown, m);
     }
 
@@ -101,7 +101,7 @@ impl ReferencesView {
         let effects = ecad_model::document::effect::Effects::of(ops);
         let mut scope = ReferencesScope::default();
         crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: before, phase: Phase::Before, effects: &effects }, &mut scope);
-        self.take(before, &mut scope, &*inputs.engine.metrics);
+        self.take(before, &mut scope, &*inputs.engine.look);
         crate::views::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: after, phase: Phase::After, effects: &effects }, &mut scope);
         self.update(after, scope, inputs)
     }
@@ -122,7 +122,7 @@ impl<'i> DerivedView<Inputs<'i>> for ReferencesView {
         } else {
             scope.watch.refresh(doc, &mut self.index);
         }
-        let out = scope.watch.finish(doc, &self.index, &*cx.engine.metrics);
+        let out = scope.watch.finish(doc, &self.index, &*cx.engine.look);
         self.shown = out.shown;
         Outcome { pages: PageSet::from_option(out.pages), echo: out.orphaned.into_iter().collect(), problems: out.problems, ..Outcome::default() }
     }

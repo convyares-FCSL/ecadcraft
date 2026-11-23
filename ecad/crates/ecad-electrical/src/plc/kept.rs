@@ -1,6 +1,6 @@
 //! The kept PLC model, built from scratch after every commit (see [`super`]). The rules that measure text
-//! (an address wider than its cell) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
-//! `crate::plc::Plc` wraps this with today's signatures, passing CADCraft's fonts.
+//! (an address wider than its cell) take the text look, [`ecad_model::look::TextLook`], which the
+//! caller supplies.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,7 +9,7 @@ use ecad_model::{DeviceId, Document, ObjectRef};
 use serde_json::{Value, json};
 
 use crate::plc::*;
-use crate::styles::text_style::fonts::TextMetrics;
+use ecad_model::look::TextLook;
 
 /// What one commit's effects name for the I/O rows (a renamed target, a renumbered wire), noted
 /// effect by effect ([`Plc::note`]); the model itself is rebuilt.
@@ -57,7 +57,7 @@ impl PartialEq for Plc {
 
 impl Plc {
     /// The whole model, from scratch (open, reload, first show), with text measured in `m`.
-    pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> Plc {
+    pub fn build_with(doc: &Document, m: &dyn TextLook) -> Plc {
         let mut p = Plc::default();
         let all: Vec<DeviceId> = doc.tagged().map(|(_, c)| c).collect();
         let mut groups = BTreeSet::new();
@@ -180,7 +180,7 @@ impl Plc {
 
     /// Build the model again after `effects` (just committed; `doc` is the state after). Returns
     /// whether anything changed.
-    pub fn update_with(&mut self, doc: &Document, effects: &Effects<'_>, m: &dyn TextMetrics) -> bool {
+    pub fn update_with(&mut self, doc: &Document, effects: &Effects<'_>, m: &dyn TextLook) -> bool {
         let mut t = Touch::default();
         for effect in effects {
             self.note(doc, effect, &mut t);
@@ -191,7 +191,7 @@ impl Plc {
     /// Build the model again from scratch on `doc`, the state after, and work out what reads
     /// differently from the model before; `t` names the I/O rows the effects reach besides
     /// ([`Plc::note`]). Returns whether anything changed.
-    pub(crate) fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextMetrics) -> bool {
+    pub(crate) fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextLook) -> bool {
         let rebuilt = Plc::build_with(doc, m);
         let ids: BTreeSet<DeviceId> =
             self.cards.keys().chain(self.racks.keys()).chain(rebuilt.cards.keys()).chain(rebuilt.racks.keys()).copied().collect();
@@ -211,7 +211,7 @@ impl Plc {
     }
 
     /// Work out group `g`'s Checks rows; returns whether they changed.
-    fn set_checks(&mut self, doc: &Document, g: Group, m: &dyn TextMetrics) -> bool {
+    fn set_checks(&mut self, doc: &Document, g: Group, m: &dyn TextLook) -> bool {
         let mut moved = false;
         if self.racks.contains_key(&g) {
             let members: Vec<address::Member> = self.cards_of(g).into_iter().filter_map(|c| Some((c.id, c.ty, c.channels, c.slot?))).collect();
@@ -277,7 +277,7 @@ impl Plc {
         (rack.first..rack.first.saturating_add(rack.slots)).find(|s| !taken.contains(s))
     }
 
-    fn group_checks(&self, doc: &Document, g: Group, m: &dyn TextMetrics) -> Vec<Check> {
+    fn group_checks(&self, doc: &Document, g: Group, m: &dyn TextLook) -> Vec<Check> {
         let mut out = Vec::new();
         if let Some(card) = self.cards.get(&g) {
             self.channel_checks(doc, card, &mut out);

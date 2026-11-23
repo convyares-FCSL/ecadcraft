@@ -3,10 +3,10 @@
 
 use ecad_model::{Document, PageId};
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 use ecad_electrical::references::devices::table::Part;
 
 /// Every frame part on `page`: [`ecad_electrical::plc::draw::parts_on_page_measured`].
 pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
-    ecad_electrical::plc::draw::parts_on_page_measured(doc, page, &EngineMetrics)
+    ecad_electrical::plc::draw::parts_on_page_measured(doc, page, &LOOK)
 }

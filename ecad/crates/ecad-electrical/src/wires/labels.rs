@@ -136,17 +136,15 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// Every conductor label on `page` (one per route, of the wire it stands for ([`wire_of_route`]),
 /// on its longest segment) but
 /// those of the routes whose items are `hidden` (a cable drawn as a fan: its members' routes and
-/// their labels are not shown). `m` measures the labels (the C
-/// wrappers `labels_on_page` and `labels_on_page_with` pass CADCraft's fonts).
+/// their labels are not shown). `m` measures the labels.
 ///
 /// # Semantics
 /// Labels are placed in route order. Each takes the first place (`candidates`) where its box
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
-pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn TextMetrics) -> Vec<WireLabel> {
+pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn TextLook) -> Vec<WireLabel> {
     // The wire label height, weight and width through the text styles.
-    let style = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::WireLabel);
-    let fonts = crate::styles::text_style::fonts::Fonts::resolve_with(doc, m);
+    let style = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::WireLabel);
     let h = style.height;
     // Every route on the page (through the page index): (representation, wire, points).
     let mut routes: Vec<(RepresentationId, WireId, Vec<Pt>)> = Vec::new();
@@ -180,8 +178,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
             continue;
         };
         let target = crate::styles::text_style::TextTarget::conductor(*c, Some(page));
-        if crate::styles::text_style::text_shown(doc, target, crate::styles::text_style::TextKind::WireLabel) == crate::styles::text_style::Shown::Off
-        {
+        if crate::styles::text_style::text_shown(doc, target, ecad_model::look::TextKind::WireLabel) == crate::styles::text_style::Shown::Off {
             continue;
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
@@ -210,7 +207,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         // A conductor's own wire label style (height, weight, colour, font).
         let own = doc.wires().get(c).and_then(|x| {
             let at = ecad_model::registry::Scope { conductor: Some(*c), ..ecad_model::registry::Scope::project() };
-            crate::styles::text_style::own_style(doc, crate::styles::text_style::TextKind::WireLabel, at, &x.display)
+            crate::styles::text_style::own_style(doc, ecad_model::look::TextKind::WireLabel, at, &x.display)
         });
         let h = own.as_ref().map_or(h, |o| o.style.height);
         let Some((a, b)) = longest_segment(v) else { continue };
@@ -219,14 +216,8 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
             continue;
         }
         let w = match &own {
-            Some(o) => {
-                let f = o
-                    .family
-                    .as_ref()
-                    .map_or_else(|| fonts.clone(), |fam| crate::styles::text_style::fonts::Fonts::for_family_with(doc, fam.clone(), m));
-                crate::styles::text_style::fonts::width_in(&f, o.style, &label.text, m)
-            }
-            None => crate::styles::text_style::fonts::width_in(&fonts, style, &label.text, m),
+            Some(o) => m.family_width(doc, o.family.as_deref(), o.style, &label.text),
+            None => m.family_width(doc, None, style, &label.text),
         };
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
         let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));

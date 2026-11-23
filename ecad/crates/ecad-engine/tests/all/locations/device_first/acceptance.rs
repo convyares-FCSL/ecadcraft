@@ -77,7 +77,7 @@ fn change_n(h: &mut H) -> u64 {
 fn same_as_built(h: &mut H, what: &str) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -545,7 +545,7 @@ fn the_bom_page_flags_its_question_mark_heading() {
     place(&mut h, "coil", (100.0, 150.0)); // no location
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK)));
     let qs: Vec<_> =
         parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == ecad_electrical::pages::generated::MISSING)).collect();
     // The heading `?`, the maker `?` and the part number `?`.

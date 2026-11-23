@@ -37,14 +37,14 @@ pub use crate::references::view::{ReferencesScope, ReferencesView};
 pub use crate::reports::view::{ReportsScope, ReportsView};
 pub use changes::Changes;
 
-use crate::styles::text_style::fonts::TextMetrics;
+use ecad_model::look::TextLook;
 
-/// What the engine supplies to the views: the text metrics, and any later
+/// What the engine supplies to the views: the text look, and any later
 /// engine-made input. ecad-engine fills it in.
 #[derive(Clone)]
 pub struct EngineInputs {
-    /// How wide a text is drawn on this machine.
-    pub metrics: Arc<dyn TextMetrics + Send + Sync>,
+    /// How a text is drawn on this machine, and how wide.
+    pub look: Arc<dyn TextLook + Send + Sync>,
 }
 
 impl std::fmt::Debug for EngineInputs {
@@ -132,7 +132,7 @@ impl Detached {
     /// Every check of that state `doc`, worked out from scratch with tolerance `tol`, the report
     /// models' rows included, in book order.
     pub fn checks(&self, doc: &Document, tol: f64) -> Vec<crate::checks::Check> {
-        crate::checks::all_measured(doc, tol, self.reports(), &*self.inputs.metrics)
+        crate::checks::all_measured(doc, tol, self.reports(), &*self.inputs.look)
     }
 }
 
@@ -204,10 +204,10 @@ impl Views {
         true
     }
 
-    /// The text metrics and tolerance-free inputs the views are built with, to build one off the
-    /// thread ([`ReportsView::build`], [`ChecksView::build`]).
-    pub fn metrics(&self) -> Arc<dyn TextMetrics + Send + Sync> {
-        self.inputs.metrics.clone()
+    /// The text look the views are built with, to build one off the thread
+    /// ([`ReportsView::build`], [`ChecksView::build`]).
+    pub fn look(&self) -> Arc<dyn TextLook + Send + Sync> {
+        self.inputs.look.clone()
     }
 
     /// The engine's inputs the views are built with.
@@ -242,8 +242,8 @@ impl Views {
 
     /// The report models, built on their first show and kept after that.
     pub fn reports(&mut self, doc: &Document) -> &crate::reports::kept::ReportModels {
-        let metrics = &*self.inputs.metrics;
-        self.reports.get_or_build(|| ReportsView::build(doc, metrics)).model()
+        let look = &*self.inputs.look;
+        self.reports.get_or_build(|| ReportsView::build(doc, look)).model()
     }
 
     /// The report models, if shown once.
@@ -265,8 +265,8 @@ impl Views {
     /// The Checks list, built on its first show with tolerance `tol` and kept
     /// after that.
     pub fn checks(&mut self, doc: &Document, tol: f64) -> &crate::checks::kept::Checks {
-        let metrics = &*self.inputs.metrics;
-        self.checks.get_or_build(|| ChecksView::build(doc, tol, metrics)).model()
+        let look = &*self.inputs.look;
+        self.checks.get_or_build(|| ChecksView::build(doc, tol, look)).model()
     }
 
     /// The Checks list, if shown once.
@@ -291,7 +291,7 @@ impl Views {
         let mut pending = Pending::default();
         note_view::<_, Inputs<'_>>(&self.references, &cx, &mut pending.references);
         // The end of the references' Before phase: what they show before the ops.
-        self.references.take(before, &mut pending.references, &*self.inputs.metrics);
+        self.references.take(before, &mut pending.references, &*self.inputs.look);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
         if let Some(reports) = self.reports.get() {
             note_view::<_, Inputs<'_>>(reports, &cx, &mut pending.reports);
@@ -402,7 +402,7 @@ impl Views {
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
     pub fn detached(&self, doc: &Document) -> Detached {
-        Detached { inputs: self.inputs.clone(), reports: ReportsView::build(doc, &*self.inputs.metrics) }
+        Detached { inputs: self.inputs.clone(), reports: ReportsView::build(doc, &*self.inputs.look) }
     }
 
     /// The report models of another state `doc`, worked out from scratch, when it has a page drawn
@@ -410,7 +410,7 @@ impl Views {
     /// project does not keep (debugger, verification, a revision, tests): the project passes its
     /// kept models instead.
     pub fn report_models(&self, doc: &Document) -> Option<crate::reports::kept::ReportModels> {
-        crate::pages::generated::has_bom_page(doc).then(|| ReportsView::build(doc, &*self.inputs.metrics).into_model())
+        crate::pages::generated::has_bom_page(doc).then(|| ReportsView::build(doc, &*self.inputs.look).into_model())
     }
 }
 

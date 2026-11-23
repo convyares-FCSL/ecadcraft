@@ -382,7 +382,7 @@ fn registry_defaults_apply() {
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
-    assert!(<ecad_electrical::styles::text_style::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
+    assert!(<ecad_model::look::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
 }
 
 /// Check 13: a name with many arrows keeps implicit edges (no m² storage) and stays equal to a

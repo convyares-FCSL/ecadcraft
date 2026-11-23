@@ -32,7 +32,7 @@ static FIELDS: [Field; 4] = [
     Field {
         key: "weight",
         label: "Weight",
-        kind: Kind::Choice(<crate::styles::text_style::Weight as ecad_model::Word>::WORDS),
+        kind: Kind::Choice(<ecad_model::objects::styles::text::Weight as ecad_model::Word>::WORDS),
         slot: Slot::new(&crate::defaults::data::DATA),
         over: None,
     },

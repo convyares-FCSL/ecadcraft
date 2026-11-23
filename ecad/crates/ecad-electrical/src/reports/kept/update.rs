@@ -4,7 +4,7 @@ use super::*;
 
 impl ReportModels {
     /// Recompute what `n` names on `doc` (the state after), with text measured in `m`.
-    pub(crate) fn update(&mut self, doc: &Document, n: Noted, m: &dyn TextMetrics) {
+    pub(crate) fn update(&mut self, doc: &Document, n: Noted, m: &dyn TextLook) {
         let Noted { rows, late, plc, strips, numbers, placed, positions } = n;
         self.numbers_moved = numbers;
         let before = self.generated_sheets(doc);
@@ -17,7 +17,7 @@ impl ReportModels {
         }
     }
 
-    pub(super) fn update_rows(&mut self, doc: &Document, rows: Rows, m: &dyn TextMetrics) {
+    pub(super) fn update_rows(&mut self, doc: &Document, rows: Rows, m: &dyn TextLook) {
         let Rows { mut scope, late, plc, placed, positions } = rows;
         // What this update changes, for the generated pages that depend on it.
         self.last_cables_changed = false;

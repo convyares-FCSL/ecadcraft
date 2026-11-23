@@ -137,8 +137,8 @@ pub fn retype(c: DeviceId, device: &Device, definition: DefinitionId, declared: 
 }
 use serde_json::{Value, json};
 
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::{self, Kind, Starter, StarterKey as K};
+use ecad_model::look::TextLook;
 
 /// Reserved layer of tag texts and terminal labels.
 pub const TAG_LAYER: &str = "ECAD-TAGS";

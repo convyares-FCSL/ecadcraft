@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_electrical::styles::text_style::TextKind;
+use ecad_model::look::TextKind;
 use ecad_model::{ConnectionPointId, DeviceId, Document, ObjectRef, PageId, RepresentationId};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
@@ -61,9 +61,9 @@ pub struct DeviceDetails {
 }
 
 /// A size as the Layout tab shows it: `2.5` and ` B` when bold.
-pub fn size_words(s: &ecad_electrical::styles::text_style::TextStyle) -> String {
+pub fn size_words(s: &ecad_model::look::TextStyle) -> String {
     let h = (s.height * 100.0).round() / 100.0;
-    let bold = matches!(s.weight, ecad_electrical::styles::text_style::Weight::Bold);
+    let bold = matches!(s.weight, ecad_model::objects::styles::text::Weight::Bold);
     format!("{h}{}", if bold { " B" } else { "" })
 }
 

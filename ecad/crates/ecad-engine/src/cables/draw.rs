@@ -232,12 +232,10 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
 
 /// A text style's colour as drawn on `sheet`: its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
-pub(crate) fn text_colour_rgb(
-    c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_model::palette::Sheet,
-) -> Option<cadcraft_engine::doc::color::Rgb> {
+pub(crate) fn text_colour_rgb(c: ecad_model::look::TextColour, sheet: &ecad_model::palette::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {
-        ecad_electrical::styles::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
-        ecad_electrical::styles::text_style::TextColour::Code(i) => {
+        ecad_model::look::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
+        ecad_model::look::TextColour::Code(i) => {
             let dark = sheet.sheet == ecad_model::palette::sheet::DARK.sheet;
             ecad_electrical::cables::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
         }

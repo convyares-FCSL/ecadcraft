@@ -89,7 +89,7 @@ fn second_strip(h: &mut H) -> (DeviceId, Vec<ConnectionPointId>) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.reports().clone();
-        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics))
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));

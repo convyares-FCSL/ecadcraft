@@ -4,7 +4,7 @@
 
 use ecad_model::{Document, PageId, Subject};
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 use {ecad_electrical::checks::Check, ecad_electrical::checks::Object};
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
@@ -14,7 +14,7 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 
 /// [`all`] with the report models already kept (the project's, reused by `checks`).
 pub fn all_with(doc: &Document, tol: f64, reports: &ecad_electrical::reports::kept::ReportModels) -> Vec<Check> {
-    ecad_electrical::checks::all_measured(doc, tol, reports, &EngineMetrics)
+    ecad_electrical::checks::all_measured(doc, tol, reports, &LOOK)
 }
 
 /// The drawn handles of `object` on `page` (for a go-to's selection): a wire's lines, a route's line, a
