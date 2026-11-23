@@ -1395,6 +1395,7 @@ dependencies = [
  "chrono",
  "ecad-app",
  "ecad-engine",
+ "ecad-file",
  "ecad-model",
  "eframe",
  "ron",
