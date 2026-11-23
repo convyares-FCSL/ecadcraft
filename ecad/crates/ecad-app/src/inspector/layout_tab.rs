@@ -1,8 +1,8 @@
-//! The Layout tab (UI rev 3, board 1.06): how this symbol is drawn. Placement (position, rotation
+//! The Layout tab: how this symbol is drawn. Placement (position, rotation
 //! and mirror read from the drawing; variant and lock not available yet), Text on the sheet (per
 //! slot: shown, where, and its size from the standard, with Reset to standard), the contact table
 //! under a coil, and Line and colour (folded). For anything else it shows the defaults that apply
-//! to what is selected (brief 042), folded the same way.
+//! to what is selected, folded the same way.
 
 use ecad_electrical::defaults::Source;
 use ecad_electrical::styles::commands::defaults as default_cmds;
@@ -100,7 +100,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
             let size = d.sizes.iter().find(|(k, _)| k == kind).map(|(_, s)| s.clone()).unwrap_or_default();
             insp.text_slot(ui, *kind, slot_words(*kind), *style, *show, &size, cx.writable, out);
         }
-        // The device-wide shown setting of each text (brief 031), for all its symbols.
+        // The device-wide shown setting of each text, for all its symbols.
         if let Some(s) = section {
             let device_texts: Vec<_> = s.rows.iter().filter(|r| r.label.starts_with("Texts:")).collect();
             if !device_texts.is_empty() {

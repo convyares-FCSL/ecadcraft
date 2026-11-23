@@ -1,6 +1,6 @@
-//! Tester's outside-in contracts for brief 003 (the app on native Windows): edge cases of typed
+//! Outside-in contracts for the app on native Windows: edge cases of typed
 //! paths, the home folder, the project's own file in another spelling, folders that must not be
-//! made, and hostile input. Written from the brief, not from the implementation.
+//! made, and hostile input.
 
 use std::path::{Path, PathBuf};
 

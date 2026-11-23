@@ -1,10 +1,10 @@
-//! Brief 016 acceptance in the app (design 016 §10, checks A–J), headless with egui_kittest in a
+//! In the app, headless with egui_kittest in a
 //! 1280×800 window: the Project panel by its labels, the one page window, undo bringing its page
-//! to the front, the read-only preview, and the reference screenshots of design §10, written to
-//! `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists (`016-panel.png`,
-//! `016-rename.png`, `016-drag.png`, `016-collapsed.png`, `016-preview-ref.png`, `016-large.png`).
+//! to the front, the read-only preview, and the reference screenshots, written to
+//! `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists (panel, rename, drag,
+//! collapsed folders, preview and a large project).
 //!
-//! Fixture P (design §10): 010's fixture R (pages `Supply` and `Field`, cable C1 with linked
+//! Fixture P: the cable-reference fixture R (pages `Supply` and `Field`, cable C1 with linked
 //! references `2/F1` and `1/F2`) plus a third page `Spare`.
 
 use std::sync::{Arc, Mutex};

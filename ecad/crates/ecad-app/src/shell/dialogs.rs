@@ -10,7 +10,7 @@ use eframe::egui::{self};
 use serde_json::json;
 
 impl App {
-    /// The symbol search window (brief 018): its rows and second step are read from the project
+    /// The symbol search window: its rows and second step are read from the project
     /// only when the query, the pick or a device, page or setting changed (search.rs's update
     /// map); a chosen row starts Place Symbol with it.
     pub(crate) fn symbol_search(&mut self, ctx: &egui::Context) {
@@ -39,7 +39,7 @@ impl App {
             }
         };
         if let Some(choice) = finder.show(ctx, &rows, &choices) {
-            // Placing happens on the page: from Library, back to Draw (brief 038).
+            // Placing happens on the page: from Library, back to Draw.
             self.set_workspace(shell::Workspace::Draw);
             let _ = self.start_choice(&choice);
         }
@@ -88,7 +88,7 @@ impl App {
         }
     }
 
-    /// The Renumber dialog per frame: previews on option changes, Apply, go to a row (brief 026).
+    /// The Renumber dialog per frame: previews on option changes, Apply, go to a row.
     pub(crate) fn renumber_window(&mut self, ctx: &egui::Context) {
         let Some(d) = &mut self.renumber else { return };
         match d.show(ctx) {
@@ -107,14 +107,14 @@ impl App {
             Some(crate::devices::renumber_dialog::Out::Apply(c, v)) => match self.run_click(c, v) {
                 Ok(_) => {
                     self.renumber = None;
-                    // Finalise numbering now (design §5.5): the issue follows, its own step.
+                    // Finalise numbering now: the issue follows, its own step.
                     if let Some(line) = self.issue_after_finalise.take() {
                         let _ = self.run_line(&line);
                         self.open_revisions();
                     }
                 }
                 Err(e) => {
-                    // A stale preview is computed again (design §3).
+                    // A stale preview is computed again.
                     let again = self.renumber.as_ref().and_then(|d| d.params(true).ok());
                     let fresh = again.map(|(c, v)| self.run_click(c, v));
                     if let Some(d) = &mut self.renumber {
@@ -141,7 +141,7 @@ impl App {
         }
     }
 
-    /// The merge dialog and the question an undo of a merge stops at (brief 020b).
+    /// The merge dialog and the question an undo of a merge stops at.
     pub(crate) fn merge_windows(&mut self, ctx: &egui::Context) {
         if let Some(d) = &mut self.merge {
             match d.show(ctx) {

@@ -1,4 +1,4 @@
-//! The title block editor's draft (design 055 §4.2, 048's pattern): nothing is written while
+//! The title block editor's draft (like the symbol builder's): nothing is written while
 //! editing; the draft has its own undo; drafts are kept in eframe storage under [`DRAFTS_KEY`]
 //! (per project, at most [`MAX_DRAFTS`]) so a crash loses nothing. Save writes one transaction.
 

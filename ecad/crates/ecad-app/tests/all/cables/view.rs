@@ -1,7 +1,6 @@
-//! Brief 005, AC5 headless (design 005 §9 checks A and C in a 1280×800 window, egui_kittest,
+//! Cable View headless (a 1280×800 window, egui_kittest,
 //! elements by name): fixture G typed, **Cable View** clicked by its label, the slash clicked on
-//! the canvas, the fan drawn, then switched back by clicking the fan. Reference screenshots and
-//! how it feels are for the tester and the owner.
+//! the canvas, the fan drawn, then switched back by clicking the fan.
 
 use crate::common::{self, Opts, click};
 use cadcraft_engine::geom::Vec2;

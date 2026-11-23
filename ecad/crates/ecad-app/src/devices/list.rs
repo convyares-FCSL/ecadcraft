@@ -1,4 +1,4 @@
-//! Devices as a column set (brief 039 step 3): tag and description set here (inline edits run
+//! Devices as a column set: tag and description set here (inline edits run
 //! `setprop`, the same command, transaction and refusal as on the page); function, location
 //! ("from box" where a box gives it), symbol, pages placed (a go-to), part and state read. Filter
 //! chips: Provisional, Not on a page yet.
@@ -26,7 +26,7 @@ pub const SYMBOL: ColumnId = ColumnId(4);
 pub const PAGES: ColumnId = ColumnId(5);
 pub const PART: ColumnId = ColumnId(6);
 pub const STATE: ColumnId = ColumnId(7);
-/// UI rev 3 (board 2.01): how many part lines the device's part set has.
+/// How many part lines the device's part set has.
 pub const PARTS: ColumnId = ColumnId(8);
 
 /// The chips.
@@ -51,7 +51,7 @@ pub fn column_of(key: &str) -> Option<ColumnId> {
     }
 }
 
-/// The columns, in UI rev 3's order (board 2.01). The state (provisional, not on a page yet,
+/// The columns, in order. The state (provisional, not on a page yet,
 /// fixed) is no column of its own: the tag shows a provisional one, On page says "not yet", and
 /// the chips still filter by both.
 pub fn columns() -> Vec<Column> {
@@ -67,7 +67,7 @@ pub fn columns() -> Vec<Column> {
     ]
 }
 
-/// What the Main part column says of a device with no part (board 2.01).
+/// What the Main part column says of a device with no part.
 pub(crate) const NO_PARTS: &str = "No parts yet";
 /// What On page says of a device on no page.
 pub const NOT_YET: &str = "not yet";
@@ -78,7 +78,7 @@ pub struct DeviceRow {
     pub entry: DeviceEntry,
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
-    /// UI rev 3: its part set's lines (`ecad_electrical::reports::bom::part_set`).
+    /// Its part set's lines (`ecad_electrical::reports::bom::part_set`).
     pub parts: usize,
 }
 
@@ -180,7 +180,7 @@ impl TableSource for DevicesSource {
                         names.push(&s.name);
                     }
                 }
-                // Brief 048 (design §8.4): a copy whose project symbol has a newer version.
+                // A copy whose project symbol has a newer version.
                 if e.symbols.iter().any(|s| s.update) {
                     return Cell::Badge(format!("{} · update available", names.join(", ")), Tone::Provisional);
                 }
@@ -188,7 +188,7 @@ impl TableSource for DevicesSource {
             }
             PAGES if e.symbols.is_empty() => Cell::read(NOT_YET),
             PAGES => Cell::Read { text: e.symbols.iter().map(|s| s.place.as_str()).collect::<Vec<_>>().join(", "), go: true },
-            // Rev 3: the main part's order code; the maker is in the right panel.
+            // The main part's order code; the maker is in the right panel.
             PART => {
                 let part = prop(3);
                 if part.is_empty() { Cell::Badge(NO_PARTS.into(), Tone::Warning) } else { Cell::read(part) }
@@ -236,7 +236,7 @@ impl TableSource for DevicesSource {
 
 /// What the device feed says changed for the Devices table since change `since`: `All` when it
 /// cannot say (rolled over) or when every row may differ (pages, settings). A location box is a
-/// drawing aid: no row reads it (a device's location is its own, design 052 §5.1).
+/// drawing aid: no row reads it (a device's location is its own).
 pub fn changes(p: &ecad_engine::Project, since: Option<u64>) -> (Changed<DeviceId>, BTreeSet<DeviceId>) {
     let Some(t) = since.and_then(|n| p.device_changes_since(n)) else { return (Changed::All, BTreeSet::new()) };
     if t.pages || t.settings {

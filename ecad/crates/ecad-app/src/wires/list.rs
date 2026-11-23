@@ -1,7 +1,7 @@
-//! Project ▸ Wires (UI rev 3, board 2.04): every wire, grouped by potential (or none, page,
+//! Project ▸ Wires: every wire, grouped by potential (or none, page,
 //! cable), as the one table over the wire report (`ReportModels::wire_table`). Number, from, to,
 //! colour, size, category, page and status are read from the drawing; ferrules and length belong
-//! to the cable manager (brief 2.7), not built yet, and show a dash. A provisional wire number
+//! to the cable manager (not built yet), and show a dash. A provisional wire number
 //! is marked. Nothing here is set: a wire is changed on its page.
 //!
 //! **Update map:** see [`crate::reports::report`]: the copy is taken again only when the report models'
@@ -13,8 +13,8 @@ use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, Ta
 
 use crate::reports::report::{From, ReportColumns, ReportRows};
 
-/// Brief 057: a copy of the kept rating results (`Checks::rating`), patched by subject: at the
-/// next epoch only the subjects the update re-checked are copied again (design 057 §10).
+/// A copy of the kept rating results (`Checks::rating`), patched by subject: at the
+/// next epoch only the subjects the update re-checked are copied again.
 #[derive(Debug, Default)]
 pub struct RatingCopy {
     pub results: std::collections::BTreeMap<ecad_electrical::circuits::RatedSubject, ecad_electrical::circuits::circuit::Rating>,
@@ -71,7 +71,7 @@ pub const POTENTIAL: ColumnId = ColumnId(20);
 pub const CABLE: ColumnId = ColumnId(21);
 pub(crate) const ON_PAGE: ColumnId = ColumnId(22);
 
-/// The grouping switch (board 2.04: None, Potential, Page, Cable).
+/// The grouping switch (None, Potential, Page, Cable).
 pub const GROUPS: [&str; 4] = ["None", "Potential", "Page", "Cable"];
 
 /// The status words.
@@ -99,7 +99,7 @@ pub fn columns() -> Vec<Column> {
 pub struct WiresSource {
     cols: Vec<Column>,
     pub rows: ReportRows,
-    /// Brief 057: each row's conductor, and the rating results.
+    /// Each row's conductor, and the rating results.
     pub ids: Vec<ecad_model::WireId>,
     /// Each row's page (its number as shown), from the row's place; empty without one.
     pub pages: Vec<String>,
@@ -118,7 +118,7 @@ impl WiresSource {
         ecad_model::naming::tag::provisional(&self.rows.text(k, WireColumn::WireNumber.header())).is_some_and(|(_, n)| n > 0)
     }
 
-    /// Brief 057: row `k`'s rating result.
+    /// Row `k`'s rating result.
     pub fn rating(&self, k: usize) -> Option<&ecad_electrical::circuits::circuit::Rating> {
         self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_electrical::circuits::RatedSubject::Wire(*c)))
     }
@@ -148,7 +148,7 @@ impl ReportColumns for WiresSource {
             WIRE if self.provisional(k) => Cell::Provisional(self.rows.text(k, WireColumn::WireNumber.header())),
             WIRE => self.rows.cell(k, WireColumn::WireNumber.header()),
             ON_PAGE => Cell::Text(self.pages.get(k).cloned().unwrap_or_default()),
-            // Brief 057 (design 057 §2.1): the worst rating row in words.
+            // The worst rating row in words.
             STATUS if let Some((w, fails)) = self.rating(k).and_then(|r| r.status().map(|w| (w, r.fails()))) => {
                 Cell::Badge(w, if fails { Tone::Error } else { Tone::Warning })
             }
@@ -220,7 +220,7 @@ impl WiresView {
         self.apply_group();
     }
 
-    /// Brief 057: bring the rating copy up to date and patch the Status cells of the re-checked
+    /// Bring the rating copy up to date and patch the Status cells of the re-checked
     /// wires only.
     pub fn sync_rating(&mut self, serial: u64, kept: &ecad_electrical::circuits::kept::Kept) {
         match self.source.rating.sync(serial, kept) {

@@ -1,4 +1,4 @@
-//! Brief 040 (U4a): the canvas in the app. The paper sheet and CADCraft's view switches at
+//! The canvas in the app. The paper sheet and CADCraft's view switches at
 //! 1920 × 1080, `ui.sheet` switching to the dark sheet and remembered, the painter reading the
 //! project only when its key moves, the related placements of a selected device, nothing painted
 //! while the page is hidden, and the first-open zoom.

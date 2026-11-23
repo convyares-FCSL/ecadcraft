@@ -1,9 +1,9 @@
-//! Brief 027 headless in the app (design 027 §14 A, D, F): on the demo, the Release dialog lists
+//! Release headless in the app: on the demo, the Release dialog lists
 //! the check by group, a row goes to its place with the dialog still open, Release writes the
 //! folder and closes, the Revisions window's Folder cell reads Open, and writing an issued
 //! revision again into its existing folder asks first (Keep both). Screenshots are written when
-//! `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are for the owner's
-//! approval, never committed.
+//! `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are
+//! never committed.
 
 use std::path::PathBuf;
 use std::sync::Arc;

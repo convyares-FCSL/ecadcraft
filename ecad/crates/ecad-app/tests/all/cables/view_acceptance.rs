@@ -1,13 +1,12 @@
-//! Independent tester's UI checks for brief 005 (traditional / fan cable view), written from the
-//! brief, design 005 and the owner's answers only, driving the app headless (egui_kittest,
+//! UI checks of the traditional and fan cable views, driving the app headless (egui_kittest,
 //! elements by label) in a 1280×800 window.
 //!
-//! - Design §3.1: the **Cable View** entry (`ecad.cableview`, Wiring, after Cable Slash).
-//! - AC5 / design checks A, C, D: the entry clicked by label, the slash clicked on the canvas, the
+//! - the **Cable View** entry (`ecad.cableview`, Wiring, after Cable Slash).
+//! - the entry clicked by label, the slash clicked on the canvas, the
 //!   fan painted, the banner's change count unchanged, `u` undoing the slash and not the switch;
-//!   reference screenshots `005-traditional.png` and `005-fan.png` written to `$ECAD_TESTER_SHOTS`
+//!   reference screenshots of the traditional and fan views written to `$ECAD_TESTER_SHOTS`
 //!   when set and a wgpu adapter exists, with pixel checks on the rendered frames.
-//! - AC2 through the app's own open path (`App::with_file`, which reads `ECAD_SETTINGS_DIR`),
+//! - the app's own open path (`App::with_file`, which reads `ECAD_SETTINGS_DIR`),
 //!   in a child process so the variable never leaks into another test and the owner's settings are
 //!   never read: each cable reopens in its view; a garbage settings file opens all traditional with
 //!   the one-line message.

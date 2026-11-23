@@ -1,4 +1,4 @@
-//! Tester 059 full, in the app (design 059 §5): Project ▸ Cables' + Cable, an edit from the
+//! The cable manager in the app: Project ▸ Cables' + Cable, an edit from the
 //! Details pane and Remove are each one transaction with an exact undo and redo; Remove of a drawn
 //! cable writes nothing and offers a Go to that shows its page; the slash picker lists New cable,
 //! then not-drawn cables, then drawn ones. Headless on the demo project.

@@ -1,4 +1,4 @@
-//! The builder's Details (design 048 §3.1, §3.4, §7.2; screen g's right panel, 380 px): name,
+//! The builder's Details (the right panel, 380 px): name,
 //! key, source and version; the symbol's defaults with a note where the project overrides one;
 //! its connection points and text slots as rows; what it still needs before it can be placed,
 //! with a button for each; Save, Save as new, Cancel.
@@ -10,7 +10,7 @@ use eframe::egui::{self, Color32, RichText};
 use crate::library::builder::{Builder, Tool};
 use crate::library::draft::{self, Missing, Picked, Source};
 
-/// Element names (design 048 §3.1).
+/// Element names.
 pub const DETAILS: &str = "library.details";
 pub const NAME: &str = "library.details.name";
 pub const KEY: &str = "library.details.key";
@@ -28,7 +28,7 @@ pub(crate) const KEEP: &str = "library.details.keep";
 pub const ACCEPT_ALL: &str = "library.details.offers.accept";
 pub const REPLACE: &str = "library.details.replace";
 pub const REFUSAL: &str = "library.details.refusal";
-/// The built-in banner (design 048 §3.4).
+/// The built-in banner.
 pub(crate) const BUILTIN_BANNER: &str = "Built-in symbol. Saving makes a project copy; the built-in stays as it is.";
 /// Save's reason with writes off.
 pub const WRITES_OFF: &str = "Writes are off for this project.";
@@ -40,7 +40,7 @@ pub struct Info {
     /// The Missing list once every offer is accepted ("Accept all and save to project").
     pub missing_after_offers: Vec<Missing>,
     /// Per default (`prefix`, `description`, `rating`): the project's own value that overrides
-    /// the symbol's for its placements (design 048 §7.2).
+    /// the symbol's for its placements.
     pub overrides: Vec<(&'static str, String)>,
     /// `v3 (12 placed) · v2 (1 placed) · v1 (removed)`.
     pub versions: Option<String>,
@@ -63,7 +63,7 @@ fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
     ecad_widgets::color(c)
 }
 
-/// A section's title (UI rev 3: a hairline, then the title in the panel's text).
+/// A section's title (a hairline, then the title in the panel's text).
 fn section(ui: &mut egui::Ui, title: &str) {
     let s = ecad_widgets::SHELL;
     ui.add_space(space::M);
@@ -93,7 +93,7 @@ fn field(ui: &mut egui::Ui, b: &mut Builder, label: &str, name: &'static str, wh
     }
 }
 
-/// The checklist row `text` (screen g's "Before it can be placed"): done or to do, with a button.
+/// The checklist row `text` ("Before it can be placed"): done or to do, with a button.
 fn need(ui: &mut egui::Ui, done: bool, text: &str, pill: &str, item: &str, button: Option<&str>) -> bool {
     let s = ecad_widgets::SHELL;
     let mut clicked = false;
@@ -131,7 +131,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
     let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let fixed = b.draft.fixed_drawing();
-    // The panel's title (rev 3): what is being made.
+    // The panel's title: what is being made.
     let title = match &b.draft.source {
         Source::New => "New symbol".to_string(),
         Source::Make { .. } | Source::Promote { .. } => "Make symbol from selection".to_string(),
@@ -226,7 +226,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         b.selected = None;
     }
 
-    // Make symbol's offers (screen j): one decision per row, nothing applied until accepted.
+    // Make symbol's offers: one decision per row, nothing applied until accepted.
     if !b.draft.shape.offers.is_empty() {
         section(ui, "Offered, not applied yet");
         let mut act: Option<(usize, bool)> = None;
@@ -274,7 +274,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         }
     }
 
-    // Before it can be placed (screen g): the rules' Missing list as a checklist.
+    // Before it can be placed: the rules' Missing list as a checklist.
     section(ui, "Before it can be placed");
     let has = |item: &str| info.missing.iter().any(|m| m.item == item);
     let points = b.draft.shape.points.len();

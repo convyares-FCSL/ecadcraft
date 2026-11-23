@@ -1,7 +1,7 @@
-//! Brief 046 in the app (design 046 §8.1, §11): Pages ▸ New page ▸ **Terminal strips** makes a
+//! In the app, Pages ▸ New page ▸ **Terminal strips** makes a
 //! graphic `connection_points` page and opens it. Screenshots of fixture G's strip page (paper and dark)
 //! and of a long strip's second sheet are written when `ECAD_TESTER_SHOTS` names a folder and a
-//! wgpu adapter exists; they are for the owner's approval, never committed.
+//! wgpu adapter exists; they are never committed.
 
 use std::sync::Arc;
 

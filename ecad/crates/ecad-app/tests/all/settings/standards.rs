@@ -1,4 +1,4 @@
-//! Brief 042 (U4c) in the app, headless (egui_kittest): Settings opens from the project menu,
+//! In the app, headless (egui_kittest): Settings opens from the project menu,
 //! the status bar's standard and an origin badge, and Esc returns to the same workspace, page and
 //! selection; Settings ▸ Standards lists every default, says the consequence before a change and
 //! resets; the inspector badges a symbol's values; the Standards table is patched, not rebuilt,

@@ -1,4 +1,4 @@
-//! The symbol search (brief 018, design 018 §5.1): one text field that finds starter symbols by
+//! The symbol search: one text field that finds starter symbols by
 //! name, alias or tag prefix, and devices already in the project by tag. A row starts Place
 //! Symbol with it (a symbol) or adds a symbol to it (a device).
 //!
@@ -9,7 +9,7 @@
 //! It only reads the project, under the handle's short lock, and only when the query or the
 //! project's head changed.
 //!
-//! Brief 041 (Ctrl+K): the same field also finds pages (by number or title) and actions (the
+//! The same field also finds pages (by number or title) and actions (the
 //! action table, by label and search words). Picking one of those runs it at once: a page is
 //! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
@@ -17,11 +17,11 @@ use ecad_electrical::symbols;
 use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
 
-/// The text field's element name (design 018 §5.1).
+/// The text field's element name.
 pub(crate) const FIELD_ID: &str = "ecad.symbolsearch";
 /// The results list's element name.
 pub(crate) const RESULTS_ID: &str = "ecad.symbolresults";
-/// The second step's list (design 018 §5.1, owner's trial of 2026-11-08).
+/// The second step's list.
 pub(crate) const CHOICES_ID: &str = "ecad.symbolchoices";
 /// The field's visible label (headless tests find it by this).
 pub const FIELD_LABEL: &str = "Find symbol or device";
@@ -37,11 +37,11 @@ pub enum Pick {
     Symbol(ecad_electrical::symbols::StarterKey),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
-    /// Brief 041: show this page.
+    /// Show this page.
     Page(ecad_model::PageId),
-    /// Brief 041: run this action (its id in the action table).
+    /// Run this action (its id in the action table).
     Action(&'static str),
-    /// Brief 048 (design 048 §8.2): Place Symbol with this project symbol (its key).
+    /// Place Symbol with this project symbol (its key).
     Project(String),
 }
 
@@ -94,7 +94,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
             });
         }
     }
-    // Brief 048: the project's own symbols, before the built-ins.
+    // The project's own symbols, before the built-ins.
     if let Some(doc) = doc {
         let ql = q.to_lowercase();
         for v in symbols::project::project_symbols(doc) {
@@ -122,7 +122,7 @@ fn clip(t: &str, n: usize) -> String {
     if t.chars().count() <= n { t.to_string() } else { format!("{}…", t.chars().take(n.saturating_sub(1)).collect::<String>()) }
 }
 
-/// What a click in the second step places (owner's trial of 2026-11-08: no Enter needed): a
+/// What a click in the second step places (no Enter needed): a
 /// symbol, as a new device (`device: None`) or as another symbol of the device with that tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
@@ -134,7 +134,7 @@ pub struct Choice {
 /// Most choices the second step lists.
 pub const MAX_CHOICES: usize = 10;
 
-/// The second step for `pick` (owner's trial, 2026-11-08). A symbol: "New device (-K02)" first,
+/// The second step for `pick`. A symbol: "New device (-K02)" first,
 /// then the devices it can join (those of its own prefix first, and among them those with a main
 /// symbol such as a coil first). A device: the symbols it can take, its own prefix's first. Only
 /// what joining would accept is listed.
@@ -229,7 +229,7 @@ impl<K: PartialEq, V: Clone> Cached<K, V> {
 /// The search window's state.
 #[derive(Debug, Default)]
 pub struct SymbolSearch {
-    /// Brief 038: the Library workspace's main view it fills, or `None` to float.
+    /// The Library workspace's main view it fills, or `None` to float.
     pub host: Option<egui::Rect>,
     pub open: bool,
     pub query: String,
@@ -245,7 +245,7 @@ pub struct SymbolSearch {
     pub rebuilds: u64,
     /// The row picked: the window then shows its second step ([`choices`]).
     pub picked: Option<Pick>,
-    /// Brief 041: a page or action row picked, for the shell to act on ([`Pick::Page`],
+    /// A page or action row picked, for the shell to act on ([`Pick::Page`],
     /// [`Pick::Action`]).
     pub ran: Option<Pick>,
 }
@@ -257,7 +257,7 @@ impl SymbolSearch {
         self.focus = self.open;
     }
 
-    /// The rows for the current query (update map, owner 2026-11-08): read again only when the
+    /// The rows for the current query (update map): read again only when the
     /// query or the project differs, or when a change since the copy touched a device, a page or
     /// the settings (`unchanged(since)` says none did). Drawing edits, wires and view switches
     /// keep the copy.
@@ -367,7 +367,7 @@ impl SymbolSearch {
             });
         });
         self.open = open;
-        // Brief 041: a page or an action runs at once (no second step).
+        // A page or an action runs at once (no second step).
         if let Some(p @ (Pick::Page(_) | Pick::Action(_) | Pick::Project(_))) = picked {
             self.ran = Some(p);
             self.open = false;

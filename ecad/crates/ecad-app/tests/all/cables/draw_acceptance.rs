@@ -1,14 +1,13 @@
-//! Independent tester's UI checks for brief 009 (cable look and cores), written from the brief,
-//! design 009 and the overseer's decision that reference ends use brief 010's model (a cable
-//! representation with role `reference` holding one Point item, built directly here), driving the
+//! UI checks of the cable look and cores. Reference ends use the cable model (a cable
+//! representation with role `reference` holding one Point item, built directly here). The tests drive the
 //! app headless (egui_kittest, elements by label) in a 1280×800 window.
 //!
-//! - Design §3 / check A: **Core Label** (`ecad.cablecore`) clicked by its label, a wire clicked
+//! - **Core Label** (`ecad.cablecore`) clicked by its label, a wire clicked
 //!   on the canvas, a label typed: the prompt, the echo, one transaction.
-//! - Check P / design §9: lineweights are shown when the app opens a project.
-//! - Reference screenshots (design §10), written to `$ECAD_TESTER_SHOTS` when set and a wgpu
-//!   adapter exists, with pixel checks on the rendered frames: `009-traditional-cores.png`,
-//!   `009-fan.png`, `009-fan-one-sided.png`, `009-fan-small-zoom.png`, `009-core-prompt.png`.
+//! - Lineweights are shown when the app opens a project.
+//! - Reference screenshots, written to `$ECAD_TESTER_SHOTS` when set and a wgpu
+//!   adapter exists, with pixel checks on the rendered frames: traditional cores, the fan,
+//!   the one-sided fan, the fan at small zoom and the core prompt.
 
 use std::path::PathBuf;
 use std::sync::Arc;

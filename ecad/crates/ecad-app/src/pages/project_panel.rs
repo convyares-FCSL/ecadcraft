@@ -1,7 +1,7 @@
-//! The **Project** panel (brief 016, design 016 §2–§3, §7): the project's pages in page order on
+//! The **Project** panel: the project's pages in page order on
 //! the far left, one click to make a page the active page, and the page actions (new, rename,
 //! reorder, preview) through the existing page commands. Since the app's top banner was removed
-//! (owner, 2026-11-08) its header also holds the project's status, file actions and the
+//! its header also holds the project's status, file actions and the
 //! experiment note.
 //!
 //! The panel only reads: it keeps a copy of the rows ([`ecad_engine::PageRow`]) and rebuilds it
@@ -19,12 +19,12 @@ use ecad_engine::{PageRow, TreeRow};
 use ecad_model::{FolderId, PageId};
 use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, pos2, vec2};
 
-/// Row height (design 016 §2.2).
+/// Row height.
 pub const ROW_H: f32 = 20.0;
-/// Book's row height (UI rev 3, board 1.02): with thumbnails, and as a plain list.
+/// Book's row height: with thumbnails, and as a plain list.
 pub(crate) const THUMB_ROW_H: f32 = 36.0;
 pub(crate) const LIST_ROW_H: f32 = 26.0;
-/// Book's search field, its multi-select footer and its buttons (board 1.02).
+/// Book's search field, its multi-select footer and its buttons.
 pub const FIND: &str = "Find a page";
 pub const CLEAR_PICKED: &str = "Clear";
 pub const MOVE_TO_GROUP: &str = "Move to group";
@@ -32,7 +32,7 @@ pub const DUPLICATE: &str = "Duplicate";
 pub(crate) const DELETE_PAGES: &str = "Delete the selected pages";
 /// The placeholders' reason (no command yet duplicates or deletes a page).
 pub const NOT_YET: &str = "Not available yet";
-/// Brief 054: a folder row's menu items and the Book header's Renumber pages.
+/// A folder row's menu items and the Book header's Renumber pages.
 pub(crate) const START_NUMBER: &str = "Start number…";
 pub(crate) const RENUMBER_PAGES: &str = "Renumber pages";
 /// The accessible label of a page row's checkbox: `Select page 04`.
@@ -51,7 +51,7 @@ pub(crate) fn cut_text(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f3
 pub fn add_in_label(name: &str) -> String {
     format!("New page in {name}")
 }
-/// Accessible labels of the header buttons (design 016 §8 names them `ecad.project.*`).
+/// Accessible labels of the header buttons (named `ecad.project.*`).
 pub const NEW_PAGE: &str = "New page";
 pub const COLLAPSE: &str = "Collapse the Project panel";
 /// Accessible label of the rename field.
@@ -60,9 +60,9 @@ pub const RENAME: &str = "Page title";
 pub const READ_ONLY: &str = "The project is read-only.";
 /// Said when the active page itself is asked for a preview.
 pub(crate) const ALREADY_SHOWN: &str = "This page is already shown.";
-/// Accessible labels of the header's brief 019 buttons (design 019 §10).
+/// Accessible labels of the header's folder buttons.
 pub const NEW_FOLDER: &str = "New folder";
-/// The project popouts of the header (owner, fix round of 2026-11-08).
+/// The project popouts of the header.
 pub const PROJECT_INFO: &str = "Project info";
 pub const PROJECT_SETTINGS: &str = "Project settings";
 pub const REVISIONS: &str = "Revisions";
@@ -72,9 +72,9 @@ pub(crate) const NEW_SUB_FOLDER: &str = "New sub-folder";
 pub const NUMBER: &str = "Page number";
 /// Accessible label of the folder-name field.
 pub const FOLDER_NAME: &str = "Folder name";
-/// Accessible label of Back to current (design 019 §7.3).
+/// Accessible label of Back to current.
 pub const BACK_TO_CURRENT: &str = "Back to current";
-/// Indent per folder level, in points (design 019 §5.2).
+/// Indent per folder level, in points.
 pub(crate) const INDENT: f32 = 12.0;
 
 /// The accessible label of a folder row: `Folder Schematic layouts: 3 pages`.
@@ -109,41 +109,41 @@ pub enum Action {
     /// Devices tab: show the first symbol's page and select every one of these symbols on it (a
     /// device's symbols, in the list's order).
     GotoSymbols(Vec<ecad_model::RepresentationId>),
-    /// Devices tab: `setprop` of a device property (brief 018's rules; `merge` takes another
+    /// Devices tab: `setprop` of a device property (`merge` takes another
     /// device's tag by making this device part of it).
     SetDeviceProperty {
         component: ecad_model::DeviceId,
         key: &'static str,
         value: String,
-        /// Brief 026: how a taken tag is resolved (`swap`, `merge`, `next`).
+        /// How a taken tag is resolved (`swap`, `merge`, `next`).
         conflict: Option<&'static str>,
     },
     /// Rename this page in the name box (the row's right-click menu).
     RenameInBox(PageId),
-    /// Brief 054: `folderprops {folder, start}` (`None` clears).
+    /// `folderprops {folder, start}` (`None` clears).
     SetFolderStart(FolderId, Option<String>),
-    /// Brief 054: `renumberpages {folder?}`.
+    /// `renumberpages {folder?}`.
     RenumberPages(Option<FolderId>),
-    /// Brief 054: `deletepage {pages}` (generated pages only).
+    /// `deletepage {pages}` (generated pages only).
     DeletePages(Vec<PageId>),
-    /// Brief 054: a Checks fix's command line (a page type or folder start fix).
+    /// A Checks fix's command line (a page type or folder start fix).
     RunLine(String),
-    /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
+    /// Checks tab: show this row's page, centre on it, select it, ring it.
     GotoCheck(Box<ecad_electrical::checks::Check>),
-    /// Checks tab (brief 032): `joinwires {at}` on this page.
+    /// Checks tab: `joinwires {at}` on this page.
     JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
     NumberThem,
-    /// Checks tab (brief 026): open Finalise numbering (the Renumber dialog, provisional scope).
+    /// Checks tab: open Finalise numbering (the Renumber dialog, provisional scope).
     Finalise,
-    /// Checks tab (brief 033): show this row (a table over the title block), then start Move
+    /// Checks tab: show this row (a table over the title block), then start Move
     /// Mirror Table.
     MoveTable(Box<ecad_electrical::checks::Check>),
-    /// Checks tab (brief 033): open this page's number field in the Pages list.
+    /// Checks tab: open this page's number field in the Pages list.
     RenumberPage(PageId),
-    /// Devices tab (brief 026): open the Renumber dialog.
+    /// Devices tab: open the Renumber dialog.
     Renumber,
-    /// Brief 019: `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
+    /// `movepage {page, folder, index}` (index 1 = first of that folder's pages; `None`
     /// the end).
     MoveInto {
         page: PageId,
@@ -161,7 +161,7 @@ pub enum Action {
     RenameFolder(FolderId, String),
     /// `deletefolder`.
     DeleteFolder(FolderId),
-    /// Brief 026: open Renumber with this folder chosen.
+    /// Open Renumber with this folder chosen.
     RenumberFolder(FolderId),
     /// New page in this folder (the name box, then `newpage {title, folder}`).
     NewPageIn(Option<FolderId>),
@@ -171,60 +171,60 @@ pub enum Action {
     ProjectInfo,
     ProjectSettings,
     Revisions,
-    /// Leave the revision view (design 019 §7.3).
+    /// Leave the revision view.
     BackToCurrent,
     /// Preview this page of the revision opened read-only.
     RevisionPage(PageId),
-    /// Brief 020a: something the History tab asked for.
+    /// Something the History tab asked for.
     History(crate::history::panel::Do),
-    /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
+    /// Checks' **Use it**: the one context a device's symbols share (`setlocation`).
     UseContext(ecad_model::DeviceId, ecad_electrical::locations::designations::Aspect),
-    /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
+    /// Checks' **Set location** / **Set function**: select the device's symbol, so the
     /// inspector shows its row.
     GoToDevice(ecad_model::DeviceId),
-    /// Brief 052: Checks' **Show in Settings**: Settings ▸ Project info.
+    /// Checks' **Show in Settings**: Settings ▸ Project info.
     ShowDesignations,
-    /// Brief 024: Checks' **Show**: Reports, BOM, Only ?.
+    /// Checks' **Show**: Reports, BOM, Only ?.
     ShowReports,
-    /// Brief 024: open the Reports window.
+    /// Open the Reports window.
     Reports,
-    /// Brief 024: open Print Book, scoped to this folder when given.
+    /// Open Print Book, scoped to this folder when given.
     PrintBook(Option<FolderId>),
-    /// Brief 027: the Release dialog for the pending revision.
+    /// The Release dialog for the pending revision.
     Release,
-    /// Brief 024: `newpage {generated}`.
+    /// `newpage {generated}`.
     NewGenerated(ecad_model::GenKind),
-    /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
+    /// `newpage {generated: "terminals", style: "graphic"}`.
     NewStripPage,
-    /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
+    /// Terminal strip Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
     /// **Show** (Reports ▸ Cables, Only ?).
     OfferDrawn(ecad_model::DeviceId),
     RenumberStrip(ecad_model::DeviceId),
     SetCores(ecad_model::CableId),
     NextFreeCore(ecad_model::WireId),
     ShowCables,
-    /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
+    /// **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
     OpenStandards(ecad_model::StyleCatalogue),
-    /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
+    /// A rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
     RatingFix(ecad_electrical::checks::Fix),
-    /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
+    /// An open core's button `0` (Tick Not used) or `1` (Go to the open end).
     CoreFix(ecad_electrical::checks::Fix, usize),
-    /// Brief 059: a cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
+    /// A cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
     /// Go to, Set gland, Show).
     CableFix(ecad_electrical::checks::Fix, usize),
-    /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
+    /// **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),
     ClearPageSheet(PageId),
-    /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
+    /// Terminal strip accessory Checks fixes: the fix's button `0` or `1` (Move to end / Remove,
     /// Split jumper bar / Remove partition, Drop missing positions / Delete jumper bar).
     AccessoryFix(ecad_electrical::checks::Fix, usize),
-    /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
+    /// Place ▸ Connector on this connector's lacking side, pin by pin.
     PlaceMates(ecad_model::DeviceId, ecad_electrical::symbols::Side),
-    /// Brief 041: a page row's right-click opens its wheel here (screen point).
+    /// A page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
-    /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.
+    /// The Devices panel's Project →, Project ▸ Device list.
     ProjectDevices,
 }
 
@@ -252,9 +252,9 @@ pub enum Tab {
     #[default]
     Pages,
     Devices,
-    /// Brief 022.
+    /// The Checks tab.
     Checks,
-    /// Brief 020a.
+    /// The History tab.
     History,
 }
 
@@ -280,7 +280,7 @@ struct Drag {
     from: usize,
     /// The gap the row would land in (0 = before the first row), while over the list.
     gap: Option<usize>,
-    /// Brief 019: a folder is being dragged instead of a page.
+    /// A folder is being dragged instead of a page.
     folder: Option<FolderId>,
     /// The folder row the pointer is over (drop into it).
     onto: Option<FolderId>,
@@ -300,13 +300,13 @@ pub struct Header {
     pub note: &'static str,
     /// Snapshots can be exported (`--snapshots`).
     pub snapshots: bool,
-    /// Brief 020a: the branch shown, once the project has more than one branch.
+    /// The branch shown, once the project has more than one branch.
     pub branch: Option<String>,
     /// The branch bar's text, on a branch other than `main` (`Branch "Option B" · from Rev A`).
     pub branch_bar: Option<String>,
-    /// The parent's name, for Merge into… and Update from… (brief 020b).
+    /// The parent's name, for Merge into… and Update from….
     pub parent: Option<String>,
-    /// Brief 027: the pending rev, and the kept Checks' errors and warnings (`None` until the
+    /// The pending rev, and the kept Checks' errors and warnings (`None` until the
     /// Checks are kept: the badge never builds them).
     pub release: Option<(String, Option<(usize, usize)>)>,
 }
@@ -318,9 +318,9 @@ pub struct ProjectPanel {
     pub tab: Tab,
     /// The Devices tab.
     pub devices: crate::devices::panel::DevicesPanel,
-    /// The Checks tab (brief 022).
+    /// The Checks tab.
     pub checks: crate::checks::panel::ChecksPanel,
-    /// The History tab (brief 020a).
+    /// The History tab.
     pub history: crate::history::panel::HistoryPanel,
     /// The copy of the project's pages.
     rows: Vec<PageRow>,
@@ -332,7 +332,7 @@ pub struct ProjectPanel {
     pub previewed: Option<PageId>,
     /// The keyboard cursor (a row index).
     pub cursor: Option<usize>,
-    /// After a click in the panel, it takes Up/Down/Enter/F2/Space/Alt+arrows/Esc (design §3.3).
+    /// After a click in the panel, it takes Up/Down/Enter/F2/Space/Alt+arrows/Esc.
     pub armed: bool,
     pub rename: Option<Rename>,
     drag: Option<Drag>,
@@ -344,10 +344,10 @@ pub struct ProjectPanel {
     pub rows_drawn: usize,
     /// A message under the header for one action (for example "Click a page first.").
     pub note: Option<String>,
-    /// Brief 019: the Pages tree (folders and pages in book order).
+    /// The Pages tree (folders and pages in book order).
     tree: Vec<TreeRow>,
     /// Pages changed by a commit while another page was shown: their rows show a dot until the
-    /// page is shown (brief 038). Kept by the shell from the change feed.
+    /// page is shown. Kept by the shell from the change feed.
     pub changed: BTreeSet<PageId>,
     /// Folders folded in this session.
     pub folded: BTreeSet<FolderId>,
@@ -356,22 +356,22 @@ pub struct ProjectPanel {
     /// A page number or folder name being typed in place.
     pub number_edit: Option<InPlace<PageId>>,
     pub folder_rename: Option<InPlace<FolderId>>,
-    /// The revision opened read-only: the bar's text (design 019 §7.3).
+    /// The revision opened read-only: the bar's text.
     pub revision: Option<String>,
     /// Whether the tree has a folder (worked out on each new tree, not per row).
     folders_present: bool,
-    /// UI rev 3 (board 1.02): Book shows thumbnails (else a plain list), set by the shell.
+    /// Book shows thumbnails (else a plain list), set by the shell.
     pub thumbnails: bool,
     /// Pages ticked for moving (never the same look as the open page).
     pub picked: BTreeSet<PageId>,
     /// The search text; while set, only the pages it finds are shown, without their folders.
     pub find: String,
-    /// Brief 054: each folder's start number, and the generated pages (Delete takes only those),
+    /// Each folder's start number, and the generated pages (Delete takes only those),
     /// read again when the project's change count moves.
     pub starts: std::collections::BTreeMap<FolderId, String>,
     pub generated: BTreeSet<PageId>,
     pub starts_at: Option<u64>,
-    /// A folder's start number being typed in place (design 054 §4.3).
+    /// A folder's start number being typed in place.
     pub start_edit: Option<InPlace<FolderId>>,
 }
 
@@ -527,7 +527,7 @@ impl ProjectPanel {
     }
 
     /// Open the rename field on `page` with its title selected.
-    /// Open `page`'s number field in place (brief 033: a Checks row's **Renumber…**).
+    /// Open `page`'s number field in place (a Checks row's **Renumber…**).
     pub fn start_number_edit(&mut self, page: PageId) {
         if let Some(i) = self.index_of(page) {
             let number = self.rows.get(i).map(|r| r.number.clone()).unwrap_or_default();
@@ -568,7 +568,7 @@ impl ProjectPanel {
             self.rows_drawn = 0;
             return out;
         }
-        // Brief 020a: the branch bar on a branch other than main (design 020 §3.6).
+        // The branch bar on a branch other than main.
         if let Some(bar) = &header.branch_bar {
             let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -596,7 +596,7 @@ impl ProjectPanel {
             let r = shown.response.rect;
             ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0.0, t.accent);
         }
-        // The revision opened read-only (design 019 §7.3): its bar and Back to current.
+        // The revision opened read-only: its bar and Back to current.
         if let Some(bar) = self.revision.clone() {
             let shown = egui::Frame::NONE.fill(t.chrome_dark).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -634,7 +634,7 @@ impl ProjectPanel {
         }
         self.keyboard(ui, writable, &mut out);
 
-        // Find a page (board 1.02).
+        // Find a page.
         let before = self.find.clone();
         ecad_widgets::prim::Field::new(&mut self.find, ecad_widgets::prim::FieldKind::Search, FIND).placeholder(FIND).show(ui);
         if self.find != before {
@@ -874,7 +874,7 @@ impl ProjectPanel {
             if folded { ecad_widgets::tokens::Icon::ChevronRight } else { ecad_widgets::tokens::Icon::ChevronDown },
             ink(s.text_3),
         );
-        // UI rev 3 (board 1.02): a group is a folder icon, its name, its page count and a +.
+        // A group is a folder icon, its name, its page count and a +.
         let folder = Rect::from_min_size(pos2(chev.right() + 6.0, y - 7.0), vec2(14.0, 14.0));
         ecad_widgets::icons::paint(&p, folder, ecad_widgets::tokens::Icon::Folder, ink(s.text_3));
         let font = crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::BODY_EMPHASIS);
@@ -883,7 +883,7 @@ impl ProjectPanel {
             self.folder_field(ui, field, out);
             return;
         }
-        // Brief 054 (design 054 §4.3): the start number field over the row's right part.
+        // The start number field over the row's right part.
         if self.start_edit.as_ref().is_some_and(|r| r.of == id) {
             let field = Rect::from_min_max(pos2(rect.right() - 90.0, rect.top() + 4.0), pos2(rect.right() - 4.0, rect.bottom() - 4.0));
             self.start_field(ui, field, out);
@@ -896,7 +896,7 @@ impl ProjectPanel {
             crate::shell::bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
             ink(s.text_3),
         );
-        // Brief 054: the folder's start number, grey after its name (`Schematic  100`).
+        // The folder's start number, grey after its name (`Schematic  100`).
         let start = self.starts.get(&id).cloned();
         let start_w = start.as_ref().map_or(0.0, |n| 10.0 + 8.0 * n.len() as f32);
         let room = (count.left() - folder.right() - 14.0 - start_w).max(0.0);
@@ -945,12 +945,12 @@ impl ProjectPanel {
                 out.push(Action::DeleteFolder(id));
                 ui.close();
             }
-            // Brief 026 (design 026 §3): Renumber with this folder chosen.
+            // Renumber with this folder chosen.
             if ui.add_enabled(writable, egui::Button::new("Renumber in this folder…")).clicked() {
                 out.push(Action::RenumberFolder(id));
                 ui.close();
             }
-            // Brief 054 (design 054 §4.3, §4.4): the folder's start number, and its pages
+            // The folder's start number, and its pages
             // renumbered from it.
             if ui.add_enabled(writable, egui::Button::new(START_NUMBER)).clicked() {
                 let text = self.starts.get(&id).cloned().unwrap_or_default();
@@ -977,7 +977,7 @@ impl ProjectPanel {
         }
     }
 
-    /// The start-number field on a folder row (brief 054): Enter writes it (empty clears), Esc
+    /// The start-number field on a folder row: Enter writes it (empty clears), Esc
     /// cancels.
     fn start_field(&mut self, ui: &mut egui::Ui, rect: Rect, out: &mut Vec<Action>) {
         let Some(r) = &mut self.start_edit else { return };
@@ -1006,7 +1006,7 @@ impl ProjectPanel {
         }
     }
 
-    /// One row (UI rev 3, board 1.02): checkbox, thumbnail (in thumbnail view), number, title and
+    /// One row: checkbox, thumbnail (in thumbnail view), number, title and
     /// states, and its clicks. The open page has a 3 px blue bar, a blue outline on its thumbnail
     /// and a blue number; a ticked page a ticked checkbox and a plain grey ground, so the two never
     /// look alike.
@@ -1122,7 +1122,7 @@ impl ProjectPanel {
             self.drag = Some(Drag { page: row.id, from: i, gap: None, folder: None, onto: None });
         }
         // A click just before a double-click makes egui count three: either renames. On the
-        // number, it edits the number (design 019 §5.3).
+        // number, it edits the number.
         if resp.double_clicked() || resp.triple_clicked() {
             let on_number = resp.interact_pointer_pos().is_some_and(|p| p.x < num.right());
             if writable && on_number {
@@ -1140,7 +1140,7 @@ impl ProjectPanel {
                 out.push(Action::Open(row.id));
             }
         }
-        // Brief 041: the page row's wheel (Open, Rename, Page properties, Preview, New page, New
+        // The page row's wheel (Open, Rename, Page properties, Preview, New page, New
         // folder); moving stays Alt+Up/Down and drag.
         if resp.secondary_clicked() {
             self.armed = true;
@@ -1156,7 +1156,7 @@ impl ProjectPanel {
         }
     }
 
-    /// The footer under the rows (board 1.02): while pages are ticked, how many with Clear, then
+    /// The footer under the rows: while pages are ticked, how many with Clear, then
     /// Move to group, Duplicate and Delete; otherwise New page (and its kinds) and New group.
     fn footer(&mut self, ui: &mut egui::Ui, r: Rect, writable: bool, top: f32, out: &mut Vec<Action>) {
         let t = crate::shell::left::colours();
@@ -1233,7 +1233,7 @@ impl ProjectPanel {
                     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable, MOVE_TO_GROUP));
                 });
                 ui.add(ecad_widgets::prim::Button::new(DUPLICATE).small().disabled(NOT_YET));
-                // Brief 054 (design 054 §8.3): Delete takes generated pages only.
+                // Delete takes generated pages only.
                 let generated = picked.iter().all(|p| self.generated.contains(p));
                 let del = ecad_widgets::prim::IconButton::new(ecad_widgets::tokens::Icon::Delete, DELETE_PAGES);
                 let del = if !writable {
@@ -1251,7 +1251,7 @@ impl ProjectPanel {
         });
     }
 
-    /// New page of a kind (brief 024, design 024 §5.1): page, the generated kinds, terminal strips.
+    /// New page of a kind: page, the generated kinds, terminal strips.
     fn kinds_menu(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
         ui.add_enabled_ui(writable, |ui| {
             ui.menu_button(RichText::new("\u{25be}").small(), |ui| {
@@ -1265,7 +1265,7 @@ impl ProjectPanel {
                         out.push(Action::NewGenerated(k));
                         ui.close();
                     }
-                    // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
+                    // Terminal strips after Terminal plan.
                     if k == ecad_model::GenKind::TerminalBlocks {
                         let b = ui.button(ecad_engine::terminal_strips::draw::TITLE).on_hover_text("ecad.project.newpage.terminal_blocks-graphic");
                         if b.clicked() {
@@ -1342,7 +1342,7 @@ impl ProjectPanel {
         }
     }
 
-    /// The keys the armed panel takes before CADCraft's command line sees them (design §3.3).
+    /// The keys the armed panel takes before CADCraft's command line sees them.
     fn keyboard(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<Action>) {
         if !self.armed || self.rename.is_some() || self.rows.is_empty() {
             return;

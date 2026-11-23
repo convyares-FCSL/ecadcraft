@@ -1,9 +1,9 @@
-//! Undo session (brief 035, design §8.2): the person takes back an agent session's steps with
+//! Undo session: the person takes back an agent session's steps with
 //! one click.
 //!
 //! # Semantics
 //! - Recorded as the **person's** action: ordinary undo transactions by `user`, one per step
-//!   (011's step mapping: `u`, `undomerge`, `undoissue`, a `redo` for an undo). No new op.
+//!   (the step mapping of `u`, `undomerge`, `undoissue`, a `redo` for an undo). No new op.
 //! - Only the branch shown: the session's steps still on its undo stack, newest first.
 //! - When every step from the top down to the session's oldest is the session's, they are taken
 //!   back at once. When the person (or anyone else) recorded steps among or after them, a dialog
@@ -67,7 +67,7 @@ pub struct Confirm {
 }
 
 impl Confirm {
-    /// The dialog's text (design §8.2).
+    /// The dialog's text.
     pub fn text(&self) -> String {
         let others = self.plan.others();
         let mut named: Vec<String> = others.iter().take(MAX_NAMED).map(|s| format!("#{} {}", s.seq, s.label)).collect();

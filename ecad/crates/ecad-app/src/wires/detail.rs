@@ -13,7 +13,7 @@ pub(crate) fn wire(t: &App, k: usize) -> Option<Detail> {
     let number = rows.text(k, WireColumn::WireNumber.header());
     let (from, to, page) = (rows.text(k, WireColumn::From.header()), rows.text(k, WireColumn::To.header()), rows.text(k, WireColumn::Page.header()));
     let checks = rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Warning)).collect()).unwrap_or_default();
-    // Board 2.05's hints: a number is given by the numbering ("auto") unless it is provisional; a
+    // The hints: a number is given by the numbering ("auto") unless it is provisional; a
     // colour or size is the category's ("from category") unless the wire sets its own ("set
     // here"), as the wire report records it.
     let number_hint = match (v.source.provisional(k), number.trim().is_empty()) {

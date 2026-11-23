@@ -1,4 +1,4 @@
-//! The hover tooltip naming the ECAD object under the pointer (design 008 §4.3).
+//! The hover tooltip naming the ECAD object under the pointer.
 
 use crate::shell;
 use crate::shell::app::*;
@@ -42,7 +42,7 @@ impl App {
         p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_connection_point(p, uid, world, aperture)).ok().flatten()
     }
 
-    /// The hover description shown now, if any (design 008 §4.3).
+    /// The hover description shown now, if any.
     pub fn hover_lines(&self) -> Option<&[String]> {
         self.hover.as_deref()
     }
@@ -52,7 +52,7 @@ impl App {
     /// pointer leaves the object, a button is pressed or a command starts. Only reads.
     pub(crate) fn hover_tooltip(&mut self, ctx: &egui::Context) {
         let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
-        // Brief 038: only over the page shown, not over a hosted view laid over the hidden page.
+        // Only over the page shown, not over a hosted view laid over the hidden page.
         let pointer = pointer.filter(|at| self.over_shown_page(ctx, *at));
         let idle = self.cad.session.running.is_none() && !pressed;
         // A terminal under the pointer wins over the wire ending on it or the symbol around it.
@@ -60,7 +60,7 @@ impl App {
             Some(at) => self.connection_point_under(at),
             None => None,
         };
-        // Then a cable reference end, which wins over the wire starting on its point (brief 010).
+        // Then a cable reference end, which wins over the wire starting on its point.
         let reference = match (pointer.filter(|_| idle), &connection_point) {
             (Some(at), None) => self.reference_under(at),
             _ => None,
@@ -103,7 +103,7 @@ impl App {
             };
         }
         let Some(lines) = &self.hover else { return };
-        // Brief 038: the shell's popover style and text colours.
+        // The shell's popover style and text colours.
         let t = shell::left::colours();
         egui::Area::new(egui::Id::unique(HOVER_ID))
             .order(egui::Order::Tooltip)

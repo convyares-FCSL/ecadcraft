@@ -1,4 +1,4 @@
-//! The action table (brief 041, design `ui-architecture.md` §7.2): where a person finds each
+//! The action table: where a person finds each
 //! command. A command (`CommandSpec`, in ecad-engine's engine) says **what** happens; an [`Action`]
 //! says where it appears: in a tool group's flyout, in fixed slots of an object kind's wheel, on a
 //! key, and under which words Ctrl+K finds it. Nothing here defines a command: every action runs
@@ -7,13 +7,13 @@
 //! command appears in an action or in [`PROGRAMMATIC_ONLY`].
 //!
 //! # Semantics
-//! - **Tool groups** (UI rev 3: Select, Draw, Text | Device, Terminal, PLC | Wire, Cable |
+//! - **Tool groups** (Select, Draw, Text | Device, Terminal, PLC | Wire, Cable |
 //!   Location) are the actions with a `group`, in flyout order: tools, window actions (a view or
-//!   a dialog) and, where the board names an item with no command yet, a placeholder
+//!   a dialog) and, where an item has no command yet, a placeholder
 //!   ([`App::Coming`]) that stays greyed in place. A group with a key (V D T W C) picks its
 //!   last-used tool and steps.
 //! - **The wheel** of a kind is the actions naming that kind in `wheel`, at their slot. Slots mean
-//!   the same on every wheel (spec §5): [`Slot::Bottom`] deletes, [`Slot::Right`] goes to what the
+//!   the same on every wheel: [`Slot::Bottom`] deletes, [`Slot::Right`] goes to what the
 //!   object relates to, [`Slot::BottomRight`] shows its row; the three on the left copy, turn or
 //!   change it. An empty slot stays empty.
 //! - **Keys** act on the selection while the pointer is over the page and nothing prompts; no
@@ -26,7 +26,7 @@ use ecad_widgets::Icon;
 
 use ecad_engine::pointer::kind::Target;
 
-/// A wheel slot, clockwise from the top (spec §5).
+/// A wheel slot, clockwise from the top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Slot {
     Top,
@@ -54,7 +54,7 @@ impl Slot {
     }
 }
 
-/// The tool groups of the Draw workspace (UI rev 3, "Tool strip"), in strip order. Dividers sit
+/// The tool groups of the Draw workspace, in strip order. Dividers sit
 /// between Text and Device, PLC and Wire, and Cable and Location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ToolGroup {
@@ -85,7 +85,7 @@ impl ToolGroup {
         ToolGroup::Location,
     ];
 
-    /// Its key, if it keeps one. UI rev 3 keeps a key only where a group of 041's survives
+    /// Its key, if it keeps one. Only some groups keep a key
     /// (Select V, Draw D, Text T, Wire W, Cable C); Device, Terminal, PLC and Location have none
     /// (P now reopens the symbol picker while placing).
     pub const fn letter(self) -> Option<char> {
@@ -134,7 +134,7 @@ impl ToolGroup {
         matches!(self, ToolGroup::Text | ToolGroup::Plc | ToolGroup::Cable)
     }
 
-    /// The note at the foot of its flyout (UI rev 3, boards 1.09 and 1.10), if it has one.
+    /// The note at the foot of its flyout, if it has one.
     pub const fn note(self) -> Option<&'static str> {
         match self {
             ToolGroup::TerminalBlock => Some("Full strip view, levels and parts"),
@@ -161,7 +161,7 @@ impl ToolGroup {
     }
 }
 
-/// A key an action is on (spec §5, "Keyboard that remains"). Ctrl is Cmd on macOS.
+/// A key an action is on. Ctrl is Cmd on macOS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Key {
     Delete,
@@ -263,21 +263,20 @@ pub enum App {
     WireSettings,
     /// Open the Text panel's command field with a template for the object (no form exists yet).
     Template,
-    /// Brief 048: Library ▸ the symbol builder, empty (design 048 §3.3).
+    /// Library ▸ the symbol builder, empty.
     NewSymbol,
-    /// Brief 048: the builder on the version a placed symbol shows (design 048 §6.1).
+    /// The builder on the version a placed symbol shows.
     EditSymbol,
-    /// Brief 048: the builder from the selected plain geometry, or a drawn device's drawing
-    /// (design 048 §4).
+    /// The builder from the selected plain geometry, or a drawn device's drawing.
     MakeSymbol,
-    /// Brief 048: bring a placed symbol to its newest version (`symbolupdate`), with the review in
-    /// the drawer when it would clash (design 048 §8.4).
+    /// Bring a placed symbol to its newest version (`symbolupdate`), with the review in
+    /// the drawer when it would clash.
     UpdateSymbol,
-    /// UI rev 3: Project ▸ PLC (the rack overview).
+    /// Project ▸ PLC (the rack overview).
     PlcRacks,
-    /// UI rev 3: Place Symbol with the continuation arrow (Wire ▸ Continuation).
+    /// Place Symbol with the continuation arrow (Wire ▸ Continuation).
     Continuation,
-    /// UI rev 3: a flyout item the board names whose tool does not exist yet. It never runs: it
+    /// A flyout item whose tool does not exist yet. It never runs: it
     /// is greyed, and its hover says so ([`COMING`]).
     Coming,
 }
@@ -303,7 +302,7 @@ pub enum Params {
     App(App),
 }
 
-/// A slot's short list (spec §5: one list of up to eight choices, never a second wheel).
+/// A slot's short list (one list of up to eight choices, never a second wheel).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choices {
     /// The project's potentials (`potential {conductor, value}`), and "None".
@@ -332,7 +331,7 @@ pub struct Context<'a> {
     pub writable: bool,
 }
 
-/// One action (design §7.2).
+/// One action.
 #[derive(Clone, Copy)]
 pub struct Action {
     /// Stable id: `wire.fixnumber`.
@@ -350,7 +349,7 @@ pub struct Action {
     pub key: Option<Key>,
     /// Extra words Ctrl+K finds it by (with the label).
     pub search: &'static [&'static str],
-    /// Whether Ctrl+K lists it (Undo and Redo are keys only, owner answer 8).
+    /// Whether Ctrl+K lists it (Undo and Redo are keys only).
     pub searchable: bool,
     pub enabled: fn(&Context) -> Enabled,
 }
@@ -498,8 +497,8 @@ pub use ecad_electrical::devices::kinds::ObjectKind;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[
-    // ---- Tool groups (UI rev 3, "Tool strip (Draw)" and boards 1.09, 1.10). An item the board
-    // names with no command yet is a placeholder (`coming_tool`), greyed in place.
+    // ---- Tool groups. An item with no command yet
+    // is a placeholder (`coming_tool`), greyed in place.
     Action {
         id: "select",
         command: "",
@@ -542,10 +541,10 @@ pub const ACTIONS: &[Action] = &[
     // The Terminal flyout's foot (not one of its tools): the Terminal manager, Project ▸ Terminals.
     group_app("terminal_block.manager", "", App::TerminalStripRow, "Terminal manager", Icon::ShowRow, None, &["terminal plan", "strips"], ok),
     // ---- PLC: the rack overview, then the card commands through their templates, as Ctrl+K
-    // ran them before (brief 045).
+    // ran them before.
     group_app("plc.racks", "", App::PlcRacks, "Rack overview", Icon::Plc, Some((ToolGroup::Plc, 0)), &["plc", "rack", "racks"], ok),
     group_app("plc.page", "plcpage", App::Template, "Detail page…", Icon::NewPage, Some((ToolGroup::Plc, 1)), &["plc", "card page", "detail"], write),
-    // Brief 044 (design 044 §4.1): Place ▸ Connector; UI rev 3: Device ▸ Connector.
+    // Place ▸ Connector; Device ▸ Connector.
     tool(
         "place.connector",
         "connector",
@@ -629,7 +628,7 @@ pub const ACTIONS: &[Action] = &[
         label: "Mirror",
         icon: Icon::Mirror,
         group: None,
-        // Brief 048 (Q1): Edit symbol takes the device wheel's TopLeft; Mirror keeps X, Ctrl+K and
+        // Edit symbol takes the device wheel's TopLeft; Mirror keeps X, Ctrl+K and
         // the selection wheel.
         wheel: &[(K::Mixed, S::TopLeft)],
         key: Some(Key::X),
@@ -791,7 +790,7 @@ pub const ACTIONS: &[Action] = &[
     slot("page.rename", "renamepage", Params::App(App::RenamePage), "Rename", Icon::Edit, &[(K::PageRow, S::Top)], write),
     slot("page.preview", "", Params::App(App::PreviewPage), "Preview", Icon::Eye, &[(K::PageRow, S::TopLeft)], ok),
     slot("page.folder", "newfolder", Params::App(App::NewFolder), "New folder", Icon::Pages, &[(K::PageRow, S::BottomLeft)], write),
-    // ---- Brief 048 (design 048 §9.6): the symbol builder.
+    // ---- The symbol builder.
     Action {
         id: "symbol.edit",
         command: "",
@@ -810,7 +809,7 @@ pub const ACTIONS: &[Action] = &[
         command: "",
         params: Params::App(App::MakeSymbol),
         label: "Make symbol",
-        // The selection wheel's Right slot goes somewhere (spec §5): to the builder.
+        // The selection wheel's Right slot goes somewhere: to the builder.
         icon: Icon::GoTo,
         group: None,
         wheel: &[(K::Mixed, S::Right)],
@@ -863,7 +862,7 @@ pub const ACTIONS: &[Action] = &[
     search_only("wire.connecttool", "connect", Params::Start, "Connect", Icon::Connect, &["attach"]),
     search_only("wire.disconnecttool", "disconnect", Params::Start, "Disconnect", Icon::Disconnect, &["detach"]),
     search_only("wire.numbertool", "wirenumber", Params::Start, "Fix wire number", Icon::Number, &["number"]),
-    // Brief 044 (design 044 §9.3): the terminal wheel holds strip terminals only (its jumper, plan
+    // The terminal wheel holds strip terminals only (its jumper, plan
     // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
     search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
     search_only("terminal_block.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
@@ -890,7 +889,7 @@ pub const ACTIONS: &[Action] = &[
     search_only("numbering.renumber", "renumber", Params::App(App::Renumber), "Renumber", Icon::Number, &["tags", "devices"]),
     search_only("numbering.wires", "renumberwires", Params::App(App::RenumberWires), "Renumber wires", Icon::Number, &["wire numbers"]),
     search_only("numbering.finalise", "finalise", Params::App(App::Finalise), "Finalise numbering", Icon::Number, &["provisional"]),
-    // Brief 045 (design 045 §2.6, §4.8): the card commands, found with Ctrl+K until a card wheel.
+    // The card commands, found with Ctrl+K until a card wheel.
     group_app(
         "plc.slot",
         "plcslot",
@@ -925,15 +924,15 @@ const fn search_only(
     Action { id, command, params, label, icon, group: None, wheel: &[], key: None, search, searchable: true, enabled }
 }
 
-/// ECAD commands no action shows, each with the reason (design §7.2: nothing is defined twice,
+/// ECAD commands no action shows, each with the reason (nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
-    // Lane 072 B step 5 (design 072 §2.6, §2.8): no panel shows user fields or device links yet;
-    // the R9 device inspector takes them. Until then, commands and MCP only.
+    // No panel shows user fields or device links yet;
+    // the device inspector will take them. Until then, commands and MCP only.
     ("userfield", "None yet: the R9 device inspector's user fields (design 072 §2.8)"),
     ("linkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
     ("unlinkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
-    // Brief 052 (design 052 §5.7, §9.1, §9.4): the inspector's Location and Function rows, and
+    // The inspector's Location and Function rows, and
     // Settings ▸ Project info's Functions and locations card.
     ("setlocation", "Inspector ▸ Device: Location rows"),
     ("conflicts", "The prompt strip's conflict list: Move and Leave"),
@@ -944,17 +943,17 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("designationmerge", "Settings ▸ Project info: Merge into…"),
     ("designationremove", "Settings ▸ Project info: Remove"),
     ("setdefault", "Settings ▸ Standards (U4c)"),
-    // Brief 050a: the standard header and the style detail on Settings ▸ Standards.
+    // The standard header and the style detail on Settings ▸ Standards.
     ("standard", "Settings ▸ Standards: the standard header"),
     ("setstyle", "Settings ▸ Standards: a style's detail"),
     ("deletestyle", "Settings ▸ Standards: a style's Delete…"),
     ("promote", "Settings ▸ Standards: Promote to standard"),
     ("styles", "a read; Settings ▸ Standards shows the catalogues"),
-    // Brief 054: the Book's folder row and header menu, and the Page tab's front pages.
+    // The Book's folder row and header menu, and the Page tab's front pages.
     ("folderprops", "the Book: a folder row's Start number…"),
     ("renumberpages", "the Book: Renumber pages"),
     ("deletepage", "the Page tab's front page toggles, and the Book's Delete on generated pages"),
-    // Brief 055: Library ▸ Title blocks reads and writes them (the list, the editor's Save, Import DXF).
+    // Library ▸ Title blocks reads and writes them (the list, the editor's Save, Import DXF).
     ("titleblocks", "a read; Library ▸ Title blocks lists them"),
     ("titleblock", "Library ▸ Title blocks: + Title block and the editor's Save"),
     ("titleblockimport", "Library ▸ Title blocks: Import DXF and the Logo tool"),
@@ -1007,28 +1006,28 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("references", "a read for agents"),
     ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
     ("iolist", "a read; Lists ▸ PLC shows it"),
-    // Brief 056 (design 056 §4, §6): Project ▸ PLC's card header, Compare and Import tags.
+    // Project ▸ PLC's card header, Compare and Import tags.
     ("plcmaketags", "Project ▸ PLC ▸ the card header's … ▸ Make tags"),
     ("plcexport", "Project ▸ PLC ▸ Export tags"),
     ("plcimport", "Project ▸ PLC ▸ Import an I/O list"),
     ("plccardtype", "Project ▸ PLC ▸ the card's Type in the right panel"),
-    // Brief 047 (design 047 §6, owner Q10): no part-set panel until 2.3's catalogue.
+    // No part-set panel until 2.3's catalogue.
     ("partline", "the command line until 2.3's part-set editor; the inspector's Parts section shows them"),
     ("bomitem", "Lists ▸ Reports ▸ BOM ▸ + Item"),
     ("article", "the command line and Checks' Use … for all until 2.3's catalogue"),
-    // Brief 048 (design 048 §9.6): the builder's Save and the review drawer (048b).
+    // The builder's Save and the review drawer.
     ("symbolnew", "the builder's Save"),
     ("symboledit", "the builder's Save"),
     ("symbolimpact", "the builder's review drawer"),
     ("makesymbol", "the builder's Save (048c's Make symbol)"),
-    // Brief 049 (design 049 §5.1): no wheel slot.
+    // No wheel slot.
     ("contcaption", "the command line and the inspector's Caption row"),
-    // Brief 057 (design 057 §2, §5.3): the Rating section of Project ▸ Wires and Cables, and
+    // The Rating section of Project ▸ Wires and Cables, and
     // Settings ▸ Standards ▸ Rating tables; no wheel slot.
     ("rating", "the Rating section of Project ▸ Wires and Cables"),
     ("ratingtable", "Settings ▸ Standards ▸ Rating tables"),
     ("ratings", "a read; the Rating sections show the same results"),
-    // Brief 059 (design 059 §5): the cable manager on Project ▸ Cables.
+    // The cable manager on Project ▸ Cables.
     ("cablenew", "Project ▸ Cables: + Cable (New cable)"),
     ("cableedit", "Project ▸ Cables: the Details pane's boxes and Add a core"),
     ("cableremove", "Project ▸ Cables: Remove (refused for a drawn cable)"),
@@ -1057,8 +1056,7 @@ pub fn wheel(kind: ObjectKind) -> [Option<&'static Action>; 8] {
 }
 
 /// The wheel of `target`: its kind's ([`wheel`]), except that a device whose clicked
-/// representation is a drawing offers Make symbol where a symbol offers Edit symbol (design 048
-/// §4.2).
+/// representation is a drawing offers Make symbol where a symbol offers Edit symbol.
 pub fn wheel_for(target: &Target) -> [Option<&'static Action>; 8] {
     let mut out = wheel(target.kind);
     if target.kind == ObjectKind::Device

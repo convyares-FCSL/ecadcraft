@@ -1,12 +1,11 @@
-//! UI rev 3's Project workspace (was Lists; `docs/discussions/ui-2026-11/rev3-build-spec.md`,
-//! "Project workspace", boards 2.01–2.06): the tabs in the tool strip's order (Devices,
+//! The Project workspace (was Lists): the tabs in the tool strip's order (Devices,
 //! Terminals, PLC | Wires, Cables | Reports), each a full-width table under one head (the tabs
 //! with their counts at the left; filter, Import, Export and "Open beside the page" at the right)
 //! and over one foot (what the colours mean, and the tab's counts). The right panel shows only the
 //! selected item ([`crate::workspace::detail`]).
 //!
-//! UI only: every view is an existing one (039's tables, 051's PLC, 024's reports) laid out to the
-//! boards. What is not built yet is a placeholder that says so: Import (no importer), the cable
+//! UI only: every view is an existing one (the tables, the PLC list, the reports). What is not built yet is a
+//! placeholder that says so: Import (no importer), the cable
 //! drawing, ferrules, lengths and glands (the cable manager), and the report generator's settings.
 //!
 //! **Update map.** Each tab's view keeps its own (named in its module); the head's counts are
@@ -27,7 +26,7 @@ pub(crate) const FOOT: f32 = 32.0;
 /// A tab's height in the strip, px.
 pub(crate) const TAB_H: f32 = 30.0;
 
-/// The tabs, in the tool strip's order; a divider after PLC and after Cables (board 2.01).
+/// The tabs, in the tool strip's order; a divider after PLC and after Cables.
 pub const TABS: [ListsView; 6] =
     [ListsView::Devices, ListsView::TerminalBlocks, ListsView::Plc, ListsView::Wires, ListsView::Cables, ListsView::Reports];
 
@@ -37,7 +36,7 @@ pub(crate) const IMPORT_LIST: &str = "Import a list";
 pub(crate) const IMPORT_IO: &str = "Import an I/O list";
 pub const EXPORT: &str = "Export";
 pub const OPEN_BESIDE: &str = "Open beside the page";
-/// Brief 057 (owner): Project ▸ Cables opens as a list; Details opens the selected cable below it.
+/// Project ▸ Cables opens as a list; Details opens the selected cable below it.
 pub const DETAILS: &str = "Details";
 pub const CLOSE_BESIDE: &str = "Close the page beside";
 pub(crate) const RENUMBER: &str = "Renumber\u{2026}";
@@ -45,11 +44,11 @@ pub(crate) const REGENERATE: &str = "Regenerate all";
 pub(crate) const NEW_REPORT: &str = "+ New report";
 /// Why Import is greyed (no importer is built yet).
 pub(crate) const IMPORT_COMES: &str = "Importing a list comes later.";
-/// The footer's sentence (design 056 §8).
+/// The footer's sentence.
 pub(crate) fn overview_words(page: &str) -> String {
     format!("This overview is also page {page} of the book: generated, always current, each card a link to its page.")
 }
-/// Why the report generator's buttons are greyed (brief 2.9 is not built yet).
+/// Why the report generator's buttons are greyed (it is not built yet).
 pub(crate) const REPORTS_COME: &str = "The report generator comes later.";
 
 /// The foot's legend words.
@@ -209,7 +208,7 @@ impl App {
         ]
     }
 
-    /// The Project workspace in `main` (UI rev 3, boards 2.01–2.06).
+    /// The Project workspace in `main`.
     pub(crate) fn project_view(&mut self, ui: &mut egui::Ui, main: Rect) {
         let s = ecad_widgets::SHELL;
         let (head, body, foot_r) = layout(main);
@@ -298,7 +297,7 @@ impl App {
                 in_rect(ui, body_in, "ecad.project.reports", |ui| crate::reports::list::show(self, ui));
             }
         }
-        // Selecting a row opens the right panel on it (boards 2.01–2.06 always show it).
+        // Selecting a row opens the right panel on it.
         if self.project_selection_changed() {
             self.shell.state.right_collapsed = false;
             if self.shell.state.right_tab == crate::shell::RightTab::Layout {
@@ -366,7 +365,7 @@ impl App {
                     .placeholder(placeholder_text)
                     .width(w)
                     .show(ui);
-                // Kept from 039: the chips and the grouping (the board has no room for them, so
+                // The chips and the grouping (the table has no room for them, so
                 // they sit beside the filter).
                 d.table.group_menu(ui, &d.source);
                 d.table.chip_row(ui, &d.source);
@@ -393,7 +392,7 @@ impl App {
                         }
                         ListsView::Cables => {
                             r.cables.table.filter_field(ui, placeholder_text, w);
-                            // Brief 059 (design 059 §5.1): + Cable, left of the filter, with its menu.
+                            // + Cable, left of the filter, with its menu.
                             ui.add_space(space::S);
                             out.extend(add_cable(ui, &r.cables.undrawn, writable));
                         }
@@ -471,7 +470,7 @@ impl App {
         }
     }
 
-    /// Brief 051: what Project ▸ PLC asks the app for (design 051 §3.4, §3.5).
+    /// What Project ▸ PLC asks the app for.
     pub fn plc_action(&mut self, a: crate::workspace::ListAction) {
         use crate::workspace::ListAction;
         match a {
@@ -492,7 +491,7 @@ impl App {
                 }
             }
             ListAction::ChecksOf(c) => {
-                // UI rev 3: the Check list has no Project tab; the card's checks show in the right
+                // The Check list has no Project tab; the card's checks show in the right
                 // panel's Checks, filtered to it.
                 let tag = self
                     .project
@@ -550,7 +549,7 @@ impl App {
                 (true, LEGEND_READ, vec![(format!("{} on {}", plural(n, "terminal", "terminals"), plural(strips, "strip", "strips")), Tone::Neutral)])
             }
             ListsView::Plc => {
-                // Brief 056 (design 056 §8): the overview page's sentence, when the book has it.
+                // The overview page's sentence, when the book has it.
                 let words = r.and_then(|r| r.io.book_page.as_ref()).map(|(_, n)| overview_words(n));
                 let words = words.unwrap_or_else(|| r.map(|r| r.io.totals.clone()).unwrap_or_default());
                 (true, "read from the drawing", vec![(words, Tone::Neutral)])
@@ -569,7 +568,7 @@ impl App {
             ListsView::Cables => {
                 let (n, flagged, no_length) = r.map_or((0, 0, 0), |r| r.cables.counts());
                 let mut v = vec![(plural(n, "cable", "cables"), Tone::Neutral)];
-                // Brief 059: `4 cables · 1 not drawn`.
+                // `4 cables · 1 not drawn`.
                 let undrawn = r.map_or(0, |r| r.cables.undrawn.len());
                 if undrawn > 0 {
                     v.push((format!("{undrawn} not drawn"), Tone::Neutral));
@@ -593,18 +592,18 @@ enum HeadAction {
     Beside,
     Export,
     ImportTags,
-    /// Brief 057: open or close the selected cable's details.
+    /// Open or close the selected cable's details.
     Details,
-    /// Brief 059: + Cable (New cable), or Assign in the drawing for a cable not drawn.
+    /// + Cable (New cable), or Assign in the drawing for a cable not drawn.
     NewCable,
     Assign(ecad_model::CableId),
 }
 
-/// The accessible names of + Cable's chevron and menu (design 059 §5.7).
+/// The accessible names of + Cable's chevron and menu.
 pub const ADD_NAME: &str = "ecad.lists.cables.add";
 pub const ADD_MENU: &str = "ecad.lists.cables.add.menu";
 
-/// Brief 059 (design 059 §5.1): **+ Cable** (primary, small) and its chevron, whose menu has
+/// **+ Cable** (primary, small) and its chevron, whose menu has
 /// **New cable**, then `Assign in the drawing` and the cables not drawn. Laid out right to left,
 /// so the chevron comes first.
 fn add_cable(ui: &mut egui::Ui, undrawn: &[(ecad_model::CableId, String)], writable: bool) -> Vec<HeadAction> {

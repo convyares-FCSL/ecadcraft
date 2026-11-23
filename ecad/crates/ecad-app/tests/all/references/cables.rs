@@ -1,4 +1,4 @@
-//! Brief 010, headless UI by element name (design 010 §3.1, check K): the three Wiring buttons
+//! Headless UI by element name: the three Wiring buttons
 //! start their first prompts, the two Pages buttons fill the Command field with the current page,
 //! and the click-only path of the quick start (Cable Reference, Continue Cable, Go to Reference)
 //! works through the buttons.

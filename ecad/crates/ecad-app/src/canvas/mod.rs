@@ -1,5 +1,5 @@
-//! The canvas (brief 040, U4a): ECAD's painter layer over the page that CADCraft draws through
-//! US1 (design `ui-architecture.md` §1.5). It sets CADCraft's drawing-area preferences from the
+//! The canvas: ECAD's painter layer over the page that CADCraft draws through
+//! its drawing seam. It sets CADCraft's drawing-area preferences from the
 //! tokens (the paper or dark sheet, the selection colour, no ViewCube, UCS icon or grid), then
 //! paints what CADCraft's marks cannot: the sheet's surround and shadow, the 5 mm dot grid, the
 //! error and warning markers, the provisional underline, the dashed outlines of a device's other
@@ -9,7 +9,7 @@
 //!
 //! # Semantics
 //! - Everything painted here is overlay: egui shapes over the page, never entities, so none of it
-//!   can reach a plot (spec principle 1).
+//!   can reach a plot.
 //! - **Update map.** What is painted from the project is cached per (project serial, change
 //!   count, page, selection, sheet), the key the app already keeps for the Properties section
 //!   (`App::props_seen`), and read again only when that key moves: a frame with the same key
@@ -18,8 +18,8 @@
 //! - Nothing is painted when the page is not shown (Lists, Library or Publish hiding it,
 //!   [`crate::shell::Shell::page_rect`] `None`), nor in a paper-space layout.
 //!
-//! Excluded: the inspector's list of related placements (042 shows [`related`]'s result), the
-//! agent's last write (043), proposal ghosts (M2).
+//! Excluded: the inspector's list of related placements (it shows [`related`]'s result), the
+//! agent's last write, proposal ghosts.
 
 pub mod leader;
 pub mod markers;
@@ -40,7 +40,7 @@ use crate::shell::app::App;
 /// switch between paper and dark.
 pub(crate) const SHEET_COMMAND: &str = "ui.sheet";
 
-/// Which sheet the page is drawn on (UI rev 3, "Sheet colour and full dark"): a viewing
+/// Which sheet the page is drawn on: a viewing
 /// preference of the person, kept with the shell state (eframe storage), never in the project.
 /// It changes the screen only: PDFs and prints always use the paper colours.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub enum Sheet {
     /// Always light.
     #[default]
     Paper,
-    /// The interface theme: dark in the dark interface, paper in the light one (board 1.18).
+    /// The interface theme: dark in the dark interface, paper in the light one.
     Follow,
     /// Always dark.
     Dark,
@@ -81,7 +81,7 @@ impl Sheet {
     }
 }
 
-/// The readable zoom a page first opens at (spec §4 "Type", design §4): a tag is this tall, px.
+/// The readable zoom a page first opens at: a tag is this tall, px.
 pub const TAG_PX: f64 = 13.0;
 
 /// What the painter keeps between frames (in egui's temporary data, so the app's own state is
@@ -239,9 +239,8 @@ fn leader_to_selection(t: &App, xf: &cadcraft_ui_egui::canvas::Xf, companion: Re
 }
 
 /// A page shown for the first time (no view stored for it before this frame) opens with the
-/// sheet fitted, frame and title block visible, a 24 px margin (UI rev 3, "Canvas"; brief 040
-/// opened it where a tag is [`TAG_PX`] tall); the shell then remembers its zoom (038's page
-/// views).
+/// sheet fitted, frame and title block visible, a 24 px margin, where a tag is [`TAG_PX`] tall; the shell
+/// then remembers its zoom per page.
 fn first_open_zoom(t: &mut App, st: &mut State, rect: Rect) {
     let page = t.props_seen.as_ref().and_then(|k| k.2);
     let stored: usize = t.shell.views.projects.values().map(|p| p.pages.len()).sum();
@@ -255,7 +254,7 @@ fn first_open_zoom(t: &mut App, st: &mut State, rect: Rect) {
     t.fit_sheet_in(rect);
 }
 
-/// Give CADCraft's font table the sheet font (US3; `ecad_engine::install` does it too, and a
+/// Give CADCraft's font table the sheet font (`ecad_engine::install` does it too, and a
 /// print). Whether it is registered.
 pub fn register_sheet_faces() -> bool {
     ecad_engine::styles::draw::register_sheet_font()

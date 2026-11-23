@@ -1,7 +1,7 @@
-//! Brief 051 in the app (design 051 §10.1 J–M, P): Lists ▸ PLC shows the rack's tiles over the
+//! PLC visuals in the app: Lists ▸ PLC shows the rack's tiles over the
 //! channel table; a tile filters the table, a square selects its row, Make its page draws an
 //! undrawn card, Description is edited in the table, and the strip follows its update map.
-//! Screenshot `051-lists-plc.png` when `ECAD_TESTER_SHOTS` names a folder.
+//! A screenshot when `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::plc::list::{self, IoView};
 use ecad_app::shell::app::App;

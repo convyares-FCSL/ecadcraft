@@ -1,4 +1,4 @@
-//! The Text panel (spec §5): over the right panel, closed by default, opened by Ctrl+/ or the
+//! The Text panel: over the right panel, closed by default, opened by Ctrl+/ or the
 //! status bar's Commands button. Its **Commands** tab is today's Developer section
 //! ([`crate::developer`]): the ECAD command field with the exact command names and JSON MCP uses,
 //! the debugger, Inspect Project, Agent access and the primitives page. The Ask tab comes later.
@@ -40,7 +40,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let project = t.project_open();
     let snapshots = t.snapshots.is_some();
     // The Developer section is the Commands tab: folding it closes the panel (Agent access is
-    // in Settings since brief 042).
+    // in Settings).
     let actions = crate::shell::in_rect(ui, body, "ecad.shell.text.body", |ui| {
         developer::show(
             ui,

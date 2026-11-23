@@ -1,4 +1,4 @@
-//! Frame… (design 055 §4.7): a popover anchored to its button with the frame's sheet, margins,
+//! Frame…: a popover anchored to its button with the frame's sheet, margins,
 //! zones and lines, and a thumbnail of the whole sheet. Apply writes into the draft; Save still
 //! writes the project.
 
@@ -11,7 +11,7 @@ use eframe::egui::{self, Color32, Rect, RichText, Stroke, pos2, vec2};
 
 use crate::title_blocks::Editor;
 
-/// Element names (design 055 §5).
+/// Element names.
 pub const SHEET: &str = "library.tb.frame.sheet";
 pub(crate) const MARGINS: [&str; 4] =
     ["library.tb.frame.margin.left", "library.tb.frame.margin.right", "library.tb.frame.margin.bottom", "library.tb.frame.margin.top"];

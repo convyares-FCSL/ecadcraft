@@ -1,4 +1,4 @@
-//! Brief 052c (design 052 §9.4, §10.15): Settings ▸ Project info ▸ Functions and locations shows
+//! Settings ▸ Project info ▸ Functions and locations shows
 //! the project's list with the counts `designations` gives, and its edits are immediate commands.
 
 use ecad_app::settings::Section;

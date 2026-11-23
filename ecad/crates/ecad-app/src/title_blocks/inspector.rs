@@ -1,4 +1,4 @@
-//! The editor's right panel (design 055 §4.4): per selection, Value (fields), Style (fields and
+//! The editor's right panel: per selection, Value (fields), Style (fields and
 //! texts) and Box (every item), folding; with nothing selected, the block itself with Save,
 //! Discard, Duplicate for… and Delete….
 
@@ -12,7 +12,7 @@ use crate::title_blocks::draft::{Draft, snap};
 use crate::title_blocks::list::{Drops, PALETTE};
 use crate::title_blocks::{Act, Editor};
 
-/// Element names (design 055 §5).
+/// Element names.
 pub const SOURCE: &str = "library.tb.inspector.value.source";
 pub const IFEMPTY: &str = "library.tb.inspector.value.ifempty";
 pub const LABEL: &str = "library.tb.inspector.draw.label";
@@ -416,7 +416,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
     acts
 }
 
-/// Keep `text` to at most `max` characters (the bounds the entries kept before #113's components).
+/// Keep `text` to at most `max` characters (the bounds the entries kept before the shared components).
 fn limit(text: &mut String, max: usize) {
     if text.chars().count() > max {
         *text = text.chars().take(max).collect();
@@ -465,7 +465,7 @@ fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
     });
 }
 
-/// Make field (design 055 §4.6): a text becomes a field that keeps its box and style; its text
+/// Make field: a text becomes a field that keeps its box and style; its text
 /// becomes the label and the binding a project field named after it.
 pub(crate) fn make_field(d: &mut Draft, i: usize) {
     let Some(BlockItem::Text { at, text, draw }) = d.now.layout.items.get(i).cloned() else { return };
@@ -518,7 +518,7 @@ fn block_panel(
         });
         return;
     }
-    // Save first: the consequence line, then the buttons (050's pattern).
+    // Save first: the consequence line, then the buttons.
     let changed = d.changed();
     let consequence = match pages {
         0 => "Saving changes no pages yet.".to_string(),

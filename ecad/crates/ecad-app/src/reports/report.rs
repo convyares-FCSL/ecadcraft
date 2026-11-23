@@ -1,11 +1,11 @@
 //! A column set over one of the kept report models' tables (`ecad_electrical::reports::Table`):
-//! UI rev 3's Wires and Cables tabs (boards 2.04, 2.05) and the Reports tab's list. Each column
+//! The Wires and Cables tabs and the Reports tab's list. Each column
 //! names the report header it reads, or is a placeholder for data that is not built yet (the cable
-//! manager's ferrules, lengths and glands, brief 2.7), shown as a dash.
+//! manager's ferrules, lengths and glands), shown as a dash.
 //!
 //! **Update map.** The rows are a copy of the report table, taken again only when the report
 //! models' revision changed (`ReportModels::revision`, kept from each change's ops), exactly as the
-//! Reports window did (design 024 §6.2); every other commit reads nothing. The copy is the
+//! Reports window did; every other commit reads nothing. The copy is the
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 
 use ecad_widgets::prim::Tone;

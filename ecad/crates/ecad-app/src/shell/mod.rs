@@ -1,32 +1,27 @@
-//! The shell (brief 038, U2; design `ui-architecture.md` §5; reframed by UI rev 3,
-//! `docs/discussions/ui-2026-11/rev3-build-spec.md`): ECADCraft's window around CADCraft's
+//! The shell: ECAD's window around CADCraft's
 //! drawing. One bar at each edge; the drawing comes first.
 //!
 //! - top bar: the project pill and menu, the four workspaces (Ctrl+1–4), search (Ctrl+K), the
 //!   agent icon, the light/dark switch, help and the account ([`top_bar`]);
-//! - the agent banner while an agent is connected (035's banner, styled by 043);
+//! - the agent banner while an agent is connected;
 //! - tool strip in Draw, at the left edge: the Book, Devices and History panel buttons, nine tool
 //!   groups, and the Snap, Grid and Ortho toggles ([`tool_strip`]);
 //! - the panel slot beside it while a panel is open: Book, Devices or History, navigation only
 //!   ([`left`]);
-//! - main view: the page (CADCraft's drawing through upstream seam US1, `CadApp::ui_embedded`),
+//! - main view: the page (CADCraft's drawing through the host's drawing seam, `CadApp::ui_embedded`),
 //!   or Lists, Library and Publish hosting today's Reports, symbol search and Release / Print Book;
 //!   it splits for a companion view ([`layout`]);
 //! - the inspector at the right, a 56 px rail of its Device, Layout and Checks tabs when
 //!   collapsed ([`right`]), with the Text panel over it (Ctrl+/; [`text_panel`]);
 //! - the bottom bar: status, the page well and the view ([`status_bar`]);
-//! - brief 048's review drawer under the canvas, only while a symbol review or Compare shows
+//! - the review drawer under the canvas, only while a symbol review or Compare shows
 //!   ([`drawer`]);
-//! - Settings, a full-window overlay opened from the project menu ([`crate::settings`], brief
-//!   042); its Developer section has the developer switch, which shows CADCraft's own interface
+//! - Settings, a full-window overlay opened from the project menu ([`crate::settings`]);
+//!   its Developer section has the developer switch, which shows CADCraft's own interface
 //!   inside the main view (`--cad-ui`, `ui.cadchrome`).
 //!
-//! Panels keep their contents (design §5.6); only their framing is the shell's. The shell's state
+//! Panels keep their contents; only their framing is the shell's. The shell's state
 //! and the per-project page views persist in eframe's storage ([`state`]).
-//!
-//! Excluded: the table component (U3: `lists::show` goes into the Lists slot), the wheel and the
-//! action table (U4b), the canvas look (U4a), the inspector and Standards (U4c), the restyled
-//! banner (U4d), and the floating windows still to convert (sheets, merge, renumber, preview).
 
 pub mod app;
 pub mod bar;
@@ -65,10 +60,10 @@ use crate::shell::app::App;
 pub use layout::{Slots, layout};
 pub use state::{LeftTab, RightTab, ShellState, Views, Workspace};
 
-/// The margin round the sheet when it fits the canvas (UI rev 3), px.
+/// The margin round the sheet when it fits the canvas, px.
 pub(crate) const FIT_MARGIN: f32 = 24.0;
 
-/// Accessible labels of the shell's own elements (design §9: tests find them by label).
+/// Accessible labels of the shell's own elements (tests find them by label).
 pub const SETTINGS: &str = "Settings";
 pub(crate) const DEVELOPER_SWITCH: &str = "Show CADCraft's interface (developer)";
 /// The Text panel command that flips the developer switch.
@@ -81,7 +76,7 @@ pub struct Visit {
     pub page: Option<PageId>,
 }
 
-/// The Project workspace's views (UI rev 3, boards 2.01–2.06; was Lists): the tabs in the tool
+/// The Project workspace's views (was Lists): the tabs in the tool
 /// strip's order ([`crate::workspace::frame::TABS`]). The Check list is no tab (its checks are the
 /// right panel's Checks) but is still shown when asked for. While Project shows a view the left
 /// panel or the drawer also hosts, that one defers to it (one table is drawn once a frame).
@@ -90,11 +85,9 @@ pub enum ListsView {
     #[default]
     Devices,
     TerminalBlocks,
-    /// Brief 051: Project ▸ PLC (045c's Lists ▸ I/O).
+    /// Project ▸ PLC (the I/O list).
     Plc,
-    /// UI rev 3 (board 2.04).
     Wires,
-    /// UI rev 3 (board 2.05).
     Cables,
     Checks,
     Reports,
@@ -120,7 +113,7 @@ impl ListsView {
 
 pub(crate) const LISTS_DEVICES: &str = "Devices";
 pub const LISTS_TERMINAL_STRIPS: &str = "Terminals";
-/// Brief 051 (design 051 §3.1): the rack overview and the I/O list (045c's "I/O").
+/// The rack overview and the I/O list.
 pub(crate) const LISTS_PLC: &str = "PLC";
 pub(crate) const LISTS_WIRES: &str = "Wires";
 pub(crate) const LISTS_CABLES: &str = "Cables";
@@ -139,7 +132,7 @@ pub enum PublishTab {
     PrintBook,
 }
 
-/// Build counters of the hosted views (design §8.2: a commit changing nothing a view shows leaves
+/// Build counters of the hosted views (a commit changing nothing a view shows leaves
 /// its counter unchanged).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counters {
@@ -165,13 +158,13 @@ pub struct Shell {
     pub forward: Vec<Visit>,
     last_visit: Option<Visit>,
     pub tools: tool_strip::ToolStrip,
-    /// Brief 059: the Cable slash tool's cable picker.
+    /// The Cable slash tool's cable picker.
     pub slash_picker: crate::inspector::slash_picker::Picker,
     pub settings_open: bool,
     pub publish: PublishTab,
     /// The view Lists shows.
     pub lists: ListsView,
-    /// UI rev 3: the Project workspace's selected row last frame (a new one opens the right
+    /// The Project workspace's selected row last frame (a new one opens the right
     /// panel on it).
     pub project_selected: Option<crate::workspace::detail::Selected>,
     /// The rect the page is shown in this frame (Draw's main view, Lists' companion), or `None`
@@ -185,15 +178,15 @@ pub struct Shell {
     search_from_library: bool,
     /// The project whose views were applied, and the page whose view is shown.
     view_of: Option<(String, Option<PageId>)>,
-    /// The shell's own share of the last frame, in milliseconds (design §10).
+    /// The shell's own share of the last frame, in milliseconds.
     pub frame_ms: f64,
-    /// The bottom bar's page well (UI rev 3).
+    /// The bottom bar's page well.
     pub well: status_bar::Well,
     /// When the project last became saved in this session (`HH:MM`, local), and the save state
     /// last frame.
     pub saved_at: Option<String>,
     pub saved_was: Option<String>,
-    /// Brief 054: the + Page picker while it is open.
+    /// The + Page picker while it is open.
     pub new_page: Option<new_page::Picker>,
 }
 
@@ -204,8 +197,8 @@ impl std::fmt::Debug for Shell {
 }
 
 impl Shell {
-    /// A shell with the default state. (The right panel reads the app's `props` copy itself, UI
-    /// rev 3; the argument is kept for its callers.)
+    /// A shell with the default state. (The right panel reads the app's `props` copy itself;
+    /// the argument is kept for its callers.)
     pub fn new(_props: crate::settings::sheets::Shared) -> Self {
         Shell {
             state: ShellState::default(),
@@ -314,7 +307,7 @@ impl App {
     fn enter_workspace(&mut self) {
         match self.shell.state.workspace {
             Workspace::Lists if self.project_open() => self.open_reports(),
-            // UI rev 3 (board 4.01): Publish shows Print Book's choices as its own view; Release
+            // Publish shows Print Book's choices as its own view; Release
             // opens from its button (and History), floating.
             Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
             _ => {}
@@ -335,15 +328,15 @@ impl App {
         // The Developer section and the Text panel are one: either opened opens both.
         let open = self.developer.open || self.shell.state.text_panel;
         (self.developer.open, self.shell.state.text_panel) = (open, open);
-        // The banner's slot while an agent is shown, unless the agent pill hid it (brief 043).
+        // The banner's slot while an agent is shown, unless the agent pill hid it.
         let agent = self.agent.banner.as_ref().is_some_and(|b| !crate::agent::banner::hidden(ui.ctx(), &b.session));
-        // Brief 048: the review drawer shows while a review or Compare is open.
+        // The review drawer shows while a review or Compare is open.
         self.shell.state.review = self.drawer_review_tab().is_some();
         let slots = layout(ui.max_rect(), &self.shell.state, agent);
         self.shell.slots = Some(slots);
-        // Brief 042: Settings, over everything; it takes Esc before the shell's keys.
+        // Settings, over everything; it takes Esc before the shell's keys.
         crate::settings::show(self, ui);
-        // Brief 054: the + Page picker takes its keys before the shell's.
+        // The + Page picker takes its keys before the shell's.
         self.new_page_frame(ui.ctx());
         keys::handle(self, ui.ctx(), &slots);
         self.refresh_panel();
@@ -351,10 +344,10 @@ impl App {
         self.track_pages();
         self.track_visit();
 
-        // CADCraft's interface stays behind the developer switch (US1); ECAD owns the style.
+        // CADCraft's interface stays behind the developer switch; ECAD owns the style.
         let chrome = self.shell.state.cad_chrome;
         self.cad.embedding = Embedding { chrome, idle_typing: chrome, canvas_menus: chrome, style: false };
-        // Brief 041: the intent line replaces the command line, at rest and while prompting.
+        // The intent line replaces the command line, at rest and while prompting.
         self.cad.ui.show_command_line = chrome;
 
         let s = ecad_widgets::SHELL;
@@ -369,11 +362,11 @@ impl App {
                 self.agent_action(a);
             }
         }
-        // History's session groups and their Undo session (brief 043).
+        // History's session groups and their Undo session.
         self.history_agent_sync();
         status_bar::show(self, ui, slots.status);
         left::show(self, ui, &slots);
-        // UI rev 3: Library and Publish draw their own right column (no inspector rail).
+        // Library and Publish draw their own right column (no inspector rail).
         match self.shell.state.workspace {
             Workspace::Library if !self.shell.state.text_panel => self.library_panel(ui, slots.right),
             Workspace::Publish if !self.shell.state.text_panel => self.publish_right(ui, slots.right),
@@ -393,7 +386,7 @@ impl App {
         self.take_props();
     }
 
-    /// The main view (and the companion half): the page through US1, or a hosted body.
+    /// The main view (and the companion half): the page through CADCraft, or a hosted body.
     fn main_view(&mut self, ui: &mut egui::Ui, slots: &Slots) {
         let page_rect = match self.shell.state.workspace {
             Workspace::Draw => Some(slots.main),
@@ -421,7 +414,7 @@ impl App {
         crate::canvas::paint(self, ui, page_rect);
         crate::agent::last_write::paint(self, ui, page_rect);
         self.clear_goto_ring(ring_input);
-        // Brief 041: right-click opens the wheel (no tool running); then the intent line.
+        // Right-click opens the wheel (no tool running); then the intent line.
         self.wheel_frame(ui);
         if let Some(h) = slots.handle {
             self.split_handle(ui, h, slots);
@@ -457,8 +450,8 @@ impl App {
         self.shell.page_rect.is_some_and(|r| r.contains(at)) && ctx.layer_id_at(at).is_none_or(|l| l.order == egui::Order::Background)
     }
 
-    /// Fit the page shown with its frame and title block visible and a 24 px margin (UI rev 3,
-    /// "Canvas"); a page without a frame fits its drawing.
+    /// Fit the page shown with its frame and title block visible and a 24 px margin;
+    /// a page without a frame fits its drawing.
     pub fn fit_sheet(&mut self) -> bool {
         let Some(rect) = self.shell.slots.map(|s| s.main) else { return false };
         self.fit_sheet_in(rect)
@@ -524,7 +517,7 @@ impl App {
             Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
-        // UI rev 3 (board 2.06): Project ▸ Reports hosts the window as its preview.
+        // Project ▸ Reports hosts the window as its preview.
         let preview = w == Workspace::Lists && self.shell.lists == ListsView::Reports;
         let reports = match w {
             Workspace::Lists if preview && crate::reports::list::preview_shown(self) => Some(crate::workspace::frame::reports_preview(slots.main)),
@@ -536,12 +529,12 @@ impl App {
             r.hidden = reports.is_none();
             r.preview = preview;
         }
-        // Brief 048: the Library shows its own browser; the search (Ctrl+K) floats everywhere.
+        // The Library shows its own browser; the search (Ctrl+K) floats everywhere.
         self.search.host = None;
         if w != Workspace::Library && std::mem::take(&mut self.shell.search_from_library) {
             self.search.open = false;
         }
-        // UI rev 3: Release floats over Publish; Print Book's dialog is never drawn, Publish's
+        // Release floats over Publish; Print Book's dialog is never drawn, Publish's
         // own view sets its choices ([`crate::publish`]).
         if let Some(d) = &mut self.release {
             d.host = None;
@@ -553,7 +546,7 @@ impl App {
         }
     }
 
-    /// The dots on pages changed while another page was shown (design §8.2, Pages): from the
+    /// The dots on pages changed while another page was shown (Pages): from the
     /// change feed, only when its count moved; the Pages rows are not rebuilt for it.
     fn track_pages(&mut self) {
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
@@ -641,7 +634,7 @@ impl App {
         }
     }
 
-    /// Keep the page views (design §5.4): the shown page's view is recorded every frame it
+    /// Keep the page views: the shown page's view is recorded every frame it
     /// changes; a page shown again (or a project opened again) gets its view back.
     fn sync_page_view(&mut self, page: Option<PageId>) {
         let Some(pid) = self.project_key() else {

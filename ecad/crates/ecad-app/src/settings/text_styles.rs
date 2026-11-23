@@ -1,4 +1,4 @@
-//! Brief 031 (design 031 §4.1): the Text section of the Project settings popout. A copy of
+//! The Text section of the Project settings popout. A copy of
 //! `textstyle {}` taken when the popout opens; OK writes every changed field as one `textstyle`
 //! call (one transaction, "Text styles"); Cancel or Esc writes nothing.
 
@@ -10,7 +10,7 @@ use {ecad_electrical::styles::text_style::Shown, ecad_electrical::styles::text_s
 
 /// The section's element name.
 pub(crate) const SECTION_ID: &str = "ecad.projectsettings.text";
-/// The height refusal under a field (design 031 §4.1).
+/// The height refusal under a field.
 pub const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT;
 
 /// One row: a kind's fields as shown and as they were.
@@ -18,7 +18,7 @@ pub const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT
 pub struct Row {
     pub kind: &'static str,
     pub label: &'static str,
-    /// The kind's own font; empty: the project font (owner, 2026-11-12).
+    /// The kind's own font; empty: the project font.
     pub font: String,
     font_orig: String,
     pub height: String,
@@ -31,7 +31,7 @@ pub struct Row {
     pub show: Option<String>,
     show_orig: Option<String>,
     builtin_show: Option<String>,
-    /// Lane W's and P's kinds: Shown is fixed here.
+    /// Wire labels and kinds with no show setting: Shown is fixed here.
     pub show_fixed: bool,
 }
 
@@ -100,7 +100,7 @@ impl TextSection {
             }
             let show = k.get("show").and_then(Value::as_str).map(str::to_string);
             let builtin = &k["builtin"];
-            // Lane W's wire labels and lane P's kinds keep their visibility rules (design 031 §4.1).
+            // Wire labels and kinds with no show setting keep their visibility rules.
             let show_fixed = kind == TextKind::WireLabel || show.is_none();
             let font = k.get("font").and_then(Value::as_str).unwrap_or_default().to_string();
             rows.push(Row {

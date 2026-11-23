@@ -1,10 +1,10 @@
-//! The **History** tab of the Project panel (brief 020a, design 020 §2–§3): the graph of the
+//! The **History** tab of the Project panel: the graph of the
 //! main line, its versions and issued revisions, and the branches drawn from where they fork;
 //! the details of a selected point with Show, Branch from here and Restore; the Steps list; and
 //! the branch actions with their dialogs. Every write runs a command's JSON form, so a click
 //! records exactly what the command does.
 //!
-//! Update map (design 020 §8.2), from the project's change count, its unsaved count and the
+//! Update map, from the project's change count, its unsaved count and the
 //! actions run here:
 //! - a commit or undo/redo on the branch shown: the Now row's label only, unless it named or
 //!   unnamed a version, or was a merge or the undo or redo of one (then the graph is read again:
@@ -14,16 +14,16 @@
 //!   immutable), except Now's, refreshed with the Now row;
 //! - every other change: nothing.
 //!
-//! - Merge into the parent and Update from the parent (brief 020b) open the merge dialog
+//! - Merge into the parent and Update from the parent open the merge dialog
 //!   ([`crate::history::merge_dialog`]); merges are rows of the graph with a join from the source's line.
 //! - The graph reads one page of rows; scrolling to its end reads the next page.
 //! - F2 (or double-click on the Branch list's name) renames the branch shown; a Now row's
 //!   right-click offers switch, merge, update, rename and archive.
-//! - Authors (brief 043, screen f): every row carries its author, "You" for the person or the
+//! - Authors: every row carries its author, "You" for the person or the
 //!   agent's name in the `agent` colour. In the Steps list, consecutive transactions by one agent
 //!   form a **session group** ([`ecad_file::history::sessions`]) that collapses to one row; while that
 //!   agent's bridge session is live the group offers Undo session (the banner's plan and
-//!   confirmation, design 035 §8); after it ended its steps undo one by one as any others. The
+//!   confirmation); after it ended its steps undo one by one as any others. The
 //!   groups are made when the Steps list is read (its update map above), never per frame.
 
 use ecad_engine::history;
@@ -37,7 +37,7 @@ use crate::agent::BannerAction;
 use crate::agent::last_write::LiveSession;
 use crate::pages::project_panel::{Action, ROW_H};
 
-/// Accessible names (brief 043): a session group's row (`history.session: claude · 14 changes ·
+/// Accessible names: a session group's row (`history.session: claude · 14 changes ·
 /// 20:31–20:44`), its Undo session button, and an author chip (`history.author: You`).
 pub const SESSION_GROUP: &str = "history.session";
 pub const UNDO_SESSION: &str = "history.undo_session";
@@ -59,13 +59,13 @@ pub enum Do {
     SaveAs,
     /// Preview this page of the point shown (`RevisionPage`).
     ShowPoint(Value),
-    /// Open the merge dialog for `{from, into?}` (brief 020b).
+    /// Open the merge dialog for `{from, into?}`.
     AskMerge(Value),
-    /// UI rev 3 (board 1.04): the agent card's Pause, Resume and disconnect, as the banner's.
+    /// The agent card's Pause, Resume and disconnect, as the banner's.
     Agent(BannerAction),
 }
 
-/// The agent card's facts, copied from the banner when it changes (board 1.04).
+/// The agent card's facts, copied from the banner when it changes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentCard {
     pub name: String,
@@ -73,13 +73,13 @@ pub struct AgentCard {
     pub paused: bool,
 }
 
-/// Board 1.04's texts.
+/// The panel's texts.
 pub(crate) const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
 pub(crate) const NEW_BRANCH: &str = "New branch";
 pub const NAME_THIS: &str = "Name this one";
 pub const EARLIER: &str = "Show earlier changes";
 pub const OLDER: &str = "Show older versions";
-/// How many changes the panel shows before "Show n earlier changes" (board 1.04 shows about 8, so
+/// How many changes the panel shows before "Show n earlier changes" (about 8, so
 /// Versions stays in view).
 pub const FIRST_CHANGES: usize = 8;
 pub(crate) const AGENT_DISCONNECT: &str = "Disconnect the agent";
@@ -107,7 +107,7 @@ impl Sel {
     }
 }
 
-/// A dialog of the tab (design 020 §2.5, §3).
+/// A dialog of the tab.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dialog {
     NewVersion {
@@ -139,7 +139,7 @@ pub enum Dialog {
         branch: String,
         name: String,
     },
-    /// Unsaved changes on a file that cannot be written: Save As or Cancel (design 020 §3.3).
+    /// Unsaved changes on a file that cannot be written: Save As or Cancel.
     SwitchReadOnly,
     /// Reopen an archived branch whose name another open branch took, under a new name.
     Reopen {
@@ -161,8 +161,8 @@ pub(crate) struct StepRow {
     pub agent: Option<String>,
 }
 
-/// The author chip's text: "You" for the person, the agent's name otherwise (owner, Q1 of brief
-/// 043: no name is stored for a person).
+/// The author chip's text: "You" for the person, the agent's name otherwise (no name
+/// is stored for a person).
 pub(crate) fn author_chip(agent: Option<&str>) -> &str {
     agent.unwrap_or(YOU)
 }
@@ -172,7 +172,7 @@ pub(crate) fn author_chip(agent: Option<&str>) -> &str {
 pub struct HistoryPanel {
     pub show: Show,
     graph: Graph,
-    /// Sections folded (board 1.04: every section folds).
+    /// Sections folded (every section folds).
     pub folded: std::collections::BTreeSet<&'static str>,
     /// The agent card while an agent is connected.
     pub agent: Option<AgentCard>,
@@ -184,7 +184,7 @@ pub struct HistoryPanel {
     details: Option<(Sel, Value)>,
     pub steps_open: bool,
     steps: Vec<StepRow>,
-    /// The Steps list's rows grouped by session (brief 043), made with the rows and again when the
+    /// The Steps list's rows grouped by session, made with the rows and again when the
     /// live session changes (its steps are a group of their own).
     groups: Vec<SessionGroup>,
     /// The Steps list's transactions without their ops, to regroup without reading the project.
@@ -330,7 +330,7 @@ impl HistoryPanel {
     }
 
     fn sync_steps(&mut self, p: &ecad_engine::Project) {
-        // UI rev 3: the Changes list always shows the branch shown's steps back from Now.
+        // The Changes list always shows the branch shown's steps back from Now.
         let Some(sel) = self.anchor() else { return };
         let want = (sel.clone(), self.steps_more);
         if self.steps_for.as_ref() == Some(&want) {
@@ -357,7 +357,7 @@ impl HistoryPanel {
         self.steps_for = Some(want);
     }
 
-    /// The panel's contents (UI rev 3, board 1.04), top to bottom: the pending revision, the agent
+    /// The panel's contents, top to bottom: the pending revision, the agent
     /// while one is connected, Branches, Changes and Versions, each folding, then a short footer.
     /// `writable`: a project that can be changed; `read_only`: its file cannot be written.
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool, read_only: bool, header: &crate::pages::project_panel::Header) -> Vec<Action> {
@@ -365,7 +365,7 @@ impl HistoryPanel {
         let (next_version, next_branch, unsaved, cur_name, has_file) = self.defaults.clone();
         let s = ecad_widgets::SHELL;
         let r = ui.max_rect();
-        // F2 renames the branch shown (design §3.2).
+        // F2 renames the branch shown.
         let f2 = ui.input(|i| i.key_pressed(egui::Key::F2)) && self.dialog.is_none();
         if writable
             && f2
@@ -451,8 +451,8 @@ impl HistoryPanel {
         separator(ui);
     }
 
-    /// The agent while one is connected (Carl's ruling: it writes on the branch shown, not a
-    /// branch of its own): who, where, how many changes; Pause or Resume, and disconnect.
+    /// The agent while one is connected (it writes on the branch shown, not on a branch of its
+    /// own): who, where, how many changes; Pause or Resume, and disconnect.
     fn agent_card(&mut self, ui: &mut egui::Ui, cur_name: &str, out: &mut Vec<Action>) {
         let Some(a) = self.agent.clone() else { return };
         let s = ecad_widgets::SHELL;
@@ -619,7 +619,7 @@ impl HistoryPanel {
     }
 
     /// Changes: the branch shown's steps, newest first, with their branch line down the left; an
-    /// agent's session folds to one row (brief 043). Selecting a change marks it on the page and
+    /// agent's session folds to one row. Selecting a change marks it on the page and
     /// offers Show, Branch from here and Restore. Returns the rows drawn.
     fn changes(&mut self, ui: &mut egui::Ui, writable: bool, cur_name: &str, out: &mut Vec<Action>) -> usize {
         let (open, _) = self.section(ui, "changes", "Changes", None);
@@ -656,7 +656,7 @@ impl HistoryPanel {
         let groups = self.groups.clone();
         let mut i = 0;
         let mut drawn = 0;
-        // Board 1.04: a few changes first, so Versions stays in view; a session group is one
+        // A few changes first, so Versions stays in view; a session group is one
         // row however many steps it folds (its expanded steps don't count).
         let cap = FIRST_CHANGES + self.changes_more;
         let mut shown = 0;
@@ -849,7 +849,7 @@ impl HistoryPanel {
                 self.point_actions(ui, writable, out);
             }
         }
-        // The graph is read a page at a time (design 020 §8.2): the next page on request.
+        // The graph is read a page at a time: the next page on request.
         if self.graph.more {
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
@@ -1160,7 +1160,7 @@ impl HistoryPanel {
     }
 }
 
-/// Whether `t` adds or removes a merge row (brief 020b): a merge, or the undo or redo of one (their
+/// Whether `t` adds or removes a merge row: a merge, or the undo or redo of one (their
 /// labels are the merge's own).
 fn changes_merges(t: &ecad_model::Transaction) -> bool {
     match t.kind {
@@ -1213,7 +1213,7 @@ fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bo
 }
 
 impl crate::shell::app::App {
-    /// History's side of the agent (brief 043), once per frame: run an Undo session clicked on a
+    /// History's side of the agent, once per frame: run an Undo session clicked on a
     /// group (the banner's own plan and confirmation), and keep the live session for the groups
     /// (copied only when the banner's session, steps or last change moved).
     pub(crate) fn history_agent_sync(&mut self) {

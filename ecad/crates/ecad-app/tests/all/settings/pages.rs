@@ -1,4 +1,4 @@
-//! Brief 054a in the app (design 054 §4.1, §5; AC13, AC14): Settings ▸ Pages and sheets writes
+//! In the app, Settings ▸ Pages and sheets writes
 //! one `setstyle` per control and lists the six types; the + Page picker adds a typed page after
 //! the open one, Esc writes nothing, and Panel layout is disabled.
 

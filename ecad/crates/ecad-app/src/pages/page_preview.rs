@@ -1,4 +1,4 @@
-//! The read-only preview of another page (brief 016) and of a revision's page.
+//! The read-only preview of another page and of a revision's page.
 
 use crate::pages::preview::Preview;
 use crate::shell::app::*;
@@ -6,7 +6,7 @@ use ecad_model::PageId;
 use eframe::egui::{self};
 
 impl App {
-    /// Preview `page` of the revision opened read-only (design 019 §7.3).
+    /// Preview `page` of the revision opened read-only.
     pub fn preview_revision_page(&mut self, page: PageId) {
         let Some(p) = self.project.clone() else { return };
         let rv = p.read(&mut self.cad.session, |p, _| p.revision_view.clone()).ok().flatten();
@@ -38,7 +38,7 @@ impl App {
         self.preview = Some(v);
     }
 
-    /// **Preview Reference** (design 016 §4.4): the selected cable reference's other end, in the
+    /// **Preview Reference**: the selected cable reference's other end, in the
     /// preview. Starts no command and records nothing.
     ///
     /// # Errors

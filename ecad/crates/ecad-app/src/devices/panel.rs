@@ -1,13 +1,13 @@
-//! The **Devices** tab of the Project panel (owner request, 2026-11-08, after brief 018): every
+//! The **Devices** tab of the Project panel: every
 //! device with its tag and description, its function, location, symbols, pages and part; a click
 //! on a row shows its first symbol's page and selects all its symbols on that page; the selected
-//! device's properties are edited in place through `setprop` (brief 018's rules, its merge offer
+//! device's properties are edited in place through `setprop` (its merge offer
 //! included).
 //!
-//! Brief 039: the rows are the one table's Devices column set ([`crate::devices::list`]): tag and
+//! The rows are the one table's Devices column set ([`crate::devices::list`]): tag and
 //! description edit in place (the same `setprop`), the list is patched with the devices a change
 //! touched, and selecting symbols on the page selects their rows. This tab is its host until the
-//! shell (U2) places it.
+//! shell places it.
 //!
 //! Excluded: cables, terminals, creating or deleting devices.
 
@@ -25,7 +25,7 @@ use crate::pages::project_panel::Action;
 pub const FILTER: &str = "Filter Devices";
 /// The merge offer's button.
 pub const MERGE: &str = "Make it the same device";
-/// Brief 026: the clash box's first button, and the header's Renumber.
+/// The clash box's first button, and the header's Renumber.
 pub(crate) const SWAP: &str = "Swap";
 pub(crate) const RENUMBER: &str = "Renumber…";
 
@@ -37,10 +37,10 @@ pub(crate) fn device_label(e: &DeviceEntry) -> String {
 /// A property being edited: (device, property key, text).
 type Editing = (DeviceId, &'static str, String);
 
-/// Board 1.03's texts.
+/// The panel's texts.
 pub const FIND: &str = "Find a device or tag";
 /// Under "Not on a page yet": placing a listed device has no command yet, so the rows offer no
-/// drag (the board's "Drag one onto the sheet" waits for that command).
+/// drag (a "Drag one onto the sheet" hint waits for that command).
 pub const PLACE_LATER: &str = "Placing from this list is not available yet.";
 pub(crate) const FOOTER: &str = "Click goes to it. Edit many at once in Project.";
 pub const PROJECT: &str = "Project →";
@@ -52,7 +52,7 @@ const NO_FUNCTION: &str = "Function not set on the device";
 pub(crate) const DEVICE_ROW_H: f32 = 27.0;
 const GROUP_CAP: usize = 8;
 
-/// How the devices are grouped (board 1.03).
+/// How the devices are grouped.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum Grouping {
     None,
@@ -102,7 +102,7 @@ enum Line {
 /// What the lines were laid out from.
 type LaidOut = (Option<(u64, u64)>, String, Grouping, BTreeSet<String>, BTreeSet<String>);
 
-/// The clash box's ways for a taken tag (brief 026, design §7.1).
+/// The clash box's ways for a taken tag.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Clash {
     /// The holder is a device, so Swap and Make it the same device are offered.
@@ -118,7 +118,7 @@ pub struct DevicesPanel {
     pub filter: String,
     /// The list of every device, kept up to date by `ecad-engine`.
     pub list: ecad_engine::reports::device_list::DeviceList,
-    /// Brief 039: the rows as a table source, and the table.
+    /// The rows as a table source, and the table.
     pub source: DevicesSource,
     pub table: ecad_widgets::table::Table<DeviceId>,
     /// The (project serial, change count) the table was brought up to.
@@ -127,7 +127,7 @@ pub struct DevicesPanel {
     followed: Vec<ecad_engine::cad::Handle>,
     pub selected: Option<DeviceId>,
     editing: Option<Editing>,
-    /// Board 1.03: the grouping, folded groups, groups showing every device, the lines drawn and
+    /// The grouping, folded groups, groups showing every device, the lines drawn and
     /// what they were laid out from, and a note (a drop on the sheet).
     pub grouping: Grouping,
     pub folded: BTreeSet<String>,
@@ -138,7 +138,7 @@ pub struct DevicesPanel {
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
     /// offer as a merge.
     pub error: Option<(String, Option<(DeviceId, String)>)>,
-    /// Brief 026: what the clash box offers with that refusal.
+    /// What the clash box offers with that refusal.
     pub clash: Option<Clash>,
     /// Rows laid out on the last frame (tests: virtualised).
     pub rows_drawn: usize,
@@ -242,7 +242,7 @@ impl DevicesPanel {
         self.seen = None;
     }
 
-    /// The panel's contents (UI rev 3, board 1.03): search, the grouping, "Not on a page yet"
+    /// The panel's contents: search, the grouping, "Not on a page yet"
     /// first, then the devices in their groups, and the footer pointing to Project for editing many
     /// at once. A click on a device shows its first symbol's page and selects its symbols there.
     pub fn show_panel(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
@@ -266,7 +266,7 @@ impl DevicesPanel {
         });
         self.grouping = Grouping::ALL.get(g).copied().unwrap_or_default();
         ui.add_space(6.0);
-        // The clash box of a refused tag edit (brief 026), above the list.
+        // The clash box of a refused tag edit, above the list.
         self.clash_box(ui, &mut out);
         if let Some(n) = &self.note {
             ui.add(egui::Label::new(RichText::new(n).small().color(c(s.text_2))).wrap());
@@ -459,7 +459,7 @@ impl DevicesPanel {
         self.laid_out = Some(key);
     }
 
-    /// The refusal of a tag edit with its ways (brief 026, design §7.1): Swap first, then the same
+    /// The refusal of a tag edit with its ways: Swap first, then the same
     /// device, then the next free tag.
     fn clash_box(&mut self, ui: &mut egui::Ui, out: &mut Vec<Action>) {
         let Some((msg, offer)) = self.error.clone() else { return };
@@ -499,7 +499,7 @@ impl DevicesPanel {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         let mut out = Vec::new();
         ui.horizontal(|ui| {
-            // Brief 026 (design §9): Renumber in the header.
+            // Renumber in the header.
             if ui.add_enabled(writable, egui::Button::new(RichText::new(RENUMBER).small())).accessible_name("ecad.devices.renumber").clicked() {
                 out.push(Action::Renumber);
             }
@@ -520,7 +520,7 @@ impl DevicesPanel {
         out
     }
 
-    /// The selected device's properties (UI rev 3: Project ▸ Devices shows them in the right
+    /// The selected device's properties (Project ▸ Devices shows them in the right
     /// panel); nothing when no device is selected.
     pub fn show_editor(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         let mut out = Vec::new();
@@ -530,7 +530,7 @@ impl DevicesPanel {
         out
     }
 
-    /// The table alone, with or without its toolbar (UI rev 3: Project ▸ Devices draws the
+    /// The table alone, with or without its toolbar (Project ▸ Devices draws the
     /// filter in the workspace's head). Returns the actions asked for.
     pub fn show_table(&mut self, ui: &mut egui::Ui, writable: bool, toolbar: bool) -> Vec<Action> {
         use ecad_widgets::table::TableEvent;
@@ -604,7 +604,7 @@ impl DevicesPanel {
         ui.spacing_mut().item_spacing.y = 0.0;
         if let Some((msg, offer)) = self.error.clone() {
             ui.add(egui::Label::new(RichText::new(&msg).small().color(ui.visuals().warn_fg_color)).wrap());
-            // Brief 026 (design §7.1): Swap first, then the same device, then the next free tag.
+            // Swap first, then the same device, then the next free tag.
             if let Some((target, tag)) = offer {
                 let (same_kind, next) = self.clash.as_ref().map_or((false, None), |k| (k.same_kind, k.next.clone()));
                 ui.horizontal(|ui| {
@@ -632,7 +632,7 @@ impl DevicesPanel {
                 });
             }
         }
-        // Brief 026 (design §4): the Fixed box beside the tag; greyed for a provisional tag.
+        // The Fixed box beside the tag; greyed for a provisional tag.
         let provisional = e.tag_state.is_provisional();
         let mut fixed = e.tag_state == ecad_model::naming::tag::TagState::Fixed;
         let can = writable && e.tag.is_some() && !provisional;
@@ -700,7 +700,7 @@ impl DevicesPanel {
     /// The app reports a refused property edit; a tag held by another device offers the merge.
     pub fn refused(&mut self, c: DeviceId, key: &str, value: &str, message: String) {
         let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
-        // Brief 026: the ways are read from the refusal before it is shortened.
+        // The ways are read from the refusal before it is shortened.
         self.clash = offer.as_ref().map(|_| Clash {
             same_kind: message.contains(r#""swap""#),
             next: message.split("(use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string),
@@ -711,7 +711,7 @@ impl DevicesPanel {
             Some(i) if offer.is_some() => message.get(..i).unwrap_or(&message).to_string(),
             _ => message,
         };
-        // Brief 039: the refusal shows under the table's cell too, and the cell reverts.
+        // The refusal shows under the table's cell too, and the cell reverts.
         if let Some(col) = dl::column_of(key) {
             self.table.refuse(c, col, message.clone());
         }

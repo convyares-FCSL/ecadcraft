@@ -1,4 +1,4 @@
-//! Brief 019's windows and the ECAD section of CADCraft's Properties palette (design 019 §7, §8):
+//! The project dialogs and the ECAD section of CADCraft's Properties palette:
 //! the **Project Properties** dialog, the **Revisions** dialog with Issue and Open, the question
 //! a plain undo across an issued revision stops at, and the section drawn through CADCraft's
 //! `owner_properties` seam.
@@ -8,7 +8,7 @@
 //! `undoissue`, `setprop`, `pageprops`), so each write is one transaction and one `u`.
 //!
 //! Excluded: free-text validation beyond the commands' own (their refusals are shown), custom
-//! title blocks, the revision-list page (F6).
+//! title blocks, the revision-list page.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -39,7 +39,7 @@ pub const FIELDS: [(&str, &str); 6] = [
 /// The sizes the Size combo offers.
 pub const SIZES: [&str; 5] = ["A3", "A2", "A1", "A0", "Custom…"];
 
-/// Which project popout a [`ProjectProps`] is (owner, fix round of 2026-11-08: project-level
+/// Which project popout a [`ProjectProps`] is (project-level
 /// things are popouts of the Project panel, not part of Properties).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Popout {
@@ -49,14 +49,14 @@ pub enum Popout {
     Settings,
 }
 
-/// What a [`ProjectProps`] shows in its Settings section (brief 042).
+/// What a [`ProjectProps`] shows in its Settings section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     /// Settings ▸ Project ▸ Info.
     Info,
     /// Settings ▸ Project ▸ Settings: sheet, references, tags, revisions, numbering, wires.
     Settings,
-    /// Settings ▸ Text styles (brief 031's Text section).
+    /// Settings ▸ Text styles.
     Text,
 }
 
@@ -64,7 +64,7 @@ pub enum Part {
 pub(crate) const PROJECT_INFO_ID: &str = "ecad.projectinfo";
 pub(crate) const PROJECT_SETTINGS_ID: &str = "ecad.projectsettings";
 
-/// The Project info or Project settings popout (design 019 §7.1, split by the owner): a copy of
+/// The Project info or Project settings popout: a copy of
 /// the project's properties and settings taken when it opens; OK writes the changed fields as one
 /// `projectprops` (one transaction), Cancel or Esc writes nothing.
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +89,7 @@ pub struct ProjectProps {
     /// `page-zone`, `page-column-row` or `page-column`.
     pub style: String,
     mirror_orig: String,
-    /// Where contact tables go by default (brief 025): `auto`, `below`, `right` or `off`.
+    /// Where contact tables go by default: `auto`, `below`, `right` or `off`.
     pub mirror: String,
     padding_orig: String,
     pub padding: String,
@@ -97,29 +97,29 @@ pub struct ProjectProps {
     /// Starter symbol key → its prefix as the project uses it (`-K`).
     pub prefixes: Vec<(String, String)>,
     colour_style_orig: String,
-    /// `code2`, `code3` or `name` (design 072 F35).
+    /// `code2`, `code3` or `name`.
     pub colour_style: String,
     label_height_orig: String,
-    /// Wire label height, millimetres (brief 022).
+    /// Wire label height, millimetres.
     pub label_height: String,
     provisional_orig: bool,
-    /// Brief 026: Provisional tags until Finalise.
+    /// Provisional tags until Finalise.
     pub provisional: bool,
     tag_dash_orig: bool,
-    /// Brief 033 (design 033 §8.1): tags written with a leading `-`.
+    /// Tags written with a leading `-`.
     pub tag_dash: bool,
     tag_case_orig: ecad_model::naming::tag::Case,
     /// How tags are cased (`tags.case`).
     pub tag_case: ecad_model::naming::tag::Case,
     pending_orig: String,
-    /// Brief 033 (design 033 §6.2): `star`, `draft` or `off`.
+    /// `star`, `draft` or `off`.
     pub pending: String,
     rev_columns_orig: String,
-    /// Brief 033 (design 033 §7.1): the revision columns as written.
+    /// The revision columns as written.
     pub rev_columns: String,
-    /// Brief 031: the Text section (Project settings only), filled from `textstyle {}`.
+    /// The Text section (Project settings only), filled from `textstyle {}`.
     pub text: Option<crate::settings::text_styles::TextSection>,
-    /// Brief 032 §4.4: the wire label rows (Project settings only), filled from `wiresettings {}`.
+    /// The wire label rows (Project settings only), filled from `wiresettings {}`.
     pub labels: Option<WireLabels>,
     pub read_only: bool,
     /// The command's refusal of the last OK.
@@ -135,14 +135,14 @@ pub enum Out {
     OpenRevisions,
     /// Open this issued revision read-only.
     Open(String),
-    /// Brief 020a: show main (Save and switch rules apply), from Revisions on another branch.
+    /// Show main (Save and switch rules apply), from Revisions on another branch.
     SwitchToMain,
-    /// Brief 020b: merge the branch shown into main (the merge dialog).
+    /// Merge the branch shown into main (the merge dialog).
     MergeIntoMain,
-    /// Brief 027: the Release dialog, for the pending revision (`None`) or to write an issued
+    /// The Release dialog, for the pending revision (`None`) or to write an issued
     /// revision's folder again.
     Release(Option<String>),
-    /// Brief 027: open a release folder in the system's file manager.
+    /// Open a release folder in the system's file manager.
     OpenFolder(std::path::PathBuf),
 }
 
@@ -169,7 +169,7 @@ impl ProjectProps {
             None => "Current: none issued".into(),
         };
         let style = v.get("reference_style").and_then(Value::as_str).unwrap_or("page-column-row").to_string();
-        // Brief 033: the stored column list, else the columns as the project draws them.
+        // The stored column list, else the columns as the project draws them.
         let rev_columns = v.get("revision_columns_stored").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
             v.get("revision_columns")
                 .and_then(Value::as_array)
@@ -246,7 +246,7 @@ impl ProjectProps {
     }
 
     /// The command lines writing what changed in this popout, one per line (`projectprops`, then
-    /// brief 031's `textstyle` for the Text section); `None` when nothing did.
+    /// `textstyle` for the Text section); `None` when nothing did.
     pub fn line(&self) -> Result<Option<String>, String> {
         let mut m = Map::new();
         if self.popout == Popout::Info {
@@ -304,7 +304,7 @@ impl ProjectProps {
         if self.provisional != self.provisional_orig {
             m.insert("provisional".into(), json!(self.provisional));
         }
-        // Brief 033: the tag style (the command rewrites the tags in the same transaction), the
+        // The tag style (the command rewrites the tags in the same transaction), the
         // pending marker and the revision columns.
         if self.tag_dash != self.tag_dash_orig {
             m.insert("tag_dash".into(), json!(self.tag_dash));
@@ -359,7 +359,7 @@ impl ProjectProps {
         }
     }
 
-    /// The popout's contents drawn in place, as a Settings section (brief 042: the popouts became
+    /// The popout's contents drawn in place, as a Settings section (the popouts became
     /// Settings ▸ Project and Text styles; contents unchanged). `part` picks what is shown:
     /// [`Part::Settings`] is the project settings without the Text section, which
     /// [`Part::Text`] shows. OK writes every changed field of the copy, whichever part shows it.
@@ -375,14 +375,14 @@ impl ProjectProps {
         let text_only = part == Part::Text;
         let max_body = (ui.ctx().content_rect().height() * 0.55).max(200.0);
         ui.push_id(id, |ui| {
-            // Brief 031: the Text section makes the settings taller than a small window; the
+            // The Text section makes the settings taller than a small window; the
             // fields scroll, OK and Cancel stay in view. The fields take their own height up to
             // `max_body`, not the height the host had last frame: an auto-sized host offers its
             // last size as the room left, so the row under the fields would overflow it and it
-            // would grow by that row every frame (U2 follow-up).
+            // would grow by that row every frame.
             egui::ScrollArea::vertical().max_height(max_body).min_scrolled_height(max_body).auto_shrink([false, true]).show(ui, |ui| {
                 if text_only {
-                    // Brief 031 (design §4.1): text styles.
+                    // Text styles.
                     if let Some(t) = &mut self.text {
                         let s = ecad_widgets::SHELL;
                         t.show(ui, ro, ecad_widgets::color(s.warning), ecad_widgets::color(s.error));
@@ -517,7 +517,7 @@ impl ProjectProps {
                         self.style = w.to_string();
                     }
                 });
-                // Brief 025 (FP3): where a coil's contact table goes unless the device says.
+                // Where a coil's contact table goes unless the device says.
                 g.row("Contact tables", |ui| {
                     const MIRRORS: [&str; 4] = ["auto", "below", "right", "off"];
                     let mut k = MIRRORS.iter().position(|w| *w == self.mirror).unwrap_or(usize::MAX);
@@ -534,7 +534,7 @@ impl ProjectProps {
         ui.add_enabled_ui(!ro, |ui| {
             prim::PropertyGrid::new().show(ui, |g| {
                 g.row("Digits", |ui| TextEntry::new(&mut self.padding, "ecad.projectsettings.padding").width(SHORT_W).show(ui));
-                // Brief 033 (design 033 §8.1): the leading - and the case, a writing rule.
+                // The leading - and the case, a writing rule.
                 g.row("Case", |ui| {
                     use ecad_model::naming::tag::Case;
                     let mut k = usize::from(self.tag_case == Case::Typed);
@@ -563,7 +563,7 @@ impl ProjectProps {
                 });
             });
         });
-        // Brief 033 (design 033 §6.2, §7.1): the pending marker and the revision columns.
+        // The pending marker and the revision columns.
         ui.add_space(space::M);
         prim::caption(ui, "REVISIONS");
         ui.add_enabled_ui(!ro, |ui| {
@@ -591,7 +591,7 @@ impl ProjectProps {
                 prim::note(ui, &e.to_string(), Tone::Error);
             }
         });
-        // Brief 026 (design §5.1): numbering.
+        // Numbering.
         ui.add_space(space::M);
         prim::caption(ui, "NUMBERING");
         ui.add_enabled_ui(!ro, |ui| {
@@ -600,8 +600,8 @@ impl ProjectProps {
                 .accessible_name("ecad.settings.provisional")
                 .on_hover_text("New devices get -K?1, cables -W?1, new nets 24V-?; Finalise numbering numbers them in drawing order");
         });
-        // Brief 031's text styles are Settings ▸ Text styles (brief 042).
-        // Brief 022 (owner, 2026-11-09): wire label colours and size.
+        // The text styles are Settings ▸ Text styles.
+        // Wire label colours and size.
         ui.add_space(space::M);
         prim::caption(ui, "WIRES");
         ui.add_enabled_ui(!ro, |ui| {
@@ -637,24 +637,24 @@ const SHORT_W: f32 = size::LABEL_COLUMN / 2.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevRow {
     pub fields: [String; 6],
-    /// Brief 033: the values of the project's custom columns ([`Revisions::custom`] order).
+    /// The values of the project's custom columns ([`Revisions::custom`] order).
     pub extra: Vec<String>,
     pub issued: bool,
-    /// Brief 027 (FP1): the release folder as recorded, and the folder it names once resolved
+    /// The release folder as recorded, and the folder it names once resolved
     /// against the project (read from disk when the window opens and after a change).
     pub released: Option<String>,
     pub folder: Option<std::path::PathBuf>,
     pub folder_exists: bool,
 }
 
-/// The Revisions dialog (design 019 §7.2): issued rows read-only, newest first; the pending row's
+/// The Revisions dialog: issued rows read-only, newest first; the pending row's
 /// fields write `revision` when they lose focus; Issue asks first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Revisions {
     pub issued: Vec<RevRow>,
     pub pending: [String; 6],
     orig: [String; 6],
-    /// Brief 033 (design 033 §7.3): the project's custom columns, (field, header), after the
+    /// The project's custom columns, (field, header), after the
     /// built-in six; the pending row's values and what was last sent.
     pub custom: Vec<(String, String)>,
     pub custom_pending: Vec<String>,
@@ -663,8 +663,8 @@ pub struct Revisions {
     /// The question of Issue Rev B… is open.
     pub confirming: bool,
     pub error: Option<String>,
-    /// Brief 020a: shown on a branch other than a release line (its name): Issue is disabled,
-    /// saying why, and Merge into main… is offered (design 020 §2.5.2, owner answer 10).
+    /// Shown on a branch other than a release line (its name): Issue is disabled,
+    /// saying why, and Merge into main… is offered.
     pub off_main: Option<String>,
 }
 
@@ -744,7 +744,7 @@ impl Revisions {
         self.confirming = confirming;
     }
 
-    /// Whether Issue can be pressed: Rev, Description and Drawn are filled (owner answer Q7).
+    /// Whether Issue can be pressed: Rev, Description and Drawn are filled.
     pub fn can_issue(&self) -> bool {
         [0, 2, 3].iter().all(|i| self.pending.get(*i).is_some_and(|v| !v.trim().is_empty()))
     }
@@ -789,7 +789,7 @@ impl Revisions {
                                 }
                             }
                         }
-                        // Brief 033: the custom columns' inputs (`revision {fields}`).
+                        // The custom columns' inputs (`revision {fields}`).
                         for (i, (f, _)) in self.custom.iter().enumerate() {
                             let Some(v) = self.custom_pending.get_mut(i) else { continue };
                             let r = TextEntry::new(v, &format!("ecad.revisions.pending.{f}")).width(SHORT_W * 1.25).show(ui);
@@ -810,7 +810,7 @@ impl Revisions {
                             prim::body(ui, v, true);
                         }
                         let rev = r.fields[0].clone();
-                        // Brief 027 (design 027 §3): Open the release folder, or Write… it.
+                        // Open the release folder, or Write… it.
                         match (&r.folder, r.folder_exists) {
                             (Some(f), true) => {
                                 if ui
@@ -883,7 +883,7 @@ impl Revisions {
                     if !self.read_only {
                         let rev = self.pending[0].clone();
                         let why = (!self.can_issue()).then_some(ecad_electrical::releases::revisions::FILL_FIRST);
-                        // Brief 027: issue and write the folder in one step (design 027 §3, Q1).
+                        // Issue and write the folder in one step.
                         let r = action(ui, &format!("Release Rev {rev}\u{2026}"), Kind::Primary, "ecad.revisions.release", why);
                         let r = if why.is_none() { r.on_hover_text("Check, issue and write the release folder") } else { r };
                         if r.clicked() {
@@ -913,7 +913,7 @@ impl Revisions {
     }
 }
 
-/// The question a plain `u` across an issued revision stops at (owner answer Q7). Returns
+/// The question a plain `u` across an issued revision stops at. Returns
 /// `Some(true)` to undo the issue, `Some(false)` to keep it.
 pub(crate) fn issue_undo(ctx: &egui::Context, question: &str) -> Option<bool> {
     let shown = Dialog::new(egui::Id::unique(ISSUE_UNDO_ID), "Undo the issue?", ISSUE_UNDO_ID).small().show(
@@ -1039,7 +1039,7 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
     });
     if let Some(e) = error {
         prim::note(ui, &e, Tone::Error);
-        // Brief 026 (design §7.1): a taken tag offers Swap first, then the same device, then the
+        // A taken tag offers Swap first, then the same device, then the
         // next free tag. Nothing is written until a button is clicked.
         if row.key == "tag"
             && let Some(tg) = target
@@ -1073,13 +1073,13 @@ pub(crate) fn revision_bar(rev: &str, date: &str) -> String {
     if date.is_empty() { format!("Rev {rev}: read-only") } else { format!("Rev {rev}, {date}: read-only") }
 }
 
-// ---------------------------------------------------------------- wire labels (brief 032 §4.4)
+// ---------------------------------------------------------------- wire labels
 
 use ecad_model::connectivity::wiring::NumberBy;
 
 /// The Project Settings rows of the wire label rule: one label per net per page or every wire, and
-/// the shortest labelled wire (only with every wire); and what one wire number counts (design 072
-/// F40: one per net or one per wire). Committed as one `wiresettings` line.
+/// the shortest labelled wire (only with every wire); and what one wire number counts
+/// (one per net or one per wire). Committed as one `wiresettings` line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireLabels {
     rule_orig: String,
@@ -1089,7 +1089,7 @@ pub struct WireLabels {
     /// Shortest labelled wire, millimetres, as typed.
     pub min_length: String,
     number_by_orig: String,
-    /// `net` or `conductor` (design 072 F40).
+    /// `net` or `conductor`.
     pub number_by: String,
 }
 

@@ -1,7 +1,7 @@
-//! Lists ▸ PLC (brief 051, design 051 §3; was 045c's Lists ▸ I/O): rack chips, the rack's tiles as
-//! the table's group strip (screen m of the UI spec), and under them the I/O column set
+//! Lists ▸ PLC: rack chips, the rack's tiles as
+//! the table's group strip, and under them the I/O column set
 //! (`ecad_electrical::plc::iolist`) filtered to the selected card (`This card`) or grouped by card
-//! (`All cards`). Description, Address and Pins are inputs that run `plcchannel` (Q11); everything
+//! (`All cards`). Description, Address and Pins are inputs that run `plcchannel`; everything
 //! else is read.
 //!
 //! **Update map.** The rows and tiles come from the kept PLC model (`ReportModels::plc`). After a commit
@@ -12,7 +12,7 @@
 //! commit that touches no PLC data patches nothing. Full rebuild only on first show, a reload of
 //! the models (`build_id`), or another rack chip.
 //!
-//! Brief 056 (design 056 §3, §4, board 2.03): the rack heading line, the tiles' kind words, the
+//! The rack heading line, the tiles' kind words, the
 //! card header with the PLC chip, **Compare**, **Export tags** and **→ Page**, the signal columns
 //! `Ch, Address, Tag, Description, Type, Safe, Drives, Page, PLC, Test`, free channels folded
 //! after the first of a run, and Import tags with its preview ([`crate::workspace::plc_compare`]). Each row
@@ -46,29 +46,29 @@ pub const STATE: ColumnId = ColumnId(8);
 pub(crate) const TARGETS: ColumnId = ColumnId(9);
 pub const WIRE: ColumnId = ColumnId(10);
 pub const PLACE: ColumnId = ColumnId(11);
-/// Brief 056 (design 056 §4.2).
+/// The signal's tag.
 pub const TAG: ColumnId = ColumnId(12);
 pub const SAFE: ColumnId = ColumnId(13);
 pub(crate) const DRIVES: ColumnId = ColumnId(14);
 pub const PAGE: ColumnId = ColumnId(15);
 pub(crate) const TEST: ColumnId = ColumnId(17);
 
-/// Element names (design 056 §3.1, §4.1).
+/// Element names.
 pub(crate) const CARD_HEAD: &str = "ecad.plc.cardhead";
 pub(crate) const EXPORT_TAGS: &str = "ecad.plc.exporttags";
 pub(crate) const GO_PAGE: &str = "ecad.plc.gopage";
 pub(crate) const MORE_FREE: &str = "ecad.plc.morefree";
 pub(crate) const ADD_RACK: &str = "ecad.plc.addrack";
 pub(crate) const MAKE_TAGS: &str = "ecad.plc.maketags";
-/// A table row's height, px (039's table: a 30 px row; the header is one row too).
+/// A table row's height, px (a 30 px row; the header is one row too).
 const TABLE_ROW_PX: f32 = 30.0;
 /// The free channel's Tag placeholder.
 pub const FREE: &str = ecad_electrical::plc::iolist::FREE;
 
-/// Element names (design 051 §3.8).
+/// Element names.
 pub const STRIP: &str = "ecad.plc.strip";
 pub const SCOPE: &str = "ecad.plc.table.scope";
-/// The strip's line when the project has no PLC cards (design 051 §3.8).
+/// The strip's line when the project has no PLC cards.
 pub const NO_CARDS: &str = "No PLC cards yet. Place a card body (Place \u{25b8} search \"card\").";
 /// The tooltip of a greyed write link.
 pub const WRITES_OFF: &str = "Writes are off.";
@@ -76,9 +76,9 @@ pub const WRITES_OFF: &str = "Writes are off.";
 pub(crate) const THIS_CARD: &str = "This card";
 pub(crate) const ALL_CARDS: &str = "All cards";
 
-/// The columns (design 056 §4.2, without the PLC column since the owner's change of 2026-11-14):
+/// The columns (without the PLC column):
 /// one card's signal columns `Ch, Address, Tag, Description, Type, Safe, Drives, Page, Test`;
-/// every card (`all`) keeps 051's columns plus Tag and Safe. Address, Tag, Description, Safe and
+/// every card (`all`) keeps the same columns plus Tag and Safe. Address, Tag, Description, Safe and
 /// Pins are set here.
 pub fn columns(all: bool) -> Vec<Column> {
     if all {
@@ -165,7 +165,7 @@ impl IoSource {
     }
 
     /// Lay the keys out in card order (only the shown card's in `This card`, its free channels
-    /// folded after the first of each run unless unfolded; design 056 §4.2).
+    /// folded after the first of each run unless unfolded).
     fn order(&mut self, cards: &[DeviceId]) {
         let shown: Vec<DeviceId> = match self.only {
             Some(c) => vec![c],
@@ -192,7 +192,7 @@ impl IoSource {
         self.shown = self.keys.iter().copied().collect();
     }
 
-    /// A free channel (design 056 §4.2): no tag, no description, not wired.
+    /// A free channel: no tag, no description, not wired.
     pub fn is_free(&self, k: IoKey) -> bool {
         self.rows.get(&k).is_some_and(Row::is_free)
     }
@@ -232,7 +232,7 @@ impl TableSource for IoSource {
     fn cell(&self, key: IoKey, col: ColumnId) -> Cell {
         let Some(r) = self.rows.get(&key) else { return Cell::Empty };
         let input = |t: String| if self.writable { Cell::Input(t) } else { Cell::read(t) };
-        // Brief 056 (design 056 §4.2): a free channel shows Ch, Address, `free` in Tag, and an
+        // A free channel shows Ch, Address, `free` in Tag, and an
         // empty Description (typing either reserves it).
         if self.only.is_some() && self.is_free(key) && !matches!(col, CHANNEL | ADDRESS | TAG | TEXT) {
             return Cell::Empty;
@@ -273,7 +273,7 @@ impl TableSource for IoSource {
     }
 }
 
-/// The `plcchannel` line an edit of `col` in row `r` writes (design 051 §3.7), or `None` when the
+/// The `plcchannel` line an edit of `col` in row `r` writes, or `None` when the
 /// column is not set here or nothing would change.
 pub fn edit_line(r: &Row, col: ColumnId, value: &str) -> Option<String> {
     use ecad_electrical::plc::iolist::Field;
@@ -298,7 +298,7 @@ fn mark_of(s: Square) -> Mark {
     }
 }
 
-/// The legend under the strip (design 051 §3.4).
+/// The legend under the strip.
 pub(crate) const LEGEND: [(Mark, &str); 4] = [(Mark::On, "in use"), (Mark::Off, "free"), (Mark::Soft, "reserved"), (Mark::Alert, "has a check")];
 
 /// What a tile's link part does.
@@ -317,7 +317,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     let mut lines = Vec::new();
     let mut acts = Vec::new();
     let page_links = |out: &mut Vec<Link>, acts: &mut Vec<TileLink>| {
-        // Brief 056 (board 2.03): `page 5 →`.
+        // `page 5 →`.
         let mut words = ecad_electrical::plc::pages_words(numbers);
         if let Some(last) = words.last_mut() {
             last.push_str(" \u{2192}");
@@ -363,7 +363,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
         _ => {
             let mut parts = Vec::new();
             let mut a = Vec::new();
-            // UI rev 3 (board 2.03): how many channels are in use, then the page link.
+            // How many channels are in use, then the page link.
             if !t.squares.is_empty() {
                 parts.push(Link { text: t.in_use_words(), tone: Tone::Plain, ..Link::default() });
                 a.push(TileLink::None);
@@ -381,7 +381,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
             acts.push(a);
         }
     }
-    // Brief 056 (design 056 §3.2): the kind words at the head's right, the description (else the
+    // The kind words at the head's right, the description (else the
     // type name) under the tag, the addresses under the squares; a free slot says so.
     let (kind, info, under) = match t.kind {
         TileKind::Free => (String::new(), vec![format!("{} is free", t.head)], String::new()),
@@ -409,7 +409,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     (tile, acts)
 }
 
-/// A square's hover (045 §4.7's words): `-A03 channel 3 · Q0.3 · Pump 1 run`.
+/// A square's hover words: `-A03 channel 3 · Q0.3 · Pump 1 run`.
 fn tip_words(doc: &Document, c: DeviceId, t: &Tile, i: usize) -> String {
     let n = u32::try_from(i).unwrap_or(0);
     let first = ecad_electrical::plc::channels::first_number(doc, c);
@@ -436,7 +436,7 @@ pub struct IoView {
     pub tiles: Vec<Tile>,
     pub strip: Vec<strip::Tile>,
     /// Each tile's symbols, first page first: selecting a tile selects them, so the inspector
-    /// shows the card (overseer's look note on #89).
+    /// shows the card.
     pub symbols: Vec<Vec<ecad_model::RepresentationId>>,
     links: Vec<Vec<Vec<TileLink>>>,
     /// Each tile's page numbers as last shown.
@@ -454,10 +454,10 @@ pub struct IoView {
     pending: Option<(IoKey, ColumnId)>,
     /// A row to select once the table shows its card.
     pending_reveal: Option<IoKey>,
-    /// Brief 056: the rack heading (design 056 §3.1): `Rack 1` and its line.
+    /// The rack heading: `Rack 1` and its line.
     pub rack_title: String,
     pub rack_line: String,
-    /// The selected card's header (design 056 §4.1).
+    /// The selected card's header.
     pub head: Option<CardHead>,
     /// The path row of Import an I/O list or Export tags.
     pub path_row: Option<PathRow>,
@@ -467,16 +467,16 @@ pub struct IoView {
     pub folder: String,
     /// The project's name, for the file name offered.
     project_name: String,
-    /// The `plcrack` page and its number (the footer's sentence, design 056 §8).
+    /// The `plcrack` page and its number (the footer's sentence).
     pub book_page: Option<(PageId, String)>,
     /// Lay the rows out again (free channels unfolded).
     reorder: bool,
-    /// Brief 056: the card editor's fields, and its folded sections (the right panel).
+    /// The card editor's fields, and its folded sections (the right panel).
     pub card_editor: crate::plc::card_editor::State,
     pub card_folded: BTreeSet<String>,
 }
 
-/// The card header's words and targets (design 056 §4.1).
+/// The card header's words and targets.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardHead {
     pub card: Option<DeviceId>,
@@ -489,7 +489,7 @@ pub struct CardHead {
     pub page: Option<(PageId, String)>,
 }
 
-/// What the path row does (design 056 §6.6, §6.7).
+/// What the path row does.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PathKind {
     Import,
@@ -709,7 +709,7 @@ impl IoView {
         self.after_sync(doc, o);
     }
 
-    /// Brief 056: the rack heading, the card header and the book's overview page, from the kept
+    /// The rack heading, the card header and the book's overview page, from the kept
     /// model (words only; no rows made).
     fn after_sync(&mut self, doc: &Document, o: &ReportModels) {
         let plc = &o.plc;
@@ -717,7 +717,7 @@ impl IoView {
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "Project".into());
-        // Rack heading (design 056 §3.1).
+        // Rack heading.
         let chip = self.chips.get(self.chip).cloned();
         (self.rack_title, self.rack_line) = match &chip {
             Some(Chip::Rack(r, _)) => {
@@ -735,7 +735,7 @@ impl IoView {
             Some(Chip::NoRack(k)) => ("No rack".into(), format!("{k} {} \u{b7} {}", if *k == 1 { "card" } else { "cards" }, self.totals)),
             None => (String::new(), String::new()),
         };
-        // The card header (design 056 §4.1).
+        // The card header.
         self.head = if self.all_cards {
             let cards = iolist::cards_in_order(plc);
             let (n, used) = overview::totals(&cards);
@@ -770,7 +770,7 @@ impl IoView {
                 }
             })
         };
-        // The book's overview page (design 056 §8).
+        // The book's overview page.
         self.book_page = doc
             .page_order()
             .iter()
@@ -778,7 +778,7 @@ impl IoView {
             .map(|p| (*p, ecad_electrical::references::cables::page_number(doc, *p)));
     }
 
-    /// The file name offered for a tag table (design 056 §6.6): `<project> PLC tags.csv` in the
+    /// The file name offered for a tag table: `<project> PLC tags.csv` in the
     /// folder last used.
     fn offered_path(&self) -> String {
         let name = format!("{} PLC tags.csv", self.project_name);
@@ -827,7 +827,7 @@ impl IoView {
 
     /// The result of the last edit's command: a refusal shows under its cell.
     pub fn ran(&mut self, refusal: Option<String>) {
-        // Brief 056: an import's refusal stays in its path row; done, the row closes.
+        // An import's refusal stays in its path row; done, the row closes.
         if std::mem::take(&mut self.importing) {
             match refusal {
                 Some(m) => {
@@ -852,7 +852,7 @@ impl IoView {
         let s = ecad_widgets::SHELL;
         let ty = ecad_widgets::tokens::ui_type::BODY;
         let small = ecad_widgets::tokens::ui_type::SMALL;
-        // Brief 056 (design 056 §3.1): `Rack 1  -A01 to -A06 · 6 of 7 slots used · …`, the legend
+        // `Rack 1  -A01 to -A06 · 6 of 7 slots used · …`, the legend
         // and Add a rack at the right; the chips when there is more than one rack.
         ui.add_space(ecad_widgets::tokens::space::M);
         ui.horizontal(|ui| {
@@ -927,7 +927,7 @@ impl IoView {
         let r = ui.available_rect_before_wrap();
         ui.painter().hline(r.x_range(), r.top(), eframe::egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
         ui.add_space(ecad_widgets::tokens::space::S);
-        // The card header (design 056 §4.1).
+        // The card header.
         ui.push_id(CARD_HEAD, |ui| {
             ui.horizontal(|ui| {
                 ui.add_space(ecad_widgets::tokens::space::M);
@@ -971,7 +971,7 @@ impl IoView {
                 });
             });
         });
-        // The path row of Import tags or Export tags (design 056 §6.6, §6.7).
+        // The path row of Import tags or Export tags.
         if let Some(row) = self.path_row.as_mut() {
             let mut close = false;
             ui.horizontal(|ui| {
@@ -1012,7 +1012,7 @@ impl IoView {
         }
         let folded = self.source.folded;
         // With channels folded, the table is as tall as its rows, so `6 more free channels.`
-        // sits under the last one (board 2.03); else it takes the room left.
+        // sits under the last one; else it takes the room left.
         let events = if folded > 0 {
             let rows = self.source.keys().len() as f32 + 1.0;
             let h = (rows * TABLE_ROW_PX + ecad_widgets::tokens::space::M).min((ui.available_height() - 2.0 * TABLE_ROW_PX).max(TABLE_ROW_PX));
@@ -1053,7 +1053,7 @@ impl IoView {
                 TableEvent::Commit { .. } | TableEvent::Selected(_) | TableEvent::Button { .. } => {}
             }
         }
-        // `6 more free channels.` (design 056 §4.2): a click unfolds them.
+        // `6 more free channels.`: a click unfolds them.
         if folded > 0 {
             ui.horizontal(|ui| {
                 ui.add_space(ecad_widgets::tokens::space::M);
@@ -1117,7 +1117,7 @@ impl IoView {
                 let path = row.path.trim().to_string();
                 self.remember(&path);
                 match row.kind {
-                    // Brief 056 (owner, 2026-11-14): one way, one transaction; `u` undoes it.
+                    // One way, one transaction; `u` undoes it.
                     PathKind::Import => {
                         self.importing = true;
                         if let Some(r) = self.path_row.as_mut() {

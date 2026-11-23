@@ -1,4 +1,4 @@
-//! The Release dialog (brief 027, design 027 §5.1, §8, §9): the pre-release check of the state to
+//! The Release dialog: the pre-release check of the state to
 //! be issued, the pending revision's fields, the folder and what will be written, and the question
 //! when the folder exists. Non-modal: the user can fix things while it is open, and the check
 //! follows (the dialog's copy is taken again only when the kept Checks or the project change).
@@ -36,7 +36,7 @@ pub enum Out {
     GoTo(Box<Check>),
     /// Reports, BOM tab, Only ? (the `?` parts group).
     ShowReports,
-    /// 026's Finalise numbering dialog (the Provisional group).
+    /// The Finalise numbering dialog (the Provisional group).
     Finalise,
     /// The Checks tab (`Show all N in Checks`).
     ShowChecks,
@@ -50,11 +50,11 @@ pub enum Out {
 /// The dialog's state.
 #[derive(Debug, Clone, Default)]
 pub struct ReleaseDialog {
-    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    /// The shell's slot it fills (no title bar, not movable), or `None` to float.
     pub host: Option<egui::Rect>,
-    /// Brief 038: its workspace is not shown, so it is not drawn.
+    /// Its workspace is not shown, so it is not drawn.
     pub hidden: bool,
-    /// `None`: release the pending revision; `Some(rev)`: write that issued revision's folder.
+    /// `None`: release the pending revision; `Some`: write that issued revision's folder.
     pub rev: Option<String>,
     /// The engine's view, taken again when [`ReleaseDialog::key`] changes.
     pub view: Option<View>,
@@ -100,7 +100,7 @@ impl ReleaseDialog {
         self.key = Some(key);
     }
 
-    /// The parameters of `release` from the dialog's choices (`existing` when answering §9).
+    /// The parameters of `release` from the dialog's choices (`existing` when answering the folder-exists question).
     pub fn params(&self, existing: Option<&str>) -> Value {
         let mut m = Map::new();
         if let Some(r) = &self.rev {
@@ -202,7 +202,7 @@ impl ReleaseDialog {
                 g.row("Writes", |ui| prim::body(ui, &writes.join(" \u{b7} "), true))
                     .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.writes"));
             });
-            // Brief 028: a list the project gives none of, and why (`No terminal strips in this project.`).
+            // A list the project gives none of, and why (`No terminal strips in this project.`).
             for (slot, why) in &v.not_included {
                 prim::note(ui, &format!("{slot}: {why}"), Tone::Neutral);
             }
@@ -279,7 +279,7 @@ impl ReleaseDialog {
             if let Some(e) = &self.error {
                 prim::note(ui, e, Tone::Error);
             }
-            // §9: the folder exists.
+            // The folder exists.
             if let Some(q) = self.exists.clone() {
                 ui.separator();
                 prim::body(ui, &q, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.exists"));
@@ -294,7 +294,7 @@ impl ReleaseDialog {
                     }
                 });
             }
-            // Why Release is greyed, in words, with its way out beside it (design 027 §6).
+            // Why Release is greyed, in words, with its way out beside it.
             let blocked = self.blocked().filter(|_| self.exists.is_none());
             if let Some(why) = &blocked {
                 prim::note(ui, why, Tone::Warning).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.why"));
@@ -347,7 +347,7 @@ pub(crate) fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &eca
     }
 }
 
-/// The badge of the Project panel's Release button (design 027 §3): errors (red), else warnings,
+/// The badge of the Project panel's Release button: errors (red), else warnings,
 /// from the counts the kept Checks and report models keep (O(1); no row is counted again);
 /// `None` when the Checks have not been kept yet (nothing is built for it).
 pub fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {

@@ -1,5 +1,4 @@
-//! Settings ▸ Agent access (brief 035's row, design 035 §3.2: "until the UI shell gives settings
-//! a home"; U0 O7): Off, Read only or Read and change, the port, and what listens. 035's element
+//! Settings ▸ Agent access: Off, Read only or Read and change, the port, and what listens. Its element
 //! names are kept (`agent.access.mode`, `agent.access.port`, `agent.access.status`).
 
 use eframe::egui;

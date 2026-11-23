@@ -1,5 +1,4 @@
-//! Brief 041 (U4b): the action table over the existing commands (moved here from ecad-engine
-//! with the table, design 065 §3 cut 13).
+//! The action table over the existing commands.
 
 use ecad_app::commands::actions::{self, ACTIONS, Key, ObjectKind, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
 use ecad_widgets::tokens::Icon;

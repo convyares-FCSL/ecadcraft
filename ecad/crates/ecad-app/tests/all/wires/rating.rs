@@ -1,6 +1,5 @@
-//! Lane 057 (wire and cable rating checks): the Rating sections of Project ▸ Wires and Cables
-//! (boards 2.05 and 2.06, design 057 §2 and §9), on the demo project. With `ECAD_TESTER_SHOTS`
-//! set, writes `057-2.05.png` and `057-2.06.png` for the side-by-sides.
+//! Wire and cable rating checks: the Rating sections of Project ▸ Wires and Cables,
+//! on the demo project. With `ECAD_TESTER_SHOTS` set, writes a screenshot of each.
 //!
 //! **Every rating value here is synthetic** (made up for the test; none is from a standard).
 

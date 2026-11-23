@@ -1,5 +1,5 @@
-//! Settings ▸ Text styles: brief 031's Text section (the style table and the project font),
-//! which was part of the Project settings popout (brief 042). It edits the same copy as Settings ▸
+//! Settings ▸ Text styles: the Text section (the style table and the project font),
+//! which was part of the Project settings popout. It edits the same copy as Settings ▸
 //! Project ▸ Settings, so OK writes one `textstyle` line as before.
 
 use eframe::egui;

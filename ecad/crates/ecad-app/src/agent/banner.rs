@@ -1,13 +1,13 @@
-//! The agent banner (brief 035, design §7; styled by brief 043, U4d): its data contract, its
+//! The agent banner: its data contract, its
 //! words, its styled strip in the shell's banner slot ([`show`]) and the plain one-line fallback
 //! ([`show_line`]).
 //!
 //! # Semantics
 //! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::shell::app::App::agent_banner`]);
-//!   the shell places it in its 32 px banner slot (spec §2) and styles it ([`show`]), keeping these
+//!   the shell places it in its 32 px banner slot and styles it ([`show`]), keeping these
 //!   fields, the controls ([`BannerAction`], through [`crate::shell::app::App::agent_action`]) and the
 //!   element names ([`ELEMENT`] and the `agent.banner.*` names).
-//! - **Update map** (design §7.5): the banner changes only on `ecad.hello`, an accepted or refused
+//! - **Update map**: the banner changes only on `ecad.hello`, an accepted or refused
 //!   agent call, the write flash running out, hold start and end, Pause/Resume, Disconnect,
 //!   `ecad.bye`, the idle mark, access turned off, and Undo session; `steps` is recomputed only on
 //!   those and on an undo, redo or branch switch by anyone. A person's ordinary edit changes
@@ -15,7 +15,7 @@
 //! - The top bar's agent pill hides and shows the banner of the session shown ([`hidden`],
 //!   [`toggle_hidden`]); a new session shows it again.
 //!
-//! Excluded: ask-first mode, a chat, Agent access settings (042), several writing agents.
+//! Excluded: ask-first mode, a chat, Agent access settings, several writing agents.
 
 use std::time::Instant;
 
@@ -39,7 +39,7 @@ pub(crate) const FINISH_FIRST: &str = "Finish the command first";
 /// The banner's ground: its state's colour at this opacity, %, over the panel.
 const GROUND_PERCENT: u8 = 8;
 
-/// The banner's state (design §7.2).
+/// The banner's state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerState {
     Connected,
@@ -67,7 +67,7 @@ pub struct LastChange {
     pub branch: String,
 }
 
-/// The banner's data contract (design §7.1).
+/// The banner's data contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentBanner {
     /// The bridge session shown.
@@ -93,7 +93,7 @@ pub struct AgentBanner {
     pub error: Option<String>,
 }
 
-/// A banner control (design §7.3).
+/// A banner control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BannerAction {
     /// Open History at the last change.
@@ -135,7 +135,7 @@ impl AgentBanner {
         }
     }
 
-    /// The middle text for `state` (design §7.2).
+    /// The middle text for `state`.
     pub fn state_text(&self, state: BannerState) -> String {
         match state {
             BannerState::Connected | BannerState::Writing => "changing".into(),
@@ -198,7 +198,7 @@ fn named(r: &egui::Response, role: egui::Role, name: &str) {
     r.widget_info(|| egui::WidgetInfo::labeled(role, true, name));
 }
 
-/// The colour of a shown state (spec §2, design 035 §7.2): `agent` while it works, `warning`
+/// The colour of a shown state: `agent` while it works, `warning`
 /// while a write waits or writes are paused, `text_2` when reading only or finished, `error` when
 /// access stopped.
 pub(crate) fn state_color(state: BannerState) -> Color {
@@ -258,10 +258,10 @@ fn text(ui: &mut egui::Ui, s: &str, style: ui_type::TypeStyle, c: Color) -> egui
     ui.label(egui::RichText::new(s).font(ecad_widgets::fonts::font(ui.ctx(), style)).color(ecad_widgets::color(c)))
 }
 
-/// Draw the banner styled (spec §2: 32 px under the top bar), filling `ui`'s rect: a bar in the
+/// Draw the banner styled (32 px under the top bar), filling `ui`'s rect: a bar in the
 /// state's colour, the agent's name pill, "connected since", the state, the last write as a go-to
 /// to History, the last refusal and other readers; on the right Undo session (with its step
-/// count), Pause writes or Resume, Disconnect, and Dismiss once finished, as `ecad-ui` buttons.
+/// count), Pause writes or Resume, Disconnect, and Dismiss once finished, as `ecad-widgets` buttons.
 /// `since_ms`: the session's hello, wall clock. Returns the control clicked.
 pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Option<u64>) -> Option<BannerAction> {
     let now = Instant::now();
@@ -346,7 +346,7 @@ pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Optio
     out
 }
 
-/// Draw the banner as one plain line with egui's own widgets (035's first rendering, kept as the
+/// Draw the banner as one plain line with egui's own widgets (kept as the
 /// fallback; the shell draws [`show`]): the controls first, so they never move when the text changes, then
 /// the agent, its state, the last change (a link to History) and the rest. Returns the control
 /// clicked.

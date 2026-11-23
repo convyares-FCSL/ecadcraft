@@ -1,4 +1,4 @@
-//! Lane 072 F, F1b (design 072 §6.2): a selected continuation arrow shows its own section in
+//! A selected continuation arrow shows its own section in
 //! Properties, and renaming or captioning it (`setprop {aids}`, one `ModifyAid`) refreshes that
 //! section: an aid has no `ObjectRef`, so an aid op must not leave the panel stale.
 

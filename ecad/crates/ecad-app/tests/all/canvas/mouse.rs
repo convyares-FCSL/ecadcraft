@@ -1,7 +1,6 @@
-//! Brief 008, design check E, D and G headless: the quick-start example built by clicks and keys
+//! Drawing by mouse and keyboard, headless: the quick-start example built by clicks and keys
 //! in a 1280×800 window (egui_kittest, elements by name), Esc and undo from the keyboard, and the
-//! hover tooltip. What these tests cannot show is how it looks on a display (screenshots are the
-//! tester's), or whether it is easy enough (the owner's trial on Windows).
+//! hover tooltip.
 
 use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::geom::Vec2;

@@ -1,9 +1,9 @@
-//! Project ▸ PLC ▸ a card selected: the right panel is the card's editor (brief 056, owner's
-//! change of 2026-11-14; board 2.03's right panel). Identity (type, ID, description, rack and
-//! slot, function and location as 052 codes), Addresses (start, rule), Detailed page, and Parts with its
+//! Project ▸ PLC ▸ a card selected: the right panel is the card's editor.
+//! Identity (type, ID, description, rack and
+//! slot, function and location as codes), Addresses (start, rule), Detailed page, and Parts with its
 //! accessories.
 //!
-//! Built only from the `ecad_ui` components (`docs/design/components.md`): Type is a
+//! Built only from the `ecad_widgets` components: Type is a
 //! `Segmented`, Rack a `Select`, ID, Description, Slot, Function, Location, Start, Maker and Part
 //! number are `TextEntry`s, and values read from the drawing (a type it can't change, the address
 //! rule) are plain `read_text`. No colour or size of its own.
@@ -35,11 +35,11 @@ pub const PANEL: &str = "ecad.plc.card.editor";
 pub(crate) const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 /// The card's symbols read for the Function and Location hints (a card draws a body and channels).
 const MAX_SYMBOLS: usize = 256;
-/// The main part's note in Parts (board 2.03).
+/// The main part's note in Parts.
 pub(crate) const MAIN_PART: &str = "main part";
 /// The Rack choice for a card in no rack.
 pub(crate) const NO_RACK: &str = "None";
-/// The Detailed page note (board 2.03).
+/// The Detailed page note.
 pub(crate) const PAGE_NOTE: &str = "A card can be drawn across several pages. Each channel remembers which.";
 
 /// What the editor shows of one card, read from the project.
@@ -114,7 +114,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let comp = doc.devices().get(&c)?;
         let own = |k: &str| comp.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
-        // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
+        // Function and location are entry keys stored on the device,
         // shown as their codes; nothing is inherited. The hint says where the stored code comes
         // from: the box, page or project whose code it is where one of the card's symbols is drawn
         // (a box first), else `set here`.
@@ -180,7 +180,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
     .flatten()
 }
 
-/// The Parts rows as board 2.03 shows them: the card's main part (named for what the card is, its
+/// The Parts rows as shows them: the card's main part (named for what the card is, its
 /// maker and part number, `main part`), then each accessory line, every quantity as `×1`. Empty
 /// only when the card has no part at all (no maker, no part number, no lines).
 pub fn part_rows(
@@ -310,7 +310,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
             let full = ui.max_rect().x_range();
             ui.label(w::rich(ui, &info.tag, ecad_widgets::tokens::ui_type::OBJECT, w::text()));
             ui.label(w::rich(ui, &info.subtitle, ecad_widgets::tokens::ui_type::SMALL, w::text_2()));
-            // Identity (board 2.03, with the owner's editable type, ID, rack and slot).
+            // Identity (with the editable type, ID, rack and slot).
             w::section(ui, &mut folded, full, "plc.identity", "Identity", "", false, |ui| {
                 let types: Vec<&str> = IO_TYPES.iter().map(|t| t.code()).collect();
                 let at = info.ty.and_then(|ty| IO_TYPES.iter().position(|t| *t == ty));
@@ -328,7 +328,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                         read_text(ui, info.ty.map_or("", |t| overview::type_name(t)), Decor::default(), &format!("{PANEL}.type"));
                     }
                 });
-                // The confirm step (overseer's look check): what the change does to the signals.
+                // The confirm step: what the change does to the signals.
                 if let (Some(to), Some(from)) = (st.pending_type, info.ty) {
                     let words = format!(
                         "Change {} to {}? {}",
@@ -373,7 +373,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                 field(ui, &mut st, &mut lines, c, writable, "function", "Function", "", info.function.1);
                 field(ui, &mut st, &mut lines, c, writable, "location", "Location", "", info.location.1);
             });
-            // Addresses (board 2.03).
+            // Addresses.
             w::section(ui, &mut folded, full, "plc.addresses", "Addresses", "", false, |ui| {
                 field(ui, &mut st, &mut lines, c, writable, "start", "Start", "", if info.pinned { "pinned" } else { "automatic" });
                 // The rule is the project's (Settings ▸ PLC), read here.
@@ -381,7 +381,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                     read_text(ui, "Follow slot order", Decor { hint: &info.rule, ..Decor::default() }, &format!("{PANEL}.rule"));
                 });
             });
-            // Detailed page (board 2.03).
+            // Detailed page.
             let summary = info.page.as_ref().map(|(_, n, _)| format!("page {n}")).unwrap_or_default();
             w::section(ui, &mut folded, full, "plc.page", "Detailed page", &summary, false, |ui| {
                 match &info.page {
@@ -411,7 +411,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
                 }
                 ui.add(egui::Label::new(w::rich(ui, PAGE_NOTE, ecad_widgets::tokens::ui_type::SMALL, w::text_3())).wrap());
             });
-            // Parts, with the accessories (board 2.03; brief 047's part lines).
+            // Parts, with the accessories (the part lines).
             let summary = match info.parts.len() {
                 0 => "none yet".to_string(),
                 1 => "1 line \u{b7} qty".to_string(),

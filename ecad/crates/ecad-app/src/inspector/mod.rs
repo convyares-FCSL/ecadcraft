@@ -1,4 +1,4 @@
-//! The right panel (spec §2): details only, the inspector. UI rev 3 (boards 1.05 to 1.07): the
+//! The right panel: details only, the inspector. The
 //! right side mirrors the left. A permanent 56 px rail at the right edge has one labelled button
 //! per tab, Device, Layout and Checks, each with a ‹ mark (› while open); Checks carries a dot
 //! when there are problems. Pressing one opens the panel beside the rail on that tab, and pressing
@@ -11,18 +11,18 @@
 //!   Where it is drawn, Connections, and Notes and attributes. With nothing selected, the page's
 //!   properties; a wire, a cable… its properties.
 //! - **Layout** ([`layout_tab`]): Placement, Text on the sheet, the contact table, Line and colour;
-//!   for anything else the defaults that apply to it (brief 042 step 4): each value from the
+//!   for anything else the defaults that apply to it: each value from the
 //!   registry with where it comes from; a badge opens Settings ▸ Standards at that key. A value set
 //!   at this object's level is a field (a list for a choice), with Reset when it is overridden
 //!   here; a value read from further out is grey text that goes to where it is set.
 //! - **Checks** ([`checks_tab`]): This page or Project, each check with its fix and a go-to.
 //!
-//! While Place Symbol runs (board 1.11), Device and Layout describe the device about to be placed
+//! While Place Symbol runs, Device and Layout describe the device about to be placed
 //! instead ([`placing_view`]): its next tag, its symbol and what the click changes.
 //!
 //! Every titled section folds to a one-line summary ([`widgets::section`]). Grey text is read from
 //! the drawing; an input box is something you set here. The rows come from the ECAD properties
-//! copy ([`crate::settings::sheets::PropsShared`], design 019; edits go through its commands as before)
+//! copy ([`crate::settings::sheets::PropsShared`]; edits go through its commands as before)
 //! and from this inspector's own copy. The Text panel opens over it ([`crate::shell::text_panel`]).
 //!
 //! **Update map** (the inspector's rows): rebuilt on a new selection or page, or after a change
@@ -62,7 +62,7 @@ use crate::shell::state::RightTab;
 /// Accessible labels.
 pub const COLLAPSE: &str = "Collapse the details panel";
 pub const TITLE: &str = "PROPERTIES";
-/// The right panel's title in the Library (brief 048).
+/// The right panel's title in the Library.
 pub(crate) const LIBRARY_TITLE: &str = "DETAILS";
 /// The header's Row button: the device's row in Project ▸ Devices.
 pub const ROW: &str = "Row";
@@ -152,7 +152,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         crate::shell::text_panel::show(t, ui, rect);
         return;
     }
-    // Brief 048: the Library's right panel holds a symbol's details (design 048 §3.1, §8.1).
+    // The Library's right panel holds a symbol's details.
     if t.shell.state.workspace == crate::shell::Workspace::Library {
         let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
         let collapse = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
@@ -176,7 +176,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         });
         return;
     }
-    // UI rev 3, Project workspace (boards 2.01–2.06): the selected row with its own head, its
+    // Project workspace: the selected row with its own head, its
     // properties and its own checks (`lists::detail`); the Checks tab stays the check list.
     if t.shell.state.workspace == crate::shell::Workspace::Lists && t.shell.state.right_tab != RightTab::Checks {
         // The inspector keeps following the page's selection meanwhile.
@@ -196,9 +196,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         let h = t.header();
         h.name.is_some() && !h.read_only && t.panel.revision.is_none()
     };
-    // Board 1.11: the device about to be placed, on Device and Layout.
+    // The device about to be placed, on Device and Layout.
     let placing = if t.shell.state.right_tab == RightTab::Checks { None } else { placing_view::of(t) };
-    // Brief 059: while Cable slash runs, the cable picker (design 059 §5.6).
+    // While Cable slash runs, the cable picker.
     t.sync_slash_picker();
     let slash = t.shell.state.right_tab != RightTab::Checks && placing.is_none() && t.slash_running();
     let picker = t.shell.slash_picker.clone();
@@ -210,7 +210,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         }
         None => String::new(),
     };
-    // Brief 054b (design 054 §8): on a generated page with nothing selected, the Page tab.
+    // On a generated page with nothing selected, the Page tab.
     let generated = if placing.is_none() && t.shell.state.right_tab != RightTab::Checks && t.settings.inspector.device.is_none() {
         page::current(t)
     } else {
@@ -334,11 +334,11 @@ fn header(ui: &mut egui::Ui, title: &str, sub: &str, row: bool, accent: bool) ->
     out
 }
 
-/// The word on the rail's first button: what the properties panel shows (owner, review of 054):
+/// The word on the rail's first button: what the properties panel shows:
 /// `Page` for a page or a generated page, `Device` for a device, `Wire`, `Cable` and so on for
 /// the other selections. The button's accessible name stays [`rail_label`].
 pub fn shows_word(t: &mut App) -> &'static str {
-    // Brief 059 (owner, review of the side-by-sides): in the Project workspace the panel shows the
+    // In the Project workspace the panel shows the
     // selected row of the tab shown: `Cable` on Cables, `Wire` on Wires, `Device` on Devices,
     // else `Properties`.
     if t.shell.state.workspace == crate::shell::Workspace::Lists {
@@ -410,7 +410,7 @@ fn rail(t: &mut App, ui: &mut egui::Ui, rect: Rect, open: bool) {
 }
 
 pub const PLACEMENTS: &str = "ecad.inspector.placements";
-/// Brief 047: the part set section; its rows are `ecad.inspector.parts.row.<n>` (0 the main part).
+/// The part set section; its rows are `ecad.inspector.parts.row.<n>` (0 the main part).
 pub const PARTS: &str = "ecad.inspector.parts";
 
 /// What the inspector shows defaults for.
@@ -432,9 +432,9 @@ pub struct Row {
     pub here: Option<(Level, Target)>,
     /// The words a choice entry takes.
     pub choices: &'static [&'static str],
-    /// Brief 050a: a style choice's styles, (ID, name), for its value list; empty otherwise.
+    /// A style choice's styles, (ID, name), for its value list; empty otherwise.
     pub styles: Vec<(String, String)>,
-    /// Brief 050a (design 050 §8): the object's own choice names no style ("Not found: drawn as
+    /// The object's own choice names no style ("Not found: drawn as
     /// Tag").
     pub dangling: Option<String>,
 }
@@ -451,7 +451,7 @@ impl Row {
     }
 }
 
-/// Brief 044 (design 044 §9.4): one row of a connector's Halves group, or the selected pin's Pin
+/// One row of a connector's Halves group, or the selected pin's Pin
 /// and Mate rows. Accessible name `ecad.props.connector.<key>`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectorRow {
@@ -461,7 +461,7 @@ pub struct ConnectorRow {
     pub heading: Option<String>,
     pub label: &'static str,
     pub value: String,
-    /// 042's origin words: `set here`, `from standard`, `from project`, `from box`…
+    /// The origin words: `set here`, `from standard`, `from project`, `from box`…
     pub origin: &'static str,
     /// The command and its parameters that set this row (the value goes in `value_key`); `None`
     /// for a read row.
@@ -470,7 +470,7 @@ pub struct ConnectorRow {
     pub goto: Vec<RepresentationId>,
 }
 
-/// The connector rows for symbol `rep` of `c` (design 044 §9.4): Pins, each drawn half's
+/// The connector rows for symbol `rep` of `c`: Pins, each drawn half's
 /// Description, Maker, Part number and Location, and for a pin symbol its Pin and Mate.
 fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
     use ecad_electrical::connectors as cn;
@@ -513,7 +513,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         } else {
             "from standard"
         };
-        // Brief 052 (design 052 §5.2): the half's override, else the connector's stored value.
+        // The half's override, else the connector's stored value.
         let loc_origin = match h.location.source {
             ecad_electrical::locations::Source::Override => "set here",
             ecad_electrical::locations::Source::Device => "from device",
@@ -568,11 +568,11 @@ pub enum InspectorAction {
     Run(&'static str, String),
     /// Select every placement of the device.
     Placements(Vec<RepresentationId>),
-    /// Brief 044: run this command line (a connector row's edit).
+    /// Run this command line (a connector row's edit).
     RunLine(String),
-    /// Brief 048: bring this copy to its symbol's newest version (the review shows when it clashes).
+    /// Bring this copy to its symbol's newest version (the review shows when it clashes).
     UpdateSymbol(RepresentationId),
-    /// Brief 048c: the drawer row of this copy against the newest version, no save.
+    /// The drawer row of this copy against the newest version, no save.
     Compare(RepresentationId),
 }
 
@@ -586,7 +586,7 @@ pub struct Inspector {
     seen: Option<(u64, u64, Option<PageId>, Vec<ecad_engine::cad::Handle>)>,
     /// The device's placements (its symbols), for "Select all placements".
     placements: Vec<RepresentationId>,
-    /// Brief 044: a connector's Halves group and the selected pin's rows.
+    /// A connector's Halves group and the selected pin's rows.
     pub connector: Vec<ConnectorRow>,
     connector_edits: BTreeMap<String, String>,
     /// The values being typed, by key.
@@ -595,12 +595,12 @@ pub struct Inspector {
     pub errors: BTreeMap<&'static str, String>,
     /// Full builds of the rows (tests: the update map).
     pub rebuilds: u64,
-    /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
+    /// The selected device's part set, read only; empty when it has
     /// no part lines.
     pub parts: Vec<ecad_electrical::reports::bom::PartSetRow>,
-    /// Brief 048: "update available" for the selected symbol.
+    /// "update available" for the selected symbol.
     pub symbol_update: Option<SymbolUpdate>,
-    /// UI rev 3: what the Device and Layout tabs show about one selected device.
+    /// What the Device and Layout tabs show about one selected device.
     pub device: Option<DeviceDetails>,
     /// With nothing selected, the page's number and title (the header).
     pub page_words: Option<(String, String)>,
@@ -613,7 +613,7 @@ pub struct Inspector {
 /// The kinds of a symbol's own texts.
 const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKind::Description, TextKind::PartNumber];
 
-/// A value as the inspector shows it: a show word in words (spec §3), else as the Standards table.
+/// A value as the inspector shows it: a show word in words, else as the Standards table.
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
         use ecad_electrical::styles::text_style::Shown;
@@ -626,13 +626,13 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     crate::settings::standards_list::value_text(e, r)
 }
 
-/// A style choice's row (brief 050a): the chosen style's name, the catalogue's styles, and the
+/// A style choice's row: the chosen style's name, the catalogue's styles, and the
 /// warning of an own choice naming no style.
 fn style_row(
     doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
     use ecad_electrical::styles;
-    // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
+    // A wire's category with where it comes from.
     if e.key == ecad_model::connectivity::wiring::WIRE_CATEGORY
         && let Some(c) = scope.conductor
     {
@@ -676,7 +676,7 @@ struct Built {
     page_words: Option<(String, String)>,
 }
 
-/// Brief 048 (design 048 §8.4): the selected symbol shows an older version of its project
+/// The selected symbol shows an older version of its project
 /// symbol than the newest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolUpdate {
@@ -698,7 +698,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, rep) => {
             deps.insert(ObjectRef::Device(c));
             let mut es: Vec<&'static Entry> = Vec::new();
-            // Brief 050a (design 050 §7.4): a Style row per text kind, chosen for the device.
+            // A Style row per text kind, chosen for the device.
             for k in SYMBOL_KINDS {
                 es.push(k.style_entry());
                 es.extend(k.show_entry());
@@ -764,7 +764,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(c, rep) => connector_rows(doc, c, rep),
         _ => Vec::new(),
     };
-    // Brief 047: the part set reads the device's own properties (already a dependency).
+    // The part set reads the device's own properties (already a dependency).
     let parts = match what {
         What::Symbol(c, _) => ecad_electrical::reports::bom::part_set(doc, c),
         _ => Vec::new(),
@@ -775,7 +775,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         }
         _ => None,
     };
-    // UI rev 3: the Device and Layout tabs' copy of one device.
+    // The Device and Layout tabs' copy of one device.
     let device = match what {
         What::Symbol(c, rep) => Some(details::build(doc, c, rep, &SYMBOL_KINDS, &mut deps)),
         _ => None,
@@ -876,7 +876,7 @@ fn what_of(p: &ecad_engine::Project, page: PageId, selection: &[ecad_engine::cad
 }
 
 impl Inspector {
-    /// Draw the defaults rows that `keep` keeps (brief 042: each with its origin badge, a field
+    /// Draw the defaults rows that `keep` keeps (each with its origin badge, a field
     /// when set here, Reset when overridden here, grey text read from further out).
     pub(super) fn show_rows(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>, keep: impl Fn(&Row) -> bool) {
         if !self.rows.iter().any(&keep) {
@@ -916,7 +916,7 @@ impl Inspector {
             let name = format!("ecad.inspector.{}", row.key);
             let width = ui.available_width();
             match row.here.filter(|_| writable) {
-                // Brief 050a (design 050 §7.4): a style choice's value list of the catalogue's
+                // A style choice's value list of the catalogue's
                 // styles, by name; choosing runs `setdefault … level object` with the ID.
                 Some((level, target)) if !row.styles.is_empty() => {
                     let name = format!("ecad.inspector.style.{}", row.key);
@@ -930,7 +930,7 @@ impl Inspector {
                     });
                     combo.response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::ComboBox, true, &name));
                     if let Some(id) = pick {
-                        // Brief 050b: a wire's category runs `category` (it may set the potential).
+                        // A wire's category runs `category` (it may set the potential).
                         let line = match target {
                             Target::Wire(c) if row.key == ecad_model::connectivity::wiring::WIRE_CATEGORY => {
                                 format!("category {}", serde_json::json!({"conductor": c.hex(), "value": id}))
@@ -993,7 +993,7 @@ impl Inspector {
 }
 
 impl Inspector {
-    /// Brief 044 (design 044 §9.4): the Halves group, and Pin and Mate for a pin symbol.
+    /// The Halves group, and Pin and Mate for a pin symbol.
     fn show_connector(&mut self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>) {
         if self.connector.is_empty() {
             return;
@@ -1037,7 +1037,7 @@ impl Inspector {
         }
     }
 
-    /// Brief 048 (design 048 §8.4): `Symbol: v2 · update available` with Update, which brings this
+    /// `Symbol: v2 · update available` with Update, which brings this
     /// copy to the newest version (refused with the reason when it would clash).
     fn show_symbol_update(&self, ui: &mut egui::Ui, writable: bool, out: &mut Vec<InspectorAction>) {
         let Some(u) = &self.symbol_update else { return };
@@ -1052,7 +1052,7 @@ impl Inspector {
                     out.push(InspectorAction::UpdateSymbol(u.rep));
                 }
             }
-            // Brief 048c (design 048 §8.4): the drawer row of this copy alone, no save.
+            // The drawer row of this copy alone, no save.
             let c = ui.small_button("Compare");
             c.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("{SYMBOL_UPDATE}.compare")));
             if c.clicked() {

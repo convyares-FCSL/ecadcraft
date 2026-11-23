@@ -1,12 +1,12 @@
-//! The **Checks** tab of the Project panel (brief 022, design 022 §8): open ends, loose wires,
+//! The **Checks** tab of the Project panel: open ends, loose wires,
 //! false-looking connections, nets with one connection point, unconnected device points and
 //! number or potential conflicts, each row with where it is and a go-to.
 //!
 //! The rows are a copy of [`ecad_electrical::checks::kept::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
-//! Brief 039: the rows are drawn by the one table ([`crate::checks::list`]), patched with the rows
-//! that appeared or went; this tab is its host until the shell (U2) places it.
+//! The rows are drawn by the one table ([`crate::checks::list`]), patched with the rows
+//! that appeared or went; this tab is its host until the shell places it.
 
 use std::collections::BTreeSet;
 
@@ -22,61 +22,61 @@ pub const CHECKS_TAB: &str = "Checks";
 /// What an empty list says.
 pub(crate) const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
-/// Brief 032: the Looks connected row's fix (`joinwires {at}`).
+/// The Looks connected row's fix (`joinwires {at}`).
 pub const JOIN: &str = "Join";
 pub(crate) const NUMBER_THEM: &str = "Number them";
-/// Brief 026: opens Finalise numbering (the Renumber dialog), never a direct write.
+/// Opens Finalise numbering (the Renumber dialog), never a direct write.
 pub const FINALISE: &str = "Finalise";
-/// Brief 052's fix buttons (design 052 §6).
+/// Fix buttons for location and function checks.
 pub(crate) const USE_CONTEXT: &str = "Use it";
 pub(crate) const SET_LOCATION: &str = "Set location";
 pub(crate) const SET_FUNCTION: &str = "Set function";
 pub(crate) const SHOW_IN_SETTINGS: &str = "Show in Settings";
 pub const SHOW: &str = "Show";
-/// Brief 050a: a style row's fix opens Settings ▸ Standards.
+/// A style row's fix opens Settings ▸ Standards.
 pub(crate) const GO_TO_STANDARDS: &str = "Go to Standards";
-/// Brief 055: a title block row's fixes.
+/// A title block row's fixes.
 pub(crate) const EDIT_BLOCK: &str = "Edit block";
 pub(crate) const CLEAR_PAGE_SHEET: &str = "Clear the page's sheet";
-/// Brief 028's fix buttons.
+/// Fix buttons for terminal strip checks.
 pub(crate) const OFFER: &str = "Offer drawn";
 pub(crate) const RENUMBER_STRIP: &str = "Renumber strip";
 pub(crate) const SET_CORES: &str = "Set cores\u{2026}";
-/// Brief 044: `connector-over`'s fix.
+/// `connector-over`'s fix.
 pub(crate) const SET_PINS: &str = "Set pins";
-/// Brief 044: `connector-lone-pin`'s fix.
+/// `connector-lone-pin`'s fix.
 pub(crate) const PLACE_MATES: &str = "Place mates";
-/// Brief 044: `connector-family` / `connector-size`'s fix.
+/// `connector-family` / `connector-size`'s fix.
 pub(crate) const IGNORE: &str = "Ignore";
 pub(crate) const NEXT_FREE_CORE: &str = "Next free core";
-/// Brief 030's fix buttons, two per row (design 030 §8).
+/// Fix buttons for terminal strip accessory and jumper bar checks, two per row.
 pub(crate) const MOVE_TO_END: &str = "Move to end";
-/// Brief 057 (owner): an open core's two fixes.
+/// An open core's two fixes.
 pub(crate) const TICK_NOT_USED: &str = "Tick Not used";
 pub const GO_TO_OPEN_END: &str = "Go to the open end";
 pub const REMOVE: &str = "Remove";
-/// Brief 033: start Move Mirror Table for a table over the title block.
+/// Start Move Mirror Table for a table over the title block.
 pub(crate) const MOVE_TABLE: &str = "Move table…";
-/// Brief 033: open a page's number field (a continuation sheet took its number).
+/// Open a page's number field (a continuation sheet took its number).
 pub(crate) const RENUMBER_PAGE: &str = "Renumber…";
 pub(crate) const SPLIT_JUMPER_BAR: &str = "Split jumper bar";
 pub(crate) const REMOVE_PARTITION: &str = "Remove partition";
 pub(crate) const DROP_MISSING: &str = "Drop missing";
 pub(crate) const DELETE_JUMPER_BAR: &str = "Delete jumper bar";
-/// Brief 036's fix buttons (design 036 §8).
+/// Fix buttons for multi-level terminal block checks.
 pub(crate) const MOVE_NEXT_FREE: &str = "Move to next free";
 pub(crate) const MOVE_NEW_POSITION: &str = "Move to new position";
 pub(crate) const DROP_MISSING_LEVELS: &str = "Drop missing levels";
-/// Brief 047's fix button for two article numbers of one part (design 047 §9).
+/// Fix button for two article numbers of one part.
 pub(crate) const USE_FOR_ALL: &str = "Use for all";
 pub(crate) const MAKE_STRIP_POSITION: &str = "Make strip position";
-/// Brief 045 (design 045 §9): the PLC rows' buttons.
+/// The PLC rows' buttons.
 pub(crate) const MOVE_TO_FREE_SLOT: &str = "Move to free slot";
 pub(crate) const PUT_IN_RACK: &str = "Put in rack…";
 pub(crate) const TAKE_OUT_OF_RACK: &str = "Take out of rack";
 pub(crate) const RAISE_SLOTS: &str = "Raise slots";
 
-/// The two buttons of a brief 030 fix.
+/// The two buttons of a fix that has two.
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
     match f {
         Fix::AccessoryOrphan(..) => Some([MOVE_TO_END, REMOVE]),
@@ -132,7 +132,7 @@ pub struct ChecksPanel {
     /// The first build of the Checks list and the report models is still running (issue 48): the
     /// tab says so instead of the rows.
     pub building: bool,
-    /// Brief 039: the rows as a table source, and the table.
+    /// The rows as a table source, and the table.
     pub source: crate::checks::list::ChecksSource,
     pub table: ecad_widgets::table::Table<crate::checks::list::CheckKey>,
     /// What the last copy did to the table (tests).
@@ -167,7 +167,7 @@ impl ChecksPanel {
         &self.rows
     }
 
-    /// Errors and warnings among the rows shown (the shell's Checks pill, brief 038).
+    /// Errors and warnings among the rows shown (the shell's Checks pill).
     pub fn counts(&self) -> (usize, usize) {
         self.counts
     }
@@ -187,7 +187,7 @@ impl ChecksPanel {
     /// Bring the copy up to date with the project's kept list (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         let hidden = self.hidden.clone();
-        // Brief 024: the location rows come from the report models, kept the same way.
+        // The location rows come from the report models, kept the same way.
         // Both are kept by now (the caller waits for the background build); never built here.
         let (Some(checks), Some(reports)) = (p.kept_checks(), p.kept_reports()) else { return };
         let revision = checks.revision.wrapping_mul(1_000_003).wrapping_add(reports.revision);
@@ -232,11 +232,11 @@ impl ChecksPanel {
 
     /// Button `k` of row `r`'s fix `f`, as an action.
     pub(crate) fn fix(r: &Row, f: Fix, k: usize) -> Option<Action> {
-        // Brief 057: an open core's Tick Not used / Go to the open end.
+        // An open core's Tick Not used / Go to the open end.
         if let Fix::CoreOpen(..) = f {
             return Some(Action::CoreFix(f, k));
         }
-        // Brief 059: the cable manager's rows.
+        // The cable manager's rows.
         if let Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..) = f {
             return Some(Action::CableFix(f, k));
         }
@@ -257,7 +257,7 @@ impl ChecksPanel {
             (Fix::NextFreeCore(w), _) => Action::NextFreeCore(w),
             (Fix::ShowCables, _) => Action::ShowCables,
             (Fix::OpenStandards(w), _) => Action::OpenStandards(w),
-            // Brief 057.
+            // Cable rating and cable type fixes.
             (
                 Fix::ShowRating(_)
                 | Fix::UseSize(..)
@@ -289,7 +289,7 @@ impl ChecksPanel {
             (Fix::PlaceMates(c, side), _) => Action::PlaceMates(c, side),
             (Fix::MoveTable(_), _) => Action::MoveTable(Box::new(r.check.clone())),
             (Fix::RenumberPage(page), _) => Action::RenumberPage(page),
-            // Brief 054 (design 054 §9): Use its usual type, Reset, Remove.
+            // Use its usual type, Reset, Remove.
             (Fix::Page(f), _) => Action::RunLine(f.line()),
             (Fix::EditTitleBlock(page, item), _) => Action::EditTitleBlock(page, item),
             (Fix::ClearPageSheet(page), _) => Action::ClearPageSheet(page),
@@ -337,7 +337,7 @@ impl ChecksPanel {
         let index = |k: crate::checks::list::CheckKey| self.source.row(k).and_then(|r| self.rows.iter().position(|x| x == r));
         for e in events {
             match e {
-                // One row clicked (or reached with the arrows): show it (design 022 §8).
+                // One row clicked (or reached with the arrows): show it.
                 TableEvent::Selected(keys) if keys.len() == 1 => {
                     if let Some(i) = keys.first().and_then(|k| index(*k)) {
                         self.selected = Some(i);

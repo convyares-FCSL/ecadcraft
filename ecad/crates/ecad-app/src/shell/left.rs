@@ -1,4 +1,4 @@
-//! The panel slot (UI rev 3): beside the tool strip in Draw, one panel at a time, opened by the
+//! The panel slot: beside the tool strip in Draw, one panel at a time, opened by the
 //! strip's Book, Devices and History buttons and closed by its own close button or the same strip
 //! button. Book, Devices and History host today's Project panel tabs unchanged
 //! ([`crate::pages::project_panel`]); each keeps its own width (Book and Devices 248 px, History 280 px)
@@ -14,8 +14,8 @@ use crate::shell::app::App;
 use crate::shell::state::BookView;
 use crate::shell::{LeftTab, Slots};
 
-/// The colours the moved panels draw with, from the shell's tokens (they used CADCraft's theme
-/// before brief 038). Named as the CADCraft tokens they replace, so their code reads the same.
+/// The colours the moved panels draw with, from the shell's tokens (not CADCraft's theme).
+/// Named as the CADCraft tokens they replace, so their code reads the same.
 #[derive(Debug, Clone, Copy)]
 pub struct Colours {
     pub text: Color32,
@@ -78,11 +78,11 @@ impl App {
 
 /// Accessible label of the panel's close button.
 pub const CLOSE: &str = "Close the panel";
-/// Accessible label of the header's pin (UI rev 3: pinned docks, unpinned floats).
+/// Accessible label of the header's pin (pinned docks, unpinned floats).
 pub const PIN: &str = "Pin the panel";
-/// Brief 054: the Book header's Renumber pages (design 054 §4.4).
+/// The Book header's Renumber pages.
 pub(crate) const RENUMBER: &str = "ecad.book.renumber";
-/// Book's view switch (board 1.02).
+/// Book's view switch.
 pub const BOOK_LIST: &str = "Show the pages as a list";
 pub(crate) const BOOK_THUMBS: &str = "Show the pages with thumbnails";
 /// A header button's side.
@@ -97,8 +97,8 @@ impl App {
     }
 }
 
-/// Close an unpinned panel when drawing starts: a press on the canvas outside it (UI rev 3,
-/// "Unpinned: … closes when you start drawing"). Read before the canvas takes the press.
+/// Close an unpinned panel when drawing starts: a press on the canvas outside it.
+/// Unpinned panels close when you start drawing. Read before the canvas takes the press.
 pub(crate) fn close_on_draw(t: &mut App, ctx: &egui::Context, slots: &Slots) {
     let (Some(panel), true) = (slots.panel, slots.panel_floats) else { return };
     let pressed = ctx.input(|i| if i.pointer.primary_pressed() || i.pointer.secondary_pressed() { i.pointer.interact_pos() } else { None });
@@ -175,7 +175,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         t.toggle_pin();
     }
     if tab == LeftTab::Pages {
-        // Brief 054 (design 054 §4.4): Renumber pages, each folder from its start number.
+        // Renumber pages, each folder from its start number.
         x -= HEAD_BTN + space::XS;
         let can = t.project_open() && !t.header().read_only;
         if crate::shell::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can)

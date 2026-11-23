@@ -1,7 +1,7 @@
-//! Brief 031 Q1 headless in the app (design 031 §4.1): Project settings ▸ Text. Set the tag
+//! Headless in the app: Project settings ▸ Text. Set the tag
 //! height and OK: one `textstyle` transaction, the page redraws, `u` takes it back. Screenshots
-//! are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are for the
-//! owner's approval, never committed.
+//! are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are
+//! never committed.
 
 use std::path::PathBuf;
 use std::sync::Arc;

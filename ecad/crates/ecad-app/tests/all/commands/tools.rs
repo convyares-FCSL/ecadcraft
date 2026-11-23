@@ -1,6 +1,6 @@
 //! The ECAD group in CADCraft's Tool Sets panel: it lists only implemented commands, a click is
 //! handled once through the ordinary command path (validation, transaction, undo), the six
-//! interactive tools start their prompts (brief 008), Convert uses the selection or asks for one,
+//! interactive tools start their prompts, Convert uses the selection or asks for one,
 //! and templates fill the Command field without running their placeholders.
 
 use crate::common::{self, Opts};

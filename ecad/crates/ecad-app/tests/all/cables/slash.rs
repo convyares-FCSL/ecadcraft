@@ -1,7 +1,7 @@
-//! Brief 004, AC9 headless (design §10 checks A, D, E, N in a 1280×800 window, egui_kittest,
+//! Cable Slash headless (a 1280×800 window, egui_kittest,
 //! elements by name): fixture F typed, **Cable Slash** clicked by label, the first point clicked on
 //! the canvas, the crossing preview before the second click, then the cable, its dots, the echo
-//! and one-step undo. Reference screenshots are the tester's; how it feels is the owner's.
+//! and one-step undo.
 
 use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::doc::EntityKind;

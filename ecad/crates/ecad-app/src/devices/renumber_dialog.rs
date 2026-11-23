@@ -1,11 +1,11 @@
-//! The Renumber dialog (brief 026, design 026 §3), also Finalise numbering (§5.3): what to number
+//! The Renumber dialog, also Finalise numbering: what to number
 //! (devices, cables, wires, all), which (all, the selection, a prefix or potential, a folder, the
 //! provisional items), start and digits, and the preview of every row, old → new, before
 //! anything is written. Apply runs `renumber` (or `finalise`) with the preview's change count:
 //! one transaction; a stale preview is refused by the command and computed again here.
 //!
 //! Update map: the preview is computed when the dialog opens and when an option changes, never on
-//! commits (design §11); a refused Apply asks for it again. Words are short (design §10): `Dev`,
+//! commits; a refused Apply asks for it again. Words are short: `Dev`,
 //! `Cbl`, `Wire`, `Sel`, `Prov`, `At`, row marks `→ F = –`.
 
 use ecad_electrical::numbering::commands::{Preview, RowChange};
@@ -28,7 +28,7 @@ pub enum What {
     Devices,
     Cables,
     Wires,
-    /// Brief 028: terminal labels per strip.
+    /// Terminal labels per strip.
     TerminalBlocks,
     All,
 }
@@ -121,7 +121,7 @@ impl RenumberDialog {
         d
     }
 
-    /// Opened from Renumber Wires (022): Wires chosen.
+    /// Opened from Renumber Wires: Wires chosen.
     pub fn for_wires(mut self, digits: u8) -> Self {
         self.what = What::Wires;
         self.digits = digits.to_string();
@@ -140,7 +140,7 @@ impl RenumberDialog {
     /// The command and its parameters for a preview (`preview`) or an Apply.
     ///
     /// # Errors
-    /// Start or digits are not whole numbers in range (design §3's words).
+    /// Start or digits are not whole numbers in range.
     pub fn params(&self, preview: bool) -> Result<(&'static str, Value), String> {
         let mut v = json!({});
         if preview {
@@ -178,7 +178,7 @@ impl RenumberDialog {
         self.params(true).ok().map(|(c, v)| Out::Preview(c, v))
     }
 
-    /// The dialog (design §3).
+    /// The dialog.
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let title = if self.finalise { "Finalise numbering" } else { "Renumber" };
         let n = self.preview.changes;
@@ -339,7 +339,7 @@ impl RenumberDialog {
                         RowKind::Wires => "Wire ",
                     };
                     let text = format!("{}{old:<8} {mark:<3}{new:<8} {at:<10} {why}", if all { kind } else { "" });
-                    // A provisional tag in the provisional colour, as everywhere (design §5).
+                    // A provisional tag in the provisional colour, as everywhere.
                     let ink = if old.contains('?') && !skipped { s.provisional } else { s.text };
                     let resp = ui.add(egui::Label::new(mono(text, ink)).sense(egui::Sense::click()));
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.renumber.row.{i}")));

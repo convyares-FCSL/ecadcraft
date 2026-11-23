@@ -1,15 +1,14 @@
-//! Independent tester's UI checks for brief 004 (cable slash), written from the brief and design 004
-//! only, driving the app headless (egui_kittest, elements by label) in a 1280×800 window.
+//! UI checks of Cable Slash, driving the app headless (egui_kittest, elements by label) in a 1280×800 window.
 //!
-//! - AC9 / design check A: the ECAD tab's **Cable Slash** entry (id `ecad.cableslash`, Wiring
+//! - the ECAD tab's **Cable Slash** entry (id `ecad.cableslash`, Wiring
 //!   group, between Disconnect and Add to Cable) starts the interactive form with an empty Command
 //!   field and the first prompt.
-//! - Design checks D, G and N: two canvas clicks on fixture F make one cable of W0, W5, W10; the
+//! - two canvas clicks on fixture F make one cable of W0, W5, W10; the
 //!   overlay paints one filled `ecad.cable` (magenta) 5 px dot at each member crossing and none on
 //!   the plain line; a blocked second slash is refused and keeps the first point.
-//! - AC9: reference screenshots `004-slash-preview.png`, `004-slash.png`, `004-slash-refused.png`,
+//! - reference screenshots of the slash preview, the slash and the refused slash,
 //!   written to `$ECAD_TESTER_SHOTS` when set and a wgpu adapter exists; pixel checks then run on
-//!   the rendered frames. `004-slash.png` is committed in `reference/` for the owner's approval.
+//!   the rendered frames.
 
 use std::sync::Arc;
 

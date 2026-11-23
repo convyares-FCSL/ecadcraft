@@ -1,5 +1,5 @@
-//! The markers ECAD paints over the page (brief 040, steps 2, 3 and 5), in the shapes and colours
-//! of `ecad-tokens` by meaning: an error is a filled disc with "!", a warning a filled triangle
+//! The markers ECAD paints over the page (steps 2, 3 and 5), in the shapes and colours
+//! of `ecad-widgets` by meaning: an error is a filled disc with "!", a warning a filled triangle
 //! with "!", a provisional tag gets a dotted underline, a device's other placements on the page a
 //! dashed outline in the selection colour. Markers keep their screen size at every zoom; outlines
 //! follow the sheet's line weights, with a 1 px floor. (Wire colours are ink, drawn by the page's

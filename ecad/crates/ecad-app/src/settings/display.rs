@@ -1,4 +1,4 @@
-//! Settings ▸ Appearance (UI rev 3; was Display): where the interface theme and the sheet colour
+//! Settings ▸ Appearance: where the interface theme and the sheet colour
 //! are set, read from the shell's state so the page never contradicts the controls. Both are
 //! changed where they live: the theme with the top bar's switch, the sheet colour with the bottom
 //! bar's sheet colour menu. Under it, the developer switch ([`crate::settings::developer`]).

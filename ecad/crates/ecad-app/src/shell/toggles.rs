@@ -1,4 +1,4 @@
-//! The popouts of the Snap, Grid and Ortho toggles at the foot of the tool strip (UI rev 3, "Tool
+//! The popouts of the Snap, Grid and Ortho toggles at the foot of the tool strip ("Tool
 //! strip (Draw)"). Hovering a toggle opens its popout beside it; a click on the toggle still flips
 //! the mode. Everything here runs CADCraft's own drafting commands (`snap`, `grid`, `ortho`,
 //! `polar`, `dsettings`); an option with no setting behind it yet is shown greyed in place.

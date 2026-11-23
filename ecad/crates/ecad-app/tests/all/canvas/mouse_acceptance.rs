@@ -1,16 +1,16 @@
-//! Independent tester's UI checks for brief 008, written from the brief and design 008 only, driving
+//! UI checks of drawing with the mouse, driving
 //! the app headless (egui_kittest, elements by name) in a 1280×800 window.
 //!
-//! - AC3: the quick-start example built with connection points placed by **clicks** (Midpoint override
-//!   typed, as design §5 describes) gives the same structure as the same example built by JSON.
-//! - Owner answer Q4: a typed point near (not on) a terminal does not attach, even with the pointer
+//! - the quick-start example built with connection points placed by **clicks** (Midpoint override
+//!   typed) gives the same structure as the same example built by JSON.
+//! - a typed point near (not on) a connection point does not attach, even with the pointer
 //!   resting on the drawing (Dynamic Input must not turn a typed value into a cursor capture).
-//! - Design §9: Ctrl+Z during Wire removes the last point; Space works as Enter.
-//! - AC5: hovering a terminal names it; hovering writes nothing (head, selection, unsaved state);
+//! - Ctrl+Z during Wire removes the last point; Space works as Enter.
+//! - hovering a connection point names it; hovering writes nothing (head, selection, unsaved state);
 //!   the tooltip goes when a command starts.
-//! - Design check H: the overlay glyphs are drawn at their token sizes at three zooms.
-//! - AC6: reference screenshots (design check K), written when `ECAD_TESTER_SHOTS` names a folder
-//!   and a wgpu adapter exists; they are for the owner's approval, never committed.
+//! - the overlay glyphs are drawn at their token sizes at three zooms.
+//! - reference screenshots, written when `ECAD_TESTER_SHOTS` names a folder
+//!   and a wgpu adapter exists; they are never committed.
 
 use std::sync::{Arc, Mutex};
 

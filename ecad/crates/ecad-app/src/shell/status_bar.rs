@@ -1,4 +1,4 @@
-//! The bottom bar (UI rev 3: 32 px, one bar): status at the left, the page well in the centre,
+//! The bottom bar (32 px, one bar): status at the left, the page well in the centre,
 //! the view at the right. Every group sits in its own bordered pill.
 //!
 //! - Status: the save state and time; the revision, "Rev C D*" (opens History); the checks
@@ -7,7 +7,7 @@
 //!   `« ‹` and `› »`, a divider either side; the groups before and the open group's pages left of
 //!   it, the groups after (folded to a folder, a count and a ›) and + right of it. A page button's
 //!   right-click opens the page wheel, as a page row in Book does.
-//! - The view: standard (its name, brief 050a; opens Settings ▸ Standards) · sheet size · sheet
+//! - The view: standard (its name; opens Settings ▸ Standards) · sheet size · sheet
 //!   colour, then Fit, zoom out, zoom %, zoom in.
 //!
 //! In Project, Library and Publish the well and the view groups are hidden; the status stays.
@@ -27,7 +27,7 @@ use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const SAVE_STATE: &str = "Save state";
-/// The standard (brief 042): opens Settings ▸ Standards.
+/// The standard: opens Settings ▸ Standards.
 pub const STANDARD: &str = "Standard: IEC (built in)";
 pub(crate) const SHEET_SIZE: &str = "Sheet size";
 pub const SHEET_COLOUR: &str = "Sheet colour";
@@ -41,15 +41,15 @@ pub const NEXT_PAGE: &str = "Next page";
 pub const NEXT_GROUP: &str = "Next group";
 pub const ADD_PAGE: &str = "Add a page after this one";
 pub const PAGE_WELL: &str = "Page well";
-/// The sheet colour menu's entries (UI rev 3, "Sheet colour and full dark").
+/// The sheet colour menu's entries.
 pub const PAPER: &str = "Paper";
 pub const FOLLOW: &str = "Follow";
 pub const DARK: &str = "Dark";
-/// The sheet colour menu's title and footnote (board 1.18).
+/// The sheet colour menu's title and footnote.
 pub const SHEET_MENU_TITLE: &str = "Sheet colour on screen";
 pub(crate) const SHEET_MENU_NOTE: &str =
     "Only the screen changes. PDFs and prints always use paper colours. Set the default for new projects in Settings.";
-/// The sheet colour menu's width, px (board 1.18).
+/// The sheet colour menu's width, px.
 const SHEET_MENU_W: f32 = 260.0;
 /// Kept for the Commands button's old callers: the Text panel opens with Ctrl+/.
 pub const COMMANDS: &str = "Commands";
@@ -190,7 +190,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     t.sync_well();
     let y = rect.center().y;
     let pill_at = |x: f32, w: f32| Rect::from_min_size(pos2(x, y - PILL_H / 2.0), vec2(w, PILL_H));
-    // UI rev 3: Settings (boards 5.01, 5.02) shows only the status, as Project, Library and Publish.
+    // Settings shows only the status, as Project, Library and Publish.
     let draw = t.shell.state.workspace == Workspace::Draw && !t.shell.settings_open;
 
     // ---- Status: saved, revision, checks.
@@ -292,7 +292,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
 
     let sheet = t.shell.state.sheet;
     let sheet_word = sheet_label(sheet);
-    // Brief 050a: the standard's name (IEC when built in); its label is `Standard: <name>`.
+    // The standard's name (IEC when built in); its label is `Standard: <name>`.
     let standard = t.standard_words();
     let std_text = standard.trim_start_matches("Standard: ").trim_end_matches(" (built in)").to_string();
     let std_w = bar::text_width(ui, &std_text, ui_type::SMALL) + 2.0 * space::S;
@@ -372,7 +372,7 @@ enum Item {
 /// The width of the page shown's number, total and title at the well's centre.
 const CENTRE_TEXT: f32 = 250.0;
 
-/// The page well in `well`. Carl's rev 3 round 2: the page shown, `02 / 09 Motor control`, sits at
+/// The page well in `well`: the page shown, `02 / 09 Motor control`, sits at
 /// the well's centre between `« ‹` and `› »`, with a divider either side. Left of it, in book
 /// order, the groups before the shown one (folded) and the shown group's own pages, packed towards
 /// the divider; right of it the groups after (folded, or opened with ›) and +.
@@ -476,7 +476,7 @@ fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
         x += item_w(i);
     }
     if plus && bar::icon_button(ui, btn(x + space::XS), Icon::Plus, ADD_PAGE, 12.0, true).clicked() {
-        // Brief 054 (design 054 §4.1): the + Page picker, above the +, adding after the open page.
+        // The + Page picker, above the +, adding after the open page.
         add = Some(btn(x + space::XS));
     }
 
@@ -484,7 +484,7 @@ fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
         t.well_show(p);
     }
     if let Some((p, at)) = wheel {
-        // The same wheel a page row in Book gets (brief 041: the page row's slots).
+        // The same wheel a page row in Book gets (the page row's slots).
         t.open_page_wheel(p, at);
     }
     match step {
@@ -511,7 +511,7 @@ fn item_w(i: &Item) -> f32 {
     match i {
         Item::Page(..) => PAGE_BTN + space::XXS,
         Item::Folder(_) => 24.0,
-        // A folded group's chip, then a gap (the board's).
+        // A folded group's chip, then a gap.
         Item::Folded(_, _, n) => 44.0 + 7.0 * n.to_string().len() as f32 + space::M,
     }
 }
@@ -596,7 +596,7 @@ fn draw_item(
     }
 }
 
-/// The preview above a hovered page button (UI rev 3, board 1.08): a sketch of the page, its
+/// The preview above a hovered page button: a sketch of the page, its
 /// number and title, its group and "click to go". The sketch is the panels' drawn thumbnail, not
 /// a render of the page.
 fn hover_preview(t: &App, ui: &egui::Ui, button: Rect, page: PageId, number: &str) {
@@ -655,7 +655,7 @@ fn clip(ui: &egui::Ui, text: &str, room: f32) -> String {
 }
 
 impl App {
-    /// `Standard: <name>` (brief 050a), or [`STANDARD`] with IEC (built in) or no project. One
+    /// `Standard: <name>`, or [`STANDARD`] with IEC (built in) or no project. One
     /// field read, no copy of the project.
     pub fn standard_words(&mut self) -> String {
         let name = self
@@ -720,7 +720,7 @@ pub(crate) fn sheet_label(sheet: crate::canvas::Sheet) -> &'static str {
     }
 }
 
-/// What a sheet colour does, after its name in the menu (board 1.18).
+/// What a sheet colour does, after its name in the menu.
 fn sheet_hint(sheet: crate::canvas::Sheet) -> &'static str {
     match sheet {
         crate::canvas::Sheet::Paper => "always light",

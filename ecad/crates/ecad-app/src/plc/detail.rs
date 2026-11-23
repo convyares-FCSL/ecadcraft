@@ -3,7 +3,7 @@
 use crate::shell::app::App;
 use crate::workspace::detail::*;
 
-/// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn and its test.
+/// A channel row: its signal, where it is drawn and its test.
 pub(crate) fn channel(t: &App, k: crate::plc::list::IoKey) -> Option<Detail> {
     use ecad_electrical::plc::signals;
     let r = t.reports.as_ref()?;

@@ -1,4 +1,4 @@
-//! The top bar (UI rev 3: 40 px, the same on every screen): the project and the app, nothing
+//! The top bar (40 px, the same on every screen): the project and the app, nothing
 //! else. No branding and no revision pill.
 //!
 //! - Far left: the project name pill and its menu (New, Open, Save, Save As, Close, the project
@@ -45,7 +45,7 @@ pub(crate) const STANDARDS: &str = "Standards";
 
 /// Heights inside the bar: the pills and the search box.
 const PILL_H: f32 = 28.0;
-/// The search box's width (the board's).
+/// The search box's width.
 const SEARCH_W: f32 = 460.0;
 /// A workspace segment's padding either side of its label.
 const SEG_PAD: f32 = 12.0;
@@ -112,7 +112,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let mut x = switch.left() + space::XS;
     for (w, width) in Workspace::ALL.iter().zip(&widths) {
         let r = Rect::from_min_size(pos2(x, switch.top() + space::XS / 2.0 + 1.0), vec2(*width, PILL_H - space::XS - 2.0));
-        // While Settings is open the project pill is the active one, not a workspace (board 5.01).
+        // While Settings is open the project pill is the active one, not a workspace.
         let on = t.shell.state.workspace == *w && !t.shell.settings_open;
         let resp = bar::text_button(ui, r, w.label(), w.label(), on, true);
         // A tab for screen readers and tests (the switch used to be a segmented control).
@@ -149,7 +149,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     bar::icon_button(ui, help, Icon::Help, HELP, size::ICON, true).on_hover_text("Help comes later");
     bar::vline(ui, x, y - 10.0, y + 10.0);
     x -= space::S;
-    // One light/dark switch (boards 1.17 and 1.18): the chosen side is lit.
+    // One light/dark switch: the chosen side is lit.
     let theme = Rect::from_min_max(pos2(x - 56.0, y - 12.0), pos2(x, y + 12.0));
     x = theme.left() - space::S;
     ui.painter().rect_filled(theme, ecad_widgets::style::corner(12.0), ecad_widgets::color(s.bg));
@@ -197,8 +197,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         t.open_standards(None);
     }
     if agent {
-        // With an agent shown the icon hides or shows its banner (brief 043); without one it opens
-        // the Text panel, where Agent access is set until Settings has it (042).
+        // With an agent shown the icon hides or shows its banner; without one it opens
+        // the Text panel, where Agent access is set until Settings has it.
         match t.agent.banner.as_ref().map(|b| b.session.clone()) {
             Some(session) => crate::agent::banner::toggle_hidden(ui.ctx(), &session),
             None => t.toggle_text_panel(),
@@ -225,7 +225,7 @@ fn keycap(ui: &egui::Ui, search: Rect, text: &str) {
 }
 
 /// The agent icon's colour while an agent is shown (its state's tone), its state in words (its
-/// accessible label: `Agent tester`, `Agent off`, `Agent ready`), and its hover text.
+/// accessible label: `Agent helper`, `Agent off`, `Agent ready`), and its hover text.
 fn agent_state(ui: &egui::Ui, t: &App) -> (Option<egui::Color32>, String, String) {
     let off = t.agent.pref.mode == ecad_engine::agent::access::Mode::Off && !t.agent.this_run;
     if let Some(b) = &t.agent.banner {

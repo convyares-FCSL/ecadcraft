@@ -1,13 +1,12 @@
-//! Independent tester's UI checks for brief 010 (cable references across pages), written from the
-//! brief and design 010 only, driving the app headless (egui_kittest, elements by label, real
+//! UI checks of cable references across pages, driving the app headless (egui_kittest, elements by label, real
 //! pointer events on the canvas) in a 1280×800 window.
 //!
-//! - Design §11 fixture R built with the buttons **Cable Reference** and **Continue Cable** and
-//!   canvas clicks; the derived texts `2/F1` and `1/F2` (AC2), the hover lens (AC5), **Go to
-//!   Reference** by label and back (AC5), the orphan after ERASE and `u` (AC3).
-//! - Reference screenshots (design §11) written to `$ECAD_TESTER_SHOTS` when set and a wgpu
-//!   adapter exists, with pixel checks on the rendered frames: `010-ref-source.png`,
-//!   `010-ref-target.png`, `010-ref-orphan.png`, `010-ref-hover.png`, `010-continue-preview.png`.
+//! - fixture R built with the buttons **Cable Reference** and **Continue Cable** and
+//!   canvas clicks; the derived texts `2/F1` and `1/F2`, the hover lens, **Go to
+//!   Reference** by label and back, the orphan after ERASE and `u`.
+//! - Reference screenshots written to `$ECAD_TESTER_SHOTS` when set and a wgpu
+//!   adapter exists, with pixel checks on the rendered frames: the reference source,
+//!   target, orphan and hover, and the continue preview.
 //!
 //! Every in-process harness points the project's view settings at a temporary folder.
 

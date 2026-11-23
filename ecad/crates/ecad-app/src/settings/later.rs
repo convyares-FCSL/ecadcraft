@@ -1,4 +1,4 @@
-//! Settings sections that show what exists today and say what comes later (UI rev 3: a UI-only
+//! Settings sections that show what exists today and say what comes later (a UI-only
 //! round, so nothing new is set here): **Libraries** (the symbol sources and their counts),
 //! **Versions and backups** (Revisions opens the existing dialog) and **Shortcuts** (the keys, read
 //! only).

@@ -1,8 +1,8 @@
-//! Drawing helpers shared by UI rev 3's bars and rails: the bordered pill every group sits in, and
+//! Drawing helpers shared by the bars and rails: the bordered pill every group sits in, and
 //! text and icon buttons laid out at an exact rect (the bars are placed by arithmetic, so they
-//! match the board's measurements, rather than by egui's flowing layouts).
+//! match exactly, rather than by egui's flowing layouts).
 //!
-//! Each button gets an accessible label (design §9: tests find elements by label).
+//! Each button gets an accessible label (tests find elements by label).
 
 use ecad_widgets::tokens::ui_type::TypeStyle;
 use ecad_widgets::tokens::{Icon, line, radius, ui_type};
@@ -18,7 +18,7 @@ pub fn text_width(ui: &egui::Ui, text: &str, style: TypeStyle) -> f32 {
     ui.painter().layout_no_wrap(text.to_string(), font(ui, style), Color32::WHITE).size().x
 }
 
-/// A bordered pill: the window ground inside a hairline (UI rev 3: every group of the bottom bar,
+/// A bordered pill: the window ground inside a hairline (every group of the bottom bar,
 /// the project name and the workspace switch).
 pub fn pill(ui: &egui::Ui, rect: Rect) {
     let s = ecad_widgets::SHELL;

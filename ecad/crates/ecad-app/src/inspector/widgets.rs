@@ -1,4 +1,4 @@
-//! The inspector's pieces (UI rev 3, boards 1.05 to 1.07): a titled section that folds and shows a
+//! The inspector's pieces: a titled section that folds and shows a
 //! one-line summary of what is set, the label-and-value rows, a segmented control and the small
 //! bits drawn alike on every tab. Grey text is read from the drawing; an input box is something
 //! you set here.

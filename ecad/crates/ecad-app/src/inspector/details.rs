@@ -1,4 +1,4 @@
-//! UI rev 3 (boards 1.05 and 1.06): what the inspector reads about one selected device to lay
+//! What the inspector reads about one selected device to lay
 //! its Device and Layout tabs out: the header's words, the rows of "Where it is drawn", the
 //! connections, the symbol's placement and the size each text slot takes. A plain copy built
 //! with the inspector's other rows (the same update map); nothing here writes.

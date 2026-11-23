@@ -1,8 +1,8 @@
-//! UI rev 3, section E: the Project workspace (boards 2.01–2.06). The tabs in the tool strip's
+//! The Project workspace. The tabs in the tool strip's
 //! order with their counts, each a full-width table under one head and over one foot; the right
-//! panel shows the selected row; the terminal plan's bands and strips; the PLC cards at the
-//! board's scale; Wires grouped by potential; Cables with the core table; Reports' list and its
-//! preview. Screenshots `uiv3-E-2.0N-ours.png` when `ECAD_TESTER_SHOTS` names a folder.
+//! panel shows the selected row; the terminal strip plan's bands and strips; the PLC cards;
+//! Wires grouped by potential; Cables with the core table; Reports' list and its
+//! preview. Screenshots when `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::shell::app::App;
 use ecad_app::shell::state::{RightTab, Workspace};

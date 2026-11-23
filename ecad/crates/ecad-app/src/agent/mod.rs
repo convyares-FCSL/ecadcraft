@@ -1,4 +1,4 @@
-//! Live agent access to the app (brief 035, design §3–§8): an agent drives the running ECAD
+//! Live agent access to the app: an agent drives the running ECAD
 //! window over a loopback port while the person watches.
 //!
 //! - **Preference** ([`ecad_engine::agent::access`]): Off (default), Read only, Read and change,
@@ -25,7 +25,7 @@ pub mod banner;
 pub mod last_write;
 pub mod undo_session;
 
-// Upstream's loopback control server, unchanged (design 035 §17, 2): the same bounds, token and
+// Upstream's loopback control server, unchanged: the same bounds, token and
 // replies as CADCraft's own. `#[path]` is relative to this file's folder (`src/agent`).
 #[path = "../../../../../apps/cadcraft/src/control_server.rs"]
 mod control_server;
@@ -45,9 +45,9 @@ use serde_json::{Value, json};
 use crate::shell::app::App;
 pub use banner::{AgentBanner, BannerAction, BannerState, LastChange};
 
-/// How long a call that may change the project waits while the person is busy (design §6.2).
+/// How long a call that may change the project waits while the person is busy.
 pub(crate) const AGENT_HOLD: Duration = Duration::from_secs(5);
-/// Most agent requests answered in one frame, so a burst cannot freeze the window (design §5.3).
+/// Most agent requests answered in one frame, so a burst cannot freeze the window.
 pub(crate) const MAX_AGENT_CALLS_PER_FRAME: usize = 8;
 /// A bridge session without a call for this long is finished (its writer role released).
 pub(crate) const SESSION_IDLE: Duration = Duration::from_secs(600);
@@ -110,7 +110,7 @@ struct Waiting {
     since: Instant,
 }
 
-/// The clock the busy rule's hold is measured on (design §6.2). Real time in the app. A test may
+/// The clock the busy rule's hold is measured on. Real time in the app. A test may
 /// give the agent a simulated one, which moves only when told ([`Clock::advance`]), so the 5 s
 /// hold is checked exactly, without waiting and whatever the machine's load.
 #[derive(Debug, Clone, Default)]
@@ -282,7 +282,7 @@ impl Agent {
         }
     }
 
-    /// The status text (design §3.2).
+    /// The status text.
     pub fn status_text(&self) -> String {
         match self.listen() {
             Listen::Off => "Off".into(),
@@ -424,8 +424,8 @@ impl Agent {
         }
     }
 
-    /// Whether the session may write now, or the refusal said instead of `WRITES_OFF` (design
-    /// §5.4: Read only, no `--write` (the gate's own text), not the writer, paused). Takes the
+    /// Whether the session may write now, or the refusal said instead of `WRITES_OFF`
+    /// (Read only, no `--write` (the gate's own text), not the writer, paused). Takes the
     /// writer role when it is free and `take` (a hello; a call takes it once it recorded
     /// something, [`Agent::take_writer`]).
     fn write_gate(&mut self, session: &str, take: bool) -> (bool, Option<String>) {
@@ -477,7 +477,7 @@ fn failed(e: &str) -> Value {
     json!({"ok": false, "error": e})
 }
 
-/// What `control.methods` answers over ECAD's port (design §4.2, §4.3).
+/// What `control.methods` answers over ECAD's port.
 fn methods() -> Value {
     json!([
         {"method": "ecad.hello", "params": "{session, name, write, client_version}", "description": "Start a bridge session."},
@@ -515,7 +515,7 @@ fn session_of(params: &Value) -> Option<String> {
 }
 
 impl App {
-    /// Brief 035, at the top of every frame before any input of the frame is handled: the author
+    /// At the top of every frame before any input of the frame is handled: the author
     /// check, the preference's requests, the listener, and the agent requests that may be
     /// answered now.
     pub fn agent_frame(&mut self, ctx: &egui::Context) {
@@ -589,7 +589,7 @@ impl App {
         }
     }
 
-    /// The frame invariant (design §5.2): the person is the author and no budget is set.
+    /// The frame invariant: the person is the author and no budget is set.
     fn agent_author_check(&mut self) {
         let Some(p) = self.project.clone() else { return };
         if !p.is_attached(&self.cad.session) {
@@ -617,7 +617,7 @@ impl App {
     }
 
     /// The reset met a busy project: keep agent access on, refuse agent calls and try again at the
-    /// top of every frame (never turn access off for the run: the reviewer's M1 risk 1).
+    /// top of every frame (never turn access off for the run).
     fn agent_reset_pending(&mut self) {
         if !self.agent.author_pending {
             self.cad.session.echo(RESETTING_LOG.to_string());
@@ -659,7 +659,7 @@ impl App {
         });
     }
 
-    /// The person is busy, and in what words (design §6.2), or `None`.
+    /// The person is busy, and in what words, or `None`.
     pub fn agent_busy(&self, ctx: &egui::Context) -> Option<String> {
         let s = &self.cad.session;
         if let Some(r) = s.running.as_ref().or(s.suspended.as_ref()) {
@@ -799,7 +799,7 @@ impl App {
             }
         }
         // The first session whose hello may write, while access is Read and change, becomes the
-        // writer (design §5.5).
+        // writer.
         let (writes, why) = match self.agent.write_gate(&session, true) {
             (true, _) => (true, None),
             (false, Some(why)) => (false, Some(why)),
@@ -967,7 +967,7 @@ impl App {
         }
     }
 
-    /// One command-history line per agent call (design §5.1).
+    /// One command-history line per agent call.
     fn agent_echo(&mut self, name: &str, what: &str, last: Option<&Value>, refused: Option<&str>) {
         let line = match (last, refused) {
             (_, Some(e)) => format!("Agent {name}: {what} refused: {}", e.lines().next().unwrap_or("")),
@@ -1030,7 +1030,7 @@ impl App {
         p.read(&mut self.cad.session, |p, _| p.ledger.undo_stack().iter().filter(|(_, id)| owned.contains(id)).count()).unwrap_or(0)
     }
 
-    /// The banner's update map (design §7.5): `steps` is recomputed only after an undo, redo or
+    /// The banner's update map: `steps` is recomputed only after an undo, redo or
     /// branch switch by anyone; a person's ordinary edit changes nothing in the banner.
     fn agent_steps_after_change(&mut self) {
         let Some(session) = self.agent.banner.as_ref().map(|b| b.session.clone()) else { return };
@@ -1059,12 +1059,12 @@ impl App {
         }
     }
 
-    /// The agent banner's data (design §7.1), for the UI to place; `None` when no agent is shown.
+    /// The agent banner's data, for the UI to place; `None` when no agent is shown.
     pub fn agent_banner(&self) -> Option<&AgentBanner> {
         self.agent.banner.as_ref()
     }
 
-    /// A banner control (design §7.3).
+    /// A banner control.
     pub fn agent_action(&mut self, a: BannerAction) {
         match a {
             BannerAction::Pause => {

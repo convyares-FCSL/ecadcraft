@@ -1,4 +1,4 @@
-//! The editor's toolbar and left column (design 055 §4.1, §4.3, §4.6): the Library tabs and the
+//! The editor's toolbar and left column: the Library tabs and the
 //! tools; the frames with their thumbnails; **+ Title block** and **Import DXF**; the field
 //! palette, whose rows are dragged onto the block.
 
@@ -12,7 +12,7 @@ use crate::library::browser::{self, Browser, Listing};
 use crate::shell::bar;
 use crate::title_blocks::{Act, DxfAsk, Editor, Tool};
 
-/// Element names (design 055 §5).
+/// Element names.
 pub const NEW: &str = "library.tb.list.new";
 pub const IMPORT: &str = "library.tb.list.import";
 pub(crate) const IMPORT_PATH: &str = "library.tb.list.import.path";
@@ -41,7 +41,7 @@ pub enum Drops {
     Logo,
 }
 
-/// One palette row (design 055 §4.3).
+/// One palette row.
 #[derive(Debug, Clone, Copy)]
 pub struct PaletteRow {
     pub label: &'static str,

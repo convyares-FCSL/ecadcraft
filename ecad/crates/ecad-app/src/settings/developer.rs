@@ -1,5 +1,5 @@
 //! Settings ▸ Developer: the developer switch, which shows CADCraft's own interface inside the
-//! main view (`--cad-ui`, `ui.cadchrome`; brief 038).
+//! main view (`--cad-ui`, `ui.cadchrome`).
 
 use eframe::egui;
 

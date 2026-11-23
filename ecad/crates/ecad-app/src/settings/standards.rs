@@ -1,4 +1,4 @@
-//! Settings ▸ Standards (brief 042 step 3, screen e; roadmap 1.13(b)): one table of every default
+//! Settings ▸ Standards: one table of every default
 //! with its value and an origin badge ([`crate::settings::standards_list`]), filtered by group or by
 //! "Overridden", and on the right the chosen default's chain, built-in → standard → project →
 //! page → object, with the level in use marked. A level is listed only when it holds a value or
@@ -7,11 +7,11 @@
 //! changes for them (computed by `defaults::users`, not by applying). Page and object values are
 //! set in the inspector.
 //!
-//! Brief 050a (design 050 §7): the standard line is the **standard header** (make, rename, copy
+//! The standard line is the **standard header** (make, rename, copy
 //! from another project, back to IEC, each saying its consequence first, inline, with no dialog),
 //! and the catalogue strip reads one list, [`CATALOGUES`]: Defaults, then one table per style
 //! catalogue ([`crate::settings::style_catalogues`]) with the shared style detail on the right. A
-//! later catalogue (050b's wire categories) adds one line there.
+//! later catalogue (wire categories) adds one line there.
 
 use ecad_electrical::defaults::{self, Entry, Level, Scope, Source};
 use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
@@ -26,10 +26,10 @@ use ecad_widgets::tokens::{space, ui_type};
 
 /// Accessible names.
 pub const STANDARD_LINE: &str = "ecad.standards.standard";
-/// Brief 050a (design 050 §9): `ecad.standards.catalogue.<word>`.
+/// `ecad.standards.catalogue.<word>`.
 pub(crate) const CATALOGUE_DEFAULTS: &str = "ecad.standards.catalogue.defaults";
 pub const CATALOGUE_STYLES: &str = "ecad.standards.catalogue.text";
-/// 042's names of those two tabs, kept as aliases until the phase-end tidy-up (design 050 §9).
+/// The old names of those two tabs, kept as aliases.
 pub(crate) const ALIAS_DEFAULTS: &str = "ecad.standards.defaults";
 pub(crate) const ALIAS_TEXT_STYLES: &str = "ecad.standards.text_styles";
 pub const VALUE: &str = "ecad.standards.value";
@@ -38,16 +38,16 @@ pub const RESET: &str = "ecad.standards.reset";
 pub const CONSEQUENCE: &str = "ecad.standards.consequence";
 pub(crate) const ERROR: &str = "ecad.standards.error";
 pub const IN_USE: &str = "In use";
-/// The catalogue list's width and the detail's (board 5.02).
+/// The catalogue list's width and the detail's.
 pub(crate) const CATALOGUE_LIST_W: f32 = 232.0;
 pub(crate) const DETAIL_W: f32 = 420.0;
-/// The standards cards (board 5.02): IEC in use; US and another standard come later.
+/// The standards cards: IEC in use; US and another standard come later.
 pub(crate) const CARD_IEC: &str = "ecad.standards.card.iec";
-/// Brief 050a (design 050 §9): the standard header and its parts.
+/// The standard header and its parts.
 pub const HEADER: &str = "ecad.standards.header";
 pub const MAKE: &str = "ecad.standards.header.make";
 pub const RENAME: &str = "ecad.standards.header.rename";
-/// Brief 055: Standards ▸ Frames, a frame's **Edit in Library**.
+/// Standards ▸ Frames, a frame's **Edit in Library**.
 pub(crate) const EDIT_IN_LIBRARY: &str = "ecad.standards.frame.edit_in_library";
 pub(crate) const COPY_FROM: &str = "ecad.standards.header.copy_from";
 pub const BACK_TO_IEC: &str = "ecad.standards.header.back_to_iec";
@@ -55,9 +55,9 @@ pub const HEADER_NAME: &str = "ecad.standards.header.name";
 pub const HEADER_CONSEQUENCE: &str = "ecad.standards.header.consequence";
 pub const HEADER_CONFIRM: &str = "ecad.standards.header.confirm";
 
-/// The style catalogues on the strip after Defaults, one line each (design 050 §7.2): the
-/// catalogue word, the tab's accessible name and the table's id. 042's
-/// `ecad.standards.text_styles` names the text styles' tab until the phase-end tidy-up.
+/// The style catalogues on the strip after Defaults, one line each: the
+/// catalogue word, the tab's accessible name and the table's id. The
+/// `ecad.standards.text_styles` names the text styles' tab as an alias.
 #[rustfmt::skip]
 pub const CATALOGUES: &[(ecad_model::StyleCatalogue, &str, &str)] = &[
     (ecad_model::StyleCatalogue::Text, CATALOGUE_STYLES, "standards.text"),
@@ -68,7 +68,7 @@ pub const CATALOGUES: &[(ecad_model::StyleCatalogue, &str, &str)] = &[
     (ecad_model::StyleCatalogue::RatingTable, "ecad.standards.catalogue.ratingtable", "standards.ratingtable"),
 ];
 
-/// What the standard header is doing (design 050 §7.1).
+/// What the standard header is doing.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum HeaderMode {
     #[default]
@@ -87,7 +87,7 @@ pub enum HeaderMode {
 pub struct StandardsView {
     pub defaults: DefaultsSource,
     pub table: Table<u16>,
-    /// Brief 050a: one table per style catalogue, in [`CATALOGUES`] order.
+    /// One table per style catalogue, in [`CATALOGUES`] order.
     pub cats: Vec<(CatalogueSource, Table<u16>)>,
     /// 0: Defaults, then 1 + the index into [`CATALOGUES`].
     pub catalogue: usize,
@@ -290,7 +290,7 @@ fn level_words(s: Source) -> String {
 pub fn show(t: &mut App, ui: &mut egui::Ui) {
     sync(t);
     let writable = t.project_open() && !t.header().read_only;
-    // UI rev 3 (board 5.02): the standards as cards across the top, the standard header's actions
+    // The standards as cards across the top, the standard header's actions
     // under them, then the catalogues as a list at the left, the table, and the detail at the
     // right.
     let full = ui.max_rect();
@@ -322,7 +322,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         let on = t.settings.standards.catalogue == i;
         let resp = ui.interact(r, egui::Id::unique(("ecad.standards.catalogue", name)), egui::Sense::click());
         resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, on, name));
-        // 042's names stay as aliases over the same tab.
+        // The old names stay as aliases over the same tab.
         let alias = [(CATALOGUE_DEFAULTS, ALIAS_DEFAULTS), (CATALOGUE_STYLES, ALIAS_TEXT_STYLES)].iter().find(|(n, _)| *n == name).map(|(_, a)| *a);
         let mut clicked = resp.clicked();
         if let Some(a) = alias {
@@ -389,8 +389,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     crate::settings::in_rect(ui, right, "ecad.standards.detail", |ui| detail_ui(t, ui, writable));
 }
 
-/// The standards as three cards (board 5.02): IEC, in use; US and another standard, which come
-/// with named standards (roadmap 1.13(a)).
+/// The standards as three cards: IEC, in use; US and another standard, which come
+/// with named standards.
 fn standard_cards(ui: &mut egui::Ui) {
     let s = ecad_widgets::SHELL;
     let gap = space::L;
@@ -536,7 +536,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     }
 }
 
-/// The standard header (design 050 §7.1): the standard's name, what it holds, and its buttons;
+/// The standard header: the standard's name, what it holds, and its buttons;
 /// each action states its consequence inline before anything is written. Esc writes nothing.
 fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     if !t.project_open() {
@@ -680,11 +680,11 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     }
 }
 
-/// The shared style detail of the focused style row (design 050 §7.2).
+/// The shared style detail of the focused style row.
 fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let catalogue = t.settings.standards.catalogue;
     let Some(i) = catalogue.checked_sub(1) else { return };
-    // Brief 057 (design 057 §5.3): cable types and rating tables have no built-in style to start
+    // Cable types and rating tables have no built-in style to start
     // from; rating tables show their rows, Import CSV… and Export CSV.
     if let Some(word) = t
         .settings
@@ -721,7 +721,7 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         src.used = Some((row, d.users.0.to_string()));
         tb.update(src, Changed::Keys(vec![row]));
     }
-    // Brief 055 (design 055 §0.3): a frame's block is edited in Library ▸ Title blocks.
+    // A frame's block is edited in Library ▸ Title blocks.
     if cat.catalogue == ecad_model::StyleCatalogue::Frame && ui.button("Edit in Library").widget_info_named(EDIT_IN_LIBRARY).clicked() {
         t.open_title_blocks(None);
         t.tb_refresh();

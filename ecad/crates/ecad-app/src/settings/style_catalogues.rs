@@ -1,13 +1,13 @@
-//! Settings ▸ Standards' style catalogues (brief 050a, design 050 §7.2) as column sets on U3's
+//! Settings ▸ Standards' style catalogues as column sets on the shared
 //! table, and the shared style detail on the right.
 //!
-//! One [`CatalogueSource`] serves every catalogue (Text styles, Location boxes, Frames, and 050b's
+//! One [`CatalogueSource`] serves every catalogue (Text styles, Location boxes, Frames, and
 //! Wire categories): one row per style, built-in first, then the standard's own, then the
 //! project's own; a column per field with the resolved value; the layer as a badge (a dot after a
 //! built-in with overrides); and **Used by**, filled for the selected row only.
 //!
 //! **Update map.** Style records and the standard reach the change feed as the project
-//! (`props_changes_since` holds `ObjectRef::Project`), like 042's defaults. Then the catalogue's
+//! (`props_changes_since` holds `ObjectRef::Project`), like the defaults. Then the catalogue's
 //! rows are read again (a style list, not the project) and only the rows that differ are patched;
 //! a style added or deleted changes the keys (a patch of every row, never a rebuild). Any other
 //! commit: nothing. A full build only on first show or another project. Used by is asked for the
@@ -22,7 +22,7 @@ use eframe::egui::{self, RichText};
 
 use crate::settings::standards_list::{source_tone, source_word};
 
-/// Accessible names (design 050 §9).
+/// Accessible names.
 pub(crate) const DETAIL: &str = "ecad.standards.style";
 pub const CONSEQUENCE: &str = "ecad.standards.style.consequence";
 pub const APPLY: &str = "ecad.standards.style.apply";
@@ -263,7 +263,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
     }
 }
 
-/// `31 objects use 24 V DC. Colour BU → RD.`: what a change does, said first (design 050 §7.2).
+/// `31 objects use 24 V DC. Colour BU → RD.`: what a change does, said first.
 pub fn consequence(cat: &Catalogue, d: &Detail, field: &str, from: &str, to: &str) -> String {
     let noun = match cat.catalogue {
         ecad_model::StyleCatalogue::Text => "texts' owners",
@@ -305,7 +305,7 @@ fn quote(s: &str) -> String {
     serde_json::Value::String(s.to_string()).to_string()
 }
 
-/// Draw the style detail of `d` (design 050 §7.2): the consequence line first, then each field's
+/// Draw the style detail of `d`: the consequence line first, then each field's
 /// chain with its editor and Reset per level, then New style from this, Rename, Delete… and
 /// Promote to standard. Returns the command lines to run.
 pub(crate) fn show_detail(

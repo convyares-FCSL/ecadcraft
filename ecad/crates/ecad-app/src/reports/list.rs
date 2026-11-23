@@ -1,11 +1,11 @@
-//! Project ▸ Reports (UI rev 3, board 2.06), a placeholder layout round today's reports: the list
+//! Project ▸ Reports, a placeholder layout round today's reports: the list
 //! of reports (what each reads and how it is grouped), and under it the selected report's preview,
-//! which is today's Reports window (brief 024) hosted in place. The report generator (brief 2.9)
+//! which is today's Reports window hosted in place. The report generator
 //! is not built: its layout, place in the book, generation time and settings show a dash or are
 //! greyed, and the PLC rack overview's preview is Project ▸ PLC itself.
 //!
 //! **Update map.** The list is fixed (it reads nothing); the preview is the Reports window, which
-//! keeps its own (design 024 §6.2).
+//! keeps its own.
 
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};

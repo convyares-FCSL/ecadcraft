@@ -1,4 +1,4 @@
-//! Lane R11 (design 061, rayon): the debugger's checks run on the background pool, on copies, and a
+//! The debugger's checks run on the background pool, on copies, and a
 //! result computed before a commit landed is dropped, never applied.
 
 use std::time::Duration;

@@ -1,11 +1,11 @@
-//! The connector maker (UI rev 3, "Connector maker"; board 1.13): the picker's Connector side,
-//! while Device ▸ Connector runs. It lays brief 044's questions out as sections that fold to a
+//! The connector maker: the picker's Connector side,
+//! while Device ▸ Connector runs. It lays the connector questions out as sections that fold to a
 //! one-line summary; the section the tool is asking opens, and its chips answer the prompt (the
 //! same keywords the intent line offers). Nothing here adds behaviour: every answer goes to the
 //! running `connector` form.
 //!
-//! The model is today's (brief 044): one device (`-X10`) with two halves (`-X10.S`, `-X10.P`).
-//! Rev 3's sections that have no answer in that form yet (more families and variants, pin
+//! The model is today's: one device (`-X10`) with two halves (`-X10.S`, `-X10.P`).
+//! The sections that have no answer in that form yet (more families and variants, pin
 //! descriptions, the shield contact, hood and housing, Save as a type) are shown greyed in place.
 
 use std::collections::BTreeMap;
@@ -31,7 +31,7 @@ pub const SECTIONS: [(&str, &[&str]); 5] = [
     ("Draw it", &["Draw"]),
 ];
 
-/// Families the board lists, with their variants; a variant the form knows answers its Type
+/// Families the maker lists, with their variants; a variant the form knows answers its Type
 /// prompt with that keyword, the others are greyed.
 const FAMILIES: [(&str, &[(&str, Option<&str>)]); 6] = [
     ("Plain", &[("Plain", Some("Plain"))]),
@@ -45,7 +45,7 @@ const FAMILIES: [(&str, &[(&str, Option<&str>)]); 6] = [
     ("Other", &[("RJ45", Some("RJ45")), ("USB-A", Some("USBA")), ("USB-B", Some("USBB")), ("USB-C", None), ("7/8\"", None), ("Custom", None)]),
 ];
 
-/// Which halves, in the board's words, and the form's keyword.
+/// Which halves, as the maker words them, and the form's keyword.
 const HALVES: [(&str, Option<&str>); 4] =
     [("Socket only", Some("Socket")), ("Plug only", Some("Plug")), ("Plug and socket", Some("Both")), ("Socket in a panel", None)];
 
@@ -189,7 +189,7 @@ impl App {
                         });
                     }
                     ui.separator();
-                    // Tag, description and the two halves (brief 044: one device, two halves).
+                    // Tag, description and the two halves (one device, two halves).
                     let t = tag.clone().unwrap_or_else(|| "-X?".into());
                     row(ui, "Tag", &t);
                     // The form's first question: a new connector (its next free tag) or one to add to.
@@ -252,7 +252,7 @@ fn keyword_of(answer: &str, keywords: &[String]) -> String {
     keywords.iter().find(|k| k.eq_ignore_ascii_case(answer)).cloned().unwrap_or_else(|| answer.to_string())
 }
 
-/// A form keyword in the board's words.
+/// A form keyword in the maker's words.
 fn words(k: &str) -> String {
     match k {
         "Both" => "Plug and socket".into(),

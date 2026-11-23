@@ -1,4 +1,4 @@
-//! Issue 48 (lane D2): the Checks list and the report models are first built on the background
+//! The Checks list and the report models are first built on the background
 //! pool for the Checks tab, the Reports window and the pre-release check; each says "Running…"
 //! meanwhile, and a result computed before a commit landed is never applied.
 

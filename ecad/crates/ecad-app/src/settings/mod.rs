@@ -1,13 +1,13 @@
-//! Settings, a place you visit (brief 042, U4c; UI rev 3 boards 5.01 and 5.02): opened from the
+//! Settings, a place you visit: opened from the
 //! project name menu, which shows as active while Settings is open, between the same top and
 //! bottom bars as every other screen. A list on the left, the section's title and body on the
 //! right. Esc or Back to Draw returns to where you were: the workspace, page and selection are
 //! never touched while it is open; choosing a workspace in the top bar closes it too.
 //!
-//! The list (rev 3): Back to Draw (Esc); for this project Project info, Standards, Pages and
+//! The list: Back to Draw (Esc); for this project Project info, Standards, Pages and
 //! sheets, Libraries, Agent access, Versions and backups; for this computer Appearance and
-//! Shortcuts. Sections: [`project`] (Project info, and Pages and sheets with 031's text styles),
-//! [`standards`] (every default with its origin and chain, roadmap 1.13(b)), [`agent`] (035's
+//! Shortcuts. Sections: [`project`] (Project info, and Pages and sheets with the text styles),
+//! [`standards`] (every default with its origin and chain), [`agent`] (the
 //! Agent access), [`display`] (Appearance, with the developer switch from [`developer`]) and
 //! [`later`] (Libraries, Versions and backups, Shortcuts: what exists today, and what comes).
 
@@ -36,9 +36,9 @@ use crate::shell::{Workspace, bar};
 pub const TITLE: &str = "SETTINGS";
 /// Back to Draw (Esc): closes Settings.
 pub const CLOSE: &str = "Close Settings";
-/// The standard, as shown everywhere until named standards (brief 042 Q1).
+/// The standard, as shown everywhere until named standards.
 pub const STANDARD: &str = "IEC (built in)";
-/// The list's width at 1920 × 1080 (board 5.01).
+/// The list's width at 1920 × 1080.
 pub(crate) const LIST_W: f32 = 232.0;
 /// The title row's height.
 pub(crate) const HEAD_H: f32 = 64.0;
@@ -48,11 +48,11 @@ pub(crate) const HEAD_H: f32 = 64.0;
 pub enum Section {
     #[default]
     Standards,
-    /// Project info (board 5.01).
+    /// Project info.
     Project,
     /// Pages and sheets: the sheet, references, tags, revisions, numbering and wires.
     Pages,
-    /// Pages and sheets on its Text styles tab (031's text section).
+    /// Pages and sheets on its Text styles tab.
     TextStyles,
     Libraries,
     AgentAccess,
@@ -65,7 +65,7 @@ pub enum Section {
 }
 
 impl Section {
-    /// The list, in the board's order: for this project, then for this computer.
+    /// The list, in display order: for this project, then for this computer.
     pub const ALL: [Section; 8] = [
         Section::Project,
         Section::Standards,
@@ -144,9 +144,9 @@ impl Section {
 pub struct Settings {
     pub section: Section,
     pub standards: standards::StandardsView,
-    /// Brief 054: Pages and sheets' page type table.
+    /// Pages and sheets' page type table.
     pub pages: pages::PagesView,
-    /// Brief 054b: the right panel's Page tab on a generated page.
+    /// The right panel's Page tab on a generated page.
     pub page_tab: crate::inspector::page::PageTab,
     pub inspector: crate::inspector::Inspector,
     /// The workspace Settings was opened over: choosing another in the top bar closes it.
@@ -169,7 +169,7 @@ impl App {
         }
     }
 
-    /// Open Settings ▸ Standards at a style catalogue (brief 050a: a Checks row's Go to).
+    /// Open Settings ▸ Standards at a style catalogue (a Checks row's Go to).
     pub fn open_standards_at(&mut self, catalogue: ecad_model::StyleCatalogue) {
         self.open_settings(Section::Standards);
         let v = &mut self.settings.standards;
@@ -293,7 +293,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     });
     // Settings' own fields and buttons have read this frame's keys. Take them now, so that the
     // shell's keys (Del, the tool letters, Ctrl+1–4…) and CADCraft, which run after this, never
-    // act on the page hidden under Settings (review of PR #78).
+    // act on the page hidden under Settings.
     ctx.input_mut(|i| {
         i.events
             .retain(|e| !matches!(e, egui::Event::Key { .. } | egui::Event::Text(_) | egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_)))
@@ -356,7 +356,7 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
             ui.painter().rect_filled(r, 0.0, ecad_widgets::color(s.hover));
         }
         bar::text_at(ui, list.left() + space::L, r.center().y, sec.label(), ui_type::BODY, ecad_widgets::color(if on { s.text } else { s.text_2 }));
-        // Brief 054: Pages and sheets counts its page types.
+        // Pages and sheets counts its page types.
         let count = match *sec {
             Section::Standards => Some(ecad_electrical::defaults::all().count()),
             Section::Pages => t.settings.pages.snapshot.as_ref().map(|s| s.rows.len()),
@@ -388,7 +388,7 @@ pub(crate) fn in_rect<R>(ui: &mut egui::Ui, rect: Rect, id: &str, add: impl FnOn
     .inner
 }
 
-/// A rev 3 card (board 5.01): a panel-coloured box with its title over a hairline and the contents
+/// A card: a panel-coloured box with its title over a hairline and the contents
 /// under it. `right` draws at the title row's right end.
 pub(crate) fn card<R>(ui: &mut egui::Ui, title: &str, right: impl FnOnce(&mut egui::Ui), add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let s = ecad_widgets::SHELL;

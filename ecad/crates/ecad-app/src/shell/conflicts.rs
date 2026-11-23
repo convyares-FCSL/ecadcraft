@@ -1,4 +1,4 @@
-//! The conflict list (brief 052d, design 052 §5.5, §9.2): after a placement, a move or a box
+//! The conflict list: after a placement, a move or a box
 //! proposed a function or location that a device already has another value for, the devices are
 //! listed under the intent line, one row per device and aspect, with **Move all**, **Leave all**
 //! and, per row, **Move** (Choose) and, for a connector half just placed, **Half**. The listed
@@ -22,7 +22,7 @@ pub(crate) const LIST: &str = "ecad.prompt.location_conflicts";
 /// The buttons.
 pub(crate) const MOVE_ALL: &str = "Move all";
 pub(crate) const LEAVE_ALL: &str = "Leave all";
-/// A connector half's own location (design 052 §5.3).
+/// A connector half's own location.
 pub(crate) const HALF: &str = "Half";
 /// Most rows shown; the rest are counted.
 pub const MAX_ROWS: usize = 8;
@@ -38,7 +38,7 @@ impl App {
     pub(crate) fn conflicts_frame(&mut self, ui: &mut egui::Ui) {
         let Some(page) = self.shell.page_rect else { return };
         // The rows, and the listed devices' symbols on the shown page (their anchors) for the
-        // rings (design 052 §9.2).
+        // rings.
         let (rows, anchors): (Vec<Row>, Vec<(ecad_model::DeviceId, ecad_model::Pt)>) = self
             .project
             .clone()

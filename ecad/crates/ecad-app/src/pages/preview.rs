@@ -1,4 +1,4 @@
-//! The read-only **preview** window (brief 016, design 016 §5): another page of the project,
+//! The read-only **preview** window: another page of the project,
 //! drawn from the model, floating over the drawing area, for checking the other end of a cable
 //! reference without leaving the active page.
 //!
@@ -20,13 +20,13 @@ use ecad_engine::pages::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing,
 use ecad_model::{PageId, Pt};
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
 
-/// The preview window's egui id (and element name, design 016 §8).
+/// The preview window's egui id (and element name).
 pub(crate) const WINDOW_ID: &str = "ecad.preview";
 /// Accessible label of Open page.
 pub const OPEN_PAGE: &str = "Open page";
 /// Accessible label of the close button.
 pub const CLOSE: &str = "Close preview";
-/// Default size of the image (design 016 §5.1).
+/// Default size of the image.
 pub const DEFAULT_SIZE: [f32; 2] = [480.0, 320.0];
 /// Ring diameter in pixels (`ecad.preview-ring`).
 pub const RING_PX: f32 = 20.0;
@@ -66,7 +66,7 @@ pub struct Preview {
     pub error: Option<String>,
     /// Position the window opens at (the top-right of the drawing area).
     open_at: Option<egui::Pos2>,
-    /// Brief 019: a page of an issued revision opened read-only, and its name (`Rev A`): drawn
+    /// A page of an issued revision opened read-only, and its name (`Rev A`): drawn
     /// once from that frozen copy, never from the live project.
     pub revision: Option<(Arc<ecad_model::Document>, String)>,
 }

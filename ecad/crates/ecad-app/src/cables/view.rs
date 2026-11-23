@@ -1,4 +1,4 @@
-//! The drawn cable at the top of Project ▸ Cables (board 2.06; brief 057, owner): the cabinet end
+//! The drawn cable at the top of Project ▸ Cables: the cabinet end
 //! and the field end with their connection points, the cable body with its tag, type and length,
 //! a gland at each end, each core in its own colour through to its point, and open ends in red.
 //! **Swap ends** draws it mirrored; **Cores only** hides it. The core colours come from the
@@ -26,12 +26,12 @@ pub struct Core {
     pub to: String,
     /// The wire beyond the field end (`L1-04`), when there is one.
     pub field_wire: String,
-    /// Ticked Not used (owner rule): drawn as a spare, no open end.
+    /// Ticked Not used: drawn as a spare, no open end.
     pub unused: bool,
 }
 
 impl Core {
-    /// Whether an end is open (owner rule): not ticked Not used and attached to nothing.
+    /// Whether an end is open: not ticked Not used and attached to nothing.
     pub fn open(&self, end_from: bool) -> bool {
         let this = if end_from { &self.from } else { &self.to };
         !self.unused && this.is_empty()
@@ -48,10 +48,10 @@ pub struct Drawing {
     pub from: String,
     pub to: String,
     pub cores: Vec<Core>,
-    /// Brief 059 (design 059 §5.5): not drawn yet: the ends show the plan (`=PUMP +CAB1
+    /// Not drawn yet: the ends show the plan (`=PUMP +CAB1
     /// (planned)`), the cores are thin and grey, with no points and no open ends.
     pub not_drawn: bool,
-    /// Brief 059 (059d): each end's gland size, cabinet then field (`M20`); empty when none.
+    /// Each end's gland size, cabinet then field (`M20`); empty when none.
     pub glands: [String; 2],
 }
 
@@ -72,7 +72,7 @@ fn pin(of: &str) -> &str {
 
 /// The colours a core is drawn in: solid, and dashes for a two-colour code. A core is drawn in its
 /// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
-/// outline that keeps it readable on the dark sheet (owner look check).
+/// outline that keeps it readable on the dark sheet.
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
     match code
         .and_then(ecad_model::objects::wire::Colours::parse)
@@ -93,7 +93,7 @@ pub fn bars(code: &str) -> Vec<ecad_widgets::tokens::Color> {
 }
 
 impl crate::shell::app::App {
-    /// An open core's fix (brief 057, owner): `0` ticks it Not used (one `setprop`); `1` goes to
+    /// An open core's fix: `0` ticks it Not used (one `setprop`); `1` goes to
     /// the cable (an open core has no wire of its own).
     pub(crate) fn core_fix(&mut self, f: ecad_electrical::checks::Fix, k: usize) {
         use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
@@ -229,7 +229,7 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     }
     // The cores.
     let red = ecad_widgets::color(s.error);
-    // Brief 059: a cable not drawn: each core thin and grey through the body, no points.
+    // A cable not drawn: each core thin and grey through the body, no points.
     if d.not_drawn {
         for (i, c) in d.cores.iter().enumerate() {
             let y = rows_top + PITCH * i as f32 + PITCH / 2.0;
@@ -286,7 +286,7 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
             }
         }
         // The cabinet end's words: the wire and the point.
-        // Each end's words: the wire there and the point (owner look check: the field end too).
+        // Each end's words: the wire there and the point (the field end too).
         let (l_wire, r_wire) = if swapped { (&c.field_wire, &c.wire) } else { (&c.wire, &c.field_wire) };
         let words = |wire: &String, pt: &String| match (wire.is_empty(), pt.is_empty()) {
             (_, true) if c.unused => "not used".to_string(),

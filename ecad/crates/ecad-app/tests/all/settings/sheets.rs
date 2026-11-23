@@ -1,11 +1,10 @@
-//! Brief 019 in the app (design 019 §12, checks C–F and J by the UI), headless with
+//! In the app, headless with
 //! egui_kittest in a 1280×800 window: the Pages tree with folders, the Properties section drawn
 //! through CADCraft's seam, the Project Properties and Revisions dialogs, opening Rev A
 //! read-only, and the question a plain `u` across an issue stops at. The reference screenshots
-//! of design §12 are written to `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists:
-//! `019-sheet.png`, `019-titleblock.png`, `019-tree.png`, `019-props-page.png`,
-//! `019-props-device.png`, `019-projectinfo.png`, `019-projectsettings.png`, `019-revisions.png`,
-//! `019-rev-open.png`.
+//! are written to `$ECAD_TESTER_SHOTS` when it is set and a wgpu adapter exists: the sheet,
+//! title block, tree, page and device properties, project info, project settings, revisions
+//! and an opened revision.
 
 use crate::pages::project_panel::{Deltas, active, build, click, doc, fixture_p, head, new_app, ok, take};
 

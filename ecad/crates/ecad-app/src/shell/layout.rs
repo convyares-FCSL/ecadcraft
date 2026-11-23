@@ -1,5 +1,4 @@
-//! The shell's layout (UI rev 3, "Shell at 1920 × 1080"; earlier design `ui-architecture.md`
-//! §5.1–§5.3): pure arithmetic from the window's rect and the [`ShellState`] to the rect of every
+//! The shell's layout: pure arithmetic from the window's rect and the [`ShellState`] to the rect of every
 //! slot. No egui context, so every size rule is a plain unit test.
 //!
 //! One bar at each edge: the top bar (40 px) and the bottom bar (32 px). Between them, in Draw:
@@ -9,8 +8,8 @@
 //! pinned panel docks and the canvas moves over for it; an unpinned one floats over the canvas. Project, Library and Publish have no strip and no panel slot; their
 //! inspector is 340 px open. The agent banner sits under the top bar while an agent is connected.
 //!
-//! Brief 048: the symbol builder (Library) has a strip too, and a 380 px right panel. Its review
-//! ("Before saving") and Compare take a drawer under the canvas while one is shown; rev 3 has no
+//! The symbol builder (Library) has a strip too, and a 380 px right panel. Its review
+//! ("Before saving") and Compare take a drawer under the canvas while one is shown; there is no
 //! drawer otherwise (Checks are the inspector's tab).
 
 use ecad_widgets::tokens::size;
@@ -28,16 +27,16 @@ pub(crate) const RAIL_W: f32 = size::TOOL_STRIP;
 /// The inspector's width in Draw, and in the other workspaces.
 pub(crate) const RIGHT_W: f32 = 320.0;
 pub const RIGHT_W_WIDE: f32 = 340.0;
-/// The right panel's width in the symbol builder (spec §2, design 048 §3.1).
+/// The right panel's width in the symbol builder.
 pub(crate) const RIGHT_W_BUILDER: f32 = 380.0;
-/// Publish's print settings column (board 4.01).
+/// Publish's print settings column.
 pub const RIGHT_W_PUBLISH: f32 = 360.0;
-/// Brief 048's review drawer: its body and its header row.
+/// The review drawer: its body and its header row.
 pub(crate) const DRAWER_BODY: f32 = 150.0;
 pub(crate) const DRAWER_HEADER: f32 = 36.0;
-/// The drawer's body under the Library's symbol review (board 3.04).
+/// The drawer's body under the Library's symbol review.
 pub(crate) const DRAWER_BODY_LIBRARY: f32 = 300.0;
-/// Compare revisions (board 1.16): its header row over the canvas and its list of changes under it.
+/// Compare revisions: its header row over the canvas and its list of changes under it.
 pub const COMPARE_HEADER: f32 = 44.0;
 pub const COMPARE_LIST: f32 = 172.0;
 /// Below this main-view width the shell collapses panels (the inspector, then the panel slot).
@@ -58,7 +57,7 @@ pub struct Slots {
     pub tool_strip: Option<Rect>,
     pub main: Rect,
     pub companion: Option<Rect>,
-    /// Brief 048's review drawer under the canvas, while a review or Compare is shown.
+    /// The review drawer under the canvas, while a review or Compare is shown.
     pub drawer: Option<Rect>,
     /// The companion split's drag handle, between `main` and `companion`.
     pub handle: Option<Rect>,
@@ -71,7 +70,7 @@ pub struct Slots {
     pub status: Rect,
     /// Whether the inspector is closed (only its rail shows), after forced collapses.
     pub right_rail: bool,
-    /// UI rev 3 (board 1.16): Compare revisions' header over the canvas and its list of changes
+    /// Compare revisions' header over the canvas and its list of changes
     /// under it, while Compare is open in Draw.
     pub compare: Option<(Rect, Rect)>,
 }
@@ -98,7 +97,7 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
     let builder = state.workspace == Workspace::Library && state.builder;
     let right_w = right_width(state.workspace, state.builder);
     let mut panel_open = draw && !state.left.collapsed;
-    // UI rev 3 (boards 3.01–4.01): Library and Publish keep their own right column, with no
+    // Library and Publish keep their own right column, with no
     // inspector rail.
     let own_right = matches!(state.workspace, Workspace::Library | Workspace::Publish);
     let rail_w = if own_right { 0.0 } else { RAIL_W };
@@ -140,7 +139,7 @@ pub fn layout(window: Rect, state: &ShellState, agent: bool) -> Slots {
         }
         r
     });
-    // UI rev 3 (board 3.04): the Library's symbol review is taller.
+    // The Library's symbol review is taller.
     let drawer_body = if state.workspace == Workspace::Library { DRAWER_BODY_LIBRARY } else { DRAWER_BODY };
     let drawer_top = if state.review { (bottom - DRAWER_HEADER - drawer_body).max(y) } else { bottom };
     let drawer = state.review.then(|| Rect::from_min_max(pos2(x, drawer_top), pos2(right.left().max(x), bottom)));

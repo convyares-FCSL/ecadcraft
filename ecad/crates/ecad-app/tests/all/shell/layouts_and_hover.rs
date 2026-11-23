@@ -1,6 +1,6 @@
-//! Brief 008: the ECAD tools, marks and hover around paper-space layouts, and which object the
-//! hover names. The independent tester's round-2 and round-3 checks, kept as written (one module
-//! each), and the viewport case from the review.
+//! The ECAD tools, marks and hover around paper-space layouts, and which object the
+//! hover names. Further checks, one module
+//! each, and the viewport case.
 
 mod hover_and_marks {
     //! Independent tester's round-2 UI checks for brief 008: the edges of the fixes for terminal hover

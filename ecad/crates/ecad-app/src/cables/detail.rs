@@ -12,14 +12,14 @@ pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
     let rows = &v.source.rows;
     let tag = rows.text(k, CableBase::Tag.header());
     let (from, to) = (rows.text(k, CableBase::From.header()), rows.text(k, CableBase::To.header()));
-    // Brief 059: a cable not drawn has no drawing to flag (no type, no ends yet): its one row is
+    // A cable not drawn has no drawing to flag (no type, no ends yet): its one row is
     // "not in the drawing yet".
     let mut checks: Vec<(String, Tone)> = if v.source.drawn(k) {
         rows.rows.get(k).map(|r| r.iter().filter_map(|c| c.flag.clone()).map(|f| (f, Tone::Error)).collect()).unwrap_or_default()
     } else {
         Vec::new()
     };
-    // Brief 057 (owner rule): each open core, as an error, with its two fixes.
+    // Each open core, as an error, with its two fixes.
     let mut core_fixes = Vec::new();
     for (i, open) in v.source.open.get(k).into_iter().flatten().enumerate() {
         checks.push((open.message(), Tone::Error));
@@ -30,7 +30,7 @@ pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
     if let Some(n) = v.source.spare(k).filter(|n| *n > 0) {
         checks.push((format!("{}.", ecad_electrical::terminal_strips::cores::spare_core_words(n)), Tone::Neutral));
     }
-    // Brief 059 (design 059 §6): a cable not drawn says so (Info), with no core rows.
+    // A cable not drawn says so (Info), with no core rows.
     let drawn = v.source.drawn(k);
     if !drawn {
         checks.push((format!("{tag} is not in the drawing yet."), Tone::Neutral));
@@ -49,8 +49,8 @@ pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
         editor: false,
         cable_editor: v.ids.get(k).map(|c| (*c, [from, to])),
         core_fixes,
-        // Brief 059: Identity, Part and Ends are the cable editor's; the Rating section stays 057's,
-        // and shows a note when the cable has nothing to rate yet (owner, review of 059).
+        // Identity, Part and Ends are the cable editor's; the Rating section stays its own,
+        // and shows a note when the cable has nothing to rate yet.
         sections: vec![match v.source.rating(k) {
             Some(r) => rating_section(t, Some(r), &v.source.rating.methods),
             None => Section { title: "Rating", hint: "not rated".into(), note: Some(RATE_NOTE), ..Section::default() },

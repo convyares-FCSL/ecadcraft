@@ -1,9 +1,9 @@
-//! The Publish workspace (UI rev 3, board 4.01: pick, order, print settings). Publish has no
+//! The Publish workspace (pick, order, print settings). Publish has no
 //! history; released revisions live in Draw's History panel.
 //!
 //! - **Left: output sets.** Today's single print is **Full booklet**; Panel builder pack,
 //!   Customer approval and Site wiring are placeholders until output sets exist. Under them,
-//!   Release (027's dialog, floating) for the pending revision.
+//!   Release (the dialog, floating) for the pending revision.
 //! - **Centre: every page** at a readable size, grouped as in the book, each with its place in
 //!   the output. Tick to include: the ticked pages become Print Book's page list (all ticked:
 //!   every page). Pages always print in book order today, so dragging to reorder is not offered;
@@ -38,14 +38,14 @@ pub const PATH: &str = "ecad.printbook.path";
 pub const COLOUR: &str = "publish.colour";
 pub(crate) const LINEWEIGHTS: &str = "publish.lineweights";
 pub(crate) const PREVIEW: &str = "publish.preview";
-/// The output sets (board 4.01); only the first exists today.
+/// The output sets; only the first exists today.
 pub(crate) const OUTPUT_SETS: [(&str, &str); 4] = [
     ("Full booklet", ""),
     ("Panel builder pack", "schematics, terminal plans, parts"),
     ("Customer approval", "schematics only, DRAFT watermark"),
     ("Site wiring", "field pages and cable list"),
 ];
-/// The left column's width (board 4.01).
+/// The left column's width.
 pub(crate) const SETS_W: f32 = 260.0;
 /// A page tile's thumbnail.
 pub(crate) const THUMB_W: f32 = 212.0;
@@ -92,7 +92,7 @@ pub struct Publish {
 }
 
 /// The pages in book order, their groups, their places in the output and Print Book's page list,
-/// worked out from the Pages rows and the ticks only when either changed (review of #95).
+/// worked out from the Pages rows and the ticks only when either changed.
 #[derive(Debug, Default)]
 struct Book {
     /// (the Pages rows' rebuild count, `excluded_rev`) they were worked out at.
@@ -319,7 +319,7 @@ impl App {
             bar::text_at(ui, r.left() + space::M + 2.0, r.top() + 35.0, &sub, ui_type::SMALL, c32(s.text_3));
             y = r.bottom() + space::XS;
         }
-        // The foot: Release (027's dialog) for the pending revision.
+        // The foot: Release (the dialog) for the pending revision.
         let foot = Rect::from_min_max(pos2(sets.left(), sets.bottom() - 96.0), sets.max);
         ui.painter().hline(foot.x_range(), foot.top() + 0.5, line);
         let pending = if open {

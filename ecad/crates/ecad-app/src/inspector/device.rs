@@ -1,4 +1,4 @@
-//! The Device tab (UI rev 3, board 1.05): a one-line status of this device's own checks, then
+//! The Device tab: a one-line status of this device's own checks, then
 //! Identity, Parts, Where it is drawn, Connections, and Notes and attributes, each folding to a
 //! one-line summary. With anything other than one device selected (nothing: the page; a wire, a
 //! cable…) it shows that object's properties in the same folding sections.
@@ -174,12 +174,12 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
             let hint = match key {
                 "tag" if fixed => "fixed",
                 "tag" => "auto",
-                // Brief 052 (design 052 §9.1): stored on the device or nothing; never inherited.
+                // Stored on the device or nothing; never inherited.
                 "location" | "function" if row.value.is_empty() => "?",
                 _ => "",
             };
             fields::prop(ui, sh, target, "device", row, label, hint);
-            // The overrides under Location (design 052 §5.2): a connector's halves, a field
+            // The overrides under Location: a connector's halves, a field
             // device's terminals.
             if key == "location" {
                 for o in s.rows.iter().filter(|r| ecad_model::naming::keys::in_area(&r.key, ecad_model::naming::keys::Area::Location)) {
@@ -187,7 +187,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
                 }
             }
         }
-        // Brief 052 (design 052 §3.5): the selected symbol's type.
+        // The selected symbol's type.
         if let Some(row) = find(s, "rep_type") {
             w::read(ui, "Symbol type", &row.value, "ecad.inspector.rep_type");
         }
@@ -384,7 +384,7 @@ fn connection_row(ui: &mut egui::Ui, c: &crate::inspector::details::ConnRow, i: 
 mod tests {
     use super::parts_summary;
 
-    /// Review of #91, 3: a device with only its main part has a part.
+    /// A device with only its main part has a part.
     #[test]
     fn the_folded_parts_summary_counts_the_main_part() {
         assert_eq!(parts_summary(0, Some("Generic"), Some("CT-9A-24VDC")), "Generic \u{b7} CT-9A-24VDC");

@@ -1,4 +1,4 @@
-//! The Library browser (design 048 §8.1; UI rev 3 board 3.01, Library ▸ Symbols): the Library's
+//! The Library browser (Library ▸ Symbols): the Library's
 //! tabs (Symbols, Snippets, Parts, Makers, Title blocks; only Symbols has data today, the others
 //! say what comes) with the search and New symbol, the filters across the top, the category tree
 //! at the left with the sources under it, the tiles in the centre grouped by category, and the
@@ -18,7 +18,7 @@ use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2}
 
 use crate::shell::bar;
 
-/// Element names (design 048 §8.1).
+/// Element names.
 pub(crate) const BROWSER: &str = "library.browser";
 pub const NEW: &str = "library.browser.new";
 pub const SEARCH: &str = "library.browser.search";
@@ -31,16 +31,16 @@ pub const PLACED_NEXT: &str = "library.browser.placed-next";
 pub const TAB: &str = "library.tab";
 /// A tile is `library.browser.tile.<lineage hex>` (a project symbol) or `.<key>` (a built-in).
 pub const TILE: &str = "library.browser.tile";
-/// The tree's width inside the main view (board 3.01).
+/// The tree's width inside the main view.
 pub(crate) const TREE_W: f32 = 236.0;
-/// A tile's size (board 3.01).
+/// A tile's size.
 pub const TILE_W: f32 = 164.0;
 pub const TILE_H: f32 = 150.0;
 /// The tab row's and the filter row's heights.
 pub(crate) const TABS_H: f32 = 44.0;
 pub(crate) const FILTERS_H: f32 = 40.0;
 
-/// The Library's tabs (rev 3). Only Symbols has data today.
+/// The Library's tabs. Only Symbols has data today.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum LibraryTab {
     #[default]
@@ -108,7 +108,7 @@ pub enum Category {
     Builtin(u8),
 }
 
-/// The Source filter (board 3.01's filter row).
+/// The Source filter (the filter row).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SourceFilter {
     #[default]
@@ -136,7 +136,7 @@ pub struct Browser {
     pub category: Category,
     pub source: SourceFilter,
     pub selected: Option<Tile>,
-    /// After Save: "Placed next: <name>" with its Place button (design 048 §3.3 step 7).
+    /// After Save: "Placed next: <name>" with its Place button.
     pub placed_next: Option<String>,
     pub collapsed: BTreeSet<u8>,
 }
@@ -394,7 +394,7 @@ fn divider(ui: &mut egui::Ui) {
     ui.painter().vline(r.center().x, r.y_range(), Stroke::new(1.0, c32(ecad_widgets::SHELL.line)));
 }
 
-/// The Library's tabs, one pill (also the title block editor's toolbar, brief 055).
+/// The Library's tabs, one pill (also the title block editor's toolbar).
 pub fn tabs(ui: &mut egui::Ui, b: &mut Browser, list: &Listing) {
     let labels: Vec<String> = LibraryTab::ALL
         .iter()
@@ -692,7 +692,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
     }
 }
 
-/// The selected symbol in the right panel (board 3.01's right panel).
+/// The selected symbol in the right panel.
 pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, page: Option<&str>) -> Vec<Act> {
     let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();

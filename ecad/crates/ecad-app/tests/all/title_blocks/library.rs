@@ -1,8 +1,8 @@
-//! Brief 055 (design 055 §12.1 H, I) in the app, headless (egui_kittest): Library ▸ Title
+//! In the app, headless (egui_kittest): Library ▸ Title
 //! blocks lists the built-in read only; a frame made from it opens in the editor; a palette row
 //! dropped on the block is selected on whole millimetres with Value, Style and Box on the right;
 //! Sample off; Save is one transaction after the consequence line; Discard asks only when the
-//! draft changed. Screenshots (board 3.05 side by side, a page with the house block) are written
+//! draft changed. Screenshots (the editor and a page with the house block) are written
 //! when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists (never committed).
 
 use std::path::PathBuf;

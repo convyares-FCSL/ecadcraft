@@ -1,4 +1,4 @@
-//! Lane 072 D (design 072 F40): Project Settings' "Wire numbers" row switches what one wire
+//! Project Settings' "Wire numbers" row switches what one wire
 //! number counts, one per net or one per wire, as one `wiresettings` line and one transaction in
 //! which every wire's shown number follows.
 

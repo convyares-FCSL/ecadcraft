@@ -1,5 +1,5 @@
-//! Brief 024's windows (design 024 §4.1, §6.2): **Reports** (BOM, wires, cables, each exported to
-//! CSV) and **Print Book**. Both read the project and record nothing. Brief 028 adds the
+//! The report windows: **Reports** (BOM, wires, cables, each exported to
+//! CSV) and **Print Book**. Both read the project and record nothing. Also here: the
 //! **Terminals** tab (the terminal plan, per strip or all) and a cable's core list on the Cables
 //! tab (double-click a cable).
 //!
@@ -22,7 +22,7 @@ pub enum Tab {
     Bom,
     Wires,
     Cables,
-    /// Brief 028: the terminal plan.
+    /// The terminal plan.
     TerminalBlocks,
 }
 
@@ -64,7 +64,7 @@ impl Tab {
 /// The tabs in order.
 const TABS: [Tab; 4] = [Tab::Bom, Tab::Wires, Tab::Cables, Tab::TerminalBlocks];
 
-/// Row height (design 024 §6.2).
+/// Row height.
 const ROW: f32 = 20.0;
 
 /// What the window asks the app for.
@@ -76,10 +76,10 @@ pub enum Out {
     Select(Tab, usize),
     /// Write the shown table as CSV to this path.
     Export(String),
-    /// Brief 030: run this command line (the Accessory menu; brief 039: a terminal plan edit,
+    /// Run this command line (the Accessory menu: a terminal plan edit,
     /// whose refusal goes back through [`Reports::ran`]).
     Run(String),
-    /// Brief 039: show this page, centred on this point (a Terminals row's place).
+    /// Show this page, centred on this point (a Terminals row's place).
     GotoAt(ecad_model::PageId, ecad_model::Pt),
     Close,
 }
@@ -90,9 +90,9 @@ pub struct Reports {
     /// The report models' first build is still running on the background pool (issue 48): the
     /// window says so instead of the table.
     pub building: bool,
-    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    /// The shell's slot it fills (no title bar, not movable), or `None` to float.
     pub host: Option<egui::Rect>,
-    /// Brief 038: its workspace is not shown, so it is not drawn.
+    /// Its workspace is not shown, so it is not drawn.
     pub hidden: bool,
     pub tab: Tab,
     pub group: Group,
@@ -108,15 +108,15 @@ pub struct Reports {
     counted: Option<(u64, u64, Group)>,
     /// The strips revision the strip picker was taken at.
     strips_seen: Option<(u64, u64)>,
-    /// Brief 028: the strip the Terminals tab shows (`None`: all), and the strips to pick from.
+    /// The strip the Terminals tab shows (`None`: all), and the strips to pick from.
     pub strip: Option<ecad_model::DeviceId>,
     pub strips: Vec<(ecad_model::DeviceId, String)>,
-    /// Brief 030: the Accessories check box is off (gap rows hidden; view only).
+    /// The Accessories check box is off (gap rows hidden; view only).
     pub hide_accessories: bool,
-    /// Brief 059 (design 059 §5.8, Q3): Include not-drawn cables is off for this run (view only;
+    /// Include not-drawn cables is off for this run (view only;
     /// on by default).
     pub hide_not_drawn: bool,
-    /// Brief 028: the cable whose core list the Cables tab shows instead of the schedule.
+    /// The cable whose core list the Cables tab shows instead of the schedule.
     pub cores_of: Option<ecad_model::CableId>,
     /// Where each Terminals row goes.
     pub gos: Vec<Option<(ecad_model::PageId, ecad_model::Pt)>>,
@@ -133,24 +133,24 @@ pub struct Reports {
     pub rows_drawn: usize,
     /// The project folder and name, for the export path's default.
     pub stem: String,
-    /// Brief 039: the Terminals tab as the one table's terminal manager.
+    /// The Terminals tab as the one table's terminal manager.
     pub connection_points: crate::terminal_strips::plan::TerminalStripPlanView,
-    /// Brief 045c and 051: Lists ▸ PLC, kept in step while it is shown.
+    /// Lists ▸ PLC, kept in step while it is shown.
     pub io: crate::plc::list::IoView,
     pub io_shown: bool,
-    /// UI rev 3 (boards 2.04, 2.05): Project ▸ Wires and Cables, kept in step while shown.
+    /// Project ▸ Wires and Cables, kept in step while shown.
     pub wires: crate::wires::list::WiresView,
     pub cables: crate::cables::list::CablesView,
     pub wires_shown: bool,
     pub cables_shown: bool,
-    /// UI rev 3 (board 2.06): Project ▸ Reports' list of reports; the window is its preview,
+    /// Project ▸ Reports' list of reports; the window is its preview,
     /// shown without its own tab row.
     pub list: crate::reports::list::ReportsList,
     pub preview: bool,
-    /// UI rev 3: the Project tabs' counts (terminals, PLC channels, wires, cables), from kept
+    /// The Project tabs' counts (terminals, PLC channels, wires, cables), from kept
     /// counts, taken with the Reports tab counts.
     pub tab_counts: [usize; 4],
-    /// Brief 047 (design 047 §6.1): the project's BOM report settings (the Columns menu reads
+    /// The project's BOM report settings (the Columns menu reads
     /// them; ticking writes `setdefault`), whether the project can be written (Columns and the
     /// add-item button are greyed when not), each BOM row's item when it lists one item only, and
     /// the BOM as CSV (Qty a number, a Unit column), row for row with the shown table.
@@ -160,7 +160,7 @@ pub struct Reports {
     csv: Option<Table>,
 }
 
-/// Brief 047's element names (design 047 §11).
+/// The BOM's element names.
 pub const COLUMNS: &str = "ecad.reports.columns";
 pub const COLUMN_ARTICLE: &str = "ecad.reports.columns.article";
 pub const COLUMN_NESTED: &str = "ecad.reports.columns.nested";
@@ -177,14 +177,14 @@ impl Reports {
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
     pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
-        // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
+        // Lists ▸ I/O follows the PLC model's own update map while it is shown.
         if self.io_shown {
             p.reports();
             if let Some(o) = p.kept_reports() {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }
-        // Brief 057: the rating results the Wires and Cables tabs show (kept by the Checks list).
+        // The rating results the Wires and Cables tabs show (kept by the Checks list).
         if self.wires_shown || self.cables_shown {
             let kept = &p.checks().rating;
             if self.wires_shown {
@@ -194,11 +194,11 @@ impl Reports {
                 self.cables.sync_rating(serial, kept);
             }
         }
-        // Brief 057 (board 2.06): the selected cable's core colours.
+        // The selected cable's core colours.
         if self.cables_shown {
             let count = p.change_count();
             self.cables.sync_colours(p.ledger.document(), count);
-            // Brief 059: the Details pane's Checks tab.
+            // The Details pane's Checks tab.
             self.cables.sync_checks(p, count);
         }
         let reference_style = p.ledger.document().settings().reference_style();
@@ -219,8 +219,8 @@ impl Reports {
             self.tab_counts = [connection_points, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
-        // The Terminals tab follows only the strips it shows (review of PR #55, finding 2; design
-        // 028 §11.1): an edit that changes none leaves its copy; the others follow the models.
+        // The Terminals tab follows only the strips it shows:
+        // an edit that changes none leaves its copy; the others follow the models.
         let revision = match self.tab {
             Tab::TerminalBlocks => o.build_id.wrapping_mul(1 << 40).wrapping_add(o.strips.changed_at(self.strip).wrapping_mul(8)).wrapping_add(style),
             _ => o.revision,
@@ -304,14 +304,14 @@ impl Reports {
         self.shown.get(i).copied()
     }
 
-    /// The table as shown (grouping, sort and filter), for CSV. Brief 047: the BOM in its CSV
-    /// form (design 047 §6.4), the same rows.
+    /// The table as shown (grouping, sort and filter), for CSV. The BOM in its CSV
+    /// form, the same rows.
     pub fn shown_table(&self) -> Table {
         let t = self.csv.as_ref().filter(|_| self.tab == Tab::Bom).unwrap_or(&self.table);
         Table { headers: t.headers.clone(), rows: self.shown.iter().filter_map(|i| t.rows.get(*i).cloned()).collect() }
     }
 
-    /// Brief 047: the BOM tab's Columns menu and + Item (design 047 §6.1).
+    /// The BOM tab's Columns menu and + Item.
     fn bom_tools(&mut self, ui: &mut egui::Ui, out: &mut Option<Out>) {
         let writable = self.writable;
         let r = ui.add_enabled_ui(writable, |ui| {
@@ -361,7 +361,7 @@ impl Reports {
                     return;
                 }
                 ui.horizontal(|ui| {
-                    // UI rev 3: as Project ▸ Reports' preview the list above picks the tab.
+                    // As Project ▸ Reports' preview the list above picks the tab.
                     for (i, tab) in TABS.into_iter().enumerate().filter(|_| !self.preview) {
                         let n = self.counts.get(i).copied().unwrap_or(0);
                         let text = format!("{} ({n})", tab.label());
@@ -376,7 +376,7 @@ impl Reports {
                     }
                 });
                 ui.horizontal(|ui| {
-                    // Brief 028: which strip, or all.
+                    // Which strip, or all.
                     if self.tab == Tab::TerminalBlocks {
                         let strips = self.strips.clone();
                         let names: Vec<&str> = std::iter::once("All").chain(strips.iter().map(|(_, t)| t.as_str())).collect();
@@ -384,7 +384,7 @@ impl Reports {
                         if Select::new(&mut k, &names, "ecad.reports.strip").width(size::LABEL_COLUMN * 1.5).show(ui).changed() {
                             self.strip = k.checked_sub(1).and_then(|i| strips.get(i)).map(|(c, _)| *c);
                         }
-                        // Brief 030 (design 030 §2.4): accessories at the strip's ends and markers,
+                        // Accessories at the strip's ends and markers,
                         // for the strip picked (or the only one).
                         let only = match self.strips.as_slice() {
                             [(c, _)] => Some(*c),
@@ -410,7 +410,7 @@ impl Reports {
                             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "ecad.reports.terminal_blocks.accessory"));
                         });
                     }
-                    // Brief 059 (Q3): Include not-drawn cables, for this run.
+                    // Include not-drawn cables, for this run.
                     if self.tab == Tab::Cables && self.cores_of.is_none() {
                         let mut on = !self.hide_not_drawn;
                         prim::body(ui, "Include not-drawn cables", true);
@@ -469,7 +469,7 @@ impl Reports {
                     prim::note(ui, n, Tone::Neutral);
                 }
                 ui.separator();
-                // Brief 039: the terminal manager is the one table, mirrored (design 036 §9).
+                // The terminal manager is the one table, mirrored.
                 if self.tab == Tab::TerminalBlocks {
                     for a in self.connection_points.show(ui, true) {
                         out = Some(match a {
@@ -550,7 +550,7 @@ impl Reports {
                             let resp = resp.accessible_name(format!("ecad.reports.{}.row.{i}", tab.name()));
                             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &label));
                             let resp = if tip.is_empty() { resp } else { resp.on_hover_text(tip.join("\n")) };
-                            // Brief 047: an item row has no page; its menu deletes it.
+                            // An item row has no page; its menu deletes it.
                             let item = if tab == Tab::Bom { self.shown.get(i).and_then(|k| items.get(*k).copied().flatten()) } else { None };
                             if let Some(c) = item {
                                 if resp.clicked() || resp.double_clicked() {
@@ -626,12 +626,12 @@ pub enum ScopeKind {
     Pages,
 }
 
-/// The Print Book dialog (design 024 §4.1).
+/// The Print Book dialog.
 #[derive(Debug, Clone, Default)]
 pub struct PrintBook {
-    /// Brief 038: the shell's slot it fills (no title bar, not movable), or `None` to float.
+    /// The shell's slot it fills (no title bar, not movable), or `None` to float.
     pub host: Option<egui::Rect>,
-    /// Brief 038: its workspace is not shown, so it is not drawn.
+    /// Its workspace is not shown, so it is not drawn.
     pub hidden: bool,
     pub scope: ScopeKind,
     /// The folders to choose from: (id, path), and the chosen one.
@@ -645,7 +645,7 @@ pub struct PrintBook {
     pub sheets: usize,
     pub unknown: Vec<String>,
     pub flagged: usize,
-    /// Brief 033: what Print Book will note (a continuation number prints its whole page; the
+    /// What Print Book will note (a continuation number prints its whole page; the
     /// drawing changed since the newest issue).
     pub notes: Vec<String>,
     pub error: Option<String>,
@@ -759,7 +759,7 @@ impl PrintBook {
     }
 }
 
-/// The Accessory menu's items (design 030 §2.4): (words, `accessory` params) for strip `c`.
+/// The Accessory menu's items: (words, `accessory` params) for strip `c`.
 pub(crate) fn accessory_menu(c: ecad_model::DeviceId) -> Vec<(&'static str, serde_json::Value)> {
     use serde_json::json;
     let s = c.hex();

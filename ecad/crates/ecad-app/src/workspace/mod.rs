@@ -1,22 +1,22 @@
-//! The column sets on `ecad-ui`'s one table (brief 039, design `ui-architecture.md` §6.3): each
+//! The column sets on `ecad-widgets`'s one table: each
 //! manager is a [`ecad_widgets::table::TableSource`] over a kept model plus the table's state, never a
 //! panel of its own.
 //!
 //! - [`checks`]: Checks (read-mostly): severity, message, object, page (a go-to) and fixes.
 //! - [`devices`]: Devices: tag and description set here, function, location, symbol, pages, part
 //!   and state read.
-//! - [`connection_points`]: the terminal manager, mirrored (inside | strip | outside) on 036's row model.
-//! - [`plc`]: Lists ▸ PLC (brief 051; 045c's I/O list): rack chips, tiles, the channel table.
-//! - [`wires`], [`cables`]: UI rev 3's Project ▸ Wires and Cables over the report models
+//! - [`connection_points`]: the terminal manager, mirrored (inside | strip | outside).
+//! - [`plc`]: Lists ▸ PLC: rack chips, tiles, the channel table.
+//! - [`wires`], [`cables`]: the Project ▸ Wires and Cables tabs over the report models
 //!   ([`report`]); [`reports`]: Project ▸ Reports' list round today's Reports window.
-//! - [`workspace`]: UI rev 3's Project workspace (boards 2.01–2.06): the tab strip, the head's
+//! - [`workspace`]: the Project workspace: the tab strip, the head's
 //!   actions, each tab's body and the foot; [`detail`]: its right panel, the selected item.
 //!
 //! The Project workspace ([`workspace`]) places each view; the Project panel's Checks and Devices
 //! tabs ([`crate::checks::panel`], [`crate::devices::panel`]) and Reports ▸ Terminals
 //! ([`crate::reports::panel`]) call the same views.
 //!
-//! Each view keeps an update map (design §8): a full rebuild only on first show, reload or a feed
+//! Each view keeps an update map: a full rebuild only on first show, reload or a feed
 //! that rolled over; otherwise only the keys a commit touched are patched.
 
 pub mod detail;
@@ -30,7 +30,7 @@ pub enum Tab {
     Checks,
     Devices,
     TerminalBlocks,
-    /// Brief 051: Lists ▸ PLC (045c's Lists ▸ I/O).
+    /// Lists ▸ PLC (the I/O list).
     Plc,
 }
 
@@ -43,20 +43,20 @@ pub enum ListAction {
     Run(String),
     /// Show this page, centred on this point.
     GoTo(ecad_model::PageId, ecad_model::Pt),
-    /// Brief 051: say this in the status line (the command line's echo).
+    /// Say this in the status line (the command line's echo).
     Say(String),
-    /// Brief 051: Lists ▸ PLC's own steps, answered by the view ([`crate::plc::list::IoView::handle`]).
+    /// Lists ▸ PLC's own steps, answered by the view ([`crate::plc::list::IoView::handle`]).
     Tile(usize),
     Chip(usize),
     Scope(bool),
     Reveal(crate::plc::list::IoKey),
-    /// Brief 051: show this page at the card's first drawing on it.
+    /// Show this page at the card's first drawing on it.
     GoToCard(ecad_model::PageId, Option<ecad_model::DeviceId>),
-    /// Brief 051: the Check list, filtered to this device.
+    /// The Check list, filtered to this device.
     ChecksOf(ecad_model::DeviceId),
-    /// Brief 051: Place Symbol for a card body, for this free slot.
+    /// Place Symbol for a card body, for this free slot.
     PlaceCard(u32),
-    /// Brief 056 (design 056 §3.1, §4.1, §6 as the owner changed it): Add a rack, Import an I/O
+    /// Add a rack, Import an I/O
     /// list, Export tags, the path row's OK, and unfold the free channels.
     AddRack,
     ImportTags,
@@ -74,7 +74,7 @@ pub struct Lists<'a> {
     pub io: &'a mut crate::plc::list::IoView,
 }
 
-/// Draw list view `tab` (one call per view, for U2's slots; design §12 O4). `writable`: the
+/// Draw list view `tab` (one call per view). `writable`: the
 /// project can be written (fixes and edits are offered).
 pub fn show(ui: &mut eframe::egui::Ui, tab: Tab, lists: Lists<'_>, writable: bool) -> Vec<ListAction> {
     match tab {

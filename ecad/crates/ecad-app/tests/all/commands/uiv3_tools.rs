@@ -1,7 +1,6 @@
-//! UI rev 3, section C: the tool strip's flyouts (boards 1.09 Location and 1.10 Terminal), placing
-//! a symbol with the picker folded and open (1.11, 1.12), the connector maker (1.13) and the
-//! radial wheel (1.14). Behaviour is today's; these check the layout the boards ask for, and write
-//! the screenshots for the side-by-side with the boards.
+//! The tool strip's flyouts (Location and Terminal block), placing
+//! a symbol with the picker folded and open, the connector maker and the
+//! radial wheel. These check the layout and write the screenshots.
 
 use crate::pages::project_panel::{doc, rev3_app as new_app};
 use ecad_app::shell::app::App;

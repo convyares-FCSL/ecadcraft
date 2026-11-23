@@ -1,5 +1,5 @@
-//! The Rating section of Project ▸ Wires and Cables (brief 057, design 057 §2 and §9; boards 2.05
-//! and 2.06): the basis, the factors with where each came from, what the conductor carries
+//! The Rating section of Project ▸ Wires and Cables: the basis, the factors with where each came from, what the
+//! conductor carries
 //! against its protective device, and for a cable its volt drop. It reads one kept result
 //! ([`ecad_electrical::circuits::circuit::Rating`], copied by the tab's view) and writes through `rating`.
 //!
@@ -15,7 +15,7 @@ use ecad_widgets::tokens::{line, space, ui_type};
 use eframe::egui::{self, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
-/// Element names (design 057 §9).
+/// Element names.
 pub(crate) const SECTION: &str = "ecad.project.detail.rating";
 
 /// What the section shows.
@@ -36,7 +36,7 @@ struct Row {
     tip: String,
     edit: Option<&'static str>,
     strong: bool,
-    /// The location a panel temperature is written to (tester F1).
+    /// The location a panel temperature is written to.
     loc: Option<String>,
 }
 
@@ -44,7 +44,7 @@ fn row(label: &'static str, value: impl Into<String>, note: impl Into<String>) -
     Row { label, value: value.into(), note: note.into(), tone: None, tip: String::new(), edit: None, strong: false, loc: None }
 }
 
-/// The folded summary and its tone (design 057 §2.1): pass muted, fail in error.
+/// The folded summary and its tone: pass muted, fail in error.
 pub fn summary(r: &Rating) -> (String, Option<Tone>) {
     let tone = if r.fails() { Some(Tone::Error) } else { None };
     (r.summary(), tone)
@@ -71,7 +71,7 @@ fn rows(r: &Rating) -> Vec<Row> {
             if cable {
                 x.edit = Some("ambient");
             } else {
-                // Tester F1: the panel temperature is set here, on the wire's location (else the
+                // The panel temperature is set here, on the wire's location (else the
                 // project default).
                 x.edit = Some("panel");
                 x.loc = match &f.from {
@@ -195,7 +195,7 @@ fn after(r: &Rating) -> Vec<Row> {
     v
 }
 
-/// The basis words of the segment (design 057 §2.1, §2.2; the owner: "Table" on cables too).
+/// The basis words of the segment ("Table" on cables too).
 const BASIS_WORDS: [&str; 3] = ["Datasheet", "Table", "Manual"];
 
 /// Draw the section's body. Returns the `rating` calls asked for.
@@ -271,7 +271,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
 }
 
 impl crate::shell::app::App {
-    /// Act on a rating row's fix (design 057 §7).
+    /// Act on a rating row's fix.
     pub(crate) fn rating_fix(&mut self, f: ecad_electrical::checks::Fix) {
         use ecad_electrical::checks::Fix;
         let words = |s: RatedSubject| subject_key(s);
@@ -327,7 +327,7 @@ impl crate::shell::app::App {
     }
 }
 
-/// Standards ▸ Rating tables (design 057 §5.3): the licensing line, then the focused table's
+/// Standards ▸ Rating tables: the licensing line, then the focused table's
 /// source and rows (editable), Import CSV… and Export CSV; with no table focused, New. Standards ▸
 /// Cable types with nothing focused: New. Returns whether it drew the detail (else the shared
 /// style detail is drawn).
@@ -379,7 +379,7 @@ pub(crate) fn catalogue_ui(
     if word != ecad_model::StyleCatalogue::RatingTable {
         return false;
     }
-    // The rows are user data of up to 256 KiB (FP8): read and parsed once per change, not per frame.
+    // The rows are user data of up to 256 KiB: read and parsed once per change, not per frame.
     let cache_id = egui::Id::unique(("ecad.standards.ratingtable.read", id.text()));
     let count = t.project.clone().and_then(|p| p.read(&mut t.cad.session, |p, _| p.change_count()).ok()).unwrap_or(0);
     let cached: Option<(u64, std::sync::Arc<ratingtable::Table>)> = ui.data(|d| d.get_temp(cache_id));
@@ -523,7 +523,7 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
     let mut call = None;
     match x.edit.filter(|_| writable) {
         Some(key) => {
-            // An editable value: the shared entry box (docs/design/components.md).
+            // An editable value: the shared entry box.
             let note_rect = egui::Rect::from_min_max(pos2(note_x, rect.top()), rect.max);
             let buf_id = egui::Id::unique(("ecad.rating.edit", id, key));
             let mut text = ui.data(|d| d.get_temp::<String>(buf_id)).unwrap_or_else(|| x.note.clone());

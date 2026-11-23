@@ -1,4 +1,4 @@
-//! The editor's main view (design 055 §4.1, §4.5, §4.8): the block on paper at print size,
+//! The editor's main view: the block on paper at print size,
 //! zoomed to fit, with 20 mm of the frame around it; fields as dashed boxes; the tools.
 //!
 //! Coordinates: the block's own millimetres, from its bottom-left corner, y up ([`View`]).
@@ -118,7 +118,7 @@ pub(crate) fn free_place(l: &TitleBlockLayout, size: (f64, f64)) -> (f64, f64) {
     (1.0, h - 1.0)
 }
 
-/// `p` snapped (design 055 §4.5): to item edges and line ends within 1.5 mm, else to 1 mm.
+/// `p` snapped: to item edges and line ends within 1.5 mm, else to 1 mm.
 /// Also whether it snapped to an item.
 pub(crate) fn snap_point(p: (f64, f64), l: &TitleBlockLayout, on: bool) -> ((f64, f64), bool) {
     if !on {
@@ -239,7 +239,7 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
         Align::Centre => (r.x + r.w / 2.0, Align2::CENTER_CENTER),
         Align::Right => (r.right() - 1.0, Align2::RIGHT_CENTER),
     };
-    // Bold in the UI's emphasis face, at the drawing's size (fonts come through ecad-ui).
+    // Bold in the UI's emphasis face, at the drawing's size (fonts come through ecad-widgets).
     let font = if draw.bold {
         let mut f = ecad_widgets::fonts::font(p.ctx(), ui_type::BODY_EMPHASIS);
         f.size = px * wf as f32;
@@ -520,7 +520,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
         p.circle_filled(v.at(sp.0, sp.1), 3.5, c32(sheet.connection_point));
     }
 
-    // Banners (design 055 §4.8).
+    // Banners.
     if ed.meanwhile {
         let name = d.now.name.clone();
         let banner = Rect::from_min_size(area.min + vec2(space::M, space::M), vec2(area.width() - 2.0 * space::M, 36.0));
@@ -615,7 +615,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
     let Some(d) = ed.draft.as_mut() else { return acts };
     let read_only = d.builtin;
     let resp = ui.interact(area, egui::Id::unique(crate::title_blocks::CANVAS).with("input"), Sense::click_and_drag());
-    // Tester 055 (§5): the canvas is named for the UI tests.
+    // The canvas is named for the UI tests.
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, crate::title_blocks::CANVAS));
     let pointer = ui.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()));
     let mm = pointer.map(|p| v.mm(p));

@@ -1,8 +1,8 @@
-//! Brief 020b headless in the app (design 020 §13 checks E, F): on the demo project, a branch
+//! Merge headless in the app: on the demo project, a branch
 //! changes a device's description and main changes it too; the branch bar's Merge into main…
 //! opens the merge dialog with the conflict (Merge disabled until it is chosen), Keep branch
 //! then Merge records one merge step on main, the graph shows the join, and a plain undo asks
-//! first. Screenshots `020-merge.png` and `020-undomerge.png` are written when
+//! first. Screenshots of the merge and of its undo are written when
 //! `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists.
 
 use std::path::PathBuf;

@@ -1,7 +1,7 @@
-//! Compare revisions (UI rev 3, board 1.16), the layout only: a header over the canvas naming the
+//! Compare revisions, the layout only: a header over the canvas naming the
 //! revisions compared, with Close compare, and the list of changes under the canvas with the
-//! board's columns. The changes, their numbered clouds and the selected change's command come with
-//! Compare itself (rev 3 build order, step 7); until then the list says so, and nothing here
+//! columns. The changes, their numbered clouds and the selected change's command come with
+//! Compare itself; until then the list says so, and nothing here
 //! reads the history.
 //!
 //! It opens from History ([`App::open_compare`]) and shows in Draw only.
@@ -15,7 +15,7 @@ use crate::shell::{Slots, bar};
 
 /// The header's Close compare button.
 pub const CLOSE: &str = "Close compare";
-/// The list's columns (board 1.16) and their widths, px; the change takes the rest.
+/// The list's columns and their widths, px; the change takes the rest.
 pub const COLUMNS: [(&str, f32); 4] = [("Cloud", 56.0), ("Zone", 70.0), ("Change since", 0.0), ("By", 96.0)];
 /// What the list says until Compare is built.
 pub const NOT_YET: &str = "The changes since the last revision, with their clouds on the page, will list here when Compare comes.";

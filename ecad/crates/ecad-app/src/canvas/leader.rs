@@ -1,4 +1,4 @@
-//! The companion leader line (brief 040, step 5; spec §5 "How live is shown", 038 open point 8):
+//! The companion leader line:
 //! in a companion view, a selection made on one side draws a line for one second between the
 //! companion and the object on the page, so the eye finds it. It repaints only while live.
 

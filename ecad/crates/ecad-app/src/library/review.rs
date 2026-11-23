@@ -1,15 +1,15 @@
-//! "Before saving" (design 048 §6.1 step 3, screen k): the drawer's body after Save of an edit.
+//! "Before saving": the drawer's body after Save of an edit.
 //! One row per placed copy (`symbolimpact`'s rows): its tag, page, what changes there and the
 //! outcome, a tick per row (a clashing row cannot be ticked), and the choice Update all · Update
-//! selected · Save as a new symbol. Update selected is pre-selected when any row clashes (owner
-//! answer 10). Save writes `symboledit` with the choice, one transaction.
+//! selected · Save as a new symbol. Update selected is pre-selected when any row clashes.
+//! Save writes `symboledit` with the choice, one transaction.
 //!
-//! Compare (design 048 §8.4) is the same body for one copy, with no Save.
+//! Compare is the same body for one copy, with no Save.
 
 use eframe::egui::{self, Color32, RichText};
 use serde_json::{Value, json};
 
-/// Element names (design 048 §6.1).
+/// Element names.
 pub const BODY: &str = "drawer.symbol-review";
 pub const HEADER: &str = "drawer.symbol-review.header";
 pub const SAVE: &str = "drawer.symbol-review.save";
@@ -22,7 +22,7 @@ pub const REFUSAL: &str = "drawer.symbol-review.refusal";
 pub const TAB: &str = "Before saving";
 pub(crate) const COMPARE_TAB: &str = "Compare";
 
-/// The three choices (design 048 §6.1).
+/// The three choices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
     All,
@@ -229,7 +229,7 @@ fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
 pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
     let shell = ecad_widgets::SHELL;
     let mut acts = Vec::new();
-    // UI rev 3 (board 3.04): "Before saving", what the edit reaches, and the choice with Save at
+    // "Before saving", what the edit reaches, and the choice with Save at
     // the right of the same line.
     ui.horizontal(|ui| {
         let title = if r.compare { "Compare" } else { "Before saving" };
@@ -330,7 +330,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
     acts
 }
 
-/// The choice (design 048 §6.1) as one pill of three, then Back and Save, laid out right to left.
+/// The choice as one pill of three, then Back and Save, laid out right to left.
 fn choice_row(ui: &mut egui::Ui, r: &mut Review, writable: bool, acts: &mut Vec<Act>) {
     let why = if writable { r.save_refusal() } else { Some("Writes are off for this project.".to_string()) };
     let n = r.rows.len();

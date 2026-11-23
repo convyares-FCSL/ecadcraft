@@ -1,4 +1,4 @@
-//! What the shell remembers (design `ui-architecture.md` §5.4): the [`ShellState`] (workspace,
+//! What the shell remembers: the [`ShellState`] (workspace,
 //! panels, the developer switch) and, per project, each page's zoom and centre, the last page and
 //! the last workspace ([`Views`]). Both live in eframe's app storage, never in the `.ecad` file:
 //! a view is how one person looks at a project, not part of it.
@@ -20,8 +20,8 @@ pub const MAX_PAGES: usize = 4096;
 /// The companion's default share of the main view.
 pub(crate) const COMPANION_RATIO: f32 = 0.5;
 
-/// The four workspaces (spec §2): a workspace changes the main view and the tool strip only.
-/// UI rev 3 renames Lists to **Project** on screen; the variant keeps its name until the Project
+/// The four workspaces: a workspace changes the main view and the tool strip only.
+/// Lists is shown as **Project** on screen; the variant keeps its name until the Project
 /// workspace itself is rebuilt.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Workspace {
@@ -59,7 +59,7 @@ impl Workspace {
     }
 }
 
-/// The panels the tool strip opens beside it (UI rev 3: Book, Devices, History; navigation
+/// The panels the tool strip opens beside it (Book, Devices, History; navigation
 /// only). `Pages` is the Book.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LeftTab {
@@ -89,10 +89,10 @@ impl LeftTab {
     }
 }
 
-/// The Book panel's name on the strip (UI rev 3; the Project panel's Pages tab).
+/// The Book panel's name on the strip (the Project panel's Pages tab).
 pub(crate) const BOOK: &str = "Book";
 
-/// How the Book panel shows its pages (UI rev 3, board 1.02): a thumbnail beside each row, or
+/// How the Book panel shows its pages: a thumbnail beside each row, or
 /// plain rows.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BookView {
@@ -106,11 +106,11 @@ pub enum BookView {
 #[serde(default)]
 pub struct LeftState {
     pub tab: LeftTab,
-    /// No panel is open (UI rev 3: the default, both sides closed).
+    /// No panel is open (the default, both sides closed).
     pub collapsed: bool,
     /// The width of each tab, in [`LeftTab::index`] order.
     pub width_per_tab: [f32; 3],
-    /// The one pinned panel (UI rev 3, "Panels: pin or let it close"): it docks and the drawing
+    /// The one pinned panel: it docks and the drawing
     /// moves over for it. Any other panel floats over the drawing and closes when drawing starts.
     /// Pinning another unpins this one. Book starts pinned.
     pub pinned: Option<LeftTab>,
@@ -137,7 +137,7 @@ impl LeftState {
     }
 }
 
-/// What the companion half shows (design §5.5): Reports beside the page in Draw, the page beside
+/// What the companion half shows: Reports beside the page in Draw, the page beside
 /// Reports in Lists.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -152,7 +152,7 @@ impl Default for Companion {
     }
 }
 
-/// The inspector's tabs (UI rev 3): one labelled button each on its collapsed rail.
+/// The inspector's tabs: one labelled button each on its collapsed rail.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RightTab {
     #[default]
@@ -173,7 +173,7 @@ impl RightTab {
     }
 }
 
-/// The interface theme a person chose (UI rev 3, boards 1.17 and 1.18), kept with the shell state.
+/// The interface theme a person chose, kept with the shell state.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Theme {
     /// Graphite, the default.
@@ -192,13 +192,13 @@ impl Theme {
     }
 }
 
-/// The shell's remembered state (design §5.1; UI rev 3's frame).
+/// The shell's remembered state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ShellState {
     pub workspace: Workspace,
     pub left: LeftState,
-    /// The inspector shows as its 56 px rail (UI rev 3: the default).
+    /// The inspector shows as its 56 px rail (the default).
     pub right_collapsed: bool,
     /// The inspector's tab.
     pub right_tab: RightTab,
@@ -207,20 +207,20 @@ pub struct ShellState {
     pub text_panel: bool,
     /// The developer switch: CADCraft's own interface inside the main view.
     pub cad_chrome: bool,
-    /// Brief 040: the sheet the page is drawn on (`ui.sheet`), per person. UI rev 3: Paper, Follow
+    /// The sheet the page is drawn on (`ui.sheet`), per person: Paper, Follow
     /// (the interface theme) or Dark; the screen only.
     pub sheet: crate::canvas::Sheet,
-    /// UI rev 3 (boards 1.17, 1.18): the interface theme, the top bar's light/dark switch.
+    /// The interface theme, the top bar's light/dark switch.
     pub theme: Theme,
-    /// Brief 048: the Library shows the symbol builder (its tool strip, and the 380 px right
+    /// The Library shows the symbol builder (its tool strip, and the 380 px right
     /// panel). View state, never stored.
     #[serde(skip)]
     pub builder: bool,
-    /// Brief 048: a symbol review or Compare is shown in the drawer under the canvas. View
+    /// A symbol review or Compare is shown in the drawer under the canvas. View
     /// state, set each frame, never stored.
     #[serde(skip)]
     pub review: bool,
-    /// UI rev 3 (board 1.16): Compare revisions is open over the canvas. View state, never stored.
+    /// Compare revisions is open over the canvas. View state, never stored.
     #[serde(skip)]
     pub compare: bool,
 }

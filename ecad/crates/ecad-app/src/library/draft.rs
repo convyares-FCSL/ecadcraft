@@ -1,4 +1,4 @@
-//! The symbol builder's draft (design 048 §3.2): the symbol being drawn, as temporary state that
+//! The symbol builder's draft: the symbol being drawn, as temporary state that
 //! is not a project page. No transaction, no history, nothing in the file: its own undo and redo,
 //! kept in eframe storage under [`DRAFTS_KEY`] (at most [`MAX_DRAFTS`] per project) so leaving the
 //! workspace or a crash does not lose it. **Save** is the only write, through `symbolnew`,
@@ -18,7 +18,7 @@ use ecad_model::{ConnectionPointDef, DefinitionId, Document, PointKey, Primitive
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// The eframe storage key of the drafts (design 048 §3.2).
+/// The eframe storage key of the drafts.
 pub const DRAFTS_KEY: &str = "symbol_drafts";
 /// Most drafts kept per project (the oldest goes first).
 pub(crate) const MAX_DRAFTS: usize = 8;
@@ -46,17 +46,17 @@ pub enum Source {
         /// The placed copy the builder was opened from, if any (its page is where Back goes).
         rep: Option<ecad_model::RepresentationId>,
     },
-    /// Make symbol from plain geometry on a page (design 048 §4.1): Save is `makesymbol`.
+    /// Make symbol from plain geometry on a page: Save is `makesymbol`.
     Make {
         page: String,
         page_number: String,
         handles: Vec<u64>,
         /// The page point the draft's (0, 0) sits on.
         at: [f64; 2],
-        /// Replace the drawing on the page with the new symbol (Q7: on by default).
+        /// Replace the drawing on the page with the new symbol (on by default).
         replace: bool,
     },
-    /// Promote a drawn component (design 048 §4.2): its drawing and points are kept as they are.
+    /// Promote a drawn component: its drawing and points are kept as they are.
     Promote {
         component: String,
         tag: String,
@@ -89,7 +89,7 @@ pub struct Draft {
     /// `join: part` (a part of a named device) instead of a device of its own.
     pub part: bool,
     /// A new symbol drawn from a built-in (hex definition ID): `symbolnew {from}`, so the copy
-    /// records `derived_from` (FP4).
+    /// records `derived_from`.
     #[serde(default)]
     pub from: Option<String>,
     pub shape: Shape,
@@ -104,7 +104,7 @@ pub struct Draft {
     redo: Vec<Shape>,
 }
 
-/// A row of the Missing list (design 048 §3.4): which item, in the rules' words.
+/// A row of the Missing list: which item, in the rules' words.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Missing {
     /// `name`, `key`, `prefix`, `point`, `slot` or `other`: what its button does.
@@ -112,8 +112,7 @@ pub struct Missing {
     pub text: String,
 }
 
-/// The device texts a slot may show, in chip order, with the sample each draws (design 048 §3.3
-/// step 4).
+/// The device texts a slot may show, in chip order, with the sample each draws.
 pub(crate) const SLOT_TEXTS: [(&str, &str, &str); 8] = [
     ("tag", "Tag", "-K01"),
     ("description", "Description", "Description"),
@@ -168,7 +167,7 @@ impl Draft {
         d
     }
 
-    /// A draft of page geometry `prims` (Make symbol, design 048 §4.1): moved so its bounding box's
+    /// A draft of page geometry `prims` (Make symbol): moved so its bounding box's
     /// centre is on the nearest grid point at (0, 0), with the offers for it.
     pub fn of_geometry(prims: &[Primitive], page: String, page_number: String, handles: Vec<u64>) -> Self {
         let o = symbol_rules::grid_origin(prims);
@@ -250,7 +249,7 @@ impl Draft {
             .unwrap_or_else(|| PointKey::def("1"))
     }
 
-    /// Why a point cannot go at `at` (design 048 §3.3 step 3), if it cannot; `except` is a point
+    /// Why a point cannot go at `at`, if it cannot; `except` is a point
     /// being moved.
     pub fn point_refusal(&self, at: Pt, except: Option<usize>) -> Option<String> {
         if !on_point_grid(at) {
@@ -359,7 +358,7 @@ impl Draft {
         }
     }
 
-    /// Move the origin to `at` (design 048 §3.3 step 5): everything shifts so `at` is (0, 0). A
+    /// Move the origin to `at`: everything shifts so `at` is (0, 0). A
     /// made symbol's page point moves with it, so it is replaced where it was drawn.
     pub fn set_origin(&mut self, at: Pt) {
         if at.x.abs() < 1e-9 && at.y.abs() < 1e-9 {
@@ -501,7 +500,7 @@ impl Draft {
 
     // ------------------------------------------------------------ the commands
 
-    /// The defaults it saves (design 048 §2.4).
+    /// The defaults it saves.
     fn defaults(&self) -> BTreeMap<String, String> {
         let mut d = BTreeMap::new();
         for (k, v) in [("key", &self.key), ("prefix", &self.prefix), ("description", &self.description), ("rating", &self.rating)] {
@@ -538,7 +537,7 @@ impl Draft {
         }
     }
 
-    /// The Missing list (design 048 §3.4): the commands' own rules, each with its item. `lineage`
+    /// The Missing list: the commands' own rules, each with its item. `lineage`
     /// is the lineage being saved (its own key may be kept).
     pub fn missing(&self, doc: &Document, lineage: Option<ecad_model::DefinitionId>) -> Vec<Missing> {
         let grid = !self.fixed_drawing();
@@ -598,7 +597,7 @@ pub fn fmt_mm(d: f64) -> String {
     if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r}") }
 }
 
-/// The drafts of every project (design 048 §3.2), as stored.
+/// The drafts of every project, as stored.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Drafts {
     pub by_project: BTreeMap<String, Vec<Draft>>,

@@ -1,4 +1,4 @@
-//! Brief 045c in the app: Lists ▸ I/O is a read-only column set over the I/O rows; after a
+//! In the app: Lists ▸ I/O is a read-only column set over the I/O rows; after a
 //! commit it patches only the cards whose rows changed, and a commit touching no PLC data patches
 //! nothing.
 

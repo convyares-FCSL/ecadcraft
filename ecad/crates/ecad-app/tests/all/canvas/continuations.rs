@@ -1,4 +1,4 @@
-//! Brief 049 in the app (review of #85, 3): continuation arrows on a page as drawn. Screenshots of
+//! Continuation arrows on a page as drawn. Screenshots of
 //! an arrow's other-end text, a caption run under its bracket, and the run split in two are written
 //! when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; they are for review, never
 //! committed.

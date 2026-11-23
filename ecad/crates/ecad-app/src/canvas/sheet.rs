@@ -1,12 +1,12 @@
-//! The sheet (brief 040, step 1): the area around the sheet frame in the shell's colour with the
-//! spec's one shadow, so the page reads as paper on a desk, and the 0.25 mm dot grid every 5 mm
+//! The sheet: the area around the sheet frame in the shell's colour with the
+//! one shadow, so the page reads as paper on a desk, and the 0.25 mm dot grid every 5 mm
 //! inside the frame only. Worked out from the view each frame; nothing is read from the project.
 
 use cadcraft_ui_egui::canvas::Xf;
 use ecad_engine::cad::Vec2;
 use eframe::egui::{self, Rect, pos2};
 
-/// The grid's pitch and dot size on paper, mm (spec §4 "Canvas colours").
+/// The grid's pitch and dot size on paper, mm.
 pub const GRID_MM: f64 = 5.0;
 pub const DOT_MM: f64 = 0.25;
 /// Dots closer than this on screen are not drawn (the grid would be a tint), px.

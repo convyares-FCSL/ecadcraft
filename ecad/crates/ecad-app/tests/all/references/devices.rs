@@ -1,4 +1,4 @@
-//! Brief 025 headless in the app (design 025 §10, screenshots for the owner's approval): fixture
+//! Headless in the app: fixture
 //! X built through the ECAD command field, the coil's table with a spare and an over row, the
 //! contact texts on page 105, the Properties palette with the coil selected, and the Checks row.
 //! Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists;

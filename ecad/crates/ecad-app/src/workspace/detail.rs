@@ -1,9 +1,9 @@
-//! The Project workspace's right panel (UI rev 3, "Project workspace": "the right panel shows only
-//! the selected item: its properties and its own checks"; boards 2.01–2.06). It reads the
+//! The Project workspace's right panel ("Project workspace": "the right panel shows only
+//! the selected item: its properties and its own checks";–2.06). It reads the
 //! selected row of the tab shown, from the view's own copy (no project read), and lays it out as
-//! the boards do: the item's name and where it is, a go-to, its checks, then folding sections of
+//! follows: the item's name and where it is, a go-to, its checks, then folding sections of
 //! label and value. Grey text is read from the drawing; a boxed value is set here. A Devices row
-//! keeps 039's property editor (the same `setprop` the page runs). What is not built yet (the part
+//! keeps the shared property editor (the same `setprop` the page runs). What is not built yet (the part
 //! catalogue, the cable manager's ends, the report generator's settings) says so, greyed.
 //!
 //! **Update map.** Nothing of its own: it shows what the tab's view holds this frame.
@@ -23,7 +23,7 @@ pub enum Selected {
     Device(DeviceId),
     ConnectionPoint(crate::terminal_strips::plan::TermKey),
     Card(usize),
-    /// Brief 056 (design 056 §5): a channel row of Project ▸ PLC.
+    /// A channel row of Project ▸ PLC.
     Channel(crate::plc::list::IoKey),
     Wire(usize),
     Cable(usize),
@@ -35,9 +35,9 @@ pub const NOTHING: &str = "Select a row to see it here.";
 /// The greyed parts buttons' reason.
 pub(crate) const CATALOGUE_COMES: &str = "The part catalogue comes later.";
 pub(crate) const CABLE_MANAGER_COMES: &str = "Comes with the cable manager.";
-/// Brief 059 (owner): the Rating section of a cable with nothing to rate yet.
+/// The Rating section of a cable with nothing to rate yet.
 pub(crate) const RATE_NOTE: &str = "Set a cable type to rate this cable.";
-/// Brief 059 (board 2.06): the Details pane's tabs and their accessible name.
+/// The Details pane's tabs and their accessible name.
 pub const CABLE_TABS: &str = "ecad.project.detail.cable.tabs";
 /// A cross-section's unit.
 pub(crate) const MM2: &str = "mm\u{b2}";
@@ -149,7 +149,7 @@ pub(crate) struct Section {
     /// Greyed buttons with their reason.
     pub(crate) later: Vec<(&'static str, &'static str)>,
     pub(crate) note: Option<&'static str>,
-    /// Brief 057: the Rating section's result (drawn by [`crate::wires::rating`]).
+    /// The Rating section's result (drawn by [`crate::wires::rating`]).
     pub(crate) rating: Option<crate::wires::rating::Panel>,
 }
 
@@ -162,11 +162,11 @@ pub(crate) struct Detail {
     pub(crate) go: Option<(String, Go)>,
     /// Its checks (an empty list: "No checks on …").
     pub(crate) checks: Vec<(String, Tone)>,
-    /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
+    /// The open cores' fixes, as buttons under the checks.
     pub(crate) core_fixes: Vec<ecad_electrical::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     pub(crate) editor: bool,
-    /// Brief 059: the cable editor goes after the head, with the cable's drawn ends.
+    /// The cable editor goes after the head, with the cable's drawn ends.
     pub(crate) cable_editor: Option<(ecad_model::CableId, [String; 2])>,
     pub(crate) sections: Vec<Section>,
 }
@@ -258,15 +258,15 @@ fn draw_section(ui: &mut egui::Ui, sec: &Section, writable: bool) -> Vec<Out> {
 enum Out {
     Go(Go),
     Panel(crate::pages::project_panel::Action),
-    /// Brief 057: a `rating` call from the Rating section.
+    /// A `rating` call from the Rating section.
     Run(&'static str, serde_json::Value),
-    /// Brief 059: the cable editor's ask, on its cable.
+    /// The cable editor's ask, on its cable.
     Cable(ecad_model::CableId, crate::cables::editor::Ask),
 }
 
 /// Draw the right panel for the Project workspace in `rect`.
 pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    // Brief 056 (owner, 2026-11-14): a card selected in Project ▸ PLC is edited, as board 2.03.
+    // A card selected in Project ▸ PLC is edited, as.
     if let Some(Selected::Card(i)) = selected_key(t) {
         crate::plc::card_editor::show(t, ui, rect, i);
         return;
@@ -282,7 +282,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let writable = t.project_writable();
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
-    // Brief 059 (board 2.06): the cable's Cable / Checks tabs, and its Checks rows.
+    // The cable's Cable / Checks tabs, and its Checks rows.
     let (mut cable_tab, cable_checks) = t.reports.as_ref().map_or((0, Vec::new()), |r| (r.cables.detail_tab, r.cables.cable_checks.clone()));
     let tab_before = cable_tab;
     let mut cable_edit = t.reports.as_mut().map(|r| &mut r.cables.edit);
@@ -306,7 +306,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             });
             ui.label(egui::RichText::new(&d.subtitle).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
             ui.add_space(space::S);
-            // Brief 059 (board 2.06): Cable | Checks n.
+            // Cable | Checks n.
             if d.cable_editor.is_some() {
                 let checks_label = if cable_checks.is_empty() { "Checks".to_string() } else { format!("Checks \u{25cf} {}", cable_checks.len()) };
                 let labels = ["Cable", checks_label.as_str()];
@@ -343,7 +343,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
                     panel::status_pill(ui, *tone, c, c);
                 }
             }
-            // Brief 057 (owner): Go to the open end, for each open core (the core table's Not
+            // Go to the open end, for each open core (the core table's Not
             // used toggle is right there, so no tick button here).
             for f in &d.core_fixes {
                 if ui.add(prim::Button::new(crate::checks::panel::GO_TO_OPEN_END).small()).clicked() {
@@ -352,8 +352,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             }
             ui.add_space(space::S);
             rule(ui);
-            // Brief 059: the cable editor (design 059 §5.2), with 057's Rating section between Part
-            // and Ends, as board 2.06 orders them.
+            // The cable editor, with the Rating section between Part
+            // and Ends.
             if let (Some((cable, ends)), Some(ed)) = (&d.cable_editor, cable_edit.take()) {
                 let mut mid = Vec::new();
                 let mut middle = |ui: &mut egui::Ui| {
@@ -374,7 +374,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
                 }
                 rule(ui);
             }
-            // A cable's sections (057's Rating) were drawn inside the editor, after Part.
+            // A cable's sections (the Rating section) were drawn inside the editor, after Part.
             if d.cable_editor.is_none() {
                 for sec in d.sections.iter().filter(|s| !s.title.is_empty()) {
                     out.extend(draw_section(ui, sec, writable));
@@ -403,7 +403,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     }
 }
 
-/// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
+/// The Rating section, after Made as or Part; its folded line is the
 /// result. A wire or cable with no rating data shows none, so a project that does not rate is
 /// not nagged.
 pub(crate) fn rating_section(_t: &App, r: Option<&ecad_electrical::circuits::circuit::Rating>, methods: &[&'static str]) -> Section {

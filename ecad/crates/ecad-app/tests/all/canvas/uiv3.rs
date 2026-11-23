@@ -1,6 +1,6 @@
-//! UI rev 3, section D (boards 1.15 to 1.18): the light and dark interface, the sheet colour
+//! The light and dark interface, the sheet colour
 //! menu (Paper, Follow, Dark), the zones numbered across and lettered down, and the screenshots
-//! for the side-by-sides.
+//! of both themes.
 
 use ecad_app::canvas::Sheet;
 use ecad_app::shell::app::App;

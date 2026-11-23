@@ -1,4 +1,4 @@
-//! Reports, Print Book and Release (briefs 024 and 027).
+//! Reports, Print Book and Release.
 
 use crate::shell;
 use crate::shell::app::*;
@@ -7,7 +7,7 @@ use eframe::egui::{self};
 use serde_json::json;
 
 impl App {
-    /// Open the Reports window (design 024 §6.2).
+    /// Open the Reports window.
     /// Open Reports and show it: in Lists, or beside the page when Draw's companion is open.
     pub fn reports_view(&mut self) {
         self.open_reports();
@@ -32,7 +32,7 @@ impl App {
         }
     }
 
-    /// Open the Print Book dialog (design 024 §4.1), scoped to `folder` when given.
+    /// Open the Print Book dialog, scoped to `folder` when given.
     pub fn open_print_book(&mut self, folder: Option<ecad_model::FolderId>) {
         let Some(p) = self.project.clone() else { return };
         let folders = p
@@ -92,7 +92,7 @@ impl App {
                 }
             }
             Some(crate::reports::panel::Out::GotoAt(page, at)) => self.goto_place(page, at),
-            // Brief 028: double-clicking a cable shows its cores.
+            // Double-clicking a cable shows its cores.
             Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i))
                 if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) =>
             {
@@ -105,7 +105,7 @@ impl App {
         self.release_window(ctx);
     }
 
-    /// Write the Reports tab as shown to `path` as CSV (design 024 §6.3).
+    /// Write the Reports tab as shown to `path` as CSV.
     pub fn export_report(&mut self, path: &str) {
         let path = self.report_path(path);
         let Some(r) = &mut self.reports else { return };
@@ -124,7 +124,7 @@ impl App {
         }
     }
 
-    /// Brief 028: show the core list of the cable on shown row `i` of the Cables tab.
+    /// Show the core list of the cable on shown row `i` of the Cables tab.
     fn show_cores_of_row(&mut self, i: usize) {
         let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
@@ -134,7 +134,7 @@ impl App {
         }
     }
 
-    /// Brief 028: Reports on the Terminals tab for `strip` (Properties' **Show plan**).
+    /// Reports on the Terminals tab for `strip` (Properties' **Show plan**).
     pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
@@ -145,7 +145,7 @@ impl App {
         }
     }
 
-    /// Brief 028: Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
+    /// Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
     pub fn show_cores(&mut self, cable: ecad_model::CableId) {
         self.reports_view();
         if let Some(r) = &mut self.reports {
@@ -156,7 +156,7 @@ impl App {
     }
 
     /// Go to a Reports row: a BOM row's first device's main symbol, a wire's first route, a
-    /// cable's label box (design 024 §6.2), a terminal (brief 028). Nothing is recorded.
+    /// cable's label box, a terminal. Nothing is recorded.
     pub fn goto_report_row(&mut self, tab: crate::reports::panel::Tab, i: usize) {
         enum To {
             Symbol(ecad_model::RepresentationId),
@@ -202,7 +202,7 @@ impl App {
         .ok()
     }
 
-    /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.
+    /// Open the Release dialog: the pending revision, or `rev` written again.
     pub fn open_release(&mut self, rev: Option<String>) {
         let read_only = self.header().read_only;
         self.release = Some(crate::history::release_dialog::ReleaseDialog::new(rev, read_only));
@@ -247,12 +247,12 @@ impl App {
     }
 
     /// Release with the dialog's choices: `release` through the command path. A folder that
-    /// exists asks §9's question; anything else refused stays in the dialog with its way out.
+    /// exists asks the folder-exists question; anything else refused stays in the dialog with its way out.
     pub fn release_from_dialog(&mut self, params: serde_json::Value) -> Result<serde_json::Value, String> {
         let r = self.run_value("release", params);
         match &r {
             Ok(_) => {
-                // The command echoed what it wrote (design 027 §5.1).
+                // The command echoed what it wrote.
                 self.release = None;
                 if self.revisions.is_some() {
                     self.open_revisions();

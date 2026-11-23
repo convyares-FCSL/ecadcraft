@@ -4,7 +4,7 @@
 //!
 //! CADCraft shows the tab and queues clicks (`CadApp::extra_tool_tabs`,
 //! `CadApp::take_tool_requests`); everything ECAD about it is here:
-//! - **Start** buttons start the command's interactive form (brief 008: prompts, picks, previews,
+//! - **Start** buttons start the command's interactive form (prompts, picks, previews,
 //!   Enter and Esc at CADCraft's command line), exactly as typing its bare name does. Convert to
 //!   Device converts the current selection at once, or asks to select objects.
 //! - **Run** buttons type the command into the same path as the ECAD command field, so the
@@ -13,9 +13,9 @@
 //!   note on what to fill in, and run nothing. IDs and handles are filled in from the current
 //!   selection where it names the objects; everything else is a `<placeholder>`, and a line
 //!   still holding a template's placeholder is refused instead of run.
-//! - **App** buttons act in the app itself: Preview Reference (brief 016) and the **ECAD Dev**
+//! - **App** buttons act in the app itself: Preview Reference and the **ECAD Dev**
 //!   tab's developer tools (now the Project panel's Developer section: the command field, the debugger and snapshots), which
-//!   replaced the app's top banner (owner, 2026-11-08).
+//!   replaced the app's top banner.
 //!
 //! The command window stays because CADCraft's own command line takes a space as Enter: it can
 //! run `name {json}` only when the line has no space at all, so JSON with spaces or a title such
@@ -35,7 +35,7 @@ pub const TAB: &str = "ECAD";
 pub const GROUPS: &[&str] = &["Components", "Wiring", "Numbering", "Edit", "Text"];
 
 /// The developer tools' group: shown in the Project panel's collapsed **Developer** section, not
-/// in Tool Sets (owner, 2026-11-08).
+/// in Tool Sets.
 pub const DEV_GROUP: &str = "Developer";
 
 /// What a button does.
@@ -49,7 +49,7 @@ pub enum Kind {
     Template,
     /// Handled by the app itself (no command).
     App,
-    /// Open or close the symbol search window (brief 018, [`crate::library::search`]).
+    /// Open or close the symbol search window ([`crate::library::search`]).
     Search,
 }
 
@@ -94,7 +94,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Type a symbol (coil, no, nc, mcb1…) or Enter for the last one, then click to place devices; R rotates, D adds to a device, T sets the tag; Enter to finish",
         kind: Kind::Start("place"),
     },
-    // Brief 028 (design 028 §3.2, §4): beside Place Symbol.
+    // Beside Place Symbol.
     Tool {
         id: "ecad.terminal_blocks",
         group: "Components",
@@ -109,7 +109,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click a terminal, then another of the same strip: a bridge; the next click continues from it, Enter ends",
         kind: Kind::Start("bridge"),
     },
-    // Brief 030 (design 030 §2.3, §5.4): after Draw Bridge.
+    // After Draw Bridge.
     Tool {
         id: "ecad.tool.accessory",
         group: "Components",
@@ -152,8 +152,8 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
     },
-    // Brief 022: wire numbers.
-    // Brief 032: repair wire ends that meet.
+    // Wire numbers.
+    // Repair wire ends that meet.
     Tool {
         id: "ecad.joinwires",
         group: "Wiring",
@@ -175,7 +175,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Open Renumber with Wires chosen: preview, then Apply (fixed numbers stay)",
         kind: Kind::App,
     },
-    // Brief 026 (design §3, §5.3): the Numbering group.
+    // The Numbering group.
     Tool {
         id: "ecad.renumber",
         group: "Numbering",
@@ -204,7 +204,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click a wire near an attached end to detach it",
         kind: Kind::Start("disconnect"),
     },
-    // Brief 024: location boxes.
+    // Location boxes.
     Tool {
         id: "ecad.tool.locationbox",
         group: "Components",
@@ -311,7 +311,7 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Open the ECAD command field: type a command with JSON parameters, for example wire {\"points\":[[0,0],[40,0]]}",
         kind: Kind::App,
     },
-    // Brief 031 (design §5.5, §5.7): the Text group (`ecad.toolset.text`).
+    // The Text group (`ecad.toolset.text`).
     Tool {
         id: "ecad.tool.showtext",
         group: "Text",
@@ -335,14 +335,14 @@ pub const TOOLS: &[Tool] = &[
     },
 ];
 
-/// The tab as CADCraft's Tool Sets panel shows it (developer switch only). Brief 041: every
+/// The tab as CADCraft's Tool Sets panel shows it (developer switch only). Every
 /// button's command is now reachable from an action ([`covered`]); the buttons stay here, behind
 /// the developer switch, until the tests that drive the forms through them move to the actions.
 pub fn tab() -> ExtraToolTab {
     ExtraToolTab { name: TAB.into(), groups: GROUPS.iter().map(|g| group(g, true)).collect() }
 }
 
-/// The command a button reaches (brief 041): its own for Start and Run, the template's, the
+/// The command a button reaches: its own for Start and Run, the template's, the
 /// symbol search's, or the dialog's. `None` for the developer tools.
 pub(crate) fn command_of(t: &Tool) -> Option<&'static str> {
     Some(match t.kind {
@@ -366,7 +366,7 @@ pub(crate) fn command_of(t: &Tool) -> Option<&'static str> {
     })
 }
 
-/// Whether an action covers the button (brief 041): its command, or Preview Reference's action.
+/// Whether an action covers the button: its command, or Preview Reference's action.
 pub fn covered(t: &Tool) -> bool {
     command_of(t).is_some_and(|c| crate::commands::actions::covers(c) || crate::commands::actions::find(c).is_some())
 }
@@ -409,7 +409,7 @@ pub struct Picked {
     pub connection_points: Vec<ConnectionPointId>,
     /// The selection had more than [`MAX_PICKED`] handles; only the first were followed.
     pub truncated: bool,
-    /// The page shown in the active drawing, when it is an ECAD page (brief 010: the page
+    /// The page shown in the active drawing, when it is an ECAD page (the page
     /// templates fill it in).
     pub page: Option<PageId>,
 }
@@ -431,7 +431,7 @@ impl Picked {
                     let index =
                         index.get_or_insert_with(|| doc.representations().values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect());
                     match index.get(&i) {
-                        // A route's line names the wire it carries (design 072 §4); a loose line
+                        // A route's line names the wire it carries; a loose line
                         // carries none.
                         Some(Subject::Route(r)) => {
                             if let Some(w) = ecad_electrical::wires::routes::wire_of_route(doc, *r) {
@@ -450,32 +450,32 @@ impl Picked {
                     }
                     connection_points.insert(t);
                 }
-                // A line of a cable's fan view names its cable (brief 005).
+                // A line of a cable's fan view names its cable.
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
-                // A link line names its strip (brief 030).
+                // A link line names its strip.
                 Some(Mapped::JumperBar(c, _)) => {
                     subjects.insert(Subject::Device(c));
                 }
-                // A cable reference's text names its cable (brief 010); a device's tag text or
-                // terminal label names its device (brief 018).
+                // A cable reference's text names its cable; a device's tag text or
+                // terminal label names its device.
                 Some(Mapped::RefText(r) | Mapped::Tag(r) | Mapped::DeviceReference(r)) => {
                     if let Some(r) = doc.representations().get(&r) {
                         subjects.insert(r.subject);
                     }
                 }
-                // A conductor's label names its wire (brief 022).
+                // A conductor's label names its wire.
                 Some(Mapped::Label(w)) => {
                     subjects.insert(Subject::Wire(w));
                 }
-                // A T's dot names the wire its line carries (lane 072 D).
+                // A T's dot names the wire its line carries.
                 Some(Mapped::Tee(r)) => {
                     if let Some(w) = ecad_electrical::wires::routes::wire_of_route(doc, r) {
                         subjects.insert(Subject::Wire(w));
                     }
                 }
-                // The sheet frame (brief 019) names nothing.
+                // The sheet frame names nothing.
                 Some(Mapped::Frame(_)) | None => {}
             }
         }

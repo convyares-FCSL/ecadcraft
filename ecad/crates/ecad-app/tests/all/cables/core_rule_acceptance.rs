@@ -1,7 +1,6 @@
-//! Tester 057, the owner's core rule in the app (item 3 of the overseer's re-check): a `core-open`
-//! row's go-to lands on the cable's page with the cable selected and the ring at the cable (an
-//! open core has no wire of its own, design 072 §4.2), and **Tick Not used** is one transaction
-//! that one undo takes back.
+//! The core rule in the app: a `core-open` row's go-to lands on the cable's page with the cable
+//! selected and the ring at the cable (an open core has no wire of its own), and **Tick Not used** is
+//! one transaction that one undo takes back.
 
 use ecad_app::pages::project_panel::Action;
 use ecad_app::shell::app::App;

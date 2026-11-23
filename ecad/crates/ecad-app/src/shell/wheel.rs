@@ -1,11 +1,11 @@
-//! The wheel in the window (brief 041 step 3): a right-click on the page while no tool runs
+//! The wheel in the window: a right-click on the page while no tool runs
 //! classifies what is under the cursor (`ecad_engine::pointer::kind`) and opens that kind's
 //! wheel there; a right-click on a page row in the Pages tab opens the page row's wheel. Choosing
 //! a slot runs its action ([`crate::shell::app::App::run_action`]), the same path the tool strip, the keys and
 //! Ctrl+K use.
 //!
 //! While a tool runs, a right-click is Enter (it finishes the step, CADCraft's default) and opens
-//! no wheel (U0 Q4). Over Lists, Library and Publish the page is hidden and does not answer.
+//! no wheel. Over Lists, Library and Publish the page is hidden and does not answer.
 //!
 //! Update map: the wheel reads the object's kind and each slot's `enabled` once, when it opens;
 //! nothing while it is closed.
@@ -34,7 +34,7 @@ pub struct Open {
     pub reads: u64,
 }
 
-/// A refusal (spec §5): what was refused, why, and where (for **Show it**).
+/// A refusal: what was refused, why, and where (for **Show it**).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Refusal {
     pub what: String,
@@ -61,7 +61,7 @@ impl crate::shell::app::App {
         self.shell.tools.wheel.as_ref().map(|w| &w.target)
     }
 
-    /// Lane U4b's part of the main view, each frame after the page: open the wheel on a right
+    /// The wheel's and intent line's part of the main view, each frame after the page: open the wheel on a right
     /// press over the page while no tool runs, draw it and act on it; then the intent line.
     pub(crate) fn wheel_frame(&mut self, ui: &mut egui::Ui) {
         // CADCraft reports an idle right-click too; the press below is what opens the wheel.
@@ -347,7 +347,7 @@ impl crate::shell::app::App {
                     _ => ListsView::Reports,
                 };
             }
-            // UI rev 3: Wire ▸ Continuation places the continuation arrow, as Find symbol does.
+            // Wire ▸ Continuation places the continuation arrow, as Find symbol does.
             App::Continuation => self.start_pick(crate::library::search::Pick::Symbol(ecad_electrical::symbols::StarterKey::Continuation))?,
             App::Coming => return Err(actions::COMING.into()),
             App::ShowNet => {
@@ -453,7 +453,7 @@ impl crate::shell::app::App {
             App::RenumberWires => self.open_renumber(false, true, None),
             App::Finalise => self.open_renumber(true, false, None),
             App::WireSettings => self.panel_action(crate::pages::project_panel::Action::ProjectSettings),
-            // Brief 048 (design 048 §9.6).
+            // New symbol.
             App::NewSymbol => self.new_symbol(),
             App::EditSymbol => {
                 let rep = target.and_then(|t| t.representation).ok_or("Edit symbol needs a placed symbol: right-click one.")?;
@@ -507,7 +507,7 @@ fn template(a: &Action, target: Option<&Target>, picked: &crate::commands::tools
     if let Some((line, _)) = crate::commands::tools::template(tool, picked) {
         return line;
     }
-    // Brief 044: a connector pin's new name.
+    // A connector pin's new name.
     if a.command == "pinlabel" {
         return match target.and_then(|t| t.connection_point) {
             Some(term) => format!(r#"pinlabel {{"connection_point":"{}","to":"<new pin name>"}}"#, term.hex()),

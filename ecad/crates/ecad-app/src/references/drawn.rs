@@ -22,7 +22,7 @@ pub struct DrawnRow {
     pub this: bool,
 }
 
-/// Pins joined as the boards write them: `A1–A2`, `1–2, 3–4`.
+/// Pins joined as they are written on the drawing: `A1–A2`, `1–2, 3–4`.
 pub(crate) fn pins(labels: &[String]) -> String {
     labels.join("\u{2013}")
 }

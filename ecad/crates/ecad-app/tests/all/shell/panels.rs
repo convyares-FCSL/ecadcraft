@@ -1,7 +1,7 @@
-//! UI rev 3, section A (boards 1.02, 1.03, 1.04 and 1.08): the left panels. Pin or let close
+//! The left panels. Pin or let close
 //! (a pinned panel docks, an unpinned one floats and closes when drawing starts), Book's
 //! thumbnails, ticks and footer, Devices' grouping with "Not on a page yet" first, History's
-//! sections, the page well's hover preview, and the screenshots for the side-by-side.
+//! sections, the page well's hover preview, and the screenshots.
 
 use crate::common::{self, Opts};
 use crate::pages::project_panel::{doc, rev3_app as new_app};

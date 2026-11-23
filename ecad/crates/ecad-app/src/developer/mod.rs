@@ -1,14 +1,13 @@
-//! The Project panel's **Developer** section (owner, 2026-11-08): folded by default; unfolded, a
+//! The Project panel's **Developer** section: folded by default; unfolded, a
 //! resizable lower part of the panel that hosts the developer tools itself:
 //!
 //! - the ECAD command field (`name {json}` forms) with **Run** and the reply under it (the
 //!   template buttons of Tool Sets fill this field);
 //! - the read-only debugger ([`crate::developer::debugger`]) drawn inline;
 //! - **Inspect Project**: a readable, copyable summary of the project;
-//! - **Agent access** (brief 035, design §3.2) moved to Settings ▸ Agent access (brief 042, U0
-//!   O7); [`agent_row`] is drawn there.
-//! - `ui.primitives`: the hidden page showing every primitive of `ecad-ui` in every state (brief
-//!   037), for screenshots; it needs no project.
+//! - **Agent access** moved to Settings ▸ Agent access; [`agent_row`] is drawn there.
+//! - `ui.primitives`: the hidden page showing every primitive of `ecad-widgets` in every state,
+//!   for screenshots; it needs no project.
 //!
 //! Everything here reads, except the command field, which runs commands through the ordinary
 //! command path. Excluded: a separate debugger panel or command window.
@@ -27,7 +26,7 @@ pub const FIELD: &str = "ECAD command";
 pub const DEBUGGER: &str = "Debugger";
 pub const INSPECT: &str = "Inspect Project";
 pub(crate) const SNAPSHOT: &str = "Export Inspector Snapshot";
-/// Element names of the Agent access row (brief 035, design §13).
+/// Element names of the Agent access row.
 pub const AGENT_MODE: &str = "agent.access.mode";
 pub const AGENT_PORT: &str = "agent.access.port";
 pub const AGENT_STATUS: &str = "agent.access.status";
@@ -37,7 +36,7 @@ pub const AGENT_PORT_RANGE: &str = "1024–65535";
 pub(crate) const AGENT_RESTART: &str = "The new port is used the next time ECAD starts.";
 /// The mode's tooltip under `--control`.
 pub(crate) const AGENT_THIS_RUN: &str = "Set by --control for this run.";
-/// The primitives showcase's button (brief 037), named as its page.
+/// The primitives showcase's button, named as its page.
 pub const PRIMITIVES: &str = ecad_widgets::showcase::PAGE;
 
 /// What the section asks the app for.
@@ -85,7 +84,7 @@ pub enum Body {
     None,
     Debugger,
     Inspect,
-    /// The primitives showcase (brief 037).
+    /// The primitives showcase.
     Primitives,
 }
 
@@ -115,7 +114,7 @@ pub struct Parts<'a> {
     pub project: bool,
 }
 
-/// The Agent access row: mode, port and status (design 035 §3.2). Since brief 042 it is drawn
+/// The Agent access row: mode, port and status. It is drawn
 /// by Settings ▸ Agent access ([`crate::settings::agent`]), not by this section.
 pub(crate) fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
@@ -162,7 +161,7 @@ pub(crate) fn agent_row(ui: &mut egui::Ui, a: AgentRow<'_>, out: &mut Vec<Action
     }
 }
 
-/// Draw the section in `ui`, filling it (brief 038: the Text panel's Commands tab; it was the
+/// Draw the section in `ui`, filling it (the Text panel's Commands tab; it was the
 /// lower part of the Project panel). Returns what was asked for.
 pub fn show(ui: &mut egui::Ui, p: Parts<'_>) -> Vec<Action> {
     let mut out = Vec::new();

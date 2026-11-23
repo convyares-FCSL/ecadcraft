@@ -1,9 +1,7 @@
-//! Tester 054 in the app, headless (egui_kittest) at 1920 × 1080: design 054 §4.1, §4.3, §4.4,
-//! §5 and §12.1 AC13 and AC14. The + Page picker from the page well on page 101 highlights
-//! Schematic and adds 102 right after it; Esc writes nothing; Panel layout is disabled with its
+//! Page settings in the app, headless (egui_kittest) at 1920 × 1080.
+//! The + Page picker from the page well on page 101 highlights Schematic and adds 102 right after it; Esc writes nothing; Panel layout is disabled with its
 //! tooltip; Settings ▸ Pages and sheets writes one `setstyle` per control, and read-only disables
-//! every control; the Book's Renumber pages and a folder's Start number are named. Written from the
-//! brief and design before the implementation; only the element names and words of the design.
+//! every control; the Book's Renumber pages and a folder's Start number are named.
 
 use ecad_app::settings::Section;
 use ecad_app::shell::app::App;

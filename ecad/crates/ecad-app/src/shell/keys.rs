@@ -1,8 +1,8 @@
-//! The shell's keys (spec §5, "Keyboard that remains"): the tool group keys V D T W C (UI rev 3
-//! keeps a key only where a group of 041's survives), `]` (collapse or expand the inspector),
+//! The shell's keys: the tool group keys V D T W C
+//! (only some groups keep a key), `]` (collapse or expand the inspector),
 //! Ctrl+1–4, Ctrl+K, Ctrl+/, PgUp/PgDn, F, Alt+Left/Right and Esc; and, from the action table
-//! (brief 041, [`crate::commands::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
-//! Ctrl+Y. Undo and redo are keys only (owner answer 8).
+//! ([`crate::commands::actions`]), Del, F2, R, X, Ctrl+C, Ctrl+V, Ctrl+D, Ctrl+Z and
+//! Ctrl+Y. Undo and redo are keys only.
 //!
 //! The keys are taken before CADCraft's drawing reads the frame's input, so Ctrl+1 opens no
 //! CADCraft palette and a group letter starts no command. Single letters count only while the
@@ -45,7 +45,7 @@ pub fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
         t.toggle_text_panel();
     }
     if take(Modifiers::COMMAND, Key::K) {
-        // Search pages, tags, symbols and actions (brief 041).
+        // Search pages, tags, symbols and actions.
         t.search.open = !t.search.open;
         t.search.focus = t.search.open;
     }
@@ -58,7 +58,7 @@ pub fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
     if typing {
         return;
     }
-    // Brief 048: the builder's keys (its tools, the draft's undo and redo) while the pointer is
+    // The builder's keys (its tools, the draft's undo and redo) while the pointer is
     // over it, before CADCraft's hidden frame can take Ctrl+Z or Ctrl+Y for the project.
     if t.shell.state.workspace == Workspace::Library
         && let Some(b) = t.library.builder.as_mut()
@@ -158,7 +158,7 @@ fn action_keys(t: &mut App, ctx: &egui::Context, over_main: bool, prompting: boo
 ///
 /// egui's `consume_shortcut` matches logically: it ignores an extra Shift, so Ctrl+Z would also
 /// take Ctrl+Shift+Z (redo), Ctrl+C CADCraft's Ctrl+Shift+C (copy with base point) and R a
-/// Shift+R. This check keeps those chords for what they are (review of #79).
+/// Shift+R. This check keeps those chords for what they are.
 pub(crate) fn take_exact(ctx: &egui::Context, m: Modifiers, k: Key) -> bool {
     ctx.input_mut(|i| {
         let Some(at) = i.events.iter().position(|e| {

@@ -1,12 +1,12 @@
-//! Settings ▸ Project info (UI rev 3, board 5.01) and Settings ▸ Pages and sheets: the Project
-//! info and Project settings popouts (design 019 §7.1, split by the owner; brief 042), laid out as
-//! rev 3's cards. Their copy is the app's `project_props`, filled from `projectprops {}` when the
+//! Settings ▸ Project info and Settings ▸ Pages and sheets: the Project
+//! info and Project settings popouts, laid out as
+//! cards. Their copy is the app's `project_props`, filled from `projectprops {}` when the
 //! section is shown; Save (OK) writes the changed fields as before (one transaction per line) and
 //! closes Settings, Cancel writes nothing.
 //!
 //! Project info shows the fields that exist today (title, drawing number, customer, status, the
-//! default function and location, the project's list of functions and locations (brief 052c,
-//! [`crate::settings::designations`]), and the free properties). People and approval, where each title
+//! default function and location, the project's list of functions and locations
+//! ([`crate::settings::designations`]), and the free properties). People and approval, where each title
 //! block field is filled from, the
 //! customer logo, revision letters and the project's language and units are placeholders: they
 //! have no data yet.
@@ -23,10 +23,10 @@ use crate::shell::bar;
 pub const TABS: [&str; 2] = ["Page types", "Text styles"];
 /// Said where a project is needed.
 pub(crate) const NO_PROJECT: &str = "No project is open.";
-/// Save and Cancel (042's popout names).
+/// Save and Cancel (the popouts' names).
 pub const OK: &str = "ecad.projectprops.ok";
 pub const CANCEL: &str = "ecad.projectprops.cancel";
-/// The title block preview (board 5.01).
+/// The title block preview.
 pub(crate) const TITLE_BLOCK: &str = "settings.project.title_block";
 
 fn grey(text: &str) -> egui::RichText {
@@ -45,7 +45,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let name = t.header().name.unwrap_or_default();
     let page = t.panel.active.and_then(|a| t.panel.rows().iter().find(|r| r.id == a)).map(|r| (r.number.clone(), r.title.clone()));
     let pages = t.panel.rows().len();
-    // Brief 052c: the project's list, read again only after a commit that could change it.
+    // The project's list, read again only after a commit that could change it.
     let designation_rows = crate::settings::designations::rows(t, ui.ctx());
     let mut designation_ask: crate::settings::designations::Ask = None;
     let sheet = match t.shell.state.sheet {
@@ -225,13 +225,13 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     if let Some(o) = out {
         t.project_props_out(o);
     }
-    // Brief 052c (design 052 §9.4): the card's edits are immediate commands.
+    // The card's edits are immediate commands.
     if let Some(cmd) = designation_ask {
         let _ = t.run_line(&cmd);
     }
 }
 
-/// The title block preview: two rows of cells, label above value, on paper (board 5.01). A cell
+/// The title block preview: two rows of cells, label above value, on paper. A cell
 /// with no value yet shows a dashed box.
 fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)]) {
     let sheet = crate::canvas::Sheet::Paper.tokens();
@@ -275,7 +275,7 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
 }
 
 /// Settings ▸ Pages and sheets: the Project settings popout (sheet, references, tags, revisions,
-/// numbering, wires) on its first tab, 031's text styles on the second.
+/// numbering, wires) on its first tab, the text styles on the second.
 pub fn pages(t: &mut App, ui: &mut egui::Ui) {
     let text = t.settings.section == crate::settings::Section::TextStyles;
     let mut i = usize::from(text);
@@ -284,7 +284,7 @@ pub fn pages(t: &mut App, ui: &mut egui::Ui) {
         t.settings.section = if i == 1 { crate::settings::Section::TextStyles } else { crate::settings::Section::Pages };
     }
     ui.add_space(space::M);
-    // Brief 054 (design 054 §5): the page type table; rev 3's sheet and numbering rows are folded
+    // The page type table; the sheet and numbering rows are folded
     // under it.
     if !text {
         crate::settings::pages::show(t, ui);
@@ -319,7 +319,7 @@ impl App {
             Ok(v) => {
                 let mut d = crate::settings::sheets::ProjectProps::from_json(&v, read_only, popout);
                 if popout == Popout::Settings {
-                    // Brief 031: the Text section reads `textstyle {}`; brief 032 §4.4: the wire
+                    // The Text section reads `textstyle {}`; the wire
                     // label rows read `wiresettings {}` (reads only).
                     d.text =
                         self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));

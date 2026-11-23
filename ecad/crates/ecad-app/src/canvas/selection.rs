@@ -1,6 +1,6 @@
-//! Selection and relations (brief 040, step 5; spec principle 3, "one device, many places, shown
+//! Selection and relations ("one device, many places, shown
 //! as one"): selecting a placement of a device marks its other placements on the page (a dashed
-//! outline, [`crate::canvas::markers`]) and lists the rest ([`Related::elsewhere`], which 042's inspector
+//! outline, [`crate::canvas::markers`]) and lists the rest ([`Related::elsewhere`], which the inspector
 //! shows with a go-to). The selection itself stays CADCraft's; nothing here selects.
 
 use ecad_engine::Project;

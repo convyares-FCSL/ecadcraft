@@ -1,5 +1,5 @@
-//! Brief 048's drawer under the canvas: the symbol review ("Before saving") in the builder, or
-//! Compare. UI rev 3 has no drawer otherwise (Checks are the inspector's tab), so it shows only
+//! The review drawer under the canvas: the symbol review ("Before saving") in the builder, or
+//! Compare. There is no drawer otherwise (Checks are the inspector's tab), so it shows only
 //! while one of them is open: its header names it, and its body is the review
 //! ([`crate::library::review`]). Closing the review (its own Back or Close) closes the drawer.
 

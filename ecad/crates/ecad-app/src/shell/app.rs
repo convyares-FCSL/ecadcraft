@@ -69,7 +69,7 @@ pub enum NameBoxKind {
 }
 
 /// The small page name box opened by Tool Sets' New Page and Rename Page and the Project
-/// panel's **+** (owner, 2026-11-08): prefilled, OK or Enter runs one command (one transaction,
+/// panel's **+**: prefilled, OK or Enter runs one command (one transaction,
 /// one `u`), Cancel or Esc does nothing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NameBox {
@@ -135,7 +135,7 @@ pub struct Status {
     pub file: FileStatus,
 }
 
-/// What the title, header and Revisions show about branches (design 020 §3.6).
+/// What the title, header and Revisions show about branches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchInfo {
     /// The branch shown.
@@ -151,7 +151,7 @@ pub struct BranchInfo {
     pub file: Option<String>,
 }
 
-/// The window title (owner answer 15): the branch once the project has more than one.
+/// The window title: the branch once the project has more than one.
 pub fn window_title(info: Option<&BranchInfo>) -> String {
     match info {
         Some(b) if b.count > 1 => format!("{TITLE} — {} · {}", b.file.as_deref().unwrap_or("unsaved"), b.name),
@@ -185,7 +185,7 @@ pub struct App {
     /// The Project panel's Developer section: the command field's reply, the inline debugger and
     /// the project summary.
     pub developer: developer::Developer,
-    /// Brief 037: what ECAD's fonts and style were last installed for (CADCraft's interface
+    /// What ECAD's fonts and style were last installed for (CADCraft's interface
     /// language, theme choice and the system theme), and whether the style is applied once more
     /// in the next pass, when ECAD's fonts are in.
     pub(crate) ecad_style: Option<EcadStyleKey>,
@@ -194,14 +194,14 @@ pub struct App {
     pub debugger: Debugger,
     /// The kept views' first builds, on the background pool (issue 48).
     pub warm: ecad_engine::warm::Warm,
-    /// The Project panel (brief 016).
+    /// The Project panel.
     pub panel: ProjectPanel,
-    /// The read-only preview of another page (brief 016), when open.
+    /// The read-only preview of another page, when open.
     pub preview: Option<Preview>,
     /// Which project the panel's copy belongs to: counts projects attached in this session, and
-    /// branch switches (brief 020a: every copy rebuilds once, as on open).
+    /// branch switches (every copy rebuilds once, as on open).
     pub(crate) project_serial: u64,
-    /// Brief 020a: the branch facts the title, header and Revisions show, with the project serial
+    /// The branch facts the title, header and Revisions show, with the project serial
     /// and branch-action count they were read at (read again only when either moves).
     pub(crate) branch_info: Option<((u64, u64), Option<BranchInfo>)>,
     /// The project's branch-action count and the branch shown, as last seen ([`App::sync_branch`]).
@@ -220,7 +220,7 @@ pub struct App {
     pub(crate) focus_drawing: bool,
     /// The ECAD object under the pointer and since when (egui time, seconds).
     pub(crate) hovered: Option<(Hovered, f64)>,
-    /// The hover description shown now (design 008 §4.3).
+    /// The hover description shown now.
     pub(crate) hover: Option<Vec<String>>,
     /// How long the pointer rests on an object before its description shows, in seconds.
     pub hover_delay: f64,
@@ -229,19 +229,19 @@ pub struct App {
     /// The lineweight display the app last set when it opened a project; `None` before the
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
     pub(crate) lwdisplay_set: Option<bool>,
-    /// The symbol search window (brief 018), opened from the ECAD tab's Find Symbol.
+    /// The symbol search window, opened from the ECAD tab's Find Symbol.
     pub search: crate::library::search::SymbolSearch,
-    /// Brief 048: the Library workspace (the browser, or the symbol builder).
+    /// The Library workspace (the browser, or the symbol builder).
     pub library: library::Library,
-    /// Brief 024: the Reports window and the Print Book dialog, while open.
+    /// The Reports window and the Print Book dialog, while open.
     pub reports: Option<crate::reports::panel::Reports>,
     pub print_book: Option<crate::reports::panel::PrintBook>,
-    /// Brief 027: the Release dialog.
+    /// The Release dialog.
     pub release: Option<crate::history::release_dialog::ReleaseDialog>,
-    /// UI rev 3: the Publish workspace (board 4.01).
+    /// The Publish workspace.
     pub publish: publish::Publish,
 
-    /// Brief 019: the ECAD section of CADCraft's Properties palette, shared with its closure.
+    /// The ECAD section of CADCraft's Properties palette, shared with its closure.
     pub props: crate::settings::sheets::Shared,
     /// What the section's copy was built for: project serial, change count, page, selection.
     pub(crate) props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
@@ -249,14 +249,14 @@ pub struct App {
     pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
     pub project_props: Option<crate::settings::sheets::ProjectProps>,
-    /// Brief 042: Settings, a place you visit (its section, the Standards screen, the inspector's rows).
+    /// Settings, a place you visit (its section, the Standards screen, the inspector's rows).
     pub settings: settings::Settings,
     pub revisions: Option<crate::settings::sheets::Revisions>,
-    /// The merge dialog (brief 020b), when open.
+    /// The merge dialog, when open.
     pub merge: Option<crate::history::merge_dialog::MergeDialog>,
-    /// The Renumber dialog (brief 026), also Finalise numbering, when open.
+    /// The Renumber dialog, also Finalise numbering, when open.
     pub renumber: Option<crate::devices::renumber_dialog::RenumberDialog>,
-    /// Brief 026 (design §5.5): the issue line waiting on the provisional question, and its text.
+    /// The issue line waiting on the provisional question, and its text.
     pub issue_prompt: Option<(String, String)>,
     /// The issue line to run once Finalise numbering is applied (Finalise numbering now).
     pub(crate) issue_after_finalise: Option<String>,
@@ -264,14 +264,14 @@ pub struct App {
     pub(crate) new_page_folder: Option<ecad_model::FolderId>,
     /// The revision shown in the panel (its log point), when one is open.
     pub(crate) panel_revision: Option<u64>,
-    /// The change count the Revisions dialog was filled at (design 019 §9: it follows
+    /// The change count the Revisions dialog was filled at (it follows
     /// `SetProperty(Project, rev.*)` and Name/UnnameVersion, so undo and redo too).
     pub(crate) revisions_seen: u64,
     /// The selection last checked for frame objects.
     pub(crate) frame_checked: Vec<Handle>,
-    /// Brief 035: live agent access (preference, listener, bridge sessions, banner).
+    /// Live agent access (preference, listener, bridge sessions, banner).
     pub agent: agent::Agent,
-    /// Brief 038: the shell around the drawing (workspaces, panels, the developer switch).
+    /// The shell around the drawing (workspaces, panels, the developer switch).
     pub shell: shell::Shell,
 }
 
@@ -280,13 +280,13 @@ pub struct App {
 pub(crate) enum Hovered {
     /// A terminal within the capture aperture (drawn or symbol, free or connected).
     ConnectionPoint(ecad_model::ConnectionPointId),
-    /// A cable reference end (its point or its text) within the pick box (brief 010).
+    /// A cable reference end (its point or its text) within the pick box.
     Reference(ecad_model::RepresentationId),
     /// The object CADCraft's rollover highlights.
     Object(Handle),
 }
 
-/// The hover tooltip's egui id (and element name, design 008 §4.3).
+/// The hover tooltip's egui id (and element name).
 pub const HOVER_ID: &str = "ecad.hover";
 /// Default [`App::hover_delay`].
 pub(crate) const HOVER_DELAY: f64 = 0.5;
@@ -344,7 +344,7 @@ impl App {
 
     pub(crate) fn empty(snapshots: Option<PathBuf>) -> Self {
         let requested = Arc::new(AtomicBool::new(false));
-        // Brief 035: CadApp's own control channel is fed only by the app's agent drain, with
+        // CadApp's own control channel is fed only by the app's agent drain, with
         // the allowlisted reads; the port's requests never reach it directly.
         let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
         let mut cad = CadApp::new(Session::empty(), Services::default()).with_control(cad_rx);
@@ -424,7 +424,7 @@ impl App {
         self.project.as_ref()
     }
 
-    /// Whether a project is open (with or without its page window, design 016 §4.1).
+    /// Whether a project is open (with or without its page window).
     pub fn project_open(&self) -> bool {
         self.project.as_ref().is_some_and(|p| p.is_attached(&self.cad.session))
     }
@@ -463,7 +463,7 @@ impl App {
     /// app's dialog, open the Save As dialog when CADCraft asked for a file name, and report
     /// saves.
     pub fn after_logic(&mut self) {
-        // Only the page being shown is redrawn on a commit (owner, 2026-11-08): a page a commit
+        // Only the page being shown is redrawn on a commit: a page a commit
         // elsewhere left stale is redrawn here once its tab is in front. A busy project is tried
         // again next frame (a failed projection is reported by the redraw itself).
         self.handle_tools();
@@ -483,7 +483,7 @@ impl App {
         self.report_saves();
     }
 
-    /// Zoom the page window to its drawing without the sheet frame (brief 019: Zoom Extents fits
+    /// Zoom the page window to its drawing without the sheet frame (Zoom Extents fits
     /// the whole sheet). Returns `false` when there is no drawing to zoom to.
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
@@ -499,7 +499,7 @@ impl App {
         self.cad.run("zoom", json!({"mode": "window", "p1": p1, "p2": p2})).is_ok()
     }
 
-    /// The sheet frame is never selected (design 019 §3.2): a selection that held only the frame
+    /// The sheet frame is never selected: a selection that held only the frame
     /// says why it is empty.
     pub(crate) fn drop_frame_selection(&mut self) {
         // Only when the selection changed: no work on a frame where nothing was picked.
@@ -521,7 +521,7 @@ impl App {
 
     /// Per-frame logic (before layout).
     pub fn logic(&mut self, ctx: &egui::Context) {
-        // Brief 035: the author check and the agent's calls, before any input of this frame.
+        // The author check and the agent's calls, before any input of this frame.
         self.agent_frame(ctx);
         if ctx.input(|i| i.viewport().close_requested()) {
             self.prepare_quit();
@@ -533,7 +533,7 @@ impl App {
         }
     }
 
-    /// Lay out the harness dialogs, the debugger (when open), the shell (brief 038) with
+    /// Lay out the harness dialogs, the debugger (when open), the shell with
     /// CADCraft's drawing in its main view, the floating windows and the hover tooltip.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         // ECAD's fonts and style first: on the first frame nothing is laid out yet, so egui takes
@@ -569,13 +569,13 @@ impl App {
         self.hover_tooltip(ui.ctx());
     }
 
-    /// Brief 037: ECAD's fonts (IBM Plex Sans for the interface, Barlow Semi Condensed for the
-    /// sheet) on top of CADCraft's font set for the language (upstream seam US2), and ECAD's style
+    /// ECAD's fonts (IBM Plex Sans for the interface, Barlow Semi Condensed for the
+    /// sheet) on top of CADCraft's font set for the language, and ECAD's style
     /// from the tokens. Runs after CADCraft's frame start, which installs its own fonts and style
     /// when the language or theme changes; ECAD's then replace them, in the same pass. The style
     /// is applied again in the next pass, once ECAD's font families exist.
     pub(crate) fn ecad_style(&mut self, ctx: &egui::Context) {
-        // UI rev 3 (boards 1.17, 1.18): the person's light or dark interface, read by every
+        // The person's light or dark interface, read by every
         // `ecad_widgets::SHELL` colour drawn on this thread from here on.
         let theme = self.shell.state.theme.ui();
         ecad_widgets::set_theme(theme);
@@ -599,7 +599,7 @@ impl App {
         self.agent.shut_down();
     }
 
-    /// Brief 035: the Undo agent session confirmation, while open (the banner itself is one line
+    /// The Undo agent session confirmation, while open (the banner itself is one line
     /// in the Developer section until the UI shell).
     pub(crate) fn agent_banner_ui(&mut self, ctx: &egui::Context) {
         self.agent_undo_window(ctx);
@@ -632,7 +632,7 @@ impl App {
         let panel_revision = &mut self.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
-            // An issued revision opened read-only (design 019 §7.3): its pages, under its bar.
+            // An issued revision opened read-only: its pages, under its bar.
             match &p.revision_view {
                 Some(rv) => {
                     if *panel_revision != Some(rv.id) {
@@ -655,7 +655,7 @@ impl App {
             // Update map: the tree is re-read only when its version moved (pages added, removed,
             // renamed or moved, page properties, folder ops, a page becoming (un)available).
             panel.sync(serial, p.page_list_version(), || Some(p.tree_rows()));
-            // Brief 054: folder start numbers and the generated pages, when anything changed.
+            // Folder start numbers and the generated pages, when anything changed.
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
                 panel.starts = ecad_electrical::pages::page_types::starts(doc);
@@ -667,15 +667,15 @@ impl App {
             // the devices a change touched.
             if devices_shown {
                 panel.devices.sync(serial, p);
-                // Brief 039: symbols selected on the page select their rows.
+                // Symbols selected on the page select their rows.
                 panel.devices.follow(p, &selection);
             }
-            // The History tab's copy, only while it is shown (brief 020a; its own update map).
+            // The History tab's copy, only while it is shown (its own update map).
             if panel.tab == crate::pages::project_panel::Tab::History {
                 panel.history.sync(serial, p);
             }
         });
-        // The Checks copy (brief 022), for the shell's drawer and Checks pill (brief 038): the
+        // The Checks copy, for the shell's drawer and Checks pill: the
         // project builds its list on the first show and keeps it from each change; the copy
         // follows its revision.
         {
@@ -724,7 +724,7 @@ impl App {
         }
     }
 
-    /// The branch facts (design 020 §3.6), read again only after a switch or a branch action.
+    /// The branch facts, read again only after a switch or a branch action.
     pub fn branch_info(&mut self) -> Option<BranchInfo> {
         let key = (self.project_serial, self.branch_rev);
         if let Some((k, v)) = &self.branch_info
@@ -759,7 +759,7 @@ impl App {
         info
     }
 
-    /// The one refresh path for branch actions, clicked or typed (reviewer finding 1): when the
+    /// The one refresh path for branch actions, clicked or typed: when the
     /// project's branch-action count or the branch shown moved, the title, branch bar, Revisions
     /// and History are read again; after a switch, every copy rebuilds once as on open and a
     /// preview closes. One integer and one ID compared per frame otherwise.
@@ -784,7 +784,7 @@ impl App {
         }
     }
 
-    /// Keep the window title in step with the branch shown (owner answer 15); sent only when it
+    /// Keep the window title in step with the branch shown; sent only when it
     /// changes.
     pub(crate) fn sync_title(&mut self, ctx: &egui::Context) {
         let info = if self.project_open() { self.branch_info() } else { None };

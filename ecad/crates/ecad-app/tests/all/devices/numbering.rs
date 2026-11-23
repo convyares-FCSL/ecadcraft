@@ -1,10 +1,8 @@
-//! Brief 026 headless in the app (design 026 §14 check K): on the demo project, the Renumber
+//! Numbering headless in the app: on the demo project, the Renumber
 //! dialog by element name (preview, Apply, one step), the Devices tab's clash buttons (Swap first),
 //! Project settings' provisional tags, the Checks rows, the Issue Revision prompt with Finalise
-//! numbering now, and the merge dialog's Make them one device. Screenshots `026-renumber.png`,
-//! `026-swap.png`, `026-provisional.png`, `026-checks.png`, `026-issue.png` and
-//! `026-merge-one.png` are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter
-//! exists.
+//! numbering now, and the merge dialog's Make them one device. Screenshots of each
+//! are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists.
 
 use std::path::PathBuf;
 use std::sync::Arc;

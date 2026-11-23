@@ -1,5 +1,5 @@
-//! The intent line (brief 041 step 4, spec §3 "CAD command line: removed"): a 28 px strip that
-//! replaces CADCraft's command line while a tool prompts. UI rev 3: it sits at the top of the
+//! The intent line: a 28 px strip that
+//! replaces CADCraft's command line while a tool prompts. It sits at the top of the
 //! canvas, so it never covers the title block, and shows only when it has something to say
 //! (nothing permanent sits over the sheet). Output only: typing still goes to the running prompt,
 //! as before.
@@ -7,9 +7,9 @@
 //! - While a tool runs: its prompt, its keywords as chips that answer it, what is being typed,
 //!   and the electrical intent at the cursor where it is known (`interact::intent`: "joins A1 of
 //!   -K01").
-//! - A refusal (spec §5): what was refused, why, and **Show it**; a line a running tool echoed
+//! - A refusal: what was refused, why, and **Show it**; a line a running tool echoed
 //!   (its refusal of a click) shows the same way.
-//! - At rest: nothing (rev 3; 041 showed how to reach things here).
+//! - At rest: nothing.
 //!
 //! Update map: the sentence is recomputed only when the tool, the cursor's pixel or the project's
 //! change count moved, and only while a tool runs; at rest nothing reads the project
@@ -75,7 +75,7 @@ impl App {
         let mut keyword = None;
         let (mut show_it, mut dismiss) = (false, false);
         let mut text = String::new();
-        // UI rev 3 (boards 1.11 to 1.13): a floating line centred at the top of the canvas, as
+        // A floating line centred at the top of the canvas, as
         // wide as what it says, so it never covers the title block.
         let s = ecad_widgets::SHELL;
         let frame = egui::Frame::new()
@@ -84,7 +84,7 @@ impl App {
             .corner_radius(ecad_widgets::style::corner(ecad_widgets::tokens::radius::POPOVER))
             .shadow(ecad_widgets::style::shadow())
             .inner_margin(egui::Margin::symmetric(space::L as i8, space::S as i8));
-        // Beside the picker, its chip or the connector maker when one shows (boards 1.11, 1.12).
+        // Beside the picker, its chip or the connector maker when one shows.
         let left = self.shell.tools.panel_right.map_or(rect.left() + space::XXL, |r| r + space::XL);
         let max_w = (rect.right() - space::XXL - left).max(200.0);
         let last_w = ui.ctx().memory(|m| m.area_rect(egui::Id::unique("ecad.shell.intent"))).map_or(max_w, |r| r.width());

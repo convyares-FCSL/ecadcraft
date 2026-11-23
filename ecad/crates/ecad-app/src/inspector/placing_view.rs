@@ -1,4 +1,4 @@
-//! Board 1.11 (UI rev 3, "Placing a device"): while Place Symbol runs, the inspector describes the
+//! Placing a device: while Place Symbol runs, the inspector describes the
 //! device about to be placed: its symbol, its next tag (from the tool's prompt), the page's
 //! Function and Location it will take, and what the click changes. Read only: the picker and the
 //! tool do the placing ([`crate::shell::placing`]); nothing here writes or reads the project.
@@ -220,7 +220,7 @@ mod tests {
         assert!(p.head().1.contains("joins -K01"));
     }
 
-    /// Review of #91, 2: a continuation makes no device and takes no tag.
+    /// A continuation makes no device and takes no tag.
     #[test]
     fn a_tagless_symbol_announces_no_device() {
         let p = Placing { tag: None, joins: false, symbol: symbols::catalogue::by_key("continuation") };

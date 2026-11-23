@@ -41,7 +41,7 @@ impl App {
             self.keep_draft();
             return;
         }
-        // Brief 055: the Title blocks tab is the title block editor.
+        // The Title blocks tab is the title block editor.
         if self.library.browser.tab == browser::LibraryTab::TitleBlocks {
             self.title_blocks_view(ui, main);
             return;
@@ -102,7 +102,7 @@ impl App {
         }
     }
 
-    /// The Library's right panel in `rect` (UI rev 3 boards 3.01–3.04: no inspector rail; the
+    /// The Library's right panel in `rect` (no inspector rail; the
     /// selected symbol, or the builder's Details).
     pub(crate) fn library_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let s = ecad_widgets::SHELL;

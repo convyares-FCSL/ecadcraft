@@ -1,11 +1,11 @@
-//! The terminal manager as a column set (brief 039 step 4): design 036 §9's row model laid out
+//! The terminal manager as a column set: the row model laid out
 //! as a terminal plan, mirrored: inside columns right-aligned towards the strip, the strip in the
-//! middle, outside columns left-aligned away from it. Only 036's editable fields are inputs:
+//! middle, outside columns left-aligned away from it. Only the editable fields are inputs:
 //! Position and Label (`terminalblocklabel`), Rating on a fuse position (`setprop rating.<position>`); the
 //! jumper bars are lanes beside the terminals. Everything else is read.
 //!
 //! **Update map.** The rows are the kept report models' strip rows (`ReportModels::strips`, kept from
-//! each change's ops, design 036 §11). Per strip, the revision it last changed at
+//! each change's ops). Per strip, the revision it last changed at
 //! (`Strips::changed_at`) is compared with the one the table last read: only strips that changed
 //! (or appeared or went) have their rows re-read and patched. Every other commit: nothing. Full
 //! rebuild only on first show, a reload of the models (`build_id`), or a new strip filter,
@@ -39,7 +39,7 @@ pub const CORE: ColumnId = ColumnId(11);
 pub const OUT_TARGET: ColumnId = ColumnId(12);
 pub const PLACE: ColumnId = ColumnId(13);
 
-/// The columns, laid out as a terminal plan (UI rev 3, board 2.02): inside (read from the
+/// The columns, laid out as a terminal plan: inside (read from the
 /// drawing, right-aligned towards the strip), the strip (what you set), outside (read, left-aligned
 /// away from it). Each strip is a group of rows (grouped by [`STRIP`], which is not a column).
 pub fn columns() -> Vec<Column> {
@@ -60,7 +60,7 @@ pub fn columns() -> Vec<Column> {
     ]
 }
 
-/// The band captions over the plan's three parts (board 2.02).
+/// The band captions over the plan's three parts.
 pub fn bands() -> Vec<ecad_widgets::table::Band> {
     use ecad_widgets::table::Band;
     vec![
@@ -73,7 +73,7 @@ pub fn bands() -> Vec<ecad_widgets::table::Band> {
 /// One plan row, copied from the strip model.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlanRow {
-    /// A level of a position (036 §9's row).
+    /// A level of a position.
     Term {
         tag: String,
         row: Box<TermRow>,
@@ -83,7 +83,7 @@ pub enum PlanRow {
         lanes: LaneCell,
         place: String,
     },
-    /// An accessory in a gap (030 §7.1).
+    /// An accessory in a gap.
     Gap { tag: String, mark: String, words: String },
 }
 
@@ -278,7 +278,7 @@ impl Default for TerminalStripPlanView {
     fn default() -> Self {
         let mut table = Table::new("ecad.terminal_blocks", "Terminals");
         table.empty = "No terminal strips yet.";
-        // UI rev 3: the plan's bands, a group of rows per strip.
+        // The plan's bands, a group of rows per strip.
         table.bands = bands();
         table.view.set_group(&TerminalStripPlanSource::default(), Some(STRIP));
         Self { source: TerminalStripPlanSource::default(), table, built: None, revision: 0, strips: BTreeMap::new(), pending: None, rebuilds: 0 }

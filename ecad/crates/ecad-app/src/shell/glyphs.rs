@@ -1,4 +1,4 @@
-//! Small glyphs the left panels draw (UI rev 3, boards 1.02–1.04 and 1.08): the header's pin and
+//! Small glyphs the left panels draw: the header's pin and
 //! its list and thumbnail switch, a row's checkbox and drag grip, a page's thumbnail and a
 //! change's lane dot. Drawn in code with the painter, in the shell's colours; they are panel
 //! furniture rather than icons of the app, so they stay out of [`ecad_widgets::tokens::Icon`].
@@ -72,7 +72,7 @@ pub fn person(p: &Painter, r: Rect, c: Color32) {
 }
 
 /// A page thumbnail: the sheet's ground with a frame and a schematic sketch (three rails and a
-/// box, as the boards draw it); outlined in `outline` (the open page's blue) when given.
+/// box); outlined in `outline` (the open page's blue) when given.
 pub(crate) fn thumbnail(p: &Painter, r: Rect, paper: Color32, ink: Color32, outline: Option<Color32>) {
     p.rect_filled(r, 1.0, paper);
     let inner = r.shrink(r.width() * 0.1);

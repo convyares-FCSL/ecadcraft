@@ -1,4 +1,4 @@
-//! One reusable table editor popup (brief 054, design 054 §8.1a): a title, rows of text, and Save
+//! One reusable table editor popup: a title, rows of text, and Save
 //! and Cancel. What a caller may do with the rows is set by [`Caps`]: add, remove and edit them
 //! (the cover's notes), hide, reorder and relabel generated rows (the wire colours and the symbol
 //! legend), or only read them with a link to where they are edited (the revisions).

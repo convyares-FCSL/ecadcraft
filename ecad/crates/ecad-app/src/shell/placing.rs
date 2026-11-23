@@ -1,4 +1,4 @@
-//! Placing a device (UI rev 3, "Placing a device"; boards 1.11 and 1.12): the picker at the
+//! Placing a device: the picker at the
 //! canvas's top left while Place Symbol runs.
 //!
 //! - **Open** while the tool asks for a symbol (Device ▸ Symbol, or the chip's Change): the
@@ -34,7 +34,7 @@ pub(crate) const BROWSE: &str = "Browse the library";
 pub(crate) const SYMBOL_TAB: &str = "Symbol";
 pub(crate) const CONNECTOR_TAB: &str = "Connector";
 
-/// The panel's width (board 1.12), its tiles per row and most tiles shown.
+/// The panel's width, its tiles per row and most tiles shown.
 pub(crate) const WIDTH: f32 = 396.0;
 const COLUMNS: usize = 3;
 const MAX_TILES: usize = 9;
@@ -198,7 +198,7 @@ impl App {
         clicked
     }
 
-    /// The open picker (board 1.12).
+    /// The open picker.
     fn picker(&mut self, ui: &mut egui::Ui, at: egui::Pos2, canvas: Rect) {
         let s = ecad_widgets::SHELL;
         let q = self.shell.tools.placing.query.clone();
@@ -328,7 +328,7 @@ impl App {
     }
 }
 
-/// The frame of the chip and the picker: the board's floating panel.
+/// The frame of the chip and the picker: the floating panel.
 pub(crate) fn popover_frame() -> egui::Frame {
     let s = ecad_widgets::SHELL;
     egui::Frame::new()

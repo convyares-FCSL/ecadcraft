@@ -1,4 +1,4 @@
-//! Brief 050a in the app, headless (egui_kittest; design 050 §7, §9): the standard header makes
+//! In the app, headless (egui_kittest): the standard header makes
 //! a standard after saying nothing is written until Enter; the catalogue strip shows the text,
 //! location and frame tables; a style's detail says the consequence first and applies a field in
 //! one transaction, patching one row (no rebuild); the inspector's Style row lists the text styles

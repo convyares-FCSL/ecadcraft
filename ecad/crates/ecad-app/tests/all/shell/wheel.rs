@@ -1,5 +1,5 @@
-//! Brief 041 (U4b) in the app at 1920 × 1080: the wheel on the page and on a page row, the
-//! intent line in place of the command line, every key the brief names, the tool groups and
+//! In the app at 1920 × 1080: the wheel on the page and on a page row, the
+//! intent line in place of the command line, every key, the tool groups and
 //! Ctrl+K over pages, tags, symbols and actions.
 
 use cadcraft_engine::geom::Vec2;

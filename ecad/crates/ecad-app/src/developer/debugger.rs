@@ -1,4 +1,4 @@
-//! The developer debugger panel (persistence stage 2b, proposal §21): read-only, opened from the
+//! The developer debugger panel: read-only, opened from the
 //! ECAD Dev tool set (Tool Sets), never shown by default.
 //!
 //! It follows one trail: **selected drawing objects → ECAD IDs → model objects → the transactions
@@ -49,9 +49,9 @@ pub enum View {
     Definitions,
     History,
     Persistence,
-    /// The version 2 file's tables and snapshots (brief 021).
+    /// The version 2 file's tables and snapshots.
     Storage,
-    /// The version 2 file's branches (brief 021).
+    /// The version 2 file's branches.
     Branches,
     Diagnostics,
     Checks,
@@ -94,7 +94,7 @@ pub enum CheckKind {
     Projection,
     /// Re-read the file and check frames, checksums, hash chain and history.
     File,
-    /// Rebuild the reference index (brief 025) and compare it with the kept one.
+    /// Rebuild the reference index and compare it with the kept one.
     Index,
 }
 
@@ -146,7 +146,7 @@ pub struct Debugger {
     list_page: usize,
     history_page: usize,
     events_page: usize,
-    /// The `Cable references` diagnostics (brief 010), derived once per snapshot.
+    /// The `Cable references` diagnostics, derived once per snapshot.
     ref_lines: Vec<String>,
     references_page: usize,
     at_text: String,
@@ -806,7 +806,7 @@ impl Debugger {
             prim::body(ui, &line, false);
         }
         rule(ui);
-        // Brief 010: derived once per snapshot from its copy of the document, never saved; paged.
+        // Derived once per snapshot from its copy of the document, never saved; paged.
         prim::caption(ui, "Cable references");
         pager(ui, "references", self.ref_lines.len(), &mut self.references_page);
         for line in self.ref_lines.iter().skip(self.references_page * PAGE).take(PAGE) {

@@ -1,11 +1,11 @@
-//! The agent's last write on the page (brief 043, spec §4 "Agent's last write"): the objects of
+//! The agent's last write on the page: the objects of
 //! the agent's last accepted transaction on the page shown get a dashed 0.6 mm outline in
 //! `agent_write` with a name chip; a change selected in History gets the same outline in the
 //! selection colour with its author.
 //!
 //! # Semantics
 //! - Painted over the page with egui from CADCraft's view transform (`canvas.xf`), never as an
-//!   entity, so it is never plotted or printed (`agent_write` does not print: `ecad-tokens`).
+//!   entity, so it is never plotted or printed (`agent_write` does not print: `ecad-widgets`).
 //! - Shown for as long as the banner shows that write as its last; gone when the banner is
 //!   dismissed, and when Library or Publish hides the page (only where the page is shown:
 //!   `Shell::page_rect`, so also beside Lists' companion).
@@ -14,7 +14,7 @@
 //!   on that page, by anyone); otherwise a frame only transforms the kept boxes to the screen. An
 //!   idle frame reads nothing from the project ([`reads`] counts the reads).
 //!
-//! Excluded: CADCraft's canvas and ECAD's painter layer (040), marks (`overlay_marks`), plots.
+//! Excluded: CADCraft's canvas and ECAD's painter layer, marks (`overlay_marks`), plots.
 
 use std::time::Instant;
 
@@ -27,7 +27,7 @@ use eframe::egui;
 
 use crate::shell::app::App;
 
-/// The outline's width on the sheet, mm (spec §4).
+/// The outline's width on the sheet, mm.
 pub(crate) const OUTLINE_MM: f32 = 0.6;
 /// Its dashes and gaps, mm.
 const DASH_MM: f32 = 1.5;
@@ -181,7 +181,7 @@ impl App {
                 let Some(touched) = ecad_electrical::views::PropsFeed::touched_by(p.ledger.document(), &t.ops) else { return };
                 let Some(drawing) = pages.drawing_of(p, page) else { return };
                 let mut boxes = Vec::new();
-                // The routes it drew or changed too (design 072: a loose line is a route with no
+                // The routes it drew or changed too (a loose line is a route with no
                 // wire, and a route has no properties, so `touched` leaves it out).
                 let routes = t.ops.iter().filter_map(|op| match op {
                     ecad_model::Op::AddRoute { id, .. } | ecad_model::Op::ModifyRoute { id, .. } => Some(Object::Route(*id)),

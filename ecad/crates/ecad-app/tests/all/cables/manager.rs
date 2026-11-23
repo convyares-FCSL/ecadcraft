@@ -1,6 +1,6 @@
-//! Lane 059 (the cable manager): Project ▸ Cables' + Cable, the not-drawn state, the editable
-//! Details pane and Remove (design 059 §5), headless on the demo project. With `ECAD_TESTER_SHOTS`
-//! set, writes `059-list.png`, `059-undrawn-details.png` and `059-remove-refused.png`.
+//! The cable manager: Project ▸ Cables' + Cable, the not-drawn state, the editable
+//! Details pane and Remove, headless on the demo project. With `ECAD_TESTER_SHOTS`
+//! set, writes screenshots of the list, an undrawn cable's details and a refused remove.
 
 use ecad_app::shell::ListsView;
 use ecad_app::shell::app::App;

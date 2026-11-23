@@ -1,4 +1,4 @@
-//! A property row of the Properties copy ([`crate::settings::sheets::PropsShared`]) drawn the rev 3 way:
+//! A property row of the Properties copy ([`crate::settings::sheets::PropsShared`]) drawn for the inspector:
 //! the grey label, then an input box when it is set here (a value read from elsewhere shows as
 //! its grey placeholder, with where it comes from at the right), or grey text when it cannot be
 //! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
@@ -62,7 +62,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
             .on_hover_text("Choose");
         }
     });
-    // Brief 052 (design 052 §9.1): an unset function or location offers the selected symbol's
+    // An unset function or location offers the selected symbol's
     // context as **Use +CP1**.
     if let Some((code, from)) = &row.proposal {
         ui.horizontal_wrapped(|ui| {
@@ -87,7 +87,7 @@ pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
     }
 }
 
-/// Brief 026 (design §7.1): a taken tag offers Swap first, then the same device, then the next
+/// A taken tag offers Swap first, then the same device, then the next
 /// free tag. Nothing is written until a button is clicked.
 fn tag_clash(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, row: &Row, e: &str) {
     if row.key != "tag" {

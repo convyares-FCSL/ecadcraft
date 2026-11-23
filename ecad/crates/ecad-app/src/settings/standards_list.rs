@@ -1,5 +1,5 @@
-//! Settings ▸ Standards as column sets on U3's table (brief 042, screen e): every default of the
-//! registry with its value and an origin badge. Brief 050a: the style catalogues (text styles
+//! Settings ▸ Standards as column sets on the shared table: every default of the
+//! registry with its value and an origin badge. The style catalogues (text styles
 //! among them, one row per style, not per kind) are [`crate::settings::style_catalogues`].
 //!
 //! **Update map.** The rows show the project's values (resolved at project scope), so only a
@@ -29,7 +29,7 @@ pub(crate) fn source_word(s: Source) -> &'static str {
         Source::Page => "Page",
         Source::Object => "Object",
         Source::Symbol => "Symbol",
-        // Brief 048 (FP6): a project symbol's own value, from its definition.
+        // A project symbol's own value, from its definition.
         Source::Definition => "Definition",
     }
 }

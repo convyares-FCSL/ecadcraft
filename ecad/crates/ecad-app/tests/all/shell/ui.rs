@@ -1,5 +1,5 @@
-//! Brief 038 (U2): the shell. Layout sizes (design §5.2), the shell state and page views kept in
-//! eframe storage (§5.4), the shell flows at 1920 × 1080 (workspaces, left tabs, the Text panel,
+//! The shell. Layout sizes, the shell state and page views kept in
+//! eframe storage, the shell flows at 1920 × 1080 (workspaces, left tabs, the Text panel,
 //! the developer switch, keys only over the page), nothing lost from the old panels, and the
 //! update maps (a dot on a page changed elsewhere, no rebuild for it).
 

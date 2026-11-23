@@ -1,4 +1,4 @@
-//! The builder's main view and tool strip (design 048 §3.1–§3.4): the symbol on an empty grid,
+//! The builder's main view and tool strip: the symbol on an empty grid,
 //! `sheet.sheet` ground, `sheet.grid` dots every 2.5 mm and a heavier dot every 5 mm, the origin
 //! as a `sheet.ink_2` cross; connection points as `sheet.connection_point` rings with their key,
 //! text slots as samples in `sheet.ink_2` in a dashed `sheet.placement_preview` box with an anchor
@@ -16,7 +16,7 @@ use crate::library::draft::{self, Draft, GRID_MM, Picked, TEXT_MM};
 use crate::library::review::Review;
 use ecad_electrical::symbols::offers::{Offer, on_point_grid};
 
-/// Element names (design 048 §3.1).
+/// Element names.
 pub(crate) const BUILDER: &str = "library.builder";
 pub const CANVAS: &str = "library.builder.canvas";
 pub(crate) const BREADCRUMB: &str = "library.builder.breadcrumb";
@@ -26,10 +26,10 @@ pub const BACK: &str = "library.builder.back";
 pub(crate) const ENTRY: &str = "library.builder.entry";
 pub(crate) const VERSION_NEWEST: &str = "library.builder.version.newest";
 pub(crate) const VERSION_SHOWN: &str = "library.builder.version.shown";
-/// The empty state's hint (design 048 §3.4).
+/// The empty state's hint.
 pub const EMPTY_HINT: &str = "Draw the symbol, then add connection points and a tag slot";
 
-/// Symbol outline weight (spec §4), millimetres.
+/// Symbol outline weight, millimetres.
 pub(crate) const OUTLINE_MM: f64 = 0.35;
 /// The origin cross's arms (`ecad.builder-origin`), millimetres.
 pub(crate) const ORIGIN_ARM_MM: f64 = 4.0;
@@ -43,7 +43,7 @@ pub(crate) const MAX_SCALE: f32 = 60.0;
 /// The scale a new builder opens at: a 2.5 mm grid 25 px apart.
 pub(crate) const START_SCALE: f32 = 10.0;
 
-/// The builder's tools (design 048 §3.1).
+/// The builder's tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tool {
     #[default]
@@ -98,7 +98,7 @@ impl Tool {
     }
 }
 
-/// A strip button (design 048 §3.1): its element name, key and tooltip.
+/// A strip button: its element name, key and tooltip.
 pub struct StripButton {
     pub name: &'static str,
     pub key: Key,
@@ -115,7 +115,7 @@ pub const STRIP: [StripButton; 6] = [
     StripButton { name: "library.builder.tool.origin", key: Key::O, tip: "Origin (O)" },
 ];
 
-/// Editing an older version than the newest asks first (design 048 §6.1 step 1).
+/// Editing an older version than the newest asks first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AskVersion {
     pub newest: ecad_model::DefinitionId,
@@ -151,7 +151,7 @@ pub struct Builder {
     drag: Option<(Picked, Pt)>,
     /// Typing in place: what, and the text so far.
     pub entry: Option<(Entry, String)>,
-    /// A refusal at the cursor (design 048 §3.3 step 3): the words and where.
+    /// A refusal at the cursor: the words and where.
     pub at_cursor: Option<(String, Pt)>,
     /// Save's refusal, shown above the buttons.
     pub refusal: Option<String>,
@@ -436,10 +436,10 @@ impl Builder {
         }
     }
 
-    /// The builder's keys while the pointer is over it and nothing is typed (design 048 §3.3).
+    /// The builder's keys while the pointer is over it and nothing is typed.
     ///
     /// Taken by the shell's key pass (`shell::keys`), which runs before CADCraft's hidden frame:
-    /// otherwise CADCraft's own Ctrl+Z and Ctrl+Y would take the keys first (tester 048b/c).
+    /// otherwise CADCraft's own Ctrl+Z and Ctrl+Y would take the keys first.
     pub fn keys(&mut self, ctx: &egui::Context) {
         if self.entry.is_some() || self.ask_version.is_some() {
             return;
@@ -717,7 +717,7 @@ fn dashed_ring(p: &egui::Painter, c: Pos2, r: f32, stroke: Stroke) {
 }
 
 /// Draw the builder in `rect` and act on its input; what it asks of the window.
-/// The paper square the symbol is drawn on, centred in the canvas `rect` (boards 3.02–3.04).
+/// The paper square the symbol is drawn on, centred in the canvas `rect`.
 pub(crate) fn paper_rect(rect: Rect) -> Rect {
     let side = (rect.width().min(rect.height()) - 2.0 * PAPER_MARGIN).max(160.0);
     Rect::from_center_size(rect.center(), vec2(side, side))
@@ -734,7 +734,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
     }
     let p = ui.painter_at(rect);
     let shell = ecad_widgets::SHELL;
-    // UI rev 3 (boards 3.02–3.04): the drawing area is a sheet of paper on the dark canvas.
+    // The drawing area is a sheet of paper on the dark canvas.
     p.rect_filled(rect, 0.0, c32(shell.bg));
     let paper = paper_rect(rect);
     p.rect_filled(paper, 0.0, c32(sheet.sheet));
@@ -824,7 +824,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         p.circle_filled(b.to_screen(rect, s.at), 2.0, preview);
     }
 
-    // Offers, dashed (design 048 §4.1 step 3).
+    // Offers, dashed.
     for o in &b.draft.shape.offers {
         match o {
             Offer::Point { at } => {
@@ -927,7 +927,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         p.rect_stroke(Rect::from_center_size(cs, vec2(7.0, 7.0)), 0.0, Stroke::new(1.0, preview), egui::StrokeKind::Middle);
     }
 
-    // A refusal at the cursor (design 048 §3.3 step 3).
+    // A refusal at the cursor.
     if let Some((why, at)) = &b.at_cursor {
         let q = b.to_screen(rect, *at) + vec2(12.0, -12.0);
         let galley = p.layout_no_wrap(why.clone(), ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::SMALL.size), c32(shell.text));
@@ -937,7 +937,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         p.galley(q, galley, c32(shell.text));
     }
 
-    // The card at the top left (rev 3): what is being made, where from, and Back.
+    // The card at the top left: what is being made, where from, and Back.
     let (title, crumb) = match &b.draft.source {
         draft::Source::Edit { version, builtin, .. } => (
             format!("Editing {}", b.draft.shown_name()),
@@ -1054,7 +1054,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         }
     }
 
-    // Offers: Accept / Skip on hover (design 048 §4.1 step 3).
+    // Offers: Accept / Skip on hover.
     if let Some(Picked::Offer(i)) = raw.and_then(|r| b.pick(r)).or(b.selected.filter(|s| matches!(s, Picked::Offer(_))))
         && let Some(o) = b.draft.shape.offers.get(i).cloned()
     {
@@ -1090,7 +1090,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
         });
     }
 
-    // The older-version question (design 048 §6.1 step 1).
+    // The older-version question.
     if let Some(a) = b.ask_version.clone() {
         let card = Rect::from_center_size(rect.center(), vec2(420.0, 110.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
@@ -1116,7 +1116,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
 
     // The intent line along the bottom.
     b.intent = b.intent_text();
-    // Rev 3: a pill centred near the canvas's foot.
+    // A pill centred near the canvas's foot.
     let g = p.layout_no_wrap(b.intent.clone(), ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::BODY.size), c32(shell.text));
     let w = (g.size().x + 2.0 * space::L).min(rect.width() - 2.0 * space::L);
     let line = Rect::from_center_size(pos2(rect.center().x, rect.bottom() - space::L - 20.0), vec2(w, 40.0));
@@ -1134,12 +1134,12 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
     acts
 }
 
-/// The builder's tool strip (design 048 §3.1): six buttons, Draw with its flyout.
+/// The builder's tool strip: six buttons, Draw with its flyout.
 pub fn strip(ui: &mut egui::Ui, rect: Rect, b: &mut Builder) {
     let shell = ecad_widgets::SHELL;
     ui.painter().rect_filled(rect, 0.0, c32(shell.panel));
     ui.painter().vline(rect.right() - 0.5, rect.y_range(), Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(shell.line)));
-    // UI rev 3: 54 × 44 buttons, an 18 px icon over a 10 px label, as Draw's strip.
+    // 54 × 44 buttons, an 18 px icon over a 10 px label, as Draw's strip.
     let x = rect.center().x - size::TOOL_BUTTON_W / 2.0;
     let mut y = rect.top() + space::S;
     let tools = [Tool::Select, b.draw_tool, Tool::Text, Tool::Point, Tool::Slot, Tool::Origin];

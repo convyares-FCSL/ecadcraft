@@ -1,8 +1,8 @@
-//! Brief 037: the app draws its interface text in ECAD's fonts (IBM Plex Sans; Barlow Semi
+//! The app draws its interface text in ECAD's fonts (IBM Plex Sans; Barlow Semi
 //! Condensed registered for the sheet) over CADCraft's font set, with ECAD's style; and the hidden
 //! `ui.primitives` page in the Developer section shows every primitive. A screenshot of it is
-//! written to `$ECAD_TESTER_SHOTS` when that names a folder and a wgpu adapter exists (for the
-//! owner's check beside the spec's Tokens board; never committed).
+//! written to `$ECAD_TESTER_SHOTS` when that names a folder and a wgpu adapter exists (never
+//! committed).
 
 use std::sync::Arc;
 

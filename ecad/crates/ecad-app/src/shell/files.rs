@@ -57,15 +57,15 @@ impl App {
         self.debugger.reset();
         self.seen_events = self.event_count();
         self.cad.ui.start_tab = false;
-        // Thick and thin cable lines only show with lineweights on (design 009 §9), unless the
-        // user has chosen Show/Hide Lineweight since the app started (brief 009 review).
+        // Thick and thin cable lines only show with lineweights on, unless the
+        // user has chosen Show/Hide Lineweight since the app started.
         let shown = &mut self.cad.session.settings.lwdisplay;
         if self.lwdisplay_set.is_none_or(|set| *shown == set) {
             *shown = true;
             self.lwdisplay_set = Some(true);
         }
-        // Symbols snap to the 5 mm terminal grid of ECAD pages (design 018 §5.3, owner answer
-        // Q8); F9 turns it off as in CADCraft.
+        // Symbols snap to the 5 mm terminal grid of ECAD pages;
+        // F9 turns it off as in CADCraft.
         self.cad.session.settings.snapmode = true;
     }
 
@@ -127,7 +127,7 @@ impl App {
         if let Some(i) = self.cad.session.docs.iter().position(|d| owned(self, d.uid)) {
             return self.cad.run("document.switch", json!({ "index": i })).map(|_| ());
         }
-        // The page window was closed (design 016 §4.1): show the page again first.
+        // The page window was closed: show the page again first.
         self.show_page_window().map(|_| ())
     }
 
@@ -375,7 +375,7 @@ impl App {
     }
 
     /// Close the project, as the Project panel's **Close** does: unsaved changes are asked about
-    /// (Save, Discard, Cancel), as when the last page of a project was closed before brief 016.
+    /// (Save, Discard, Cancel).
     pub fn close_project(&mut self) {
         if !self.project_open() {
             return;

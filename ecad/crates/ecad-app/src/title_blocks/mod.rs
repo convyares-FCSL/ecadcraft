@@ -1,4 +1,4 @@
-//! Library ▸ Title blocks (brief 055, design 055 §4, §5): the title block and frame editor.
+//! Library ▸ Title blocks: the title block and frame editor.
 //!
 //! - **Left**: the project's frames (built-ins first, then the standard's, then the project's), a
 //!   thumbnail and a grey line each; **+ Title block** and **Import DXF**; the field palette.
@@ -39,7 +39,7 @@ pub use draft::{Draft, Drafts, State};
 
 use crate::shell::app::App;
 
-/// Element names (design 055 §5).
+/// Element names.
 pub(crate) const LIST: &str = "library.tb.list";
 pub const CANVAS: &str = "library.tb.canvas";
 pub const SAMPLE: &str = "library.tb.sample";
@@ -48,7 +48,7 @@ pub const FRAME: &str = "library.tb.frame";
 pub(crate) const USED_BY: &str = "library.tb.usedby";
 pub(crate) const RELOAD: &str = "library.tb.banner.reload";
 pub(crate) const KEEP: &str = "library.tb.banner.keep";
-/// Words (design 055 §4).
+/// Words.
 pub(crate) const FOOTER: &str = "Changes reach every page that uses this block. Fields fill themselves; nothing is typed on a page.";
 pub const CAPTION: &str = "Zones and frame come from Frame…";
 pub const EMPTY_HINT: &str = "Drag fields from the left, or draw lines";
@@ -56,7 +56,7 @@ pub(crate) const DROP_ON_BLOCK: &str = "Drop it on the block.";
 pub(crate) const BUILTIN_NOTE: &str = "Built-in. Duplicate it to make your own.";
 pub const WRITES_OFF: &str = "Writes are off for this project.";
 
-/// The editor's tools (design 055 §4.5).
+/// The editor's tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Tool {
     #[default]
@@ -109,7 +109,7 @@ pub struct Row {
     pub state: State,
 }
 
-/// What the sample page shows (design 055 §4.5, Sample).
+/// What the sample page shows (Sample).
 #[derive(Debug, Clone)]
 pub struct Sample {
     pub input: FrameInput,
@@ -163,7 +163,7 @@ pub struct Editor {
     /// A word for the person (a refusal).
     pub notice: Option<String>,
     pub ask_discard: bool,
-    /// Another writer saved the open frame (design 055 §4.8).
+    /// Another writer saved the open frame.
     pub meanwhile: bool,
     pub new_menu: bool,
     pub dxf: Option<DxfAsk>,
@@ -238,7 +238,7 @@ fn fields_of(doc: &ecad_model::Document, id: &StyleRef) -> BTreeMap<String, Stri
     cat.fields.iter().map(|f| (f.key.to_string(), styles::field(doc, cat, id, f, None).text())).collect()
 }
 
-/// Read the list from `doc` (design 055 §4.1).
+/// Read the list from `doc`.
 pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
     let cat = &ecad_electrical::styles::frame::CATALOGUE;
     let text = FrameText::of(doc);
@@ -382,7 +382,7 @@ impl App {
         }
     }
 
-    /// Save (design 055 §4.2): one transaction with the draft's name, changed fields and block.
+    /// Save: one transaction with the draft's name, changed fields and block.
     pub(crate) fn tb_save(&mut self) {
         let Some(d) = self.library.tb.draft.clone() else { return };
         if d.builtin {
@@ -452,7 +452,7 @@ impl App {
         }
     }
 
-    /// The title blocks' main view (design 055 §4.1).
+    /// The title blocks' main view.
     pub(crate) fn title_blocks_view(&mut self, ui: &mut egui::Ui, main: Rect) {
         self.tb_refresh();
         if self.library.tb.open.is_none()
@@ -480,7 +480,7 @@ impl App {
         self.tb_keep();
     }
 
-    /// The title blocks' right panel (design 055 §4.4).
+    /// The title blocks' right panel.
     pub(crate) fn title_blocks_right(&mut self, ui: &mut egui::Ui) {
         let writable = self.project_open() && self.writable();
         let acts = inspector::show(ui, &mut self.library.tb, writable);
@@ -500,7 +500,7 @@ impl App {
         }
     }
 
-    /// The Logo tool (design 055 §4.5, §6): a DXF into the selected logo, or a new logo at `at`;
+    /// The Logo tool: a DXF into the selected logo, or a new logo at `at`;
     /// the draft only (Save writes it).
     fn tb_logo(&mut self, at: Option<ecad_model::objects::title_block::Rect>, path: &str) {
         let read =

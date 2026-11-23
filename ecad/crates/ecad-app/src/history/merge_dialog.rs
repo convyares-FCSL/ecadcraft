@@ -1,9 +1,9 @@
-//! The merge dialog (brief 020b, design 020 §4.2) and the question an undo of a merge stops at
-//! (§4.3). The dialog shows the `merge {preview: true}` JSON; each choice asks for the preview
+//! The merge dialog and the question an undo of a merge stops at.
+//! The dialog shows the `merge {preview: true}` JSON; each choice asks for the preview
 //! again with the choices so far (the prepared merge is kept, so nothing is read from the file
 //! again), and Merge runs `merge {from, into, choices, close}`: one merge step.
 //!
-//! Nothing is preselected (owner answer 7): Merge is enabled when every conflict has a choice;
+//! Nothing is preselected: Merge is enabled when every conflict has a choice;
 //! Keep main for all / Keep branch for all fill every unanswered conflict that offers it.
 //!
 //! Update map: built from the preview when opened; changed only by its own choices (a new
@@ -86,7 +86,7 @@ impl MergeDialog {
         }
     }
 
-    /// The dialog (design §4.2).
+    /// The dialog.
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
         let p = self.preview.clone();
         let update = p["update"] == json!(true);
@@ -229,7 +229,7 @@ impl MergeDialog {
                             ),
                             "renumber_main" => (cap(c["main"].as_str().unwrap_or("renumber main's")), "renumber"),
                             "renumber_branch" => (cap(c["branch"].as_str().unwrap_or("renumber the branch's")), "renumber"),
-                            // Brief 026 (design §8): the third choice of a tag conflict.
+                            // The third choice of a tag conflict.
                             "one" => (one_label(c).to_string(), "one"),
                             other => (other.to_string(), "other"),
                         };
@@ -239,7 +239,7 @@ impl MergeDialog {
                             out = Some(Out::Preview(self.params(true)));
                         }
                     }
-                    // Brief 026: Make them one, greyed with the reason when they cannot be one.
+                    // Make them one, greyed with the reason when they cannot be one.
                     if let Some(why) = c["unavailable"]["why"].as_str() {
                         ui.add_enabled_ui(false, |ui| Radio::new(false, one_label(c)).show(ui))
                             .inner
@@ -301,7 +301,7 @@ fn cap(s: &str) -> String {
     c.next().map_or_else(String::new, |f| f.to_uppercase().collect::<String>() + c.as_str())
 }
 
-/// The question a plain undo of a merge stops at (design 020 §4.3): `Some(true)` to undo it.
+/// The question a plain undo of a merge stops at: `Some(true)` to undo it.
 pub fn undo_merge(ctx: &egui::Context, question: &str) -> Option<bool> {
     let update = question.contains("Undo the update?");
     let title = if update { "Undo the update?" } else { "Undo the merge?" };

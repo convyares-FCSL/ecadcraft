@@ -1,5 +1,5 @@
-//! Settings ▸ Project info ▸ **Functions and locations** (brief 052c, design 052 §9.4, rev 3
-//! board 5.01): the project's two lists with code, description and device count; add, rename,
+//! Settings ▸ Project info ▸ **Functions and locations**:
+//! the project's two lists with code, description and device count; add, rename,
 //! describe, make default, merge into another, remove, and remove every unused entry.
 //!
 //! The card's edits are immediate commands, like the inspector's, not part of the popout's

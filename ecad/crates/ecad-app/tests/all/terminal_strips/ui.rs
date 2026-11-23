@@ -1,7 +1,7 @@
-//! Brief 028 headless in the app (design 028 §12): fixture T, Place Terminals, a bridge, the
-//! strip's offer, the Reports Terminals and Cables tabs, a terminal plan page and the Checks rows
+//! Headless in the app: fixture T, Place Terminals, a bridge, the
+//! strip's offer, the Reports Terminals and Cables tabs, a terminal strip plan page and the Checks rows
 //! with their fixes. Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu
-//! adapter exists; they are for the owner's approval, never committed.
+//! adapter exists; they are never committed.
 
 use std::path::PathBuf;
 use std::sync::Arc;

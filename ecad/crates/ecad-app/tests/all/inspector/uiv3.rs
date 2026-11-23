@@ -1,7 +1,7 @@
-//! UI rev 3, section B: the inspector (boards 1.05 Device, 1.06 Layout, 1.07 Checks). The demo
-//! project's contactor coil -K01 on page 2, as on the boards: the header, the Device tab's
+//! The inspector (Device, Layout and Checks tabs). The demo
+//! project's contactor coil -K01 on page 2: the header, the Device tab's
 //! folding sections, the Layout tab's placement and texts, the Checks tab's scopes, and the
-//! screenshots for the side-by-side with the boards (written only when `ECAD_TESTER_SHOTS` names a
+//! screenshots (written only when `ECAD_TESTER_SHOTS` names a
 //! folder and a wgpu adapter exists).
 
 use crate::pages::project_panel::{doc, rev3_app as new_app};

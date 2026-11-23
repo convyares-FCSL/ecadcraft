@@ -107,7 +107,7 @@ impl App {
     /// The tools the app handles itself: Preview Reference and the ECAD Dev tab.
     fn app_tool(&mut self, id: &str) -> Result<(), String> {
         match id {
-            // Brief 026: the Renumber dialog (Renumber Wires opens it with Wires chosen).
+            // The Renumber dialog (Renumber Wires opens it with Wires chosen).
             "ecad.renumber" => {
                 self.open_renumber(false, false, None);
                 Ok(())
@@ -183,7 +183,7 @@ impl App {
     }
 
     /// Start Place Symbol for a search row: a symbol goes to the insertion point, a device asks
-    /// which symbol to add to it (design 018 §5.2). Refusals are echoed at the command line.
+    /// which symbol to add to it. Refusals are echoed at the command line.
     ///
     /// # Errors
     /// The command's refusal.
@@ -191,7 +191,7 @@ impl App {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
-        // UI rev 3: the picker's chip names the symbol being placed.
+        // The picker's chip names the symbol being placed.
         self.shell.tools.placing.symbol = match &pick {
             crate::library::search::Pick::Symbol(k) => Some(*k),
             _ => None,
@@ -200,7 +200,7 @@ impl App {
             crate::library::search::Pick::Symbol(k) => k.to_string(),
             crate::library::search::Pick::Device(tag) => tag,
             crate::library::search::Pick::Project(k) => k,
-            // Brief 041: pages and actions are run by the shell, not placed.
+            // Pages and actions are run by the shell, not placed.
             crate::library::search::Pick::Page(_) | crate::library::search::Pick::Action(_) => return Ok(()),
         };
         let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(ecad_engine::cad::Input::Text(text))).map_err(|e| e.to_string());
@@ -327,7 +327,7 @@ impl App {
         self.panel.note = None;
         match a {
             A::Open(page) => {
-                // Brief 038: a plain page switch gets the page's stored view back.
+                // A plain page switch gets the page's stored view back.
                 self.shell.restore_view = true;
                 let _ = self.show_page(page);
             }
@@ -425,11 +425,11 @@ impl App {
                     r.invalidate();
                 }
             }
-            // Brief 028's Checks fixes (design 028 §8).
+            // The terminal strip Checks fixes.
             A::OfferDrawn(c) => {
                 let value = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
-                        // Brief 036: every type at least its drawn positions.
+                        // Every type at least its drawn positions.
                         ecad_electrical::terminal_strips::offer_drawn_value(p.ledger.document(), c)
                     })
                     .ok()
@@ -455,9 +455,9 @@ impl App {
                     let _ = self.run_line(&format!("cablecore {}", json!({"conductor": w.hex(), "core": l})));
                 }
             }
-            // Brief 041: the page row's wheel.
+            // The page row's wheel.
             A::PageWheel(page, at) => self.open_page_wheel(page, at),
-            // Brief 044: the lone pins' mates, through Place ▸ Connector's prompts (connector,
+            // The lone pins' mates, through Place ▸ Connector's prompts (connector,
             // halves, draw), as a person answers them.
             A::PlaceMates(c, side) => {
                 let tag = self.project.clone().and_then(|p| {
@@ -524,7 +524,7 @@ impl App {
                 }
                 let _ = self.run_line(&format!("newpage {v}"));
             }
-            // Brief 046: New page ▸ Terminal strips.
+            // New page ▸ Terminal strips.
             A::NewStripPage => {
                 let mut v = json!({"generated": "terminal_blocks", "style": "graphic"});
                 if let Some(f) = self.panel.target_folder() {
@@ -573,7 +573,7 @@ impl App {
             A::DeleteFolder(folder) => {
                 let _ = self.run_line(&format!("deletefolder {}", json!({"folder": folder.hex()})));
             }
-            // Brief 054 (design 054 §4.1): a group row's + opens the + Page picker, adding last in
+            // A group row's + opens the + Page picker, adding last in
             // that group.
             A::NewPageIn(Some(f)) => {
                 let (at, above) = self.picker_anchor();
@@ -668,7 +668,7 @@ impl App {
         });
     }
 
-    /// Act on what the History tab asked for (brief 020a): each write is its command's JSON form.
+    /// Act on what the History tab asked for: each write is its command's JSON form.
     pub fn history_action(&mut self, d: crate::history::panel::Do) {
         use crate::history::panel::Do;
         match d {
@@ -677,7 +677,7 @@ impl App {
                 match self.run_click(cmd, params) {
                     Ok(_) => {
                         self.panel.history.done();
-                        // The same refresh as for a typed command (reviewer finding 1).
+                        // The same refresh as for a typed command.
                         self.sync_branch();
                     }
                     Err(e) => self.panel.history.refused(e),
@@ -703,7 +703,7 @@ impl App {
         }
     }
 
-    /// Open the merge dialog for `target` (`{from, into?}`) with its preview (design 020 §4.1):
+    /// Open the merge dialog for `target` (`{from, into?}`) with its preview:
     /// nothing is written until Merge; a merge into another branch than the one shown says it
     /// switches there first.
     pub fn ask_merge(&mut self, target: serde_json::Value) {
@@ -721,7 +721,7 @@ impl App {
         }
     }
 
-    /// Open the Renumber dialog (brief 026, design §3), or Finalise numbering (`finalise`), with
+    /// Open the Renumber dialog, or Finalise numbering (`finalise`), with
     /// Wires chosen (`wires`) or a folder preset; its preview is computed now (reads only).
     pub fn open_renumber(&mut self, finalise: bool, wires: bool, folder: Option<ecad_model::FolderId>) {
         let Some(p) = self.project.clone() else { return };
@@ -758,7 +758,7 @@ impl App {
         self.renumber = Some(d);
     }
 
-    /// The provisional question before an issue (brief 026, design §5.5), for the refused `line`.
+    /// The provisional question before an issue, for the refused `line`.
     pub(crate) fn ask_issue_provisional(&mut self, line: String) {
         let Some(p) = self.project.clone() else { return };
         let items = p.read(&mut self.cad.session, |p, _| ecad_electrical::numbering::commands::provisional_items(p.ledger.document()));
@@ -832,7 +832,7 @@ impl App {
         Ok(())
     }
 
-    /// The Checks tab's go to (design 022 §8): the row's page becomes the active page, the view is
+    /// The Checks tab's go to: the row's page becomes the active page, the view is
     /// centred on its point at the current zoom (kept between 60 and 600 mm high), its object is
     /// selected, and a ring in the row's severity colour marks the point until the next change, Esc
     /// or a click on empty space. Nothing is recorded.
@@ -856,7 +856,7 @@ impl App {
     }
 
     /// The go-to ring clears on Esc and on a click on empty space, i.e. a click on the drawing
-    /// area with no object under the pointer (owner, 2026-11-09); the next change or go-to clears
+    /// area with no object under the pointer; the next change or go-to clears
     /// it too. The project is touched only on such a frame.
     pub(crate) fn clear_goto_ring(&mut self, (esc, click): (bool, bool)) {
         if !(esc || click) {
@@ -878,7 +878,7 @@ impl App {
     }
 
     /// Run a command's JSON form as the command path does, returning its result.
-    /// A History or merge click's command (reviewer 020b, finding 2): the command echoes its own
+    /// A History or merge click's command: the command echoes its own
     /// line, so only a refusal is echoed here (`CadApp::run` would echo the reply's `message` a
     /// second time).
     pub(crate) fn run_click(&mut self, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -896,7 +896,7 @@ impl App {
         r
     }
 
-    /// Brief 028: Checks' **Set cores…**: the cable's slash is shown and selected, so Properties
+    /// Checks' **Set cores…**: the cable's slash is shown and selected, so Properties
     /// shows its Cores field.
     pub fn focus_cable_cores(&mut self, cable: ecad_model::CableId) {
         let Some(p) = self.project.clone() else { return };
@@ -944,7 +944,7 @@ impl App {
     }
 }
 
-/// `line` (`name {json}`) with `key` set to `value` in its JSON (brief 026: the issue's answer).
+/// `line` (`name {json}`) with `key` set to `value` in its JSON (the issue's answer).
 pub(crate) fn with_param(line: &str, key: &str, value: serde_json::Value) -> String {
     let (name, rest) = line.split_once(' ').unwrap_or((line, "{}"));
     let mut v: serde_json::Value = serde_json::from_str(rest).unwrap_or_else(|_| json!({}));

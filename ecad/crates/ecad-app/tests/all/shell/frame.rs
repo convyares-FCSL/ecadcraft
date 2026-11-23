@@ -1,7 +1,6 @@
-//! UI rev 3, board 1.01 ("Draw, both sides closed"): the frame. Region sizes at 1920 × 1080
-//! against the build spec's table (`docs/discussions/ui-2026-11/rev3-build-spec.md`), the default
+//! The frame. Region sizes at 1920 × 1080, the default
 //! state, the strip's order and keys, the inspector rail, the bottom bar's groups, the sheet
-//! fitted with a 24 px margin, and the screenshots for the side-by-side with the board.
+//! fitted with a 24 px margin, and the screenshots.
 
 use crate::common::{self, Opts};
 use crate::pages::project_panel::{doc, rev3_app as new_app};

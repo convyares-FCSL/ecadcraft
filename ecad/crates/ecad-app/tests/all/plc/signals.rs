@@ -1,7 +1,6 @@
-//! Brief 056 in the app (design 056 §13.1 A–I, L, M; board 2.03; the owner's change of
-//! 2026-11-14): Project ▸ PLC as the signal list: the rack heading, the tiles' kind words, the card
+//! In the app, Project ▸ PLC as the signal list: the rack heading, the tiles' kind words, the card
 //! header, the signal columns with free channels folded, Import an I/O list, Export tags, the card
-//! editor in the right panel, and the footer's overview page. Screenshots `056-*.png` when
+//! editor in the right panel, and the footer's overview page. Screenshots when
 //! `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::plc::list::{self, IoView};

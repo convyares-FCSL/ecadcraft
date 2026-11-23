@@ -1,4 +1,4 @@
-//! The Checks tab (UI rev 3, board 1.07): This page or Project; each check as a card with its fix
+//! The Checks tab: This page or Project; each check as a card with its fix
 //! button and a go-to arrow; on This page, the checks on other pages follow under "Elsewhere in
 //! the project". The rows are the Checks copy ([`crate::checks::panel::ChecksPanel`]), kept from
 //! each change; the bottom bar's counter opens this tab. The full table is Project ▸ Check list.

@@ -1,5 +1,4 @@
-//! Brief 039 (U3) in the app: the Checks, Devices and Terminals column sets on the one table
-//! (acceptance criteria 3, 4 and 5).
+//! In the app: the Checks, Devices and Terminal blocks column sets on the one table.
 
 use ecad_app::devices::list as devices;
 use ecad_app::terminal_strips::plan as connection_points;

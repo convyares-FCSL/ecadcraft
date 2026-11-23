@@ -1,6 +1,6 @@
-//! Brief 059 (design 059 §5.2–§5.4): the selected cable's editable Details pane on Project ▸
-//! Cables: Identity, Part and Ends edited in place with `ecad_ui` components, where it is drawn
-//! (Go to links, or **Assign in the drawing…**), and board 2.06's footer (**Change cable type…**,
+//! The selected cable's editable Details pane on Project ▸
+//! Cables: Identity, Part and Ends edited in place with `ecad_widgets` components, where it is drawn
+//! (Go to links, or **Assign in the drawing…**), and's footer (**Change cable type…**,
 //! **Add a core**, **Remove**). Each box commits on Enter or focus loss as one `cableedit`; Esc
 //! restores; a refusal shows the box invalid with the words under it, and nothing is written.
 //!
@@ -24,13 +24,13 @@ use crate::cables::manager::ASSIGN_IN_DRAWING;
 
 /// The shield segments, in [`Shield::ALL`] order.
 pub const SHIELDS: [&str; 4] = ["None", "Overall", "Pairs", "Both"];
-/// The pane's footer buttons (board 2.06).
+/// The pane's footer buttons.
 pub(crate) const CHANGE_TYPE: &str = "Change cable type\u{2026}";
 pub(crate) const ADD_CORE: &str = "Add a core";
 pub const REMOVE: &str = "Remove";
 /// Where it is drawn, when it is not.
 pub(crate) const NOT_DRAWN_YET: &str = "Not drawn yet";
-/// The read-only footer's reason (029).
+/// The read-only footer's reason.
 pub const READ_ONLY: &str = "This project cannot be changed here (a release, or writes off).";
 
 /// What the editor shows for the selected cable, read from the document when the selection or the
@@ -131,7 +131,7 @@ pub struct Editor {
     pub bufs: BTreeMap<CableField, String>,
     /// The last edit refused, under its row.
     pub error: Option<(CableField, String)>,
-    /// A drawn cable's Remove refused (Q1): the words and its pages (each a Go to).
+    /// A drawn cable's Remove refused: the words and its pages (each a Go to).
     pub refused: Option<(String, Vec<(PageId, String)>)>,
     /// Put focus in the Tag box (after + Cable).
     pub focus_tag: bool,
@@ -237,9 +237,9 @@ fn type_value(c: &Copy, i: usize) -> serde_json::Value {
     i.checked_sub(1).and_then(|j| c.types.get(j)).map_or(serde_json::Value::Null, |(id, _)| json!(id))
 }
 
-/// The cable's editable sections and footer (board 2.06), in the Details pane. `ends` are its
-/// drawn ends (`+CAB1 -X01`); `middle` draws the sections that go between Part and Ends (057's
-/// Rating). Returns what was asked for; the caller runs it.
+/// The cable's editable sections and footer, in the Details pane. `ends` are its
+/// drawn ends (`+CAB1 -X01`); `middle` draws the sections that go between Part and Ends (the
+/// Rating section). Returns what was asked for; the caller runs it.
 pub fn show(
     ui: &mut egui::Ui, ed: &mut Editor, ends: [String; 2], writable: bool, rule: &dyn Fn(&mut egui::Ui), middle: &mut dyn FnMut(&mut egui::Ui),
 ) -> Vec<Ask> {
@@ -282,9 +282,9 @@ pub fn show(
     entry(ui, ed, CableField::Description, "Description", "ecad.project.detail.cable.description", writable, &mut out);
     entry(ui, ed, CableField::Length, "Length", "ecad.project.detail.cable.length", writable, &mut out);
     rule(ui);
-    // 057's Rating section (board 2.06: after Part).
+    // The Rating section (after Part).
     middle(ui);
-    // Ends: each end's drawn end, then its planned function and location (Q4).
+    // Ends: each end's drawn end, then its planned function and location.
     panel::section_header(ui, true, "Ends", "planned and drawn");
     for (i, side) in Side::BOTH.into_iter().enumerate() {
         let (label, name, f, l) = match side {
@@ -331,7 +331,7 @@ pub fn show(
             }
         });
     }
-    // A drawn cable's Remove refused (Q1), with a Go to per page.
+    // A drawn cable's Remove refused, with a Go to per page.
     if let Some((words, pages)) = ed.refused.clone() {
         panel::status_pill(ui, Tone::Warning, &words, "ecad.lists.cables.remove.refused");
         ui.horizontal_wrapped(|ui| {
@@ -343,7 +343,7 @@ pub fn show(
         });
     }
     rule(ui);
-    // The footer (board 2.06).
+    // The footer.
     ui.horizontal(|ui| {
         let button = |label| match writable {
             true => prim::Button::new(label).small(),
@@ -401,7 +401,7 @@ impl crate::shell::app::App {
         }
     }
 
-    /// **+ Cable** (design 059 §5.1): a new cable at once, its row selected and its details open,
+    /// **+ Cable**: a new cable at once, its row selected and its details open,
     /// focus in its Tag box. No dialog.
     pub(crate) fn new_cable(&mut self) {
         let Ok(v) = self.run_value("cablenew", json!({})) else { return };

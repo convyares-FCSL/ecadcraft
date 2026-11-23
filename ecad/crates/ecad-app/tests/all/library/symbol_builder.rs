@@ -1,7 +1,7 @@
-//! Brief 048b and 048c in the app at 1920 × 1080: the symbol builder in the Library (its tools,
+//! In the app at 1920 × 1080: the symbol builder in the Library (its tools,
 //! Details and Missing list, Save as version 1), the "Before saving" review in the drawer with a
 //! clash (Update selected pre-selected), Make symbol from lines on a page with its offers, the
-//! wheel's Edit and Make symbol slots, Update and Compare from Properties, and the owner's
+//! wheel's Edit and Make symbol slots, Update and Compare from Properties, and
 //! screenshots (written only when `ECAD_TESTER_SHOTS` names a folder).
 
 use cadcraft_engine::doc::Handle;

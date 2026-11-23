@@ -1,4 +1,4 @@
-//! The tool strip (UI rev 3, "Tool strip (Draw)"): 56 px at the window's left edge, buttons
+//! The tool strip ("Tool strip (Draw)"): 56 px at the window's left edge, buttons
 //! 54 × 44 with an 18 px icon over a 10 px label. Top to bottom:
 //!
 //! 1. the panels, Book, Devices and History, each with a › mark (‹ while open);
@@ -7,19 +7,19 @@
 //! 4. at the foot, the Snap, Grid and Ortho toggles.
 //!
 //! Every group from Draw to Location carries a flyout's corner mark. A click starts the group's
-//! last-used tool; hovering opens its flyout (boards 1.09 and 1.10): the group's name and key,
+//! last-used tool; hovering opens its flyout: the group's name and key,
 //! a row per item with its icon and key cap, the last-used tool lit, a placeholder greyed in
 //! place with its hover saying why, and for some groups a note and a link at the foot (Terminal:
 //! the Terminal manager). A group with a key (V D T W C) starts its last-used tool, and pressed
 //! again steps to the next. The toggles flip CADCraft's snap, grid and ortho modes; hovering one
 //! opens its popout ([`crate::shell::toggles`]).
 //!
-//! Brief 041: the groups and their items come from the action table
+//! The groups and their items come from the action table
 //! ([`crate::commands::actions`]): an item is an action with a group (a tool, a window action, or a
-//! placeholder for a tool the board names that has no command yet).
+//! placeholder for a tool that has no command yet).
 //!
-//! [`ToolStrip`] also keeps lane U4b's other state between frames: the open wheel and the intent
-//! line's cache and refusal; and UI rev 3's picker and connector maker.
+//! [`ToolStrip`] also keeps other state between frames: the open wheel and the intent
+//! line's cache and refusal; and the picker and connector maker.
 
 use crate::commands::actions::{self, Action, ToolGroup};
 use ecad_widgets::tokens::ui_type::TypeStyle;
@@ -33,7 +33,7 @@ use crate::shell::{LeftTab, bar};
 #[derive(Debug, Clone, Copy)]
 pub struct Group {
     pub group: ToolGroup,
-    /// Its key, if it keeps one (UI rev 3: V D T W C).
+    /// Its key, if it keeps one.
     pub key: Option<(char, Key)>,
     pub icon: Icon,
     /// Its accessible label: with the key when it has one (`Wire (W)`), else `Terminal group`
@@ -57,7 +57,7 @@ const fn group(group: ToolGroup, key: Option<(char, Key)>, label: &'static str) 
     Group { group, key, icon: group.icon(), label }
 }
 
-/// The nine groups, in strip order (UI rev 3).
+/// The nine groups, in strip order.
 pub const GROUPS: [Group; 9] = [
     group(ToolGroup::Select, Some(('V', Key::V)), "Select (V)"),
     group(ToolGroup::Draw, Some(('D', Key::D)), "Draw (D)"),
@@ -92,7 +92,7 @@ const LABEL: TypeStyle = TypeStyle { size: size::TOOL_LABEL, line: 12.0, weight:
 const GAP: f32 = 2.0;
 
 /// The strip's state: each group's last-used tool, the open flyout, and the group whose tool
-/// the last group key started (pressing it again steps); and lane U4b's wheel and intent line.
+/// the last group key started (pressing it again steps); and the wheel and intent line.
 #[derive(Debug, Clone, Default)]
 pub struct ToolStrip {
     pub last: [usize; 9],
@@ -108,10 +108,10 @@ pub struct ToolStrip {
     /// The intent line's state, and its text last frame (tests read it).
     pub intent: crate::shell::intent::Intent,
     pub intent_text: String,
-    /// UI rev 3: the symbol picker while placing, and the folded chip's text last frame (tests).
+    /// The symbol picker while placing, and the folded chip's text last frame (tests).
     pub placing: crate::shell::placing::State,
     pub chip_text: String,
-    /// UI rev 3: the connector maker's answers while Device ▸ Connector runs.
+    /// The connector maker's answers while Device ▸ Connector runs.
     pub maker: crate::shell::connector::State,
     /// The right edge of the picker, its chip or the maker this frame: the intent line starts
     /// clear of it.
@@ -193,7 +193,7 @@ enum Look {
     Current,
     /// An open panel or an open flyout.
     On,
-    /// A toggle that is on: the soft accent, its icon and label in the accent text (the board's).
+    /// A toggle that is on: the soft accent, its icon and label in the accent text.
     Toggle,
 }
 
@@ -387,7 +387,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     }
 }
 
-/// A flyout's row height, and its narrowest width (UI rev 3, boards 1.09 and 1.10).
+/// A flyout's row height, and its narrowest width.
 pub(crate) const FLYOUT_ROW: f32 = 28.0;
 pub(crate) const FLYOUT_MIN_W: f32 = 248.0;
 
@@ -398,7 +398,7 @@ pub enum Chosen {
     Link,
 }
 
-/// A popover beside the strip (a flyout or a toggle's popout): the board's frame, at `x`, centred
+/// A popover beside the strip (a flyout or a toggle's popout): its frame, at `x`, centred
 /// on `button` and kept inside the window. `width` and `height` are its content's size.
 pub(crate) fn popover<R>(ui: &mut egui::Ui, id: &str, button: Rect, size: egui::Vec2, add: impl FnOnce(&mut egui::Ui, Rect) -> R) -> (R, Rect) {
     let screen = ui.ctx().content_rect();
@@ -463,7 +463,7 @@ fn keycap_at(ui: &mut egui::Ui, right: egui::Pos2, keys: &str) {
     ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| ecad_widgets::prim::keycap(ui, keys));
 }
 
-/// The flyout of `g` beside its button (UI rev 3, boards 1.09 and 1.10): a header with the
+/// The flyout of `g` beside its button: a header with the
 /// group's name and key, a row per item (icon, label, key cap; greyed placeholders in place) and,
 /// for some groups, a note with a link at its foot. Returns what was clicked, and whether the
 /// pointer is over the flyout or its button.

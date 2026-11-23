@@ -1,4 +1,4 @@
-//! The Page tab on a generated page (brief 054b, design 054 §8; board 1.16's right panel): on the
+//! The Page tab on a generated page (the right panel): on the
 //! cover, a row per block with its summary, **Edit…** (the shared table editor,
 //! [`crate::shell::table_editor`]) and its toggle; on a cover, revision history or contents page,
 //! the generated pages with their toggles; on any generated page, the sheet read from its type.
@@ -8,7 +8,7 @@
 //! page's toggle adds it (`newpage {type: "front", generated, after}`) or removes every page of
 //! that kind (`deletepage {pages}`), one transaction each.
 //!
-//! # Update map (design 054 §10.2)
+//! # Update map
 //! The tab's copy ([`PageView`]) is read again only when the project's change count moves or
 //! another page is shown.
 
@@ -22,7 +22,7 @@ use serde_json::json;
 use crate::inspector::widgets;
 use crate::shell::app::App;
 
-/// Accessible names (design 054 §8).
+/// Accessible names.
 pub const NOTES: &str = "ecad.page.notes";
 /// A block's Edit… button: `ecad.page.edit.<block>`.
 pub(crate) fn edit_name(b: Block) -> String {
@@ -50,7 +50,7 @@ pub struct PageView {
     pub title_block: String,
     pub blocks: Vec<(Block, bool)>,
     pub notes: String,
-    /// The wire colours' and the legend's rows with the person's overrides (design 054 §8.1a).
+    /// The wire colours' and the legend's rows with the person's overrides.
     pub wire_rows: Vec<ecad_electrical::pages::front::EditedRow>,
     pub legend_rows: Vec<ecad_electrical::pages::front::EditedRow>,
     /// The issued revisions, oldest first: `A · First issue · CvA · 2026-11-14`.
@@ -67,7 +67,7 @@ pub struct PageTab {
     /// The notes being typed (`None`: showing the stored ones).
     pub notes_edit: Option<String>,
     pub error: Option<String>,
-    /// The table editor while it is open (design 054 §8.1a).
+    /// The table editor while it is open.
     pub editor: Option<crate::shell::table_editor::TableEditor>,
     /// The sections folded.
     pub folded: std::collections::BTreeSet<String>,
@@ -250,7 +250,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, v: &PageView, writable: bool, full: 
         widgets::read(ui, "Title block", &v.title_block, "ecad.page.sheet.titleblock");
     });
     t.settings.page_tab.folded = folded;
-    // The shared table editor (design 054 §8.1a).
+    // The shared table editor.
     if let Some(mut ed) = t.settings.page_tab.editor.take() {
         let what = ed.what;
         let out = ed.show(ui.ctx(), |rows| check_rows(what, rows));
@@ -339,7 +339,7 @@ fn notes_text(rows: &[crate::shell::table_editor::Row]) -> String {
     rows.iter().map(|r| r.text.trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
-/// A generated block's rows as stored (design 054 §8.1a): an empty label is the generated one.
+/// A generated block's rows as stored: an empty label is the generated one.
 fn rows_text(rows: &[crate::shell::table_editor::Row]) -> String {
     let edited: Vec<ecad_electrical::pages::front::EditedRow> = rows
         .iter()

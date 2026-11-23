@@ -1,4 +1,4 @@
-//! Contracts for the paths a person types (brief 003, review finding R-S3): `~` is the home folder
+//! Contracts for the paths a person types: `~` is the home folder
 //! from `std::env::home_dir` (not `HOME`), both `~/` and `~\` are accepted, paths are built with
 //! `Path::join`, a reserved device name is refused, a case-variant spelling of the project's own
 //! file is that file, and no folder literally named `~` is ever made.

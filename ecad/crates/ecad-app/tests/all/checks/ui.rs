@@ -1,7 +1,7 @@
-//! Brief 022 headless in the app (design 022 §15 checks F and I): the demo project's labels,
+//! Headless in the app: the demo project's labels,
 //! the Checks tab with its go-to, a T not joined fixed by **Join**, and labels at
 //! 0, 90, 45 and 135°. Screenshots are written when `ECAD_TESTER_SHOTS` names a folder and a wgpu
-//! adapter exists; they are for the owner's approval, never committed.
+//! adapter exists; they are never committed.
 
 use std::path::PathBuf;
 use std::sync::Arc;

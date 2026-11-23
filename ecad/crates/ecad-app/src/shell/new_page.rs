@@ -1,12 +1,12 @@
-//! The + Page picker (brief 054, design 054 §4.1): every + that adds a page asks for a page type
+//! The + Page picker: every + that adds a page asks for a page type
 //! (and, for Front sheet and Report, the generated kind), then runs one `newpage {type,
 //! generated?, after | folder}`. The page goes right after the open page (the page well's + and
-//! the Book header's +) or last in a group (a group row's +); the type never moves it (owner, Q1).
+//! the Book header's +) or last in a group (a group row's +); the type never moves it.
 //!
 //! Keys: ↑ ↓ move, → opens a kind list, ← closes it, Enter adds, Esc closes and writes nothing.
 //! Clicking outside closes it.
 //!
-//! # Update map (design 054 §10.2)
+//! # Update map
 //! None while open: it reads the types, the book and the next number once, on opening.
 
 use ecad_electrical::styles::page::{self as ptype, Holds};
@@ -20,9 +20,9 @@ use serde_json::json;
 use crate::shell::app::App;
 use crate::shell::bar;
 
-/// Accessible names (design 054 §4.1).
+/// Accessible names.
 pub const PICKER: &str = "ecad.newpage.picker";
-/// Panel layout's tooltip (Q3).
+/// Panel layout's tooltip.
 pub(crate) const PANEL_LATER: &str = "Panel layout pages come with the panel layout page.";
 /// The list's width and row height.
 pub(crate) const WIDTH: f32 = 220.0;

@@ -1,4 +1,4 @@
-//! Project Properties, Revisions and the ECAD section of the Properties palette (brief 019).
+//! Project Properties, Revisions and the ECAD section of the Properties palette.
 
 use crate::shell::app::*;
 use crate::{settings, shell};
@@ -7,17 +7,17 @@ use eframe::egui::{self};
 use serde_json::json;
 
 impl App {
-    /// Open the Project info or Project settings popout: since brief 042, Settings ▸ Project at
+    /// Open the Project info or Project settings popout: Settings ▸ Project at
     /// that tab, filled from `projectprops {}` (reads only).
     pub fn open_project_popout(&mut self, popout: crate::settings::sheets::Popout) {
         self.fill_project_props(popout);
         if self.project_props.is_some() {
-            // UI rev 3: Project info, or Pages and sheets for the project's settings.
+            // Project info, or Pages and sheets for the project's settings.
             let section = match popout {
                 crate::settings::sheets::Popout::Info => settings::Section::Project,
                 crate::settings::sheets::Popout::Settings => settings::Section::Pages,
             };
-            // Brief 054: Project settings opens Pages and sheets at the project's own rows.
+            // Project settings opens Pages and sheets at the project's own rows.
             if popout == crate::settings::sheets::Popout::Settings {
                 self.settings.pages.project_open = true;
             }
@@ -77,7 +77,7 @@ impl App {
         }
     }
 
-    /// Bring the Properties section's copy up to date (design 019 §9): rebuilt on a new selection
+    /// Bring the Properties section's copy up to date: rebuilt on a new selection
     /// or page, or after a change that touched what it shows; otherwise kept.
     pub fn sync_props(&mut self) {
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else {
@@ -144,7 +144,7 @@ impl App {
         for (target, key, value) in edits {
             let line = ecad_electrical::properties::edit_line(&target, &key, value.as_deref());
             let r = self.run_line(&line);
-            // A clash box's choice (`tag#swap`, brief 026) answers the Tag field's refusal.
+            // A clash box's choice (`tag#swap`) answers the Tag field's refusal.
             let key = key.split('#').next().unwrap_or_default().to_string();
             if let Ok(mut sh) = self.props.lock() {
                 match r {
@@ -162,10 +162,10 @@ impl App {
                 Button::GoTo(r) => {
                     let _ = self.run_line(&format!("cablegoto {}", json!({ "reference": r.hex() })));
                 }
-                // Brief 028: Reports ▸ Terminal blocks on this strip.
+                // Reports ▸ Terminal blocks on this strip.
                 Button::ShowPlan(c) => self.show_plan(Some(c)),
                 Button::ShowCores(k) => self.show_cores(k),
-                // Brief 025: a device reference's Go to.
+                // A device reference's Go to.
                 Button::RefGoto { source, target, .. } => {
                     let mut params = json!({ "source": source.hex() });
                     if let Some(t) = target {
@@ -177,7 +177,7 @@ impl App {
         }
     }
 
-    /// Brief 027: the issued rows' release folders, read from disk now.
+    /// The issued rows' release folders, read from disk now.
     fn fill_folders(&mut self, r: &mut crate::settings::sheets::Revisions) {
         if let Some(p) = self.project.clone() {
             let _ = p.read(&mut self.cad.session, |p, _| crate::history::release_dialog::fill_folders(&mut r.issued, p));
@@ -187,14 +187,14 @@ impl App {
     /// The Revisions window and the question a plain undo across an issue
     /// stops at.
     pub(crate) fn sheet_windows(&mut self, ctx: &egui::Context) {
-        // Brief 042: the project popouts are Settings sections (`settings::project`).
+        // The project popouts are Settings sections (`settings::project`).
         self.refresh_revisions();
         if let Some(d) = &mut self.revisions {
             match d.show(ctx) {
                 Some(crate::settings::sheets::Out::Run(line)) => {
                     let issuing = line.starts_with("issuerevision");
                     let r = self.run_line(&line);
-                    // Brief 026 (design §5.5): provisional items ask first.
+                    // Provisional items ask first.
                     let provisional = issuing && r.as_deref().is_some_and(|e| e.contains("provisional: \"finalise\""));
                     if provisional {
                         self.ask_issue_provisional(line);

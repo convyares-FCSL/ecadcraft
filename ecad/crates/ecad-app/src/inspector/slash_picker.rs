@@ -1,7 +1,7 @@
-//! Brief 059 (design 059 §5.6): while Cable slash runs, the right panel offers the **Cable** to
-//! slash into: `New cable` (the default, Q7), then the cables not drawn (those whose planned end
-//! is this page's location first, marked `matches`), then drawn cables not slashed on this page
-//! (032). Picking one types the same `Cable` keyword the command line takes, so the prompt machine
+//! While Cable slash runs, the right panel offers the **Cable** to
+//! slash into: `New cable` (the default), then the cables not drawn (those whose planned end
+//! is this page's location first, marked `matches`), then drawn cables not slashed on this page.
+//! Picking one types the same `Cable` keyword the command line takes, so the prompt machine
 //! does the rest; Esc writes nothing.
 //!
 //! **Update map.** The list is read once when the tool starts (or the page or project changes),
@@ -13,7 +13,7 @@ use eframe::egui;
 
 use crate::shell::app::App;
 
-/// The picker's accessible name (design 059 §5.7).
+/// The picker's accessible name.
 pub const NAME: &str = "ecad.draw.slash.cable";
 pub const NEW_CABLE: &str = "New cable";
 

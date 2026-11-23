@@ -1,5 +1,5 @@
-//! UI rev 3, section F (boards 3.01–3.04, 4.01, 5.01, 5.02): the Library, Publish and Settings
-//! inside the shared bars, and the screenshots for the side-by-side with the boards (written only
+//! The Library, Publish and Settings
+//! inside the shared bars, and the screenshots (written only
 //! when `ECAD_TESTER_SHOTS` names a folder; nothing is asserted about the pictures).
 
 use ecad_app::library::browser;

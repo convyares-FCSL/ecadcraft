@@ -1,4 +1,4 @@
-//! The Library workspace (brief 048, design 048 §3, §6, §8): the **browser** (project symbols and
+//! The Library workspace: the **browser** (project symbols and
 //! the built-ins as tiles, with their details on the right) or the **builder** (a symbol drawn on
 //! an empty grid, its Details and Missing list on the right, and the "Before saving" review in the
 //! drawer). No new panel and no dialog: the main view, the right panel and the drawer change what
@@ -32,17 +32,17 @@ pub struct Library {
     /// The builder, while a symbol is drawn (else the browser shows).
     pub builder: Option<Builder>,
     pub browser: browser::Browser,
-    /// The drafts of every project (eframe storage, design 048 §3.2).
+    /// The drafts of every project (eframe storage).
     pub drafts: Drafts,
     /// The drafts as last stored, so `to_save` writes only when they changed.
     stored: String,
-    /// Compare (design 048 §8.4): the drawer row of one placed copy, no save.
+    /// Compare: the drawer row of one placed copy, no save.
     pub compare: Option<Review>,
     /// The workspace to go back to when the builder closes (a Make or Edit from the page).
     pub back_to_page: bool,
     /// The browser's listing last frame (the right panel draws the selected tile's details).
     pub listing: browser::Listing,
-    /// Brief 055: Library ▸ Title blocks, the title block and frame editor.
+    /// Library ▸ Title blocks, the title block and frame editor.
     pub tb: crate::title_blocks::Editor,
 }
 
@@ -91,7 +91,7 @@ impl App {
         self.set_workspace(crate::shell::Workspace::Library);
     }
 
-    /// Library ▸ New symbol (design 048 §3.3).
+    /// Library ▸ New symbol.
     pub fn new_symbol(&mut self) {
         self.library.back_to_page = false;
         self.open_builder(Draft::new());
@@ -105,7 +105,7 @@ impl App {
         }
     }
 
-    /// Edit symbol on definition `def` (design 048 §6.1): the builder on that version; `rep` is
+    /// Edit symbol on definition `def`: the builder on that version; `rep` is
     /// the placed copy it was opened from. Editing an older version than the newest asks first.
     ///
     /// # Errors
@@ -123,7 +123,7 @@ impl App {
         let source = Source::Edit { definition: def, version: seq, builtin: !project, rep };
         let mut draft = Draft::of_content(&content, source);
         if !project {
-            // A built-in edited: a project copy, which needs a key of its own (design 048 §6.3).
+            // A built-in edited: a project copy, which needs a key of its own.
             draft.key.clear();
             draft.mark_start();
         }
@@ -135,7 +135,7 @@ impl App {
     }
 
     /// Edit symbol on a built-in starter from the browser: its embedded definition when the
-    /// project uses it, else a new symbol drawn from it (design 048 §8.3).
+    /// project uses it, else a new symbol drawn from it.
     pub fn edit_starter(&mut self, key: symbols::StarterKey) -> Result<(), String> {
         let s = symbols::catalogue::starter(key);
         let p = self.project.clone().ok_or("No project is open.")?;
@@ -155,7 +155,7 @@ impl App {
         Ok(())
     }
 
-    /// Edit symbol on the wheel of a placed copy (design 048 §6.1).
+    /// Edit symbol on the wheel of a placed copy.
     pub fn edit_placed(&mut self, rep: ecad_model::RepresentationId) -> Result<(), String> {
         let p = self.project.clone().ok_or("No project is open.")?;
         let def = p.read(&mut self.cad.session, |p, _| {
@@ -171,7 +171,7 @@ impl App {
         self.edit_symbol(def, Some(rep))
     }
 
-    /// Make symbol (design 048 §4): from a drawn device (promotion), else from the selected plain
+    /// Make symbol: from a drawn device (promotion), else from the selected plain
     /// geometry. Opens the builder; nothing is written until Save.
     ///
     /// # Errors
@@ -246,7 +246,7 @@ impl App {
                             _ => return Err("Make symbol takes lines, arcs and text.".into()),
                         }
                     }
-                    // The same words as `makesymbol`'s refusal, naming the object (design 048 §9.5).
+                    // The same words as `makesymbol`'s refusal, naming the object.
                     Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_electrical::symbols::commands::not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
@@ -289,7 +289,7 @@ impl App {
         self.library.drafts.keep(&k, &d);
     }
 
-    /// The builder's Save (design 048 §3.3 step 7, §4.1 step 4, §6.1 step 3): a new symbol and a
+    /// The builder's Save: a new symbol and a
     /// made one are written now; an edit opens the review in the drawer first. `as_new`: Save as
     /// new (an edit becomes version 1 of a new symbol).
     pub fn builder_save(&mut self, as_new: bool) {
@@ -375,7 +375,7 @@ impl App {
     pub fn review_save(&mut self) {
         let Some(r) = self.library.builder.as_ref().and_then(|b| b.review.clone()) else { return };
         let mut params = r.edit_params();
-        // Save as a new symbol takes the Details as they are now (a new key, design 048 §6.3).
+        // Save as a new symbol takes the Details as they are now (a new key).
         if r.choice == review::Choice::New
             && let Some(b) = self.library.builder.as_ref()
         {
@@ -389,7 +389,7 @@ impl App {
         self.saved(res);
     }
 
-    /// Compare (design 048 §8.4): the review row of copy `rep` against its newest version, in
+    /// Compare: the review row of copy `rep` against its newest version, in
     /// the drawer, with no save.
     pub fn compare_symbol(&mut self, rep: ecad_model::RepresentationId) {
         let Some(p) = self.project.clone() else { return };
@@ -420,7 +420,7 @@ impl App {
         }
     }
 
-    /// Update symbol on copy `rep` (design 048 §8.4): `symbolupdate`; when it would clash, the
+    /// Update symbol on copy `rep`: `symbolupdate`; when it would clash, the
     /// Compare row says why in the drawer.
     pub fn update_symbol(&mut self, rep: ecad_model::RepresentationId) -> Result<(), String> {
         let r = self.cad.run("symbolupdate", json!({"copies": [rep.hex()]}));
@@ -437,7 +437,7 @@ impl App {
         }
     }
 
-    /// Place a project symbol (design 048 §8.2): Draw, and Place Symbol with its key typed.
+    /// Place a project symbol: Draw, and Place Symbol with its key typed.
     pub fn place_project_symbol(&mut self, key: &str) {
         self.set_workspace(crate::shell::Workspace::Draw);
         if self.cad.session.running.is_some() {

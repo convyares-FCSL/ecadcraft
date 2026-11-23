@@ -1,11 +1,11 @@
-//! Settings ▸ Pages and sheets (brief 054, design 054 §5; UI rev 4 board 5.02): the page type
-//! table, the selected type's right panel, and rev 3's project sheet and numbering settings in one
+//! Settings ▸ Pages and sheets: the page type
+//! table, the selected type's right panel, and the project sheet and numbering settings in one
 //! folded section under the table.
 //!
 //! Every control writes one `setstyle {catalogue: "page", …}`: one transaction, one `u`. Read only
 //! (a revision open, writes off, an agent writing) disables every control.
 //!
-//! # Update map (design 054 §10.2)
+//! # Update map
 //! The table is read from the project into [`Snapshot`] on first show and again only when the
 //! ledger's head moves (any commit or undo while Settings is open); nothing is read per frame
 //! beyond the head.
@@ -19,20 +19,20 @@ use eframe::egui::{self, Rect, Sense, pos2, vec2};
 use crate::shell::app::App;
 use crate::shell::bar;
 
-/// Accessible names (design 054 §5.2).
+/// Accessible names.
 pub const TABLE: &str = "ecad.settings.pages.table";
 pub const ADD: &str = "ecad.settings.pages.add";
 pub const PROJECT: &str = "ecad.settings.pages.project";
-/// The header line (design 054 §5.1).
+/// The header line.
 pub(crate) const ABOUT: &str = "Each page type brings its own sheet. + Page asks which type and adds the page after the one you are on.";
 /// Under the table.
 pub(crate) const LIBRARY_NOTE: &str = "Frames and title blocks are made in Library ▸ Title blocks.";
-/// Under Position in the right panel (design 054 §5.3).
+/// Under Position in the right panel.
 pub(crate) const NUMBERS_NOTE: &str = "Pages are numbered by folder: set a folder's start number in the Book.";
-/// The right panel's Checks and references switch (design 054 §3.4), and what it means.
+/// The right panel's Checks and references switch, and what it means.
 pub(crate) const CHECKS: &str = "ecad.settings.pages.checks";
 pub(crate) const CHECKS_NOTE: &str = "Off: pages of this type get no electrical checks, no cross-references and no device or wire numbering. Plain uses it for imported drawings and notes.";
-/// Row height and thumbnail size (design 054 §5.2).
+/// Row height and thumbnail size.
 pub const ROW_H: f32 = 58.0;
 pub(crate) const THUMB: egui::Vec2 = vec2(52.0, 36.0);
 /// The right panel's width.
@@ -54,7 +54,7 @@ pub struct TypeRow {
     pub title_block: Option<StyleRef>,
     pub frame: Option<StyleRef>,
     pub zones: bool,
-    /// Checks and references (design 054 §3.4).
+    /// Checks and references.
     pub checks: bool,
     /// Which generated kinds it holds (hidden; picks an own type's thumbnail).
     pub holds: Holds,
@@ -78,7 +78,7 @@ pub struct Snapshot {
 pub struct PagesView {
     pub selected: Option<StyleRef>,
     pub snapshot: Option<Snapshot>,
-    /// Rev 3's project sheet and numbering, folded by default (design 054 §5.4).
+    /// The project sheet and numbering, folded by default.
     pub project_open: bool,
     /// The name field's text and whose it is.
     name: Option<(StyleRef, String)>,
@@ -152,7 +152,7 @@ fn head(t: &mut App) -> Option<u64> {
     p.read(&mut t.cad.session, |p, _| p.ledger.head()).ok()
 }
 
-/// Paint a type's thumbnail glyph (design 054 §5.2): lines for front, the schematic glyph, nodes
+/// Paint a type's thumbnail glyph: lines for front, the schematic glyph, nodes
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
 /// type takes the glyph of what it holds.
 pub(crate) fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
@@ -205,7 +205,7 @@ pub(crate) fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds)
             p.rect_stroke(Rect::from_min_max(pos2(lx(0.55), ly(0.0)), pos2(lx(1.0), ly(1.0))), 0.0, st, egui::StrokeKind::Middle);
             p.rect_stroke(Rect::from_center_size(pos2(lx(0.72), ly(0.25)), vec2(4.0, 3.0)), 0.0, st, egui::StrokeKind::Middle);
         }
-        // Plain (design 054 §3.4): a sheet with a frame and nothing else.
+        // Plain: a sheet with a frame and nothing else.
         "plain" => {
             p.rect_stroke(i, 0.0, st, egui::StrokeKind::Middle);
             p.hline(lx(0.55)..=lx(1.0), ly(0.8), st);
@@ -274,7 +274,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         t.settings.pages.snapshot = Some(s);
     }
     let Some(snap) = t.settings.pages.snapshot.clone() else { return };
-    // Read only: the file, a revision or history point shown, no project (design 054 §5.5).
+    // Read only: the file, a revision or history point shown, no project.
     let writable = t.writable();
     if t.settings.pages.selected.as_ref().is_none_or(|sel| !snap.rows.iter().any(|r| r.id == *sel)) {
         t.settings.pages.selected =
@@ -286,7 +286,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     let left = Rect::from_min_max(full.min, pos2(right.left() - space::XL, full.bottom()));
     let mut todo = Vec::new();
     // The table at the top; the project's own rows under it take what is left (their Save stays
-    // at their foot, as in rev 3).
+    // at their foot).
     crate::settings::in_rect(ui, left, "settings.pages.left", |ui| {
         if t.settings.pages.project_open {
             // The project's rows open: the table folds to its head, so their Save stays in view.
@@ -399,7 +399,7 @@ fn act(t: &mut App, d: Do) {
     }
 }
 
-/// The table's column lefts, as shares of its width after the thumbnail (board 5.02 without its
+/// The table's column lefts, as shares of its width after the thumbnail (without its
 /// Numbers column).
 const COLS: [(&str, f32); 6] = [("Type", 0.0), ("Sheet", 0.38), ("Frame", 0.53), ("Title block", 0.65), ("Zones", 0.8), ("Pages", 0.92)];
 
@@ -449,7 +449,7 @@ fn table(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, writable: bool, todo: 
         let th = Rect::from_min_size(pos2(r.left() + space::XL, y - THUMB.y / 2.0), THUMB);
         thumbnail(&p, th, &row.id, row.holds);
         p.rect_stroke(th, 2.0, egui::Stroke::new(1.0, ecad_widgets::color(s.line)), egui::StrokeKind::Outside);
-        // Type: the name (with 050's override dot) over the subtitle.
+        // Type: the name (with the override dot) over the subtitle.
         let nx = col(r, 0);
         let has_sub = !row.subtitle.is_empty();
         let ny = if has_sub { y - 8.0 } else { y };
@@ -544,7 +544,7 @@ fn title_block_menu(ui: &mut egui::Ui, row: &TypeRow, snap: &Snapshot, todo: &mu
     if ui.button(format!("Frame's ({})", title_block_words(&row.shown))).clicked() {
         todo.push(Do::Set(row.id.clone(), vec![("title_block", Some(ptype::OWN_BLOCK.into()))]));
     }
-    // Brief 055: a frame style's block, borrowed (the border stays the page's frame's).
+    // A frame style's block, borrowed (the border stays the page's frame's).
     for (f, name) in &snap.frames {
         if ui.button(name).clicked() {
             todo.push(Do::Set(row.id.clone(), vec![("title_block", Some(f.text()))]));
@@ -600,7 +600,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
             let c = chip(ui, r, &sheet_words(&row.shown), egui::Id::unique(("ecad.settings.pages.size", &id)), "ecad.settings.pages.size", writable);
             egui::Popup::menu(&c).show(|ui| sheet_menu(ui, row, snap, todo));
         });
-        // Other…: any size the sheet field takes (019's `A2 12x8`).
+        // Other…: any size the sheet field takes (`A2 12x8`).
         prow(ui, "", |ui| {
             let v = &mut t.settings.pages.other;
             if v.as_ref().is_none_or(|(o, _)| *o != row.id) {
@@ -646,7 +646,7 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
     });
     ui.label(egui::RichText::new(NUMBERS_NOTE).small().color(ecad_widgets::color(s.text_3)));
     ui.add_space(space::S);
-    // Design 054 §3.4: Checks and references.
+    // Checks and references.
     let summary = if row.checks { "on" } else { "off" };
     section(ui, "checks", "Checks and references", summary, |ui| {
         prow(ui, "Checks", |ui| {
@@ -703,7 +703,7 @@ fn preview(p: &egui::Painter, r: Rect, row: &TypeRow) {
             p.hline(frame.right()..=frame.right() + 3.0, y, st);
         }
     }
-    // The standard title block: 230 mm wide, 40 mm high, at the bottom right (design 019 §4).
+    // The standard title block: 230 mm wide, 40 mm high, at the bottom right.
     let tb = Rect::from_min_max(pos2(frame.right() - 230.0 * k, frame.bottom() - 40.0 * k), frame.right_bottom());
     p.rect_stroke(tb, 0.0, st, egui::StrokeKind::Middle);
     p.hline(tb.x_range(), tb.center().y, st);
@@ -723,7 +723,7 @@ fn preview(p: &egui::Painter, r: Rect, row: &TypeRow) {
     }
 }
 
-/// Rev 3's project sheet and numbering rows, in one folded section (design 054 §5.4).
+/// The project sheet and numbering rows, in one folded section.
 fn project_section(t: &mut App, ui: &mut egui::Ui) {
     let mut open = t.settings.pages.project_open;
     let summary = if open {
