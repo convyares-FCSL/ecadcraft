@@ -211,7 +211,7 @@ fn chain_branch(
                 intact = false;
                 break 'rows;
             }
-            match super::project::decode_row_pub(seq, flag, &stored, &body, &prev) {
+            match super::project::decode_row(seq, flag, &stored, &body, &prev) {
                 Ok(tx) => txs.push(tx),
                 Err(e) => {
                     rep.fail(format!("{name}: transaction {seq}: {e}"));
