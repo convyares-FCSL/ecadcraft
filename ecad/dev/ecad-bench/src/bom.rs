@@ -1,4 +1,4 @@
-//! Brief 047 timings (design 047 §10), run inside [`crate::reports::measure`] with the report
+//! BOM timings, run inside [`crate::reports::measure`] with the report
 //! models kept and a BOM-by-location page in the book, so every edit goes through the BOM's
 //! update map.
 //!
@@ -22,7 +22,7 @@ use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group};
 
 use crate::measure::median;
 
-/// What brief 047 measured, in milliseconds.
+/// What the BOM timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredBom {
     pub bomline_ms: f64,
@@ -45,7 +45,7 @@ fn timed(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, S
     Ok(t.elapsed().as_secs_f64() * 1000.0)
 }
 
-/// Measure brief 047 on the open `project` (models kept), `devices` its devices, `bom_page` its
+/// Measure the BOM on the open `project` (models kept), `devices` its devices, `bom_page` its
 /// BOM page, `runs` times each.
 ///
 /// # Errors

@@ -1,4 +1,4 @@
-//! Brief 044 timings (design 044 §11.3), through the app's project on a copy of a version 2 file.
+//! Connector timings, through the app's project on a copy of a version 2 file.
 //! The connectors are added on the copy here, not by the generator, so every earlier row stays
 //! comparable with earlier baselines.
 //!
@@ -29,7 +29,7 @@ const OPEN_SEED: u64 = 0x0044_0000;
 /// Where the bench's connectors and wires sit: right of an A3 sheet, clear of the pattern.
 const X0: f64 = 700.0;
 
-/// What brief 044 measured, in milliseconds.
+/// What the connector timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredConnectors {
     pub connplace_ms: f64,
@@ -62,7 +62,7 @@ fn wires(s: &mut Session, n: usize, y0: f64) -> Result<(), String> {
     Ok(())
 }
 
-/// Add the 200 connectors (design 044 §11.3's population).
+/// Add the 200 connectors.
 pub(crate) fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, String> {
     let mut n = 0;
     let page = |i: usize| pages.get(i % pages.len().max(1)).copied();
@@ -97,7 +97,7 @@ pub(crate) fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, Strin
     Ok(n)
 }
 
-/// Measure brief 044 on a copy of `path` (in `scratch`), `runs` times each.
+/// Measure the connectors on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
 /// Opening, a refused command, or a project with no pages.

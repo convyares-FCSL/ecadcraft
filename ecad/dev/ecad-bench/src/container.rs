@@ -1,5 +1,5 @@
-//! Container version 2 timings (brief 021): the v2 columns of `cargo xtask bench`, and the
-//! Zstandard comparison the overseer asked for (`zstd` levels 1 and 3).
+//! Container version 2 timings: the v2 columns of `cargo xtask bench`, and the
+//! Zstandard comparison (`zstd` levels 1 and 3).
 //!
 //! # Semantics
 //! - **v2 open**: [`DiskProject::open`] from a warm file cache: the latest snapshot and its tail.
@@ -9,7 +9,7 @@
 //!   killed app leaves it); the open after it, including redb's quick repair.
 //! - **v2 open ×10**: the open after the history has grown tenfold (property toggles saved in
 //!   batches of 1 000, with the automatic snapshots that brings): it should stay within the run's
-//!   noise of **v2 open** (EEP-0005 §5.6).
+//!   noise of **v2 open**.
 
 use std::path::Path;
 use std::time::Instant;
@@ -36,13 +36,13 @@ pub struct Measured {
     /// The ×10 file's size after engine compaction (as Save As writes it).
     pub compacted_x10: u64,
     /// On the ×10 file: the first undo that reaches below the 1 024 stack entries the snapshot
-    /// recorded, which reads the whole stacks from the history once (EEP-0005 §5.5).
+    /// recorded, which reads the whole stacks from the history once.
     pub undo_past_cap_ms: f64,
     /// The undos before it, median.
     pub undo_ms: f64,
-    /// Verify's chain part alone (brief 029, target 3 s on large), one run.
+    /// Verify's chain part alone (target 3 s on large), one run.
     pub verify_chain_ms: f64,
-    /// The whole Verify (brief 029: target 10 s on large, goal 5 s), one run.
+    /// The whole Verify (target 10 s on large, goal 5 s), one run.
     pub verify_ms: f64,
     /// The full document checks Verify ran (snapshot points and branch ends).
     pub verify_full_checks: usize,
@@ -67,7 +67,7 @@ pub fn write(g: &crate::Generated, path: &Path) -> Result<(), String> {
     })
 }
 
-/// Verify `path` (brief 029): the chain part alone, then the whole Verify, each timed once.
+/// Verify `path`: the chain part alone, then the whole Verify, each timed once.
 /// Returns (chain ms, verify ms, full checks).
 ///
 /// # Errors
@@ -264,7 +264,7 @@ pub fn crash_save(path: &Path) -> Result<(), String> {
     std::process::exit(0)
 }
 
-/// Zstandard, compared (overseer, 2026-11-08): every transaction record and chunk of a version 2
+/// Zstandard, compared: every transaction record and chunk of a version 2
 /// file, decompressed, then compressed by each codec. Sizes in bytes, times in milliseconds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Codec {

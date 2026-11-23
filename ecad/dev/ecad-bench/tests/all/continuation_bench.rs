@@ -1,4 +1,4 @@
-//! Brief 049 bench rows (design 049 §9), timed on a project of its own: pages with continuation
+//! Continuation bench rows, timed on a project of its own: pages with continuation
 //! arrows of 20 per name (a fifth captioned), and one name with many arrows. The shared generator
 //! is not changed. Debug runs (the fast tests) use smaller counts and check only that the work is
 //! scoped; `cargo test --release -p ecad-bench --test all continuation_bench -- --nocapture` prints the rows.

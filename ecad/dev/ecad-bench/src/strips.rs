@@ -1,6 +1,6 @@
-//! Brief 028 timings (design 028 §11.4), through the app's project on a copy of the version 2
+//! Terminal strip timings, through the app's project on a copy of the version 2
 //! file. The strips are added on the copy here, not by the generator, so every earlier row stays
-//! comparable with earlier baselines (as brief 025 added its coils).
+//! comparable with earlier baselines (as the coils were added for the device references).
 //!
 //! # Semantics
 //! - The copy gains, on its first 250 pages (fewer when it has fewer), one strip of 20 terminals
@@ -20,7 +20,7 @@
 //!   "terminals", scope: "selection", strips}`), committed and updated, then undone.
 //! - **work**: the most strips one ordinary edit above recomputed (never all of them).
 //!
-//! - Brief 030 (design 030 §11.3): the copy also gets project part defaults for every accessory,
+//! - Accessories: the copy also gets project part defaults for every accessory,
 //!   end stops and end plates at both ends of every strip, a partition after every 5th terminal
 //!   on 50 strips, markers on every position of 50 others, and 2 links (`1-4` and the skip link
 //!   `7, 9, 11`) on every strip. **accset**: a partition after 4 (`accessory`); **accmany**:
@@ -29,16 +29,16 @@
 //!   its transaction, the page redrawn); **linkpage**: the link lines of page 1 worked out. Each
 //!   committed and updated, then undone.
 //!
-//! - Brief 036 (design 036 §11.3), on page 1's 20 bench wires: **lvlfence**: Place Terminals
+//! - Multi-level terminal blocks, on page 1's 20 bench wires: **lvlfence**: Place Terminals
 //!   `LNPE` level `L` across them (a new strip); **lvlplace**: a `termlnpe.2` level placed on a wire
 //!   with that strip (the free-level search, the split); **lvlsep**: the project's
 //!   `terminal_block.level.separator` changed (only strips with multi-level positions inherit it);
 //!   **toposition**: a fuse terminal device turned into a fuse position; **lvltrenum**: the L/N
 //!   strip (20 positions, links on levels 1 and 2) renumbered. Each undone (the strip kept).
-//!   The design's large-tier population (50 L/N/PE strips, 50 sensor strips, 25 fuse strips) is
-//!   not added, so 028's and 030's rows stay comparable with their baselines.
+//!   The large-tier population (50 L/N/PE strips, 50 sensor strips, 25 fuse strips) is
+//!   not added, so the earlier rows stay comparable with their baselines.
 //!
-//! - Brief 046 (design 046 §10): **spage**: the first sheet of a one-strip graphic page drawn (the
+//! - Strip pages: **spage**: the first sheet of a one-strip graphic page drawn (the
 //!   bench strip: 20 positions, 10 two-core cables, links and accessories); **spageupd**: with
 //!   that page shown, a wire number set on a wire of that strip (the strip's drawing changes; a
 //!   draw command cannot run on a generated page), committed, updated, redrawn; **spageoff**: the
@@ -67,7 +67,7 @@ const TERMINAL_BLOCKS: usize = 20;
 const X0: f64 = 500.0;
 const PITCH: f64 = 10.0;
 
-/// What brief 028 measured, in milliseconds.
+/// What the terminal strip timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredStrips {
     pub stripbuild_ms: f64,
@@ -79,21 +79,21 @@ pub struct MeasuredStrips {
     pub relocate_ms: f64,
     pub tplan_ms: f64,
     pub trenum_ms: f64,
-    /// Brief 030.
+    /// Accessories.
     pub accset_ms: f64,
     pub accmany_ms: f64,
     pub accproj_ms: f64,
     pub accproj_work: usize,
     pub linkset_ms: f64,
     pub linkpage_ms: f64,
-    /// Brief 036.
+    /// Multi-level terminal blocks.
     pub lvlfence_ms: f64,
     pub lvlplace_ms: f64,
     pub lvlsep_ms: f64,
     pub lvlsep_work: usize,
     pub toposition_ms: f64,
     pub lvltrenum_ms: f64,
-    /// Brief 046.
+    /// Strip pages.
     pub spage_ms: f64,
     pub spageupd_ms: f64,
     pub spageoff_ms: f64,
@@ -191,7 +191,7 @@ pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), S
             }
             p.ledger.commit(Author::User, "bench strip", ops).map_err(|e| e.to_string())?;
         }
-        // Brief 030: accessories, parts and links (design 030 §11.3), one transaction.
+        // Accessories, parts and links, one transaction.
         let mut ops = Vec::new();
         let doc = p.ledger.document();
         let set = |ops: &mut Vec<Op>, object: ObjectRef, key: String, value: String| {
@@ -226,7 +226,7 @@ pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), S
     Ok(())
 }
 
-/// Measure brief 028 on a copy of `path` (in `scratch`), `runs` times each.
+/// Measure the terminal strips on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page or strip.
@@ -258,7 +258,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let t = Instant::now();
                 let cx = ecad_electrical::reports::PageCx::of(doc);
                 let built = ecad_electrical::terminal_strips::strip_model::Strips::build(doc, o, &cx);
-                // Brief 046: the graphic pages' kept data, built with the strips.
+                // The graphic pages' kept data, built with the strips.
                 let t2 = Instant::now();
                 std::hint::black_box(ecad_engine::terminal_strips::draw::StripPages::build(doc, &built));
                 sp.push(ms(t2));
@@ -308,7 +308,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let mut upd = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
-            // Brief 032: no joining at the free end, in both rows (the baseline's free end lies on
+            // No joining at the free end, in both rows (the baseline's free end lies on
             // a cable core, where a join is refused), so the two stay comparable.
             run(&mut s, "wire", json!({"points": [[last + 30.0, 130.0], [last + 5.0, 100.0], [last, 100.0]], "join": false}))?;
             upd.push(ms(t));
@@ -348,7 +348,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             run(&mut s, "undo", json!({}))?;
         }
         out.trenum_ms = median(&mut trenum);
-        // Brief 030 (design 030 §11.3), each undone.
+        // Accessories, each undone.
         let timed = |s: &mut Session, cmd: &str, params: serde_json::Value| -> Result<f64, String> {
             let mut v = Vec::new();
             for _ in 0..runs {
@@ -380,7 +380,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.linkpage_ms = median(&mut lp);
-        // Brief 036 (design 036 §11.3).
+        // Multi-level terminal blocks.
         let lv_line = |y: f64| json!({"type": "LNPE", "level": "L", "from": [X0 - 5.0, y], "to": [X0 + PITCH * TERMINAL_BLOCKS as f64, y]});
         out.lvlfence_ms = timed(&mut s, "terminalblocks", lv_line(120.0))?;
         let lv = run(&mut s, "terminalblocks", lv_line(120.0))?;
@@ -463,7 +463,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             })?);
         }
         out.tplan_ms = median(&mut tplan);
-        // Brief 046 (design 046 §10): a graphic page of the same strip.
+        // A graphic page of the same strip.
         let sp = run(&mut s, "newpage", json!({"generated": "terminal_blocks", "style": "graphic", "strip": strip.hex()}))?;
         let sp_page: PageId = hex(&sp, "page")?;
         let mut spage = Vec::new();

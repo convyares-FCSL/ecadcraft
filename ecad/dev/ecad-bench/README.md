@@ -8,7 +8,7 @@ deriving, the first page and saving one change. It is a developer tool and is ne
 
 ## Contents
 - `generate`: builds a project of a given tier (`small`, `medium`, `large`; `PRINT_TIER` for print tests).
-- `pages`, `cables`, `strips`, `ratings`, `bom`, `wires_nets`, `symbols`, `styles`, `text`, `title_blocks`, `plc`, `connectors`, `history`, `release`, `outputs`, `v2`: one module per area, each building or timing that area.
+- `pages`, `cables`, `strips`, `ratings`, `bom`, `reports`, `wires_nets`, `symbols`, `styles`, `text`, `title_blocks`, `plc`, `connectors`, `history`, `release`, `views`, `container`: one module per area, each building or timing that area.
 - `measure`, `report`: the timings, the printed table and the JSON written under `ecad/target/bench/`.
 - `src/main.rs`: the command that `cargo xtask bench` runs.
 
@@ -25,6 +25,6 @@ project does not open cleanly.
 cargo xtask bench
 ```
 This is a release build and is not part of `cargo xtask ci` or the pull-request checks. While
-building, bench the medium tier; run the large tier once, at the end of a brief. `cargo test -p
+building, bench the medium tier; run the large tier once, when a change is finished. `cargo test -p
 ecad-bench` runs only the small tests of the generator's shape. `translate_differential` (randomised
 edits on the small project) is in the slow set.

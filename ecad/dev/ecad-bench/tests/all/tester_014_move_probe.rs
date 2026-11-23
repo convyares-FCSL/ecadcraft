@@ -1,6 +1,6 @@
-//! Tester probe for brief 014 (hand check, not an acceptance test of its own): on a kept small
+//! Move probe (a hand check, not an acceptance test): on a kept small
 //! benchmark project, move components that have wires attached the way a person does (select,
-//! MOVE, click a base point on a terminal, click the second point) and write what changed to a
+//! MOVE, click a base point on a connection point, click the second point) and write what changed to a
 //! text file, so the same probe can be run on the branch and on its base and the two compared.
 //!
 //! Runs only when `ECAD_014_PROJECT` names a kept `.ecad` file; `ECAD_014_OUT` names the output.

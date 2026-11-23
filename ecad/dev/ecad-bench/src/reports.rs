@@ -1,4 +1,4 @@
-//! Brief 024 timings (design 024 §9), through the app's project on a copy of the version 2 file,
+//! Report timings, through the app's project on a copy of the version 2 file,
 //! with the report models built first (as the Reports window or a BOM page does) and a BOM page
 //! added, so every edit goes through their update map.
 //!
@@ -12,7 +12,7 @@
 //! - **symin**: one symbol moved into the box and out again.
 //! - **projloc**: the project's `location` changed (the one project-wide case: devices whose
 //!   location comes from the project).
-//! - **renamebench** (brief 052, design 052 §8.4): an entry of the project's list used by up to
+//! - **renamebench**: an entry of the project's list used by up to
 //!   500 devices renamed (one `SetProperty`; its users' pages redrawn or marked stale, their rows
 //!   re-keyed). **mergebench**: an entry used by as many devices merged into another (one
 //!   `SetProperty` per user).
@@ -34,7 +34,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0024_0000;
 
-/// What brief 024 measured, in milliseconds.
+/// What the report timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredReports {
     pub reportfirst_ms: f64,
@@ -43,7 +43,7 @@ pub struct MeasuredReports {
     pub plainmove_ms: f64,
     pub symin_ms: f64,
     pub projloc_ms: f64,
-    /// Brief 052 (design 052 §8.4): a rename and a merge of an entry used by `designation_users`
+    /// A rename and a merge of an entry used by `designation_users`
     /// devices.
     pub renamebench_ms: f64,
     pub mergebench_ms: f64,
@@ -55,7 +55,7 @@ pub struct MeasuredReports {
     pub devices: usize,
     /// Symbols inside the box.
     pub inside: usize,
-    /// Brief 047's rows, with the same models and BOM page.
+    /// The BOM rows, with the same models and BOM page.
     pub bom: crate::bom::MeasuredBom,
 }
 
@@ -89,7 +89,7 @@ fn work(p: &ProjectHandle, s: &mut Session) -> usize {
     p.read(s, |p, _| p.kept_reports().map_or(0, |o| o.last_work)).unwrap_or(0)
 }
 
-/// Measure brief 024 on a copy of `path` (in `scratch`), `runs` times each.
+/// Measure the reports on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page or device.
@@ -209,7 +209,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRepor
         }
         out.projloc_ms = median(&mut projloc);
         out.bomupd_ms = median(&mut bomupd);
-        // Brief 052 (design 052 §8.4): rename and merge an entry used by up to 500 devices.
+        // Rename and merge an entry used by up to 500 devices.
         let users: Vec<String> = devices.iter().take(500).map(|c| c.hex()).collect();
         out.designation_users = users.len();
         run(&mut s, "setlocation", json!({"devices": users, "value": "+R0"}))?;
@@ -241,7 +241,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRepor
             run(&mut s, "undo", json!({}))?;
         }
         out.wireupd_ms = median(&mut wireupd);
-        // Brief 047, with the BOM page on screen for its column toggle.
+        // The BOM, with the BOM page on screen for its column toggle.
         if let Some(bom_page) = bom_page {
             out.bom = crate::bom::measure(&mut s, &project, &devices, bom_page, runs)?;
         }

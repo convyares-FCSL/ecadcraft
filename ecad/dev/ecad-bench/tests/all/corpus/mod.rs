@@ -1,3 +1,3 @@
-//! The generated corpus beyond the lean pattern (#57).
+//! The generated corpus beyond the lean pattern.
 
 mod rich;

@@ -1,4 +1,4 @@
-//! Lane 064 (design 064 §10, step 5 on a recorded corpus): the references view (`ReferencesView`, its
+//! The references view (`ReferencesView`, its
 //! update map over effects) against the whole document on every transaction of a generated
 //! project's churned history: every page whose reference texts, tables, connector parts,
 //! continuation arrows or cable reference texts differ is among its pages; its orphaned-reference

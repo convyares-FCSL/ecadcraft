@@ -1,4 +1,4 @@
-//! History and branch timings (brief 020a, design 020 §8.4), through the app's project on a copy
+//! History and branch timings, through the app's project on a copy
 //! of the version 2 file, with a history of 5 branches and 20 versions added first.
 //!
 //! # Semantics
@@ -11,7 +11,7 @@
 //! - **brswitch**: switching to another branch and back, each saved first (nothing unsaved), as
 //!   opening does; the median of each switch.
 //! - **restore**: a version 500 steps back restored: the plan, one transaction, the page redrawn.
-//! - **mergeprev** and **merge** (brief 020b): a branch with 20 device changes, main 2 000 steps
+//! - **mergeprev** and **merge**: a branch with 20 device changes, main 2 000 steps
 //!   ahead of the fork with one of them changed differently (one conflict). `mergeprev` is the
 //!   dialog's first preview (the ancestor's and the branch's states read, both stretches since
 //!   the fork, the comparison); `merge` is Merge with the conflict chosen (one merge

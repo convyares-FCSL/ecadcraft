@@ -1,4 +1,4 @@
-//! Deterministic synthetic projects (brief 012 §2).
+//! Deterministic synthetic projects.
 //!
 //! # Semantics
 //! - Every page holds the same pattern: `components / pages` coil symbols in a row, each with
@@ -6,10 +6,10 @@
 //!   of component `j mod n` to A1 of component `(j + 1) mod n` and recorded with its wire, so
 //!   parallel wires share a pair of terminals and each pair is one net; `cables / pages` cables, cable `c`
 //!   taking every wire of pair `c` with core labels `1, 2, …` and a slash across them.
-//! - The first cable of each page except the last is continued on the next page as brief 010's
+//! - The first cable of each page except the last is continued on the next page as
 //!   `cablereference` and `cablecontinue` record it: a reference end on each page (an ordinary drawn
 //!   representation of the cable with role [`ecad_model::Role::Reference`] and one Point item), one stub per
-//!   member on the next page (a route with free ends: cross-page wires form in lane F) and a
+//!   member on the next page (a route with free ends: cross-page wires form there) and a
 //!   slash there.
 //! - Only existing ops are used, shaped as the commands record them (`place`, `wire`,
 //!   `cableslash`, `newpage`, `cablereference`, `cablecontinue`, `move`, `undo`, `redo`; a page rename is
@@ -34,7 +34,7 @@ use ecad_model::{
     TxKind, Wire, WireId,
 };
 
-/// The role brief 010 gives a cable reference end: its own constant, so the generated references
+/// The role the model gives a cable reference end: its own constant, so the generated references
 /// are the ones `ecad_model::connectivity::derive::cable_references` derives.
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
@@ -60,14 +60,14 @@ pub struct Tier {
     pub cables: usize,
 }
 
-/// The three measured tiers (brief 012 §2).
+/// The three measured tiers.
 pub const TIERS: [Tier; 3] = [
     Tier { name: "small", pages: 10, devices: 100, wires: 500, cables: 50 },
     Tier { name: "medium", pages: 100, devices: 1_000, wires: 5_000, cables: 500 },
     Tier { name: "large", pages: 500, devices: 5_000, wires: 25_000, cables: 2_500 },
 ];
 
-/// The 25-page project Print Book and release are measured on (owner, 2026-11-12: printing is
+/// The 25-page project Print Book and release are measured on (printing is
 /// timed on a book of a real panel's size, never on the 100- or 500-page tiers). The small tier's
 /// density, so per page it is the same drawing.
 pub const PRINT_TIER: Tier = Tier { name: "print", pages: 25, devices: 250, wires: 1_250, cables: 125 };
@@ -256,7 +256,7 @@ fn drawn(subject: Subject, page: PageId, role: ecad_model::Role, items: Vec<Item
     Representation { subject, page, form: Form::Drawn, role, items, connection_points: BTreeMap::new() }
 }
 
-/// The ops of one route as `wire` records it (design 072 §4.3): a route on `page` through
+/// The ops of one route as `wire` records it: a route on `page` through
 /// `vertices` with its two ends, its polyline item and its drawn representation. Returns the new
 /// route.
 pub fn route_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [RouteEnd; 2]) -> (RouteId, Vec<Op>) {
@@ -288,7 +288,7 @@ pub fn wire_ops(
 
 /// The add-wire transaction the edit timing commits on an opened project: a route on the first
 /// page between the first two distinct terminals shown there, on layer `0`; the commit's rewrite
-/// pass makes the wire (design 072 §4.4). `ids` must be a
+/// pass makes the wire. `ids` must be a
 /// stream the project has not used.
 ///
 /// # Errors
@@ -519,7 +519,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 Op::AddItem { id: ref_item, item: ref_point.clone() },
                 Op::LinkRepresentation { id: ref_rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Reference, vec![ref_item]) },
             ];
-            // One stub per member: a route with free ends (cross-page wires form in lane F).
+            // One stub per member: a route with free ends (cross-page wires form there).
             for lane in 0..members.len() {
                 let y = here.y - 5.0 * lane as f64;
                 let (_, stub) =

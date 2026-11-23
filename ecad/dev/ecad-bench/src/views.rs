@@ -1,4 +1,4 @@
-//! Full rebuild of each kept view on a written project (the end-gate review's table A, #57):
+//! Full rebuild of each kept view on a written project:
 //! what a view costs when it is made again whole after an edit instead of being updated.
 //!
 //! # Semantics

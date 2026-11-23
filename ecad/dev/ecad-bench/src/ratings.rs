@@ -1,4 +1,4 @@
-//! Brief 057 timings (design 057 §10), through the app's project on a copy of a version 2 file,
+//! Rating timings, through the app's project on a copy of a version 2 file,
 //! with the Checks list kept (as when it is shown) and every power wire rated.
 //!
 //! # Semantics
@@ -22,7 +22,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0057_0000;
 
-/// What brief 057 measured.
+/// What the rating timings measured.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredRatings {
     pub rated: usize,
@@ -40,7 +40,7 @@ fn exec(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, St
     Ok(t.elapsed().as_secs_f64() * 1e3)
 }
 
-/// Measure brief 057's rows on a copy of `path`.
+/// Measure the rating rows on a copy of `path`.
 ///
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.
@@ -85,7 +85,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     for i in 0..runs.max(1) {
         // A project with no protective device measures only the default change.
         if let Some(dev) = dev {
-            // Design 072 §2.2: a breaker's rating needs its curve; a fuse's does not.
+            // A breaker's rating needs its curve; a fuse's does not.
             let breaker = project.configure(&mut s, |p| {
                 p.ledger.document().devices().get(&dev).is_some_and(|x| {
                     matches!(

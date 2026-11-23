@@ -1,11 +1,11 @@
-//! Brief 050 timings (design 050 §11), through the app's project on a copy of a version 2 file.
+//! Style timings, through the app's project on a copy of a version 2 file.
 //!
 //! # Semantics
 //! - **style_tag**: `style {catalogue: text, id: tag, fields: {height}}` committed with the densest
-//!   page on screen. Target: within 10 % of **textstyle** on the same project (031's command, the
-//!   same change; since 050a it writes the same record).
+//!   page on screen. Target: within 10 % of **textstyle** on the same project (an older command, the
+//!   same change; it writes the same record).
 //! - **textstyle**: `textstyle {kind: tag, height}`, the same way.
-//! - **propredraw**: the baseline of 031, an ordinary device property on that page.
+//! - **propredraw**: the baseline, an ordinary device property on that page.
 //! - **standard_remove**: `standard {remove}` of a standard holding 50 values and 20 styles. Target:
 //!   under 100 ms.
 //! - **open** / **open_styled**: opening the file, and the same project saved with a standard of
@@ -23,7 +23,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0050_0000;
 
-/// What brief 050 measured, in milliseconds.
+/// What the style timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredStyles {
     pub style_tag_ms: f64,
@@ -32,7 +32,7 @@ pub struct MeasuredStyles {
     pub standard_remove_ms: f64,
     pub open_ms: f64,
     pub open_styled_ms: f64,
-    /// 050b: `style` on the `dc24` wire category's colour, and `category` on one net.
+    /// `style` on the `dc24` wire category's colour, and `category` on one net.
     pub wire_category_ms: f64,
     pub category_net_ms: f64,
     pub potential_net_ms: f64,
@@ -70,7 +70,7 @@ fn time_open(file: &Path, runs: usize) -> Result<f64, String> {
     Ok(median(&mut v))
 }
 
-/// Measure brief 050's rows on copies of `path`.
+/// Measure the style rows on copies of `path`.
 ///
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.
@@ -100,7 +100,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         out.style_tag_ms = median(&mut style);
         out.textstyle_ms = median(&mut text);
         out.propredraw_ms = median(&mut prop);
-        // 050b's rows.
+        // The wire category rows.
         {
             let (mut cat, mut pot) = (Vec::new(), Vec::new());
             let mut wire = Vec::new();

@@ -1,4 +1,4 @@
-//! Tester's acceptance checks for brief 012, from the outside: the small tier itself (not only a
+//! Acceptance checks of the benchmark generator, from the outside: the small tier itself (not only a
 //! cut-down tier) is deterministic and its two histories replay to the same document; the options
 //! and `--compare` behave as `cargo xtask bench` documents them.
 

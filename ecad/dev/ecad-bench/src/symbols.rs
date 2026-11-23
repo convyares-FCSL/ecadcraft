@@ -1,4 +1,4 @@
-//! Brief 048 timings (design 048 §11.3), through the app's project on a copy of a version 2 file.
+//! Symbol timings, through the app's project on a copy of a version 2 file.
 //! The project symbols and their copies are added on the copy here, not by the generator, so every
 //! earlier row stays comparable with earlier baselines.
 //!
@@ -25,7 +25,7 @@ const OPEN_SEED: u64 = 0x0048_0000;
 /// Where the bench's symbols sit: right of an A3 sheet, clear of the pattern.
 const X0: f64 = 700.0;
 
-/// What brief 048 measured, in milliseconds.
+/// What the symbol timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredSymbols {
     pub symbolnew_ms: f64,
@@ -72,7 +72,7 @@ fn wiredraw(s: &mut Session, runs: usize) -> Result<f64, String> {
     Ok(median(&mut v))
 }
 
-/// Measure brief 048 on a copy of `path` (in `scratch`), `runs` times each.
+/// Measure the symbols on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
 /// Opening, a refused command, or a project with no pages.

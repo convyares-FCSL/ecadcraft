@@ -1,4 +1,4 @@
-//! The benchmark generator's shape (brief 012, acceptance 3 to 5). These are the only parts of the
+//! The benchmark generator's shape. These are the only parts of the
 //! benchmark that run in CI; they use a cut-down tier and the small tier's lean history so they
 //! stay fast. The timings themselves never run here.
 

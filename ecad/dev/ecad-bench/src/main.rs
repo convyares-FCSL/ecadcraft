@@ -6,12 +6,12 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    // Verify mode (brief 013): the model reads no environment, so the program passes the switch in.
+    // Verify mode: the model reads no environment, so the program passes the switch in.
     ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(
         std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref(),
     ));
     let args: Vec<String> = std::env::args().skip(1).collect();
-    // The version 2 crash child (brief 021): save one edit and exit without closing the file.
+    // The version 2 crash child: save one edit and exit without closing the file.
     if let [flag, file] = args.as_slice()
         && flag == "--crash-save"
     {
@@ -32,7 +32,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 044: only the connector rows (connplace, connpins, connside, pinlabel) on one version 2
+    // Only the connector rows (connplace, connpins, connside, pinlabel) on one version 2
     // file.
     // `--write <tier> <lean|churned> <file>`: write one generated project, to time a part on.
     if let [flag, name, variant, file] = args.as_slice()
@@ -110,7 +110,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 059: only the cable manager rows (design 059 §12) on one version 2 file.
+    // Only the cable manager rows on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--cables"
     {
@@ -133,7 +133,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 057: only the rating rows (design 057 §10) on one version 2 file.
+    // Only the rating rows on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--ratings"
     {
@@ -156,7 +156,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 055: only the title block rows (design 055 §10.3) on one version 2 file.
+    // Only the title block rows on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--title-blocks"
     {
@@ -179,7 +179,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 054: only the page type and cover rows (design 054 §10.4) on one version 2 file.
+    // Only the page type and cover rows on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--pages"
     {
@@ -202,7 +202,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 050: only the style rows (design 050 §11) on one version 2 file.
+    // Only the style rows on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--styles"
     {
@@ -233,7 +233,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 048: only the symbol rows (symbolnew, symbolimpact, symboledit, wiredraw) on one
+    // Only the symbol rows (symbolnew, symbolimpact, symboledit, wiredraw) on one
     // version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--symbols"
@@ -257,7 +257,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 031: only the text rows (textplace, textstyle, propredraw) on one version 2 file.
+    // Only the text rows (textplace, textstyle, propredraw) on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--text"
     {
@@ -280,7 +280,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // Brief 029: time Verify on one version 2 file.
+    // Time Verify on one version 2 file.
     if let [flag, file] = args.as_slice()
         && flag == "--verify"
     {

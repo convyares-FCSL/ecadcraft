@@ -1,4 +1,4 @@
-//! Brief 045 timings (design 045 §11.2), through the app's project on a copy of the version 2
+//! PLC timings, through the app's project on a copy of the version 2
 //! file. The racks and cards are added on the copy here, not by the generator, so every earlier row
 //! stays comparable with earlier baselines.
 //!
@@ -15,9 +15,9 @@
 //! - **iolist**: every I/O row made (the models built). < 50 ms. **iolistupd**: one channel's
 //!   text set (`plcchannel`), committed, updated and its card's rows made again. < 5 ms.
 //! - **work**: how many racks and cards read differently after a slot move (the model itself is
-//!   rebuilt after every commit since 0.2.3).
+//!   rebuilt after every commit).
 //!
-//! - Brief 056 (design 056 §12.4, without sync since the owner's change of 2026-11-14):
+//! - The PLC tag import and export, without sync:
 //!   **plcimport**, a 5 000-tag generic CSV read, normalised and matched to the channels, dry run
 //!   (< 60 ms); **plcexport**, every rack as generic CSV text (< 30 ms); **drives**, Drives of every
 //!   channel from its rows (< 20 ms).
@@ -40,7 +40,7 @@ const CARDS: usize = 12;
 const PAGES: usize = 30;
 const BODIES: [&str; 5] = ["plcdi", "plcdq", "plcai", "plcrtd", "plciol"];
 
-/// What brief 045 measured, in milliseconds.
+/// What the PLC timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredPlc {
     pub plcbuild_ms: f64,
@@ -49,23 +49,23 @@ pub struct MeasuredPlc {
     /// Racks and cards one slot move recomputed.
     pub work: usize,
     pub slotmove_ms: f64,
-    /// Brief 045b: Place Channels across 16 wires (a new DI card), committed and updated.
+    /// Place Channels across 16 wires (a new DI card), committed and updated.
     pub chfence_ms: f64,
     /// One rack's address style changed, committed and updated.
     pub plcstyle_ms: f64,
-    /// Brief 045c: every I/O row made from scratch, and one channel text edited (committed,
+    /// Every I/O row made from scratch, and one channel text edited (committed,
     /// updated, its card's rows made again).
     pub iolist_ms: f64,
     pub iolistupd_ms: f64,
     pub rows: usize,
-    /// Brief 051 (design 051 §9.4): the card frames of the fenced page made (< 8 ms); one channel
+    /// The card frames of the fenced page made (< 8 ms); one channel
     /// text edited, committed, updated and the frames made again (< 4 ms); the first rack's tiles
     /// made (< 10 ms); the `plcrack` sheet drawn (< 30 ms).
     pub plcframe_ms: f64,
     pub plcframeupd_ms: f64,
     pub plcstrip_ms: f64,
     pub plcrack_ms: f64,
-    /// Brief 056 (design 056 §12.4).
+    /// Tag import, export and drives.
     pub plcimport_ms: f64,
     pub plcexport_ms: f64,
     pub drives_ms: f64,
@@ -138,7 +138,7 @@ pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), S
     Ok(())
 }
 
-/// Measure brief 045 on a copy of `path` (in `scratch`), `runs` times each.
+/// Measure the PLC on a copy of `path` (in `scratch`), `runs` times each.
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page.
@@ -191,7 +191,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);
-        // 16 wires on the page shown, for the fence (setup, not timed). Brief 051: the pack's 20 mm
+        // 16 wires on the page shown, for the fence (setup, not timed). The pack's 20 mm
         // pitch (a fence across closer wires is refused).
         for i in 0..16 {
             let x = 900.0 + 20.0 * f64::from(i);
@@ -269,7 +269,7 @@ fn tag_table(n: u32) -> String {
     t
 }
 
-/// Brief 056's rows (design 056 §12.4), on the project as [`measure`] left it.
+/// The tag import, export and drives rows, on the project as [`measure`] left it.
 fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut MeasuredPlc) -> Result<(), String> {
     let five = tag_table(5_000);
     let mut imports = Vec::new();
@@ -305,7 +305,7 @@ fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut 
     Ok(())
 }
 
-/// Brief 051's rows (design 051 §9.4), on the project as [`measure`] left it.
+/// The fenced card rows, on the project as [`measure`] left it.
 fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad_model::DeviceId, out: &mut MeasuredPlc) -> Result<(), String> {
     // A fenced card kept on the page shown (setup, not timed).
     let v = run(s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;

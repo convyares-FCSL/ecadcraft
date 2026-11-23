@@ -1,8 +1,8 @@
-//! Brief 055 timings (design 055 §10.3), through the app's project on a copy of a version 2 file.
+//! Title block timings, through the app's project on a copy of a version 2 file.
 //!
 //! # Semantics
 //! - **house**: one page's frame and title block worked out with the built-in house block
-//!   (`FrameInput::of` and `frame::parts`). Target: within 10 % of 019's `frame` row on `dev`.
+//!   (`FrameInput::of` and `frame::parts`). Target: within 10 % of the `frame` row on `dev`.
 //! - **own300**: the same with an own frame of 300 items and a 1 000-shape logo. Target: < 2 ms.
 //! - **save**: `titleblock {id, body}` of the frame every page uses, with one page on screen:
 //!   the commit and that page's frame. `save_builds`: frames worked out (target: 1; the rest stale).
@@ -26,7 +26,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0055_0000;
 
-/// What brief 055 measured.
+/// What the title block timings measured.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredTitleBlocks {
     pub house_ms: f64,
@@ -37,7 +37,7 @@ pub struct MeasuredTitleBlocks {
     pub pages: usize,
 }
 
-/// A block of 300 items and a 1 000-shape logo (design 055 §10.3).
+/// A block of 300 items and a 1 000-shape logo.
 pub fn big_layout() -> TitleBlockLayout {
     let mut items = Vec::new();
     for i in 0..299 {
@@ -77,7 +77,7 @@ fn frame_ms(project: &ProjectHandle, s: &mut Session) -> Result<f64, String> {
     })
 }
 
-/// Measure brief 055's rows on a copy of `path`.
+/// Measure the title block rows on a copy of `path`.
 ///
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.

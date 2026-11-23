@@ -1,4 +1,4 @@
-//! The bench writes its projects straight to the project file (fix/bench-direct-v2). These tests
+//! The bench writes its projects straight to the project file. These tests
 //! prove the file holds the generated project: the same document, pages, components, conductors
 //! and history entries.
 

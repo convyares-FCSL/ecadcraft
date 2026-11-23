@@ -1,10 +1,10 @@
-//! Tester probe for brief 014 re-test round 3. It times the whole-document work that now runs on
+//! Commit-cost probe. It times the whole-document work that now runs on
 //! every drawing commit, on a kept benchmark project. Diagnostic only; not an acceptance test.
 //!
 //! The probe times four things:
-//! - brief 010's `references::linked` and `orphaned_line`, which both run `cable_references` over
+//! - `references::linked` and `orphaned_line`, which both run `cable_references` over
 //!   the whole document;
-//! - brief 009's `views::drawings_on_page`;
+//! - `views::drawings_on_page`;
 //! - the page projection itself.
 //!
 //! It runs only when `ECAD_R3_PROJECT` names a kept `.ecad` file.

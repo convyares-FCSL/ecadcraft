@@ -1,4 +1,4 @@
-//! Brief 059 timings (design 059 §12), through the app's project on a copy of a version 2 file,
+//! Cables timings, through the app's project on a copy of a version 2 file,
 //! with the Checks list and the reports kept (as when Project ▸ Cables is shown).
 //!
 //! # Semantics
@@ -24,7 +24,7 @@ const OPEN_SEED: u64 = 0x0059_0000;
 /// Where the fresh wires go: beyond every tier's drawing.
 const X0: f64 = 20_000.0;
 
-/// What brief 059 measured.
+/// What the cables timings measured.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredCables {
     pub cables: usize,
@@ -49,7 +49,7 @@ fn seven(s: &mut Session, x0: f64) -> Result<Value, String> {
     Ok(json!({"from": [x0 - 2.0, 20.0], "to": [x0 + 32.0, 20.0]}))
 }
 
-/// Measure brief 059's rows on a copy of `path`.
+/// Measure the cables rows on a copy of `path`.
 ///
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.

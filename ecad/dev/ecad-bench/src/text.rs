@@ -1,4 +1,4 @@
-//! Brief 031 timings (design 031 §12), through the app's project on a copy of the version 2 file.
+//! Text style timings, through the app's project on a copy of the version 2 file.
 //!
 //! # Semantics
 //! - **textplace**: every derived text of the densest page (most symbols) worked out, placement
@@ -21,7 +21,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0031_0000;
 
-/// What brief 031 measured, in milliseconds.
+/// What the text style timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredText {
     pub textplace_ms: f64,
@@ -32,7 +32,7 @@ pub struct MeasuredText {
     pub texts: usize,
 }
 
-/// Measure brief 031's rows on a copy of `path`.
+/// Measure the text style rows on a copy of `path`.
 ///
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.

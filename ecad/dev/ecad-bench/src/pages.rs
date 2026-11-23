@@ -1,4 +1,4 @@
-//! Brief 054 timings (design 054 §10.4), through the app's project on a copy of a version 2 file.
+//! Page timings, through the app's project on a copy of a version 2 file.
 //!
 //! # Semantics
 //! - **newpage**: `newpage {type: "network", after}` after the densest page.
@@ -26,7 +26,7 @@ use crate::measure::{median, path_text, remove};
 
 const SEED: u64 = 0x0054_0000;
 
-/// What brief 054 measured, in milliseconds.
+/// What the page timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredPages {
     pub pages: usize,
@@ -44,7 +44,7 @@ fn exec(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<(f64, s
     Ok((t.elapsed().as_secs_f64() * 1e3, v))
 }
 
-/// Measure brief 054's rows on a copy of `path`.
+/// Measure the page rows on a copy of `path`.
 ///
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.

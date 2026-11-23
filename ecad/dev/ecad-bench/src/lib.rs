@@ -1,6 +1,6 @@
 //! ecad-bench
 //!
-//! The project load benchmark (brief 012), run on demand with `cargo xtask bench` (release
+//! The project load benchmark, run on demand with `cargo xtask bench` (release
 //! build). It generates synthetic projects ([`generate`]), writes them as `.ecad` files, times
 //! opening, deriving, the first page and saving one change ([`measure`]), prints a table and
 //! writes the results as JSON to `ecad/target/bench/` ([`report`]).

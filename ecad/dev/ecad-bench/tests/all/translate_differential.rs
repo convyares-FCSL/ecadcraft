@@ -1,4 +1,4 @@
-//! Brief 014, acceptance 2, kept as an ordinary test of the current translation: randomised
+//! A differential test of the current translation: randomised
 //! drawing edits on the small benchmark project, made the way a person makes them through the
 //! engine.
 //!

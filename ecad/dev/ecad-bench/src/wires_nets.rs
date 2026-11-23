@@ -1,18 +1,16 @@
-//! Brief 032 timings (design 032 §11), through the app's project on a copy of the version 2 file.
+//! Wire and net timings, through the app's project on a copy of the version 2 file.
 //!
 //! # Semantics
 //! - **wopen**: a two-point wire drawn in open space with `join: false` (nothing to join), the
 //!   baseline; **wmerge**: the same wire drawn from another wire's open end (it merges). Target:
 //!   within 10% of wopen.
 //! - **jjoin**: `joinwires` at two open ends that meet (two nets become one). Reported; its old
-//!   baseline, a junction placed there, went with the junction symbol (design 072 D).
+//!   baseline, a junction placed there, went with the junction symbol.
 //! - **lnet** / **leach**: the wire labels of the page with the most routes worked out under the
 //!   `net` and `each` rules. Target: lnet within 10% of leach.
 //! - **ccont**: `cablecontinue` of a 50-core cable on a second page (its reference end, one stub
-//!   per core and the slash). Target: under 20 ms. Until 072 D (F5) this row timed a `cableslash`
-//!   with the cable's tag on the second page, which added members; that form is gone (a slash with
-//!   an existing tag is refused where none of the cable's wires runs), and continuing a cable on
-//!   another page is `cablecontinue`.
+//!   per core and the slash). Target: under 20 ms. A slash with an existing tag is refused where
+//!   none of the cable's wires runs, so continuing a cable on another page is `cablecontinue`.
 //!
 //! Each edit is undone after it is measured; the setup happens on two pages added to the copy.
 
@@ -36,7 +34,7 @@ pub const CCONT_TAG: &str = "-W8032";
 /// Where the bench draws: right of an A3 sheet, clear of the generated pattern.
 const X0: f64 = 600.0;
 
-/// What brief 032 measured, in milliseconds.
+/// What the wire and net timings measured, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredWires {
     pub wopen_ms: f64,
@@ -65,7 +63,7 @@ fn timed(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, S
     Ok(d)
 }
 
-/// Measure brief 032's rows on a copy of `path` (design 032 §11).
+/// Measure the wire and net rows on a copy of `path`.
 ///
 /// # Errors
 /// A command refused or the copy not opened.
@@ -80,7 +78,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
         // The densest page's labels under both rules (read only, on the document). Densest by its
-        // routes (design 072 D: a wire is drawn by routes, not by representations of the wire); a
+        // routes (a wire is drawn by routes, not by representations of the wire); a
         // project whose pages have none is refused, never timed as an empty page.
         let (lnet, leach, routes) = project
             .read(&mut s, |p, _| -> Result<_, LabelPage> {
@@ -126,7 +124,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         }
         (out.wopen_ms, out.wmerge_ms, out.jjoin_ms) = (median(&mut wopen), median(&mut wmerge), median(&mut jjoin));
         // A 50-core cable slashed on this page with its reference end, continued on a second page
-        // (design 072 §4.4, F4).
+        // (the cable's reference end).
         let y = |i: usize| 100.0 + 5.0 * i as f64;
         for i in 0..CORES {
             run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;

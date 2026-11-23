@@ -1,4 +1,4 @@
-//! The table on stdout, the JSON file and `--compare` (brief 012 §4).
+//! The table on stdout, the JSON file and `--compare`.
 
 use std::path::Path;
 use std::process::Command;
@@ -13,23 +13,23 @@ pub struct Row {
     pub tier: String,
     pub variant: String,
     pub measured: Measured,
-    /// The same project in container version 2 (brief 021).
+    /// The same project in container version 2.
     pub v2: Option<crate::container::Measured>,
-    /// Zstandard codecs compared on that file (brief 021).
+    /// Zstandard codecs compared on that file.
     pub compression: Option<crate::container::Compression>,
-    /// History and branches on that file (brief 020a).
+    /// History and branches on that file.
     pub history: Option<crate::history::MeasuredHistory>,
-    /// Locations, reports and printing on that file (brief 024).
+    /// Locations, reports and printing on that file.
     pub reports: Option<crate::reports::MeasuredReports>,
-    /// Terminal strips and cable cores on that file (brief 028).
+    /// Terminal strips and cable cores on that file.
     pub strips: Option<crate::strips::MeasuredStrips>,
-    /// The pre-release check and the release on that file (brief 027).
+    /// The pre-release check and the release on that file.
     pub release: Option<crate::release::MeasuredRelease>,
-    /// Text placement and styles on that file (brief 031).
+    /// Text placement and styles on that file.
     pub text: Option<crate::text::MeasuredText>,
-    /// Wire joins, cable continuation and wire labels on that file (brief 032).
+    /// Wire joins, cable continuation and wire labels on that file.
     pub wires: Option<crate::wires_nets::MeasuredWires>,
-    /// PLC racks and cards on that file (brief 045).
+    /// PLC racks and cards on that file.
     pub plc: Option<crate::plc::MeasuredPlc>,
 }
 
@@ -335,7 +335,7 @@ pub fn table(rows: &[Row], runs: usize, print: Option<&crate::release::MeasuredP
             o.mergebench_ms,
             o.designation_users
         ));
-        // Brief 047 (design 047 §10).
+        // The BOM rows.
         let b = &o.bom;
         out.push_str(&format!(
             "BOM lines on {} {}: bomline {:.2} ms (< 16), bomkit {:.2} ms (50 devices, < 30), bomitem {:.2} ms (< 16), \
@@ -382,19 +382,19 @@ Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {
             t.trenum_ms,
             t.work
         ));
-        // Brief 030 (design 030 §11.3).
+        // The strip accessory rows.
         out.push_str(&format!(
             "Strip accessories: accset {:.2} ms (< 2 beyond edit), accmany {:.2} ms (< 16), accproj {:.2} ms (< 16; {} strips recomputed), \
              linkset {:.2} ms (< 16), linkpage {:.3} ms (< 4)\n",
             t.accset_ms, t.accmany_ms, t.accproj_ms, t.accproj_work, t.linkset_ms, t.linkpage_ms
         ));
-        // Brief 036 (design 036 §11.3).
+        // The multi-level terminal block rows.
         out.push_str(&format!(
             "Multi-level terminals: lvlfence {:.2} ms (< 16), lvlplace {:.2} ms (< 16), lvlsep {:.2} ms (< 16; {} strips recomputed), \
              toposition {:.2} ms (< 16), lvltrenum {:.2} ms (< 16)\n",
             t.lvlfence_ms, t.lvlplace_ms, t.lvlsep_ms, t.lvlsep_work, t.toposition_ms, t.lvltrenum_ms
         ));
-        // Brief 046 (design 046 §10).
+        // The strip page rows.
         out.push_str(&format!(
             "Strip pages: spage {:.2} ms (< 100), spageupd {:.2} ms (< 16), spageoff {:.2} ms ({} projections; stripupd + < 1), \
              spagetype {:.2} ms (< 16; {} strips marked), spbuild {:.2} ms (part of stripbuild; growth < 10 %)\n",
@@ -409,13 +409,13 @@ PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.
 ",
             r.tier, r.variant, t.racks, t.cards, t.plcbuild_ms, t.slotmove_ms, t.work, t.chfence_ms, t.plcstyle_ms, t.iolist_ms, t.rows, t.iolistupd_ms
         ));
-        // Brief 051 (design 051 §9.4).
+        // The PLC drawing rows.
         out.push_str(&format!(
             "PLC look on {} {}: plcframe {:.2} ms (< 8), plcframe upd {:.2} ms (< 4), plcstrip {:.2} ms (< 10), plcrack {:.2} ms (< 30)
 ",
             r.tier, r.variant, t.plcframe_ms, t.plcframeupd_ms, t.plcstrip_ms, t.plcrack_ms
         ));
-        // Brief 056 (design 056 §12.4).
+        // The PLC tag table rows.
         out.push_str(&format!(
             "PLC tag tables on {} {}: plcimport {:.2} ms (< 60), plcexport {:.2} ms (< 30), drives {:.2} ms (< 20)\n",
             r.tier, r.variant, t.plcimport_ms, t.plcexport_ms, t.drives_ms
@@ -566,7 +566,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 "gridchange_ms": m.gridchange_ms,
                 "revopen_ms": m.revopen_ms,
             });
-            // Brief 026 (design 026 §11), outside the macro (its recursion limit).
+            // The numbering rows, outside the macro (its recursion limit).
             let n = &m.numbering;
             for (k, v) in [
                 ("renumprev_ms", n.renumprev_ms),
@@ -579,7 +579,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 row[k] = json!(v);
             }
             row["renum_count"] = json!(n.renum_count);
-            // Brief 025 (set apart: one `json!` of every column reaches the macro's recursion limit).
+            // Device reference columns (set apart: one `json!` of every column reaches the macro's recursion limit).
             for (k, v) in [("xbuild_ms", m.xbuild_ms), ("xmove_ms", m.xmove_ms), ("xrenum_ms", m.xrenum_ms), ("xmirror_ms", m.xmirror_ms)] {
                 row[k] = json!(v);
             }
@@ -613,9 +613,9 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "stripupd_ms": t.stripupd_ms, "attach_ms": t.attach_ms, "relocate_ms": t.relocate_ms, "tplan_ms": t.tplan_ms,
                     "trenum_ms": t.trenum_ms, "strips": t.strips, "connection_points": t.connection_points, "cables": t.cables,
                     "work": t.work,
-                    // Brief 030.
+                    // The strip accessory rows.
                     "acc": acc_json(t),
-                    // Brief 046.
+                    // The strip page rows.
                     "spage": spage_json(t),
                 })),
                 "history": r.history.as_ref().map(|h| json!({
@@ -634,16 +634,16 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     })).collect::<Vec<_>>(),
                 })),
             });
-            // Brief 031: added here, as the macro above is at its recursion limit.
+            // Added here, as the macro above is at its recursion limit.
             if let Some(o) = row.as_object_mut() {
                 o.insert("text".into(), r.text.as_ref().map_or(Value::Null, text_json));
             }
             if let (Some(o), Value::Object(extra)) = (row.as_object_mut(), v2) {
                 o.extend(extra);
             }
-            // Brief 032 (set apart, as brief 025's columns).
+            // The wire columns (set apart, as the device reference columns).
             row["wires"] = r.wires.as_ref().map_or(Value::Null, wires_json);
-            // Brief 045 (set apart, as brief 025's columns).
+            // The PLC columns (set apart, as the device reference columns).
             row["plc"] = r.plc.as_ref().map_or(Value::Null, |t| {
                 json!({"plcbuild_ms": t.plcbuild_ms, "slotmove_ms": t.slotmove_ms, "racks": t.racks, "cards": t.cards, "work": t.work,
                     "chfence_ms": t.chfence_ms, "plcstyle_ms": t.plcstyle_ms,
@@ -652,7 +652,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "plcimport_ms": t.plcimport_ms,
                     "plcexport_ms": t.plcexport_ms, "drives_ms": t.drives_ms})
             });
-            // Brief 047 (design 047 §10), set apart for the macro's recursion limit.
+            // The BOM columns, set apart for the macro's recursion limit.
             row["bom"] = r.reports.as_ref().map_or(Value::Null, |o| {
                 let b = &o.bom;
                 json!({
@@ -663,7 +663,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
             row
         }).collect::<Vec<_>>(),
     });
-    // Print Book and release on the 25-page project (brief 027), once per run.
+    // Print Book and release on the 25-page project, once per run.
     out["print"] = print_v.unwrap_or(Value::Null);
     out
 }
@@ -708,9 +708,9 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
     Ok(out)
 }
 
-/// Brief 030's rows (design 030 §11.3), apart so the report's `json!` stays within its recursion
+/// The strip accessory rows, apart so the report's `json!` stays within its recursion
 /// limit.
-/// Brief 031's row as JSON.
+/// The text style row as JSON.
 fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
     json!({
         "textplace_ms": t.textplace_ms, "textstyle_ms": t.textstyle_ms, "propredraw_ms": t.propredraw_ms,
@@ -718,7 +718,7 @@ fn text_json(t: &crate::text::MeasuredText) -> serde_json::Value {
     })
 }
 
-/// Brief 046's rows (its own object: one `json!` would pass the macro's recursion limit).
+/// The strip page rows (their own object: one `json!` would pass the macro's recursion limit).
 fn spage_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     json!({
         "spage_ms": t.spage_ms, "spageupd_ms": t.spageupd_ms, "spageoff_ms": t.spageoff_ms,
@@ -735,7 +735,7 @@ fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
     })
 }
 
-/// Brief 032's row as JSON (outside the report's one `json!`, which is at the macro's depth).
+/// The wire row as JSON (outside the report's one `json!`, which is at the macro's depth).
 fn wires_json(w: &crate::wires_nets::MeasuredWires) -> serde_json::Value {
     json!({
         "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "jjoin_ms": w.jjoin_ms,

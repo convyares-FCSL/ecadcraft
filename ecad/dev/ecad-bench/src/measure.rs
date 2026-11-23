@@ -1,4 +1,4 @@
-//! The timings (brief 012 §3). Each is the median of the runs asked for; generating the project
+//! The timings. Each is the median of the runs asked for; generating the project
 //! is never timed.
 //!
 //! # Semantics
@@ -6,15 +6,15 @@
 //!   taking and releasing the writer lock as the app does).
 //! - **edit** and **save** run on one copy of the file, opened once and not timed: each run
 //!   commits one add-wire transaction (timed as edit), then saves it (timed as save).
-//! - **xref** (cable references) times brief 010's `ecad_model::connectivity::derive::cable_references` on the
+//! - **xref** (cable references) times `ecad_model::connectivity::derive::cable_references` on the
 //!   document the open runs replayed to, as **derive** times the nets; see [`cable_references_ms`].
-//! - **draw edit** (brief 014) runs on another copy, opened once (not timed) in a headless
+//! - **draw edit** runs on another copy, opened once (not timed) in a headless
 //!   CADCraft session with page 1 open, as the desktop app opens it. Each run makes one edit the way a
 //!   person makes it, through the engine: **move** moves a component that has wires attached
 //!   (MOVE on its symbol; the commit goes through the translation and the movement policy, and
 //!   the page is projected again), alternately down and back up; **move with wires** moves the
 //!   same component together with every wire attached to it, as a window around them selects
-//!   them, so each wire's far end leaves its terminal (M3); **wire** draws one wire between
+//!   them, so each wire's far end leaves its terminal; **wire** draws one wire between
 //!   two terminals with the `wire` command, as the mouse wire tool does.
 
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ pub struct Measured {
     pub open_ms: f64,
     /// Nets on the opened document (`ecad_model::connectivity::derive::nets`).
     pub derive_ms: f64,
-    /// Cable references on the opened document (`ecad_model::connectivity::derive::cable_references`, brief 010).
+    /// Cable references on the opened document (`ecad_model::connectivity::derive::cable_references`).
     pub reference_ms: Option<f64>,
     /// Open the file in a headless CADCraft session and project page 1 (`ecad-engine`).
     pub first_page_ms: f64,
@@ -50,22 +50,22 @@ pub struct Measured {
     pub edit_ms: f64,
     /// Write that transaction to the file, durable before it returns (`DiskProject::save`).
     pub save_ms: f64,
-    /// Move a component with wires attached on page 1, in a headless CADCraft session (brief 014).
+    /// Move a component with wires attached on page 1, in a headless CADCraft session.
     pub draw_move_ms: f64,
     /// Move that component together with every wire attached to it, as a window selection picks
-    /// them: the far ends leave their terminals (brief 014 fix round).
+    /// them: the far ends leave their connection points.
     pub draw_window_ms: f64,
-    /// Draw one wire between two terminals on page 1, in a headless CADCraft session (brief 014).
+    /// Draw one wire between two terminals on page 1, in a headless CADCraft session.
     pub draw_wire_ms: f64,
-    /// Switch the active page (brief 016, design 016 section 6): `openpage` in a headless session
+    /// Switch the active page: `openpage` in a headless session
     /// with one page active, until that page is the active page; median over up to
     /// [`SWITCH_PAGES`] pages spread over the project and back to page 1 after each.
     pub switch_ms: f64,
     /// Draw the read-only preview of a page: project it, build and rasterise it at 480 x 320
     /// (`ecad_engine::pages::preview`), median over the same pages.
     pub preview_ms: f64,
-    /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`, brief 016
-    /// AC4), median over the same pages.
+    /// Rebuild the Project panel's rows after one `renamepage` (`Project::page_rows`),
+    /// median over the same pages.
     pub panel_ms: f64,
     /// Rebuild the Devices tab's list (`device_list::device_entries`, unfiltered), median over the
     /// same pages.
@@ -76,27 +76,27 @@ pub struct Measured {
     /// Bring the Devices tab's list up to date after one device property edit (`setprop`):
     /// `device_list::DeviceList::sync` refreshing only that device, median over the same pages.
     pub devupd_ms: f64,
-    /// Build the nets from scratch, as on open (`Connectivity::build`, brief 022).
+    /// Build the nets from scratch, as on open (`Connectivity::build`).
     pub nets_ms: f64,
     /// One wire attached at both ends committed with the numbering pass, the Checks list and page
-    /// 1's labels brought up to date, then undone the same way (brief 022, design 022 §4).
+    /// 1's labels brought up to date, then undone the same way.
     pub netupd_ms: f64,
     /// Delete one conductor of the largest net with the numbering pass and the Checks update
-    /// (brief 022's worst cut).
+    /// (the worst case).
     pub netcut_ms: f64,
     /// How many conductors the net cut by `netcut` had.
     pub netcut_size: usize,
-    /// The worst cut of design 022 §4 on a synthetic net: one conductor of a star of
+    /// The worst case on a synthetic net: one conductor of a star of
     /// [`RAIL_WIRES`] conductors round one connection point (a 0V rail) deleted, with the
     /// numbering pass and the Checks update. The generated tiers have no net that large.
     pub rail_ms: f64,
-    /// Place a starter coil as a new device on page 1 (`place {symbol}`, brief 018).
+    /// Place a starter coil as a new device on page 1 (`place {symbol}`).
     pub place_ms: f64,
-    /// Add a NO contact to that device (`place {symbol, device}`, brief 018).
+    /// Add a NO contact to that device (`place {symbol, device}`).
     pub join_ms: f64,
-    /// Rename that device's tag (`setprop` tag, brief 018).
+    /// Rename that device's tag (`setprop` tag).
     pub tag_ms: f64,
-    /// Renumber page 2 (`pageprops {number}`, brief 019): the commit, the redraw of the page shown
+    /// Renumber page 2 (`pageprops {number}`): the commit, the redraw of the page shown
     /// and the reference texts naming page 2 (its cables' other ends).
     pub pnum_ms: f64,
     /// Work out one page's frame and title block from the document (`frame::FrameInput::of` and
@@ -109,7 +109,7 @@ pub struct Measured {
     pub gridchange_ms: f64,
     /// Open an issued revision read-only (`openrevision`): the project rebuilt as at Rev A.
     pub revopen_ms: f64,
-    /// Brief 025 (design 025 §7), on a copy with [`REFERENCE_COILS`] coils added: the reference index
+    /// On a copy with [`REFERENCE_COILS`] coils added: the reference index
     /// built from scratch, as on open.
     pub xbuild_ms: f64,
     /// Move such a coil (its contacts on other pages): commit, reference update and redraw.
@@ -118,11 +118,11 @@ pub struct Measured {
     pub xrenum_ms: f64,
     /// Bring a page with 10 contact tables to the front (`openpage`, projected with its tables).
     pub xmirror_ms: f64,
-    /// Brief 026's timings (design 026 §11).
+    /// The numbering timings.
     pub numbering: NumberingTimes,
 }
 
-/// Brief 026 (design 026 §11): renumbering on a copy in a headless session, medians in ms.
+/// Renumbering on a copy in a headless session, medians in ms.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct NumberingTimes {
     /// `renumber {kind: devices, scope: all, preview}`: the plan, nothing written.
@@ -163,8 +163,8 @@ fn open(path: &Path) -> Result<ecad_file::disk::OpenedDisk, String> {
     crate::container::open(path)
 }
 
-/// The time to derive the cable references of `doc` (brief 010's
-/// `ecad_model::connectivity::derive::cable_references`), in milliseconds. Always `Some` in this revision; the
+/// The time to derive the cable references of `doc` with
+/// `ecad_model::connectivity::derive::cable_references`, in milliseconds. Always `Some` in this revision; the
 /// `Option` keeps the report's `—` for a revision without the derivation.
 pub fn cable_references_ms(doc: &Document) -> Option<f64> {
     let start = Instant::now();
@@ -323,7 +323,7 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
     result
 }
 
-/// The kept Checks list as the project keeps it: built through the views (design 064 §5.2) and
+/// The kept Checks list as the project keeps it: built through the views and
 /// updated by its own view for each commit, noted on the state before and after it (the other
 /// views are not kept here, so only the Checks update is timed).
 struct KeptChecks {
@@ -421,7 +421,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     Ok(out)
 }
 
-/// Brief 022's incremental net updates on a copy opened once (not timed). Per run:
+/// Incremental net updates on a copy opened once (not timed). Per run:
 /// - **netupd**: commit one wire attached at both ends with the numbering pass, bring the Checks
 ///   list (built once, not timed) and page 1's labels up to date, then undo it the same way;
 /// - **netcut**: delete one conductor of the largest net (its route and drawing; the commit's
@@ -495,7 +495,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
 struct DrawTarget {
     head: u64,
     /// The symbol of the first component on page 1 with routes landing on its connection points. By
-    /// routes, not wire ends: a move with wires leaves the far ends free (translate's M3), so the
+    /// routes, not wire ends: a move with wires leaves the far ends free, so the
     /// component keeps its routes but not its wires until the next run's move back re-lands them,
     /// and every run must pick the same component.
     symbol: cadcraft_engine::doc::Handle,
@@ -613,8 +613,8 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
     result
 }
 
-/// Copy `path` to `copy` and open it once in a headless CADCraft session (not timed). Then per run
-/// (brief 018): place a starter coil as a new device (timed), add a NO contact to it (timed) and
+/// Copy `path` to `copy` and open it once in a headless CADCraft session (not timed). Then per run:
+/// place a starter coil as a new device (timed), add a NO contact to it (timed) and
 /// rename its tag (timed). Every edit must be recorded as exactly one transaction.
 fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String> {
     use serde_json::json;
@@ -658,7 +658,7 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
     result
 }
 
-/// Brief 026 (design 026 §11): on a copy opened once in a headless session, per run: the device
+/// On a copy opened once in a headless session, per run: the device
 /// renumber's preview, the renumber itself (start 2, so every tag changes), its undo, the wire
 /// renumber (undone untimed), a swap of two tags, and Finalise numbering of 50 provisional devices
 /// (placed untimed, undone untimed), after the nets were numbered (untimed). Every write must be
@@ -743,10 +743,10 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
     result
 }
 
-/// Coils the cross-reference timings add to their copy of the project (design 025 §7).
+/// Coils the cross-reference timings add to their copy of the project.
 pub const REFERENCE_COILS: usize = 1_000;
 
-/// Brief 025's timings, one sample per run each.
+/// The device reference timings, one sample per run each.
 #[derive(Debug, Default)]
 struct DeviceReferenceTimes {
     build: Vec<f64>,
@@ -755,7 +755,7 @@ struct DeviceReferenceTimes {
     mirror: Vec<f64>,
 }
 
-/// Brief 025 (design 025 §7) on a copy: [`REFERENCE_COILS`] coils are
+/// The device reference timings on a copy: [`REFERENCE_COILS`] coils are
 /// added and saved (not timed; then opened once in a headless session), each with a `power3` on its own page and a NO and an NC
 /// on the next page, half of them with an offer (`3P+1NO+1NC`); the first 20 coils' contacts are
 /// all on page 2 (40 targets) and coils 20 to 29 on page 3 (10 tables). Then per run:
@@ -898,7 +898,7 @@ pub(crate) fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_mod
     Ok((coils, order))
 }
 
-/// Brief 019's timings, one sample per run each.
+/// The numbering timings, one sample per run each.
 #[derive(Debug, Default)]
 struct SheetTimes {
     pnum: Vec<f64>,
@@ -908,7 +908,7 @@ struct SheetTimes {
     revopen: Vec<f64>,
 }
 
-/// Brief 019 (design 019 §9): renumber a page, work out a frame, change the project title, change
+/// Renumber a page, work out a frame, change the project title, change
 /// the grid, open an issued revision; each a recorded command in a headless session on a copy.
 fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, String> {
     use serde_json::json;

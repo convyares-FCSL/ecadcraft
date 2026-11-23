@@ -1,4 +1,4 @@
-//! Brief 027 timings (design 027 §11.2), through the app's project on a copy of the version 2
+//! Release timings, through the app's project on a copy of the version 2
 //! file, with the Checks and report models kept first (as the Release dialog keeps them).
 //!
 //! # Semantics
@@ -6,11 +6,11 @@
 //!   kept lists warm. Target ≤ 100 ms on large.
 //! - **orphanupd**: one cable reference end erased (its partner becomes an orphan), committed with
 //!   the Checks kept, then undone; **orphanwork**: of that, the orphan rows re-derived for the
-//!   cable (`checks::cables::reference_checks`), the only work 027 adds to the edit (target: under 1 ms
+//!   cable (`checks::cables::reference_checks`), the only work the release check adds to the edit (target: under 1 ms
 //!   over the same edit without it).
 //!
-//! On the 25-page project only ([`measure_print`], owner 2026-11-12):
-//! - **print**: Print Book of every page, to memory, and the book's size in bytes (brief 033).
+//! On the 25-page project only ([`measure_print`]):
+//! - **print**: Print Book of every page, to memory, and the book's size in bytes.
 //! - **release**: `release` of the pending revision: the whole book and the lists to a staging
 //!   folder, the issue, the save, the manifest and the rename. Target ≤ 5 s.
 //! - **rerelease**: `release {rev}` of that revision again (Keep both), its state and report models
@@ -28,7 +28,7 @@ use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0027_0000;
 
-/// What brief 027 measured on a tier, in milliseconds.
+/// What the release timings measured on a tier, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredRelease {
     pub prerelease_ms: f64,
@@ -44,7 +44,7 @@ pub struct MeasuredPrint {
     pub pages: usize,
     pub print_ms: f64,
     pub print_sheets: usize,
-    /// Bytes of the printed book (all its files), brief 033.
+    /// Bytes of the printed book (all its files).
     pub print_bytes: u64,
     pub release_s: f64,
     pub rerelease_s: f64,
@@ -60,7 +60,7 @@ fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<serde_js
     s.execute(cmd, &params).map_err(|e| format!("{cmd} {params}: {e}"))
 }
 
-/// Measure brief 027 on a copy of `path` (in `scratch`), `runs` times each (the release once).
+/// Measure the release on a copy of `path` (in `scratch`), `runs` times each (the release once).
 ///
 /// # Errors
 /// Opening, a refused command, or nothing to measure.
