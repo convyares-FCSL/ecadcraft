@@ -30,7 +30,7 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let p = std::env::temp_dir().join(format!("ecad-tester-021-{name}-{}", ecad_store::disk::unique()));
+        let p = std::env::temp_dir().join(format!("ecad-recovery-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }

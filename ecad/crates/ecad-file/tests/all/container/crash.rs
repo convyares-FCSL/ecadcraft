@@ -165,7 +165,7 @@ fn acks_path(file: &Path) -> PathBuf {
 
 #[test]
 #[ignore = "run by killed_mid_save_reopens_at_the_last_acknowledged_save in a child process"]
-fn child_v2_writer() {
+fn child_writer() {
     let Some(file) = std::env::var_os("ECAD_TEST_CHILD").and(std::env::var_os(CHILD_FILE)) else { return };
     let file = PathBuf::from(file);
     let (mut disk, mut ledger) = if file.exists() {
@@ -275,7 +275,7 @@ fn killed_mid_save_reopens_at_the_last_acknowledged_save() {
     for round in 0..n {
         let before = ack_lines(&file).len();
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--ignored", "--exact", "container_crash::child_v2_writer", "--nocapture", "--test-threads=1"])
+            .args(["--ignored", "--exact", "container::crash::child_writer", "--nocapture", "--test-threads=1"])
             .env("ECAD_TEST_CHILD", "1")
             .env(CHILD_FILE, &file)
             .stdout(std::process::Stdio::null())
@@ -386,7 +386,7 @@ const CHILD_DIR: &str = "ECAD_CRASH_DIR";
 /// acknowledging each file written (`f <path> <head> <fingerprint>`) only after it returned.
 #[test]
 #[ignore = "run by killed_during_save_as_or_a_first_save_leaves_only_whole_files in a child process"]
-fn child_v2_save_as_writer() {
+fn child_save_as_writer() {
     let Some(dir) = std::env::var_os("ECAD_TEST_CHILD").and(std::env::var_os(CHILD_DIR)) else { return };
     let dir = PathBuf::from(dir);
     let mut acks = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("acks")).unwrap();
@@ -433,7 +433,7 @@ fn killed_during_save_as_or_a_first_save_leaves_only_whole_files() {
         std::fs::create_dir_all(&dir).unwrap();
         let acks_file = dir.join("acks");
         let mut child = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--ignored", "--exact", "container_crash::child_v2_save_as_writer", "--nocapture", "--test-threads=1"])
+            .args(["--ignored", "--exact", "container::crash::child_save_as_writer", "--nocapture", "--test-threads=1"])
             .env("ECAD_TEST_CHILD", "1")
             .env(CHILD_DIR, &dir)
             .stdout(std::process::Stdio::null())
