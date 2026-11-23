@@ -1,4 +1,4 @@
-//! Core Label (design 009 §5.1).
+//! Core Label.
 
 use super::cable_view::{WIRE_NOT_IN_CABLE, cabled_wire};
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -28,7 +28,7 @@ const CORE_IS_CABLE: &str = "That is the cable; click one of its wires.";
 const CORE_NOT_WIRE: &str = "That is not a wire in a cable.";
 
 impl CableCore {
-    /// The member a pick names (design 009 §5.1 step 2): a route, a fan tail or bend, or a core
+    /// The member a pick names: a route, a fan tail or bend, or a core
     /// label; anything else is refused in words.
     fn member(s: &Session, h: Handle) -> R<(WireId, String, Option<String>)> {
         read(s, |p, page| {
@@ -70,7 +70,7 @@ impl CableCore {
                 Ok(Step::Continue)
             }
             (Some((w, name, old)), Input::Text(t)) => {
-                // `.` clears, and so does a blank label, as in the JSON form (design 009 §5.4).
+                // `.` clears, and so does a blank label, as in the JSON form.
                 let clear = t.trim() == "." || t.trim().is_empty();
                 if clear && old.is_none() {
                     s.echo(format!("{name} has no core label."));
@@ -120,7 +120,7 @@ impl Interactive for CableCore {
     fn name(&self) -> &'static str {
         "CABLECORE"
     }
-    /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
+    /// The picked wire is highlighted while its label is asked for.
     fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
         let route = read(s, |p, page| {

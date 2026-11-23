@@ -1,4 +1,4 @@
-//! Independent tester's round-2 contracts for brief 008: the Add Connection Point prompt names the
+//! The Add Connection Point prompt names the
 //! default name the next terminal will actually get, while moving between components in one run,
 //! back to the first one, for typed points, and after an undo.
 

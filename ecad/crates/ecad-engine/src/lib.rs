@@ -1,33 +1,32 @@
-//! ecad-engine
+//! ecad-engine: the link between an ECAD project and CADCraft's drawing engine.
 //!
-//! The adapter between the authoritative ECAD document ([`ecad_model`]) and the CADCraft engine.
-//! It is the only ECAD crate that depends on CADCraft (principle P10), and everything in it is
-//! **provisional** (proposal Part B): it exists to prove or disprove hypotheses H1-H5 in the
-//! bounded integration experiment (§17).
+//! It draws each page from the model, turns CADCraft edits into ECAD transactions, owns undo, redo and save, and
+//! runs the ECAD commands. It is the only ECAD crate that depends on CADCraft; the rules themselves live in
+//! `ecad-electrical`, and the engine holds only what needs the session (drawing, cursor, selection, entities).
 //!
-//! - [`project::Project`] is a CADCraft document owner (`cadcraft_engine::ext`): it projects each
-//!   page into an engine drawing, keeps the session-only handle map, translates CADCraft commits
-//!   into transactions ([`translate`]), owns undo/redo/save, and restores consistency by
-//!   reprojecting after a failure (PROJ-02).
-//! - [`ProjectHandle`] is the only way to reach a project from outside the crate. It enforces the
-//!   lock and re-entry contract (see the `access` module): nothing can call the session while it
-//!   holds the project.
-//! - [`commands`] adds the ECAD commands (JSON forms) to the engine's command registry, and
-//!   [`interact`] their click-based interactive forms, the terminal and wire-end marks drawn over
-//!   pages, and the hover description. [`slash`] decides what a cable slash crosses (brief 004).
-//! - [`views`] holds each cable's traditional / fan view (brief 005): presentation only, drawn by
-//!   the projection, remembered per user outside the `.ecad` file.
-//! - [`references`] holds cable references across pages (brief 010): a cable drawn on several
-//!   pages ends at reference ends whose text (`/<page>.<column>` of the other end) is derived on
-//!   every draw, never stored ([`cables::markers_on_page`] is the one source of that text).
+//! The project and its boundary:
+//! - [`project`]: [`Project`], the CADCraft document owner: page drawings, the handle map, undo, redo and save,
+//!   and redrawing every page after a failed commit so the drawing always matches the document.
+//! - [`ProjectHandle`] (the `access` module): the only way to reach a project from outside, under its lock.
+//! - [`cad`]: the CADCraft types and functions the app and the programs may name.
+//! - [`commands`]: the command registry and the shared helpers of session commands.
+//! - [`interact`]: click-based forms of the commands, the marks drawn over pages and the hover text.
+//! - [`pointer`]: what is under the cursor and the running tool's intent.
+//! - [`draw`], [`convert`]: building CADCraft entities, text styles and fonts from what the rules decide.
+//! - [`file`]: the project's `.ecad` file on disk, the home folder and path rules.
+//! - [`history`]: the History tab: versions, points, restore, branches and merging.
+//! - [`agent`]: what an agent may run, its caps, its author name and its read tools.
+//! - [`background`], [`warm`]: work off the UI thread, and the first builds of the kept views.
+//! - [`export`]: export formats (Print Book PDF).
+//! - [`dev`]: the debugger, verify, the snapshot and test support.
 //!
-//! - [`file`] binds a project to its `.ecad` file on disk (through `ecad-file`), holding the
-//!   writer lock while it is open.
-//! - [`debug`] copies what the developer debugger shows out of a project under one short lock,
-//!   and runs its explicit checks (replay, projection, file) on copies.
+//! Feature areas, each the engine half of the same area in `ecad-electrical` (its commands, drawing and click
+//! forms): [`cables`], [`checks`], [`connectors`], [`continuations`], [`devices`], [`locations`], [`pages`],
+//! [`plc`], [`properties`], [`references`], [`releases`], [`reports`], [`styles`], [`symbols`],
+//! [`terminal_strips`], [`title_blocks`], [`wires`].
 //!
-//! This crate intentionally contains **no** UI, no file encoding of its own (that is `ecad-file`)
-//! and no ECAD semantics inside upstream crates.
+//! This crate contains **no** UI, no file encoding of its own (that is `ecad-file`) and no ECAD meaning inside
+//! upstream crates.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod access;
@@ -64,10 +63,6 @@ pub mod title_blocks;
 mod translate;
 pub mod warm;
 pub mod wires;
-// The commands' paths before step 11 of lane 067, used outside the crate.
-
-// Brief 035: a per-user settings file and a window's port. Its
-// path before cut 12.
 pub use crate::access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use crate::file::{
     FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, SaveAsError, SaveAsRefused, ensure_default_folder, expand_home, home, normalize,
@@ -84,13 +79,13 @@ pub const UPSTREAM_COMMIT: &str = "227e3c385b20129cf525775e3d9cbe78b722b3bb";
 /// Install the ECAD commands into the engine's registry. Call once, before the engine's command
 /// list is first used. Returns `false` if it was too late or already done.
 pub fn install() -> bool {
-    // Brief 040: the sheet font for every page drawn or printed, in the window or headless.
+    // The sheet font for every page drawn or printed, in the window or headless.
     styles::draw::register_sheet_font();
     cadcraft_engine::cmd::set_extension_commands(commands::specs)
 }
 
-/// Fault injection for the experiment (`Faults::panic_in_commit`): a deliberate panic inside an
-/// owner callback, to prove the engine's guard and the owner's recovery. Compiled only with the
+/// Fault injection (`Faults::panic_in_commit`): a deliberate panic inside a document owner callback,
+/// to prove the engine's guard and the project's recovery. Compiled only with the
 /// `fault-injection` feature, so normal builds contain no panic path.
 #[cfg(feature = "fault-injection")]
 #[allow(clippy::panic)]

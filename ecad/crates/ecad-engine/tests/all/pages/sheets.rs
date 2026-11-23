@@ -1,4 +1,4 @@
-//! Brief 019 (design 019 §12, checks A–G and J): the sheet frame and title block, page and project
+//! The sheet frame and title block, page and project
 //! properties, folders, revisions, saving and reopening, and the update maps of the frame and the
 //! reference texts.
 

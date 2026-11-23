@@ -1,4 +1,4 @@
-//! Brief 018 (design 018 §12): devices, tags and starter symbols, from outside, through the
+//! Devices, tags and starter symbols, from outside, through the
 //! commands' JSON and interactive forms.
 
 use crate::common;

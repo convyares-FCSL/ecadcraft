@@ -1,4 +1,4 @@
-//! Brief 024 acceptance (design 024 §13): device locations and location boxes, the location
+//! Reports: device locations and location boxes, the location
 //! prefix, the reports, generated pages and Print Book. Driven through the commands' JSON forms.
 
 use ecad_electrical::locations::Source;

@@ -1,4 +1,4 @@
-//! Brief 040 (U4a, the canvas), the adapter's part: overlay marks in the token colours and sizes,
+//! The canvas, the adapter's part: overlay marks in the token colours and sizes,
 //! colour codes and two-colour wires (screen colours, mono and colour print, the information
 //! check for an unknown code), overlay never printed, `print.colour`, and text heights as cap
 //! heights in the sheet font.

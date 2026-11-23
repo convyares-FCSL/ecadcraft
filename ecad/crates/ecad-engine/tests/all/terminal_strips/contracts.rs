@@ -1,4 +1,4 @@
-//! Brief 028 acceptance (design 028 §12): terminals placed on wires, Place Terminals, bridges,
+//! Terminal blocks placed on wires, Place Terminals, bridges,
 //! cores, the terminal plan and cable schedule, the BOM per terminal type, the Checks rows, and
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 

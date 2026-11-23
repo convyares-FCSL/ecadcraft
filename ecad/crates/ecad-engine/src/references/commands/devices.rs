@@ -1,4 +1,4 @@
-//! `refgoto` (brief 025, design 025 §5.3): opens the place a reference shows, so it is the
+//! `refgoto`: opens the place a reference shows, so it is the
 //! engine's; its interactive form is in [`crate::interact`]. The other cross-reference commands
 //! are generic ([`ecad_electrical::references::commands::devices`]).
 

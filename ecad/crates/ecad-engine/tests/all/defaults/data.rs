@@ -1,4 +1,4 @@
-//! Brief 066 (design 066 §8): built-in defaults are data. The files are complete and valid, the
+//! Built-in defaults are data. The files are complete and valid, the
 //! loader refuses hostile files without a panic, and the values read are the data's.
 
 use ecad_electrical::defaults::data::{self, DefaultsError, MAX_LISTED, load};

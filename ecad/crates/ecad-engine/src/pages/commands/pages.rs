@@ -1,8 +1,8 @@
-//! The page commands that need the session (briefs 010, 019, 024, 028, 046, 054): `newpage`,
+//! The page commands that need the session: `newpage`,
 //! `openpage` and `ecadinspect` (a read-only snapshot). `renamepage` and `movepage` are generic
 //! ([`ecad_electrical::pages::commands::page_edits`]).
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::pages::commands::sheets`] decide, and the shim commits the ops and answers in JSON.
 //! Opening a page is the session's.
 

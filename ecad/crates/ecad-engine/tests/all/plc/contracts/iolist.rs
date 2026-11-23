@@ -1,4 +1,4 @@
-//! Brief 045c (design 045 §8, §13 N–Q): the I/O list as `iolist`, the generated page and the
+//! The I/O list as `iolist`, the generated page and the
 //! release CSV; the update map of its rows.
 
 use ecad_model::{DeviceId, PageId};

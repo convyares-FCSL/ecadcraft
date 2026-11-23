@@ -1,9 +1,9 @@
-//! Brief 022's commands (design 022 §10): `nets`, `net`, `wirenumber`, `potential`,
+//! The commands `nets`, `net`, `wirenumber`, `potential`,
 //! `wiresettings`, `renumberwires`, `checks`, `wire`, `joinwires`, `category`, and the
 //! continuation form of `place`. Their JSON forms commit through [`Project::apply_edit`], which
 //! runs the numbering pass; reads change nothing.
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::wires::commands::wires`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::Session;
@@ -31,7 +31,7 @@ fn not_auto(v: Option<String>) -> Option<String> {
 
 // ---------------------------------------------------------------- joinwires
 
-/// `joinwires {at: [x,y]}` on the active page (design 032 §2.5, design 072 §4.3): two free route
+/// `joinwires {at: [x,y]}` on the active page: two free route
 /// ends that meet become one route; free ends on a route's middle, or three or more ends, land on
 /// one route there (a T).
 #[derive(Deserialize, JsonSchema)]
@@ -60,9 +60,9 @@ impl Command for JoinwiresParams {
     }
 }
 
-// ---------------------------------------------------------------- wire (brief 032 §2)
+// ---------------------------------------------------------------- wire
 
-/// `wire {points, potential?, join?: bool, category?}` (design 032 §2.3).
+/// `wire {points, potential?, join?: bool, category?}`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WireParams {
@@ -141,8 +141,8 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
     v
 }
 
-/// The quiet wire ends on `page` (cable reference ends, brief 009/010): never joined. Derived
-/// from the document (review of #65, finding 5), not from what is on screen; only a page with a
+/// The quiet wire ends on `page` (cable reference ends): never joined. Derived
+/// from the document, not from what is on screen; only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
     crate::wires::draw::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
@@ -151,7 +151,7 @@ pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
 // ---------------------------------------------------------------- place (the continuation form)
 
 /// `place {symbol: "continuation", at, rotation?, mirror?, name, caption?}`: a continuation, a
-/// drawing aid (design 022 §3.2, design 072 §6.2), part of `place`
+/// drawing aid, part of `place`
 /// ([`crate::devices::commands::PlaceParams`]). Answers its `aid`.
 pub(crate) fn place_tagless(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,

@@ -1,4 +1,4 @@
-//! Brief 036 (design 036 §13): multi-level terminals placed by fence and on wires, labels per
+//! Multi-level terminals placed by fence and on wires, labels per
 //! level, jumper bars per level, internal bridges, fuse positions breaking the net, `terminalblocklabel`,
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.

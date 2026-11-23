@@ -1,8 +1,8 @@
-//! The PLC commands that place drawing (briefs 045 and 051): `plcchannels` here, `plcpage` in
+//! The PLC commands that place drawing: `plcchannels` here, `plcpage` in
 //! [`page`]. The other PLC commands are generic and declared in `ecad_electrical::plc::commands`.
 //! The model they edit is [`crate::plc`].
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::plc::commands`] decide, and the shim commits the ops and answers in JSON.
 
 pub mod channels;
@@ -15,7 +15,7 @@ use crate::commands::input::{Typed, typed};
 /// The PLC commands with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<channels::PlcchannelsParams>("plcchannels"), Typed::of::<page::PlcpageParams>("plcpage")];
 
-/// The commands of brief 045.
+/// The PLC commands that place drawing.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("plcchannels", "Place Channels", typed::<channels::PlcchannelsParams>)

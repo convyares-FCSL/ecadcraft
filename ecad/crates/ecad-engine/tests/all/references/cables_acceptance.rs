@@ -1,14 +1,13 @@
-//! Independent tester's acceptance checks for brief 010 (cable references across pages), written
-//! from the brief and design 010 only (fixture R of design §11, the refusals of §4.4, the JSON
-//! forms of §7 and the existing-command table of §9).
+//! Acceptance checks for cable references across pages: fixture R, the refusals, the JSON forms and
+//! the existing-command table.
 //!
 //! Every step runs through the harness in `common`, which after each command asserts that replay
 //! equals the live document, every open page drawing equals a fresh projection, the handle map is
 //! one-to-one and no attached end is away from its terminal. So "the drawing shows the live text"
 //! is checked on every page after every step, not only where a test reads it.
 //!
-//! The JSON forms are driven through `Session::execute`, so the rows can move to brief 011's MCP
-//! harness unchanged (brief scope 7).
+//! The JSON forms are driven through `Session::execute`, so the rows can move to the MCP
+//! harness unchanged.
 
 use crate::common;
 

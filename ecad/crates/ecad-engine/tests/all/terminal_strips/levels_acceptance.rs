@@ -1,13 +1,11 @@
-//! Tester 036 (multi-level terminals): acceptance checks from outside, written from brief 036 and
-//! design 036 (§13's table A–Q) only, before the implementation existed. They drive JSON commands
-//! and APIs that 028/030 already had (`stripplan`, `bom`, `checks`, `net`, the ledger), so the
-//! module compiles before the build; each test that needs the build is ignored until phase 2.
+//! Acceptance checks for terminal block levels, from outside. They drive JSON commands
+//! and the strip APIs (`stripplan`, `bom`, `checks`, `net`, the ledger).
 //!
 //! Fixture M is simplified: plain vertical wires stand in for the drops to loads and the sensor
-//! wiring (design §13 uses loads, `prox3` sensors and a DI card); the levels, labels, jumper bars and
+//! wiring (loads, `prox3` sensors and a DI card); the levels, labels, jumper bars and
 //! nets the checks look at are the same.
 //!
-//! Every test name starts with the §13 letter it checks.
+//! Every test name starts with the letter of the case it checks.
 
 use std::collections::BTreeMap;
 

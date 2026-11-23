@@ -1,4 +1,4 @@
-//! Brief 070: typed command inputs. Every registered command is typed (or on the shrink-only
+//! Typed command inputs. Every registered command is typed (or on the shrink-only
 //! list of commands not converted yet), with its typed run function and a JSON Schema; input
 //! refusals use one uniform wording; rule refusals keep their words.
 

@@ -1,6 +1,4 @@
-//! Tester 034: the catalogue API that brief 034 adds (design 034 §2.2, §2.3, §10, §11), written
-//! from the design, then adapted in phase 2 where the build's API differs from the design's
-//! text (reported): `Starter::quiet` is a `Quiet` enum read through `is_quiet`, `changeover_labels`
+//! The catalogue API: `Starter::quiet` is a `Quiet` enum read through `is_quiet`, `changeover_labels`
 //! takes a set, and the prefix is `Starter::prefix()`, read from the defaults registry.
 
 use ecad_electrical::symbols::{self, Family, Kind};

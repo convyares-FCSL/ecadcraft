@@ -1,4 +1,4 @@
-//! Brief 031 Q3 (design 031 §5, §13 T1, T5-T8, T14, T16, FP5): show and hide per text, runs,
+//! Show and hide: per text, runs,
 //! hidden text still being data, Show Hidden Text, and symbol keys following their symbol.
 
 use crate::common::{H, id};

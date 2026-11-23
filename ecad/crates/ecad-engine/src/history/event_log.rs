@@ -22,13 +22,14 @@ pub enum EventKind {
     SaveFailed,
     /// Save or Save As on a project without persistence (the desktop desktop app): nothing was written.
     SaveUnavailable,
-    /// Projection failed after the ledger accepted a transaction (PROJ-02 follows).
+    /// Projection failed after the ledger accepted a transaction (the transaction stays; the page is redrawn
+    /// from the project).
     ProjectionFailed,
     /// The page drawing and handle map were rebuilt from the document.
     ProjectionRebuilt,
     /// Rebuilding failed too: the page view is unavailable until reopened.
     PageUnavailable,
-    /// Normal path: the projected drawing differed from what the engine committed (H2). Compares
+    /// Normal path: the projected drawing differed from what the engine committed. Compares
     /// entities by handle, which is valid only while the engine's handles are kept.
     FidelityMismatch,
     /// Recovery path: a rebuilt page was checked against the document without relying on handle
@@ -44,7 +45,7 @@ pub enum EventKind {
     /// The project was opened from a file; the message is what opening found.
     ProjectOpened,
     /// Verify mode found the kept reference index (or what it derived before a commit) out of
-    /// step with the document: a bug. It was rebuilt from the document (brief 025).
+    /// step with the document: a bug. It was rebuilt from the document.
     IndexRebuilt,
 }
 

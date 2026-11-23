@@ -1,9 +1,8 @@
-//! Tester 028 (terminal strips and cable schedule): acceptance checks from outside, written from
-//! brief 028 and design 028 §12 only. Save, reopen and replay with every new property (Windows
+//! Acceptance checks for terminal strips, from outside. Save, reopen and replay with every property (Windows
 //! path with spaces and non-ASCII letters), undo and redo of every new write, terminal numbering
 //! with fixed and provisional strip tags, the generated pages' update maps, an old file, and
-//! hostile input. A probe that found a bug was `#[ignore = "tester 028: <bug>"]` and failed until it
-//! was fixed (all three are fixed and run now).
+//! hostile input. A probe that finds a bug is marked `#[ignore]` with the bug named, and fails until it
+//! is fixed.
 
 use ecad_engine::Persistence;
 use serde_json::{Value, json};

@@ -1,12 +1,12 @@
-//! Translating a CADCraft commit into an ECAD transaction (hypothesis H1, proposal §9).
+//! Translating a CADCraft commit into an ECAD transaction.
 //!
 //! The owner compares the engine's drawing with the last projection it wrote, classifies every
 //! difference using the handle map and the engine's provenance records, applies the movement
-//! policy (§10: M1 reroute, M2 connected equipment, M3 deliberate reconnection) and the copy
-//! policy (§11: whole components are copied independently), and returns ops. Anything it cannot
-//! classify is refused, never dropped (DOC-08).
+//! policy (M1 reroute, M2 connected equipment, M3 deliberate reconnection) and the copy
+//! policy (whole components are copied independently), and returns ops. Anything it cannot
+//! classify is refused, never dropped.
 //!
-//! # Cost (brief 014)
+//! # Cost
 //! Previews of the proposed ops run in place on the live document ([`Ledger::with_applied`]:
 //! applied, checked where they touched it, read, rolled back), never on a copy, and the movement
 //! policy goes only through the conductors the ops could have moved ([`Scope`]). Apart from the
@@ -44,7 +44,7 @@ pub(crate) struct Ctx<'a> {
     pub clips: &'a BTreeMap<u64, ClipSnapshot>,
     pub ids: &'a mut IdAllocator,
     pub tol: f64,
-    /// Tag numbers for copied devices (brief 018), caught up with the ledger before the edit.
+    /// Tag numbers for copied devices, caught up with the ledger before the edit.
     pub tags: &'a mut ecad_electrical::devices::tags::TagHigh,
 }
 
@@ -114,7 +114,7 @@ pub(crate) fn connection_point_at(doc: &Document, page: PageId, at: Pt, tol: f64
 /// What a set of proposed ops could move on a page, worked out on the document before them.
 ///
 /// # Semantics
-/// A route can get a movement change (§10) only if one of its ends lands on a connection point
+/// A route can get a movement change only if one of its ends lands on a connection point
 /// whose shown position changed (M2), one of its ends moved (M3) or is fresh, or it lands on a
 /// route the ops changed (a T whose route moved away). So:
 /// - `connection_points`: every connection point whose position on the page the ops could change: those
@@ -151,9 +151,9 @@ impl Scope {
                 Subject::Route(x) => {
                     s.routes.insert(x);
                 }
-                // A continuation's point moves with its arrow (design 072 §6.2).
+                // A continuation's point moves with its arrow.
                 Subject::Aid(_) => s.connection_points.extend(r.connection_points.keys().copied()),
-                // A cable reference places its cores' named points (F4).
+                // A cable reference places its cores' named points.
                 Subject::Cable(_) => s.connection_points.extend(r.connection_points.keys().copied()),
                 Subject::Wire(_) => {}
             }
@@ -201,10 +201,10 @@ struct Earlier {
     routes: BTreeMap<RouteId, Option<[Pt; 2]>>,
 }
 
-/// A wire's line stays one open line (design 072 §4.3).
+/// A wire's line stays one open line.
 pub(crate) const ROUTE_SHAPE: &str = "a wire's line stays one open line; draw a new wire instead";
 
-/// What a route end at `at` lands on now (design 072 §4.3): the connection point `found` there,
+/// What a route end at `at` lands on now: the connection point `found` there,
 /// else the interior of another route on `page` (a T), else nothing.
 pub(crate) fn landing(doc: &Document, page: PageId, r: RouteId, at: Pt, found: Option<ConnectionPointId>) -> RouteEnd {
     if let Some(t) = found {
@@ -299,25 +299,25 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Whether an object with a meaning (an item of a representation, a terminal marker) was removed.
     let mut linked_removed = false;
     // Whether such an object was changed in place (BREAK and TRIM keep the handle since CADCraft
-    // 0.18.0, brief 023).
+    // 0.18.0).
     let mut linked_changed = false;
 
     // Removed and changed entities.
     let mut removed: Vec<(Handle, &Arc<Entity>)> = before.iter().filter(|(h, _)| !after.contains_key(h)).map(|(h, e)| (*h, *e)).collect();
     removed.sort_by_key(|(h, _)| *h);
 
-    // Computed parts of a traditional-view cable (core labels at the slash, reference flags;
-    // design 009 §8) are left out of an edit that also touches other objects: a window selection
+    // Computed parts of a traditional-view cable (core labels at the slash, reference flags)
+    // are left out of an edit that also touches other objects: a window selection
     // round a labelled cable moves, copies or erases the rest, and the parts are drawn again from
-    // the document. An edit of nothing but such parts is refused (brief 009 review S2).
+    // the document. An edit of nothing but such parts is refused.
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
-    // Wire labels (brief 022) are left out the same way: drawn again from the document.
-    // Device cross-references (brief 025) too.
+    // Wire labels are left out the same way: drawn again from the document.
+    // Device cross-references too.
     let drawn = |map: &HandleMap, h: Handle| {
         matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k))
             || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::DeviceReference(_) | Mapped::Tee(_)))
     };
-    // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
+    // Device tag texts and terminal labels are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
     let tag_text = |map: &HandleMap, h: Handle| matches!(map.get(h), Some(Mapped::Tag(_)));
     let copied_source = |h: &Handle, f: &dyn Fn(&HandleMap, Handle) -> bool| match prov.get(h).map(|(s, _)| s) {
@@ -335,12 +335,12 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .chain(changed_handles.iter().copied())
         .filter(|h| drawn(cx.map, *h))
         .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
-        // Brief 030: a link line moved or copied with other objects is drawn again from its link.
+        // A link line moved or copied with other objects is drawn again from its link.
         .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::JumperBar(..)))))
         .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::JumperBar(..))))))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
         .collect();
-    // The sheet frame (brief 019) is left out of an edit of other objects too, and drawn again;
+    // The sheet frame is left out of an edit of other objects too, and drawn again;
     // its copies are dropped. An edit of nothing but the frame is refused.
     let frame = |m: &HandleMap, h: Handle| matches!(m.get(h), Some(Mapped::Frame(_)));
     let framed: BTreeSet<Handle> = removed
@@ -365,7 +365,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         if skipped.iter().all(|h| jumper_bar(cx.map, *h) || copied_source(h, &jumper_bar)) {
             return Err(ecad_electrical::terminal_strips::jumper_bars::JUMPER_BAR_DERIVED.into());
         }
-        // Lane 072 D: a T's dot alone.
+        // A T's dot alone.
         let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
         if skipped.iter().all(|h| tee(cx.map, *h) || copied_source(h, &tee)) {
             return Err(ecad_electrical::wires::TEE_DERIVED.into());
@@ -376,7 +376,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             ecad_electrical::wires::LABEL_DERIVED
         } else if references_only {
             {
-                // A copy's handle is not mapped: its source says whether it is a table (brief 025).
+                // A copy's handle is not mapped: its source says whether it is a table.
                 let source = |h: &Handle| match prov.get(h).map(|(s, _)| s) {
                     Some(Source::Entity(s)) => cx.map.get(*s),
                     Some(Source::Clipboard { serial, handle }) => cx.clips.get(serial).and_then(|c| c.map.get(*handle)),
@@ -389,7 +389,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         }
         .into());
     }
-    // Reference texts erased (brief 010): each erases its reference, after the loop.
+    // Reference texts erased: each erases its reference, after the loop.
     let mut erased_references: Vec<RepresentationId> = Vec::new();
     let mut erased_jumper_bars: BTreeSet<(ecad_model::DeviceId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
@@ -411,15 +411,15 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             Some(Mapped::Label(_)) => return Err(ecad_electrical::wires::LABEL_DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::DeviceReference(_)) => return Err(crate::references::draw::devices::refusal(cx.ledger.document(), Some(m)).into()),
-            // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
+            // A fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_references.push(rid),
-            // Brief 030: erasing a link line deletes its link (and its own part keys).
+            // Erasing a link line deletes its link (and its own part keys).
             Some(Mapped::JumperBar(c, n)) => {
                 erased_jumper_bars.insert((c, n));
             }
             Some(Mapped::Frame(_)) => {}
-            // Erasing a device's tag text or terminal label erases that symbol (design 018 §2.4).
+            // Erasing a device's tag text or terminal label erases that symbol.
             Some(Mapped::Tag(rid)) => erased_references.push(rid),
             Some(Mapped::Marker(rid, term)) => {
                 linked_removed = true;
@@ -431,7 +431,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             None => {}
         }
     }
-    // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
+    // Erasing a reference's text erases the reference: its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
     for (c, n) in erased_jumper_bars {
         let props = cx.ledger.document().devices().get(&c).map(|x| x.properties.clone()).unwrap_or_default();
@@ -473,7 +473,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                     return Err("an object changed kind; this is not supported on ECAD pages yet".into());
                 }
                 if item != old {
-                    // A location box stays a closed outline of three points or more (tester 024).
+                    // A location box stays a closed outline of three points or more.
                     if let Some(m) = ecad_electrical::locations::reshape_refusal(cx.ledger.document(), id, &item) {
                         return Err(m);
                     }
@@ -484,7 +484,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                             r.connection_points.extend(points);
                         }
                     }
-                    // A route's points follow its line (design 072 §4.3).
+                    // A route's points follow its line.
                     let route = route_edit(cx.ledger.document(), id, &item)?;
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     t.ops.extend(route);
@@ -524,7 +524,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
     // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
-    // object's handle for one of the pieces since CADCraft 0.18.0; brief 023).
+    // object's handle for one of the pieces since CADCraft 0.18.0).
     if (linked_removed || linked_changed) && added.iter().any(|h| !prov.contains_key(h)) {
         return Err("this command replaces objects that have an electrical meaning; that is not supported on ECAD pages yet".into());
     }
@@ -551,9 +551,9 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         copy_batch(cx, &after, &batch, &mut t, &mut fresh_route_ends, &mut counts)?;
     }
 
-    // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
-    // symbol's connection points are in its definition's frame (brief 018): with no symbol left
-    // they place nothing. A cable reference's named points (design 072 §4.4, F4) are placed by
+    // Representation edits: an emptied representation is removed (its subject stays). A
+    // symbol's connection points are in its definition's frame: with no symbol left
+    // they place nothing. A cable reference's named points are placed by
     // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
@@ -566,14 +566,14 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         }
     }
 
-    // Erased device symbols (design 018 §3.3): the terminals only they showed go, and a device
+    // Erased device symbols: the terminals only they showed go, and a device
     // whose last symbol went is deleted.
     let (more, notes) = ecad_electrical::devices::merge::erase_followups(cx.ledger.document(), &unlinked);
     t.ops.extend(more);
     t.notes.extend(notes);
-    // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
+    // One of a cable's several slashes erased takes its page's members along.
     t.ops.extend(ecad_electrical::references::cables::slash_erase_followups(cx.ledger.document(), &unlinked));
-    // An erased line removes its route; routes landing on it end free (design 072 §4.3).
+    // An erased line removes its route; routes landing on it end free.
     erase_routes(cx.ledger.document(), &unlinked, &mut t.ops);
     merge_route_edits(&mut t.ops);
 
@@ -608,7 +608,7 @@ pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Opti
     Ok(Some(Op::ModifyRoute { id: r, before, after }))
 }
 
-/// A cable reference's named points follow its point (design 072 §4.4, F4): when item `id` is a
+/// A cable reference's named points follow its point: when item `id` is a
 /// reference's point moved from `old` to `item`, that reference and its connection points moved
 /// by the same distance (as the document has them, so a moved marker of one of them agrees).
 pub(crate) fn reference_points_follow(
@@ -656,7 +656,7 @@ pub(crate) fn erase_routes(doc: &Document, unlinked: &[(RepresentationId, Repres
     }
 }
 
-/// One copy operation's new entities (§11.1).
+/// One copy operation's new entities.
 fn copy_batch(
     cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(RouteId, End)>,
     counts: &mut [usize; 4],
@@ -712,7 +712,7 @@ fn copy_batch(
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
         let new_comp: DeviceId = cx.ids.fresh();
-        // A copied device gets the next tag of its prefix (design 018 §3.3).
+        // A copied device gets the next tag of its prefix.
         let mut comp = comp;
         if !comp.tag.is_none() {
             let tag = ecad_electrical::devices::merge::copy_tag(cx.ledger.document(), cx.tags, &comp);
@@ -755,7 +755,7 @@ fn copy_batch(
             t.new_markers.push(((new_rep, nt), nh));
             consumed.insert(nh);
         }
-        // Brief 031 (FP5): the copy keeps its symbol's own text keys, under the new representation.
+        // The copy keeps its symbol's own text keys, under the new representation.
         for op in t.ops.iter_mut().rev() {
             if let Op::CreateDevice { id, device: component } = op
                 && *id == new_comp
@@ -846,7 +846,7 @@ fn copy_batch(
     Ok(())
 }
 
-/// Movement policy (§10). Adds route changes and their line amendments to `t`.
+/// Movement policy. Adds route changes and their line amendments to `t`.
 ///
 /// # Semantics
 /// Goes through the routes of the proposed document in ID order, but only those [`Scope`] says
@@ -937,7 +937,7 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
     out
 }
 
-/// One route under the movement policy (§10, design 072 §4.3): `old_ends` are its end points
+/// One route under the movement policy: `old_ends` are its end points
 /// before the ops (`None` for a route the ops made), `position` gives a connection point's
 /// position before and after them, and `found` the connection point shown at a place.
 ///

@@ -1,8 +1,8 @@
-//! The drawn cable commands (briefs 004, 005, 009, 032): `cableslash`, `cableadd`, `cablecore`,
+//! The drawn cable commands: `cableslash`, `cableadd`, `cablecore`,
 //! `cablefan` and `cableview`. The interactive forms ([`crate::interact`]) commit through these.
 //! `cableview` records nothing: a cable's view is presentation only ([`crate::cables::views`]).
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::cables::commands::draw`] decide, and the shim commits the ops and answers in JSON.
 //! `cablefan` and `cableview` stay here whole: the fan's spine is measured with the engine's
 //! fonts ([`crate::cables::draw`]), and a view is the session's.
@@ -33,11 +33,11 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<CableviewParams>("cableview"),
 ];
 
-/// `cableslash {from, to, tag?, cable?}` (brief 004, design 004 §2, §4, §6): the conductors the
+/// `cableslash {from, to, tag?, cable?}`: the conductors the
 /// slash `from → to` crosses on the active page become one new cable, in crossing order, with the
 /// slash as its drawn representation; one transaction. With `cable`, or the `tag` of a cable that
-/// exists, it continues that cable (brief 032 §3.3), or assigns the wires to it when it is not
-/// drawn yet (brief 059). Refused when it crosses no wire, more than [`MAX_CABLE_MEMBERS`], or a
+/// exists, it continues that cable, or assigns the wires to it when it is not
+/// drawn yet. Refused when it crosses no wire, more than [`MAX_CABLE_MEMBERS`], or a
 /// wire already in a cable.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -110,7 +110,7 @@ impl Command for CableaddParams {
     }
 }
 
-/// `cablecore {conductor, core}` or `{cable, cores}` (design 009 §5.2): set or clear the core
+/// `cablecore {conductor, core}` or `{cable, cores}`: set or clear the core
 /// label of one member, or of every member of a cable at once (null, empty or spaces clear). One
 /// transaction; nothing changed, no transaction.
 #[derive(Deserialize, JsonSchema)]
@@ -188,7 +188,7 @@ enum JoinAt {
     Middle,
 }
 
-/// `cablefan {cable, end?, at}` (owner request on brief 009, 2026-11-07): where the trunk joins one
+/// `cablefan {cable, end?, at}`: where the trunk joins one
 /// fanned end of a cable on the active page. The join is stored as a `fan-anchor` representation
 /// of the cable holding one Point item (existing ops, no format change), snapped onto the spine;
 /// `null` removes it and the trunk joins the middle again. Works whatever the cable's view
@@ -308,7 +308,7 @@ pub(crate) enum ViewParam {
     Fan,
 }
 
-/// `cableview {cable?, view?}` (brief 005, design 005 §3.4): show a cable traditional or fan.
+/// `cableview {cable?, view?}`: show a cable traditional or fan.
 /// Presentation only: no transaction, no head move, no unsaved change, never refused because of
 /// the project's state (read-only, an unavailable page). Without `cable` it changes nothing and
 /// lists every cable's view; without `view` it toggles.
@@ -378,9 +378,9 @@ impl Command for CableviewParams {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The assign rule (design 059 §4.3, FD5)
+// The assign rule
 
-/// `cableslash` onto cable `k` that is not drawn (FD5): commits
+/// `cableslash` onto cable `k` that is not drawn: commits
 /// [`ecad_electrical::cables::commands::draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
 ///
 /// # Errors

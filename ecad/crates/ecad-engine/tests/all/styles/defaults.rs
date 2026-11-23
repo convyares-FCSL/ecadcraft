@@ -1,4 +1,4 @@
-//! Brief 042 (U4c) step 2: `setdefault`, the one writer for the Standards screen and the
+//! `setdefault`, the one writer for the Standards screen and the
 //! inspector. Table-driven over the whole registry: each level each entry allows writes the value
 //! the registry reads back at that level, in one undoable transaction; reset falls back one
 //! level; a level the entry does not allow is refused with the levels it does. Also the read-only

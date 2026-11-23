@@ -30,7 +30,7 @@ pub(crate) fn engine_valign(v: VAlign) -> cadcraft_engine::doc::VAlign {
     }
 }
 
-/// The table under device `dev`'s head (design 025 §4.2), laid out with CADCraft's fonts
+/// The table under device `dev`'s head, laid out with CADCraft's fonts
 /// ([`ecad_electrical::references::devices::table::table_measured`]).
 pub fn table(doc: &Document, places: &mut Places<'_>, dev: &Device) -> Option<Table> {
     ecad_electrical::references::devices::table::table_measured(doc, places, dev, &EngineMetrics)
@@ -42,7 +42,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<Part> {
     ecad_electrical::references::devices::table::parts_on_page_measured(doc, page, &EngineMetrics)
 }
 
-/// `contacts {component}`'s result (design 025 §5.4), its table laid out with CADCraft's fonts
+/// `contacts {component}`'s result, its table laid out with CADCraft's fonts
 /// ([`ecad_electrical::references::devices::read::contacts_json_measured`]).
 ///
 /// # Errors
@@ -54,7 +54,7 @@ pub fn contacts_json(doc: &Document, c: DeviceId) -> Result<Value, String> {
 /// The refusal of an edit of a drawn cross-reference: the contact text's or the table's.
 pub fn refusal(doc: &Document, mapped: Option<crate::project::Mapped>) -> &'static str {
     match mapped {
-        // Brief 051 (review of #89, 2): a PLC card's frame.
+        // A PLC card's frame.
         Some(crate::project::Mapped::DeviceReference(r)) if ecad_electrical::plc::draw::is_frame_rep(doc, r) => {
             ecad_electrical::plc::draw::FRAME_DERIVED
         }

@@ -1,4 +1,4 @@
-//! `cablegoto` (brief 010, design 010 §4.5, §7.3): opens the other end's page and moves the view
+//! `cablegoto`: opens the other end's page and moves the view
 //! there, so it is the engine's; its interactive form is in [`crate::interact`]. The other cable
 //! reference commands are generic ([`ecad_electrical::references::commands::cables`]).
 
@@ -16,7 +16,7 @@ use crate::commands::on_any_page;
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<CablegotoParams>("cablegoto")];
 
-/// `cablegoto {reference}` (design 010 §4.5, §7.3): open (or front) the page of the other end of
+/// `cablegoto {reference}`: open (or front) the page of the other end of
 /// `reference`, centre the view on it and select its point. Records nothing; works on a read-only
 /// project.
 #[derive(Deserialize, JsonSchema)]

@@ -1,4 +1,4 @@
-//! Brief 034 (design 034 §12–§13): the component library build-up, in-process, through the
+//! The component library build-up, in-process, through the
 //! commands' JSON: every new symbol places with its family's prefix, labels and description, the
 //! definition is embedded once; change-over contacts join by the sequence digit; ratings; quiet
 //! points; fuse banks break the net; BOM rows.

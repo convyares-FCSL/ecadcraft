@@ -2,7 +2,7 @@
 
 use crate::project::*;
 
-/// Commands refused on ECAD pages before they start (owner decision, 2026-10-31, brief 007): the
+/// Commands refused on ECAD pages before they start: the
 /// Block Editor and in-place reference editing swap or rewrite the page drawing and its blocks
 /// outside the commit gate, and APPLOAD and LISP evaluate LISP (see [`LISP_REFUSED`]).
 pub const REFUSED_COMMANDS: &[&str] = &["bedit", "bsave", "bsaveas", "bclose", "refedit", "refset", "refclose", "appload", "lisp"];
@@ -56,7 +56,7 @@ impl DocumentOwner for Project {
             self.restore(pg, c.uid, page);
             return Verdict::Refuse(crate::commands::UNAVAILABLE.into());
         }
-        // OOPS brings back only the plain drawing the last erase on this page removed (brief 023).
+        // OOPS brings back only the plain drawing the last erase on this page removed.
         if c.command == "oops" && !self.oops.allows(c.uid, page, &last, &now) {
             self.restore(pg, c.uid, page);
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), crate::translate::oops::REFUSED);
@@ -93,7 +93,7 @@ impl DocumentOwner for Project {
         if t.ops.is_empty() {
             // Only differences that are not recorded (header variables such as the current layer).
             // A new draw order (TEXTTOFRONT, DRAWORDER) is not recorded either: the page is drawn
-            // in the projection's order again (brief 018 put derived texts on every page).
+            // in the projection's order again (derived texts are on every page).
             let reordered = !now.model.iter().map(|e| e.handle).eq(last.model.iter().map(|e| e.handle));
             if let Some(v) = self.pages.get_mut(&page) {
                 v.last = Some(now);
@@ -105,16 +105,16 @@ impl DocumentOwner for Project {
             return Verdict::Accept;
         }
         let label = c.command.to_ascii_uppercase();
-        // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
+        // Nothing is drawn on a generated page.
         if let Some(m) = ecad_electrical::pages::generated::refusal(self.ledger.document(), &t.ops) {
             self.restore(pg, c.uid, page);
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
         }
-        // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
+        // The moved device symbols' contexts before the move.
         let moved = ecad_electrical::symbols::proposals::before_move(self.ledger.document(), &t.ops);
         let pending = self.derived.begin(self.ledger.document(), &t.ops);
-        // The numbering pass (brief 022) extends the same transaction.
+        // The numbering pass extends the same transaction.
         if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::connectivity::wiring::assign) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
@@ -122,7 +122,7 @@ impl DocumentOwner for Project {
             return Verdict::Refuse(m);
         }
         self.events.record(EventKind::Accepted, Some(c.command), self.ledger.head(), Some(page), t.summary);
-        // Accepted: from here on consistency is restored by projecting the document (PROJ-02).
+        // Accepted: from here on consistency is restored by projecting the document.
         if let Some(v) = self.pages.get_mut(&page) {
             for (id, h) in &t.new_items {
                 v.map.insert_item(*id, *h);
@@ -132,8 +132,8 @@ impl DocumentOwner for Project {
             }
         }
         self.refresh_page(pg, page, Some(c.command), Some((&now, &t.amended)), false);
-        // A reference end on another page may be drawn from this page's objects (brief 010). Only
-        // the active page is drawn (brief 016); the change log says which other pages changed,
+        // A reference end on another page may be drawn from this page's objects. Only
+        // the active page is drawn; the change log says which other pages changed,
         // for a preview of one of them.
         let changes = self.finish_derived(pending);
         self.apply_changes(pg, c.command, changes, Path::Interactive { page, notes: &t.notes });
@@ -164,7 +164,7 @@ impl DocumentOwner for Project {
             return Err(EngineError::Other(SAVE_UNAVAILABLE.into()));
         }
         // The test store is in memory; the path is only recorded (no file is written), and only
-        // once the save succeeded, so a failed Save As keeps the previous binding (§20.5).
+        // once the save succeeded, so a failed Save As keeps the previous binding.
         match self.store.save(self.id, &mut self.ledger, &writer()) {
             Ok(n) => {
                 if let Some(p) = path {
@@ -192,8 +192,8 @@ impl DocumentOwner for Project {
     }
 
     fn close_needs_prompt(&self, _uid: u64) -> bool {
-        // Closing the page window closes the project (experiment choice, proposal §18.4), which
-        // prompts when unsaved; with `keep_open` (the desktop app, design 016 §4.1) it only hides the
+        // Closing the page window closes the project, which
+        // prompts when unsaved; with `keep_open` (the desktop app) it only hides the
         // page and the project stays open, so nothing is lost and nothing is asked.
         self.unsaved() && self.open_pages() <= 1 && !self.keep_open
     }
@@ -201,7 +201,7 @@ impl DocumentOwner for Project {
     fn closed(&mut self, s: &mut Session, uid: u64) -> bool {
         self.oops.forget(uid);
         if let Some(page) = self.page_of(uid) {
-            // The page's view is remembered for when it is shown again (design 016 §4.1).
+            // The page's view is remembered for when it is shown again.
             if let Some(st) = s.docs.iter().find(|d| d.uid == uid) {
                 self.page_views.insert(page, st.views.clone());
             }
@@ -250,7 +250,7 @@ impl DocumentOwner for Project {
         self.following_routes(page, &|t| moved.get(&t).copied())
     }
 
-    /// Terminal rings and wire-end marks over an open page (brief 008, design §4.1).
+    /// Terminal rings and wire-end marks over an open page.
     /// Only while the Model tab is shown: the marks are at model positions, and a paper-space
     /// layout (also while working in one of its viewports) shows the page at another place and
     /// scale, or not at all.
@@ -299,16 +299,16 @@ impl Project {
     fn history(&mut self, pg: &mut Pages<'_>, undo: bool) -> cadcraft_engine::Result<Option<String>> {
         let command = if undo { "undo" } else { "redo" };
         self.oops.stale();
-        // Brief 052d (tester 052d, finding 1): an undo or redo changes what the waiting
+        // An undo or redo changes what the waiting
         // conflicts were about; they are left.
         self.conflicts.clear();
         if self.pages.values().any(|v| v.unavailable) {
             return Err(EngineError::Other("close and reopen the unavailable page first".into()));
         }
-        // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
+        // The ops the undo or redo will apply, scoped as a commit's are.
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let order_before = self.ledger.document().page_order().to_vec();
-        // Undoing an issued revision stops and asks first (owner answer Q7).
+        // Undoing an issued revision stops and asks first.
         if undo
             && let Some((rev, n)) = ecad_electrical::releases::revisions::issue_in(&ecad_electrical::releases::revisions::inverse(&ops))
             && !std::mem::take(&mut self.confirm_issue_undo)
@@ -317,7 +317,7 @@ impl Project {
             let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
             let rev = self.ledger.document().project().rev_scheme.show(rev);
             let mut q = crate::pages::commands::sheets::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
-            // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
+            // Undo never deletes files.
             if row.as_ref().is_some_and(|r| r.released.is_some()) {
                 q.push_str(" Its release folder stays on disk.");
             }
@@ -325,7 +325,7 @@ impl Project {
             return Err(EngineError::Other(format!("{q} Use Undo Issue (`undoissue`) to confirm.")));
         }
         self.issue_undo_question = None;
-        // Undoing a merge stops and asks first (design 020 §4.3).
+        // Undoing a merge stops and asks first.
         if undo
             && !std::mem::take(&mut self.confirm_merge_undo)
             && let Some(q) = crate::history::merging::undo_question(self)
@@ -350,7 +350,7 @@ impl Project {
         }
     }
 
-    /// Brief 052d (design 052 §5.4, Q3): after a move, the moved symbols whose context changed
+    /// After a move, the moved symbols whose context changed
     /// propose it. Unset devices take it in one follow-up transaction (`u` undoes it first, then
     /// the move); devices with another value wait in [`Project::conflicts`] (Leave by default).
     fn move_follow_up(&mut self, pg: &mut Pages<'_>, moved: &[ecad_electrical::symbols::proposals::Moved], label: &str) {

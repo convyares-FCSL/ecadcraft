@@ -1,5 +1,5 @@
-//! Brief 024's Location Box tool (design 024 §3.5) and brief 052d's Function Box tool (design 052
-//! §5.8): a location (or function), then a rectangle (two corners), a closed polyline (points,
+//! The Location Box tool and the Function Box tool:
+//! a location (or function), then a rectangle (two corners), a closed polyline (points,
 //! then Close) or an existing closed polyline (Select). Live, the device symbols the outline would
 //! hold get a ring (`ecad.check-warning` for one with another value). Esc at any step writes
 //! nothing; the commit is the `locationbox` / `functionbox` JSON form, one transaction.
@@ -21,7 +21,7 @@ use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 static POLYLINE: AtomicBool = AtomicBool::new(false);
 /// The last location used, the next prompt's default.
 static LAST: Mutex<Option<String>> = Mutex::new(None);
-/// The last function used (brief 052d).
+/// The last function used.
 static LAST_FUNCTION: Mutex<Option<String>> = Mutex::new(None);
 
 fn last(a: Aspect) -> &'static Mutex<Option<String>> {
@@ -40,7 +40,7 @@ pub(crate) fn locationbox(s: &Session) -> R<Box<dyn Interactive>> {
     start(s, Aspect::Location)
 }
 
-/// `functionbox` (brief 052d, design 052 §5.8): the same form for a function.
+/// `functionbox`: the same form for a function.
 pub(crate) fn functionbox(s: &Session) -> R<Box<dyn Interactive>> {
     start(s, Aspect::Function)
 }
@@ -49,7 +49,7 @@ fn start(s: &Session, aspect: Aspect) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let page_default = read(s, |p, page| {
         let doc = p.ledger.document();
-        // Brief 052: a stored entry key, shown by its code.
+        // A stored entry key, shown by its code.
         let stored = ecad_electrical::locations::designations::inherited_key(doc, page, aspect);
         Ok(ecad_electrical::locations::designations::shown(doc, aspect, stored.as_deref()))
     })
@@ -68,7 +68,7 @@ enum Mode {
 }
 
 struct LocationBox {
-    /// Which value the box carries (brief 052d).
+    /// Which value the box carries.
     aspect: Aspect,
     default: String,
     location: Option<String>,
@@ -138,7 +138,7 @@ impl LocationBox {
                 Ok(Step::Done)
             }
             Err(e) => {
-                // The step stays open (design 024 §3.5): too small, not a closed polyline…
+                // The step stays open: too small, not a closed polyline…
                 s.echo(e.to_string());
                 if self.mode == Mode::Rectangle {
                     self.points.clear();

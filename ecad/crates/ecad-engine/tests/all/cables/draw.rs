@@ -1,10 +1,9 @@
-//! Brief 009 (cable look and cores), written from the brief and design 009: core labels
-//! (`cablecore`, §5), the restyled fan (§4), core labels at the slash (§6), reference ends (§7,
-//! built with brief 010's model: a `reference` representation of the cable holding one Point
-//! item) and hover (§8). Every `cablecore` check drives the JSON form, so it can move to the MCP
-//! harness once brief 011 is merged.
+//! The look of a cable and its cores: core labels (`cablecore`), the restyled fan, core labels at the
+//! slash, reference ends (a `reference` representation of the cable holding one Point
+//! item) and hover. Every `cablecore` check drives the JSON form, so it can run through the MCP
+//! harness as well.
 //!
-//! Fixture H (design §10): two drawn components with connection points at x = 0 and x = 120,
+//! Fixture H: two drawn components with connection points at x = 0 and x = 120,
 //! y = 0, 5, 10, 15; four attached wires W1–W4 between them; the slash C1 from (58,-3) to (62,18),
 //! with designation `MOTOR M1` and type `4/C #10`.
 

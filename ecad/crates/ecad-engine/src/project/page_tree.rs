@@ -3,14 +3,14 @@
 use crate::project::*;
 
 /// A page and, when it is the active page, the engine document showing it (the project's one
-/// page window, brief 016: exactly one page is shown and editable at a time).
+/// page window: exactly one page is shown and editable at a time).
 #[derive(Debug, Clone, Default)]
 pub struct PageView {
     pub uid: Option<u64>,
     pub map: HandleMap,
     /// The drawing the owner last wrote (or accepted) for this page.
     pub last: Option<Arc<Drawing>>,
-    /// Projection and rebuild both failed: the page must be closed and reopened (PROJ-02).
+    /// Projection and rebuild both failed: the page must be closed and reopened.
     pub unavailable: bool,
 }
 
@@ -21,16 +21,16 @@ pub struct PageRow {
     /// The number the page is shown with ([`ecad_electrical::references::cables::page_number`]).
     pub number: String,
     pub title: String,
-    /// Its projection failed (PROJ-02).
+    /// Its projection failed.
     pub unavailable: bool,
-    /// Its folder depth (0 at the top level) and folder (brief 019).
+    /// Its folder depth (0 at the top level) and folder.
     pub depth: usize,
     pub folder: Option<ecad_model::FolderId>,
     /// Another page is shown with the same number (only from old data).
     pub duplicate: bool,
 }
 
-/// One row of the Pages tree (design 019 §5.2).
+/// One row of the Pages tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeRow {
     Folder {

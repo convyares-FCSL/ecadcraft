@@ -1,9 +1,9 @@
-//! Tester's contract tests for brief 023 (upstream sync to CADCraft 0.19.0): what the merge could
+//! Contract tests for the upstream sync to CADCraft 0.19.0: what the merge could
 //! break at the owner seams. Undo and redo on an ECAD page mixed with plain drawing after upstream's
-//! LISP-`U` change (X3), a transparent command inside an owned command (X2), autosave, the new
-//! emergency save and crash recovery never writing an ECAD page as a drawing (X5), every editing
+//! LISP-`U` change, a transparent command inside an owned command, autosave, the new
+//! emergency save and crash recovery never writing an ECAD page as a drawing, every editing
 //! command upstream added in 0.16 to 0.19 on an ECAD page, and picking after edits (the `rstar`
-//! fix, #2539).
+//! fix).
 
 use crate::common;
 

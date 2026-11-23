@@ -1,4 +1,4 @@
-//! What an agent may run through `execute` (brief 011, scope item 4).
+//! What an agent may run through `execute` (scope item 4).
 //!
 //! # Semantics
 //! - **Writes off** (no `--write`, or the project opened read-only): only the commands in
@@ -26,25 +26,25 @@ pub(crate) const READ_COMMANDS: &[&str] = &[
     // Navigation between the project's pages: opens or shows a page, records nothing.
     "openpage",
     "document.switch",
-    // Cable references (brief 010): going to the other end opens or shows its page and selects
+    // Cable references: going to the other end opens or shows its page and selects
     // it, and records nothing.
     "cablegoto",
-    // Devices and starter symbols (brief 018): finding and listing them, and one device's
+    // Devices and starter symbols: finding and listing them, and one device's
     // properties, read the project only.
     "symbols",
     "devices",
     "deviceprops",
-    // Nets, wire numbers and checks (brief 022): listing them reads the project.
+    // Nets, wire numbers and checks: listing them reads the project.
     "nets",
     "net",
     "checks",
-    // Cross-references (brief 025): going to a reference opens or shows its page and records
+    // Cross-references: going to a reference opens or shows its page and records
     // nothing.
     "refgoto",
-    // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
+    // An issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",
     "closerevision",
-    // Brief 020a: the History graph, steps, a point's details, the branch list, and a point
+    // The History graph, steps, a point's details, the branch list, and a point
     // shown read-only, read the project or open a session view; nothing is recorded.
     "history",
     "steps",
@@ -52,45 +52,45 @@ pub(crate) const READ_COMMANDS: &[&str] = &[
     "branches",
     "showpoint",
     "closepoint",
-    // Brief 024: the reports and the printed book read the project and record nothing (a `path`
+    // The reports and the printed book read the project and record nothing (a `path`
     // is refused in every mode, as for `plot` and `export`: `printbook` then returns the PDF as
     // base64 data); `reports` only asks the desktop app to open its window.
     "printbook",
     "reports",
-    // Brief 027: the pre-release check reads the project and records nothing.
+    // The pre-release check reads the project and records nothing.
     "prerelease",
-    // Brief 031: Show Hidden Text is a display state (like a cable view) and records nothing.
+    // Show Hidden Text is a display state (like a cable view) and records nothing.
     "hiddentext",
-    // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
+    // What an edit of a symbol would change on its placed copies reads the project.
     "symbolimpact",
 ];
 
-/// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
-/// `projectprops {}`; brief 026: `numbering {}`; brief 031: `textstyle {}`.
+/// Commands whose form with no fields only reads: `pageprops {page?}` and
+/// `projectprops {}`: `numbering {}`: `textstyle {}`.
 const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     ("pageprops", &["page"]),
     ("projectprops", &[]),
     ("numbering", &[]),
     ("textstyle", &[]),
     ("standard", &[]),
-    // Brief 055: `titleblock {id, sheet?}` reads one frame and its block.
+    // `titleblock {id, sheet?}` reads one frame and its block.
     ("titleblock", &["id", "sheet"]),
-    // Brief 054: `folderprops {folder}` reads a folder's start number.
+    // `folderprops {folder}` reads a folder's start number.
     ("folderprops", &["folder"]),
-    // Brief 052d: `conflicts {}` lists the waiting conflicts.
+    // `conflicts {}` lists the waiting conflicts.
     ("conflicts", &[]),
 ];
 
-/// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
+/// Commands whose form with `preview: true` only reads (the merge preview:
 /// the Renumber and Finalise previews).
 const READ_WITH_PREVIEW: &[&str] = &["merge", "renumber", "finalise"];
 
-/// Commands whose form naming an issued revision records nothing (brief 027: `release {rev}`
+/// Commands whose form naming an issued revision records nothing (`release {rev}`
 /// writes that revision's folder again, beside the project, and never issues; it refuses a `rev`
 /// that is not issued). Its `folder` is a file key, refused in every mode.
 const READ_WITH_REV: &[&str] = &["release"];
 
-/// Commands whose form with `dry_run: true` only reads (brief 056: what an import would set).
+/// Commands whose form with `dry_run: true` only reads (what an import would set).
 const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
 
 /// Whether command `id` only reads, whatever its parameters: a session command in
@@ -112,7 +112,7 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
         || (READ_WITH_DRY_RUN.contains(&id) && params.get("dry_run").and_then(Value::as_bool) == Some(true))
         || (READ_WITH_REV.contains(&id)
             && params.get("rev").is_some_and(Value::is_string)
-            // Replace moves a folder on disk aside: a write, never with writes off (review of PR #54, 1).
+            // Replace moves a folder on disk aside: a write, never with writes off.
             && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
 }
 
@@ -161,11 +161,11 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "share",
     // AUDIT rewrites the drawing outside ECAD's commands; its log setting writes a file.
     "audit",
-    // Brief 035: an agent never turns its own access on, widens it or moves the port.
+    // An agent never turns its own access on, widens it or moves the port.
     "agentaccess",
 ];
 
-/// Said when an agent asks for `agentaccess` (brief 035, design §3.3).
+/// Said when an agent asks for `agentaccess`.
 pub const AGENT_ACCESS: &str = "Refused: Agent access is set by the person in the ECAD window. Nothing was changed.";
 
 /// Parameter names that name a file on disk.
@@ -174,14 +174,14 @@ pub(crate) const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template
 /// Commands whose `path` parameter is not a file (ARRAYPATH's path is a handle).
 const PATH_IS_NOT_A_FILE: &[&str] = &[
     "arraypath",
-    // Brief 019: `folder` names a folder of pages, never a file.
+    // `folder` names a folder of pages, never a file.
     "newpage",
     "movepage",
     "newfolder",
     "renamefolder",
     "movefolder",
     "deletefolder",
-    // Brief 054: a folder's start number, and Renumber pages in one folder.
+    // A folder's start number, and Renumber pages in one folder.
     "folderprops",
     "renumberpages",
 ];
@@ -320,7 +320,7 @@ mod tests {
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
         assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());
-        // Brief 027: the check reads; `release` issues only without `rev`; no folder of its own.
+        // The check reads; `release` issues only without `rev`; no folder of its own.
         assert!(check("prerelease", &none, false, Some("locked")).is_ok());
         assert!(check("release", &json!({"rev": "A"}), false, Some("locked")).is_ok());
         assert_eq!(check("release", &none, false, None), Err(WRITES_OFF.into()));

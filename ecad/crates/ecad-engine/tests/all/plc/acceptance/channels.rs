@@ -1,5 +1,4 @@
-//! Brief 045b, channels (design 045 §4, §6, §7, §9 b-rows `channel-*`, §13 F, G, H, K, L, M, T;
-//! FP2, FP3, FP6, FP7).
+//! PLC channels (`channel-*`).
 
 use ecad_model::DeviceId;
 use serde_json::json;

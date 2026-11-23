@@ -1,7 +1,7 @@
-//! Command census (verification V4): every CADCraft command's JSON form, with default parameters,
+//! Command census: every CADCraft command's JSON form, with default parameters,
 //! on an ECAD page holding a component, a symbol and a wire. Each outcome is classified; whatever
-//! happens, the checks of §17.4 must still hold. The table is written to
-//! `$CARGO_TARGET_TMPDIR/ecad-census.md` for the experiment report.
+//! happens, the harness checks must still hold. The table is written to
+//! `$CARGO_TARGET_TMPDIR/ecad-census.md`.
 
 use crate::common;
 

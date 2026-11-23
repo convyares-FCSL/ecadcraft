@@ -1,4 +1,4 @@
-//! Convert to Device (design 008 §8.3).
+//! Convert to Device.
 
 use super::{R, Safe, commit, hex_of, other, paper_guard, safely};
 use crate::commands::MAX_HANDLES;

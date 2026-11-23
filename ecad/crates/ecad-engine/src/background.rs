@@ -1,4 +1,4 @@
-//! Work off the UI thread (design 061, rayon; lane R11): a job computes on copies on a small rayon
+//! Work off the UI thread (rayon): a job computes on copies on a small rayon
 //! pool, sends its result back over a channel, and the panel that started it takes it on a later
 //! frame.
 //!

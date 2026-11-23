@@ -1,8 +1,6 @@
-//! Tester 032 (wires and nets, v0.15 lane W): acceptance checks from outside, written from brief
-//! 032 and design 032 §12 only, before the implementation. Numbers in test names are design §12's
-//! items (Q6 wire join 1–12, Q8 cable across pages 13–14, Q4 labels 15–16, update maps 17, the
-//! Wire tool 18, defaults 21). They were written
-//! before the build and read new result fields and fix variants by name; they run on the build.
+//! Acceptance checks for wires and nets, from outside. Numbers in test names are the checks' items
+//! (wire join 1–12, cable across pages 13–14, labels 15–16, update maps 17, the
+//! Wire tool 18, defaults 21). They read result fields and fix variants by name.
 
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;

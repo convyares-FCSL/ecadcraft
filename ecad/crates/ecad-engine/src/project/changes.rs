@@ -23,7 +23,7 @@ pub struct Change {
 
 impl Project {
     /// A number that changes exactly when [`Project::page_rows`] could differ (update map of the
-    /// Project panel's rows, brief 016): a page added or removed (rename and move are a remove and
+    /// Project panel's rows): a page added or removed (rename and move are a remove and
     /// an add, [`ecad_electrical::devices::device_list::DeviceTouch::pages`]), or a page becoming available or
     /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
     /// switches) leaves it alone, so the panel keeps its rows.
@@ -31,19 +31,19 @@ impl Project {
         self.page_list_version
     }
 
-    /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
+    /// The general reference index, kept by the views' pipeline
     /// (`ecad_electrical::views::ReferencesView`).
     pub fn reference(&self) -> &ecad_electrical::references::devices::index::RefIndex {
         self.derived.references()
     }
 
-    /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
+    /// The kept connector index, kept by the views' pipeline
     /// (`ecad_electrical::views::ConnectorsView`).
     pub fn connectors(&self) -> &ecad_electrical::connectors::Index {
         self.derived.connectors()
     }
 
-    /// The derived views (design 064 §5): another document state's are read through
+    /// The derived views: another document state's are read through
     /// [`ecad_electrical::views::Views::detached`].
     pub fn derived(&self) -> &ecad_electrical::views::Views {
         &self.derived
@@ -141,7 +141,7 @@ impl Project {
 
     /// Bring every open page's drawing and map in line with the document (handles kept where
     /// objects remain). Pages that fail are rebuilt from scratch; if that fails too, the page view
-    /// becomes unavailable (PROJ-02).
+    /// becomes unavailable.
     pub(crate) fn refresh_pages(&mut self, pg: &mut Pages<'_>, command: Option<&str>) {
         // An unavailable page stays a placeholder until it is closed and reopened.
         let pages: Vec<PageId> = self.pages.iter().filter(|(_, v)| v.uid.is_some() && !v.unavailable).map(|(p, _)| *p).collect();
@@ -153,7 +153,7 @@ impl Project {
 
     /// Project one page; `committed` is the engine's drawing (with its new handles already in the
     /// map) after a CADCraft commit, used as the base and for the normal-path fidelity check.
-    /// `recovery` marks a reprojection with fresh handles (owner recovery); it and any rebuild are
+    /// `recovery` marks a reprojection with fresh handles (a recovery); it and any rebuild are
     /// checked by [`verify_page`] instead, which does not rely on handle numbers.
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
@@ -224,14 +224,14 @@ impl Project {
                     // them), so they are not compared with what the engine committed.
                     let mut amended = amended.clone();
                     amended.extend(prev.fan_handles().chain(map.fan_handles()));
-                    // Reference texts are derived too (brief 010): moving a reference point or a
+                    // Reference texts are derived too: moving a reference point or a
                     // member route moves or rewrites them.
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
-                    // Tag texts and terminal labels follow their symbols (brief 018).
+                    // Tag texts and terminal labels follow their symbols.
                     amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
-                    // Wire labels follow their routes and nets (brief 022).
+                    // Wire labels follow their routes and nets.
                     amended.extend(prev.label_handles().chain(map.label_handles()));
-                    // Contact texts and mirror tables follow their device (brief 025).
+                    // Contact texts and mirror tables follow their device.
                     amended.extend(prev.device_reference_handles().chain(map.device_reference_handles()));
                     let mismatched = fidelity_mismatches(committed, &d, &amended);
                     if !mismatched.is_empty() {
@@ -280,7 +280,7 @@ impl Project {
     }
 
     /// After a transaction that is not a drawing commit (an ECAD command's JSON form, undo, redo)
-    /// or a view switch: redraw the active page, the only page drawn (brief 016). Other pages are
+    /// or a view switch: redraw the active page, the only page drawn. Other pages are
     /// projected when they become active, so nothing else is marked or redrawn.
     pub(crate) fn redraw_window(&mut self, pg: &mut Pages<'_>, command: Option<&str>) {
         if let Some(page) = self.active_page().filter(|p| self.pages.get(p).is_some_and(|v| !v.unavailable)) {
@@ -290,8 +290,8 @@ impl Project {
     }
 
     /// After a commit, undo or redo whose touched pages are `pages` (`None`: any page): redraw the
-    /// active page only when the change could alter it (overseer item O1, design ui-architecture
-    /// §8.4). The touched set names the page's own objects, its references, its numbered wires and
+    /// active page only when the change could alter it. The touched set names the page's own objects, its
+    /// references, its numbered wires and
     /// the generated pages whose content changed ([`Project::generated_touched`]); the kept frame
     /// (title block, Total, the pending Rev box) has its own update map, `frame_stale`. A frame
     /// kept for another page means the active page's frame is not kept, so it is drawn.
@@ -317,15 +317,15 @@ impl Project {
         self.apply_edit_with(pg, command, label, ops, true)
     }
 
-    /// [`Project::apply_edit`], with the numbering pass (brief 022) only when `numbering`: a
-    /// Restore (brief 020) records exactly the state it returns to, wire numbers included.
+    /// [`Project::apply_edit`], with the numbering pass only when `numbering`: a
+    /// Restore records exactly the state it returns to, wire numbers included.
     pub(crate) fn apply_edit_with(
         &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool,
     ) -> Result<ecad_model::TxId, CmdError> {
         self.apply_tx(pg, command, label, ops, numbering, None).map_err(CmdError::refused)
     }
 
-    /// Commit a merge (brief 020b): `ops` as one transaction of `kind` (a merge), updated in the
+    /// Commit a merge: `ops` as one transaction of `kind` (a merge), updated in the
     /// views as any commit (their update maps; no special path).
     ///
     /// # Errors
@@ -342,13 +342,13 @@ impl Project {
         if pg.command_running() {
             return Err("finish or cancel the current command first (TX-05)".into());
         }
-        // Brief 052d (design 052 §5.5): any other edit is a Leave of the conflicts waiting.
+        // Any other edit is a Leave of the conflicts waiting.
         self.conflicts.clear();
-        // Nothing is drawn on a generated page (brief 024, design 024 §5.3).
+        // Nothing is drawn on a generated page.
         if let Some(m) = ecad_electrical::pages::generated::refusal(self.ledger.document(), &ops) {
             return Err(m);
         }
-        // Brief 056 (design 056 §8): the first rack brings the book's rack overview page with it,
+        // The first rack brings the book's rack overview page with it,
         // in the same transaction (not for a merge or a Restore, which record exactly the state
         // they bring back).
         let mut ops = ops;
@@ -363,7 +363,7 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        // The numbering pass (brief 022) extends the same transaction.
+        // The numbering pass extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::connectivity::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
         let committed = match kind {
@@ -383,13 +383,13 @@ impl Project {
         Ok(tx)
     }
 
-    /// The After phase and the views' updates on the transaction just committed (design 064 §5).
+    /// The After phase and the views' updates on the transaction just committed.
     pub(super) fn finish_derived(&mut self, pending: ecad_electrical::views::Pending) -> Changes {
         let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         self.derived.finish(self.ledger.document(), ops, pending)
     }
 
-    /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
+    /// What follows every commit, on all three paths: the change log entry, the
     /// redraw the path calls for, and the lines for the command line.
     pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
         let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems } = changes;
@@ -421,7 +421,7 @@ impl Project {
             (Path::Interactive { .. }, _) => {}
             (Path::History { .. }, Some((was_active, Some(page)))) if self.open_page(pg, page).is_ok() => {
                 // The page the undo or redo changed comes to the front, so the change is seen
-                // (brief 016, AC8). A page that cannot be shown leaves the active page as it is.
+                // (AC8). A page that cannot be shown leaves the active page as it is.
                 // A page already in the window was only brought to the front: draw it.
                 if was_active == Some(page) {
                     self.redraw_window(pg, Some(command));
@@ -466,7 +466,7 @@ fn fidelity_mismatches(committed: &Drawing, projected: &Drawing, amended: &BTree
     out
 }
 
-/// The page an undo or redo brings to the front (design 016 §4.3), or `None` to stay: a page it
+/// The page an undo or redo brings to the front, or `None` to stay: a page it
 /// adds; the page before the active page when it removes the active page (else the first page);
 /// otherwise, when it changed pages that do not include the active page, the first of them in
 /// page order. Rename and move (a page removed and added again) stay; so does a change that could
@@ -493,7 +493,7 @@ pub(crate) fn front_after_history(before: &[PageId], after: &[PageId], touched: 
 mod tests {
     use super::*;
 
-    /// Design 016 section 4.3, table-driven: which page an undo or redo brings to the front.
+    /// Table-driven: which page an undo or redo brings to the front.
     #[test]
     fn the_page_an_undo_or_redo_brings_to_the_front() {
         let [a, b, c] = [PageId(1), PageId(2), PageId(3)];

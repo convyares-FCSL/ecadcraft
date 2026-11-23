@@ -1,9 +1,8 @@
-//! Contract tests for brief 023 (upstream sync to CADCraft 0.19.0). CADCraft 0.16.0 to 0.19.0
+//! Contract tests for the upstream sync to CADCraft 0.19.0. CADCraft 0.16.0 to 0.19.0
 //! brought command paths that change a page in new ways: BREAK and TRIM keep the object's handle
-//! for one piece (#2545), OOPS brings back erased objects with their old handles, `-ARRAY` is the
+//! for one piece, OOPS brings back erased objects with their old handles, `-ARRAY` is the
 //! classic command-line array, and MINSERT inserts an array of block references. On an ECAD page
 //! each one is recorded properly or refused with a reason, and the project stays consistent
-//! (proposal §17.4).
 
 use crate::common;
 

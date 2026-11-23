@@ -1,4 +1,4 @@
-//! Brief 052b (design 052 §5.1–§5.2, §5.7–§5.9, §6, §10.6–14a): function and location stored on
+//! Function and location stored on
 //! the device, overrides, tag prefixes, the project's list (rename, merge, remove) and its Checks.
 
 use crate::common::{H, id};

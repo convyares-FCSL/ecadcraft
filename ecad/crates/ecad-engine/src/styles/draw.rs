@@ -1,4 +1,4 @@
-//! The CADCraft side of text styles (brief 031; design 065 §3, cut 4): the engine's text styles and
+//! The CADCraft side of text styles: the engine's text styles and
 //! fonts a page installs, styling a text entity, measuring text in the font it is drawn with, and
 //! drawing hidden texts. The rules (kinds, resolved heights, own styles, placement) are
 //! [`crate::text_style`].
@@ -15,8 +15,8 @@ pub(crate) fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Docume
     put_style(d, &family_style_name(family, Weight::Bold), &f.bold);
 }
 
-/// Style a text entity of `kind` as this project draws it (the one entry point for other lanes,
-/// design 031 §3.3): its height, its style name (the project font, or the kind's own font), and
+/// Style a text entity of `kind` as this project draws it (the one entry point for the other modules):
+/// its height, its style name (the project font, or the kind's own font), and
 /// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
 /// styles: [`install`] (or [`install_draw`]) writes them. A caller styling many entities holds a
 /// [`DrawStyles`] and calls [`DrawApply::apply`] instead (one resolution per page, not per entity).
@@ -35,7 +35,7 @@ fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_linewei
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.style = s.style_name.to_string();
     }
-    // Brief 050a: a style's colour (ink otherwise; a mono print prints ink regardless).
+    // A style's colour (ink otherwise; a mono print prints ink regardless).
     if let Some(rgb) = s.colour.and_then(|c| crate::cables::draw::text_colour_rgb(c, crate::cables::draw::projection_sheet())) {
         e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
@@ -58,8 +58,8 @@ static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
     },
 ];
 
-/// Give CADCraft's font table the sheet font, Barlow Semi Condensed Regular and SemiBold (brief
-/// 040, upstream seam US3), so every page ECAD draws or prints, in the window or headless (MCP,
+/// Give CADCraft's font table the sheet font, Barlow Semi Condensed Regular and SemiBold,
+/// so every page ECAD draws or prints, in the window or headless (MCP,
 /// Print Book, release), uses it. Called by [`crate::install`] and before a print; idempotent.
 /// Whether the faces are registered (the same faces, or another embedder's, given first).
 pub fn register_sheet_font() -> bool {
@@ -67,7 +67,7 @@ pub fn register_sheet_font() -> bool {
 }
 
 /// CADCraft's fonts as the rules' [`TextMetrics`]: a font is found when CADCraft's font table
-/// has it, and a text's width is CADCraft's measure of it in that font (design 065 §3, cut 10).
+/// has it, and a text's width is CADCraft's measure of it in that font.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EngineMetrics;
 
@@ -100,19 +100,19 @@ impl std::ops::Deref for Fonts {
 }
 
 impl Fonts {
-    /// Resolve `doc`'s font on this machine. Never fails: a missing font falls back (§2.2).
+    /// Resolve `doc`'s font on this machine. Never fails: a missing font falls back.
     pub fn resolve(doc: &Document) -> Fonts {
         Fonts(fonts::Fonts::resolve_with(doc, &EngineMetrics))
     }
 
-    /// Resolve the family `wanted` on this machine, with the fallbacks of §2.2.
+    /// Resolve the family `wanted` on this machine, with the fallbacks.
     pub fn for_family(doc: &Document, wanted: String) -> Fonts {
         Fonts(fonts::Fonts::for_family_with(doc, wanted, &EngineMetrics))
     }
 }
 
-/// Write ECAD's text styles into `d` (design 031 §2.3): `Standard` (the project family, regular)
-/// and `ECAD-BOLD` (bold, or as §2.2), and the two styles of every kind with a font of its own
+/// Write ECAD's text styles into `d`: `Standard` (the project family, regular)
+/// and `ECAD-BOLD` (bold, or as the fallbacks give it), and the two styles of every kind with a font of its own
 /// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
 /// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
@@ -174,11 +174,11 @@ impl DrawStyles {
 /// Styling a derived text entity from a page's resolved look.
 pub(crate) trait DrawApply {
     /// Give a text entity `kind`'s style name (the project font or the kind's own) and, for bold
-    /// in the stroke font, its lineweight (§2.2), as [`apply`] does from a page's resolved look.
+    /// in the stroke font, its lineweight, as [`apply`] does from a page's resolved look.
     /// Its height is left as it is (derived texts set their own).
     fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind);
 
-    /// [`DrawApply::apply`] with an object's own text style (brief 050a): its weight, colour and
+    /// [`DrawApply::apply`] with an object's own text style: its weight, colour and
     /// the CADCraft style naming its font.
     fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle);
 }
@@ -196,7 +196,7 @@ impl DrawApply for fonts::DrawStyles {
     }
 }
 
-/// The width of `value` at `kind`'s height in the font it is drawn with on this machine (§2.4):
+/// The width of `value` at `kind`'s height in the font it is drawn with on this machine:
 /// [`fonts::text_width`] with CADCraft's fonts.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
     fonts::text_width(doc, kind, value, &EngineMetrics)

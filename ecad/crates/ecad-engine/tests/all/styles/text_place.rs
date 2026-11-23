@@ -1,4 +1,4 @@
-//! Brief 031 Q2 (design 031 §6, §13 T9, T10, T15): tag blocks avoid wires and each other, a
+//! Text placement: tag blocks avoid wires and each other, a
 //! moved tag keeps its place relative to its symbol, and hostile stored places draw the automatic
 //! place.
 

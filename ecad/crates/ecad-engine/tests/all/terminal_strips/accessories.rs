@@ -1,4 +1,4 @@
-//! Brief 030 acceptance (design 030 §12): accessories placed with `accessory`, part data from the
+//! Strip accessories: accessories placed with `accessory`, part data from the
 //! strip and the project, the plan, BOM and Checks rows, renumbering, jumper bars made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 

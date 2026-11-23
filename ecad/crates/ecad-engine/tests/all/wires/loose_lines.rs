@@ -1,7 +1,7 @@
-//! Lane 072 D, step F2c (design 072 §4.3, owner ruling 2026-11-18): the owner's loose-line
-//! terminal workflow. A line drawn from a device's point into free space carries no wire; Place
-//! Terminals across it lands a terminal on the line, splitting it: the piece from the device to the
-//! terminal lands at both ends and becomes a wire, the piece beyond stays loose (no wire, a
+//! The loose-line
+//! terminal block workflow. A line drawn from a device's point into free space carries no wire; Place
+//! Terminals across it lands a terminal block on the line, splitting it: the piece from the device to the
+//! terminal block lands at both ends and becomes a wire, the piece beyond stays loose (no wire, a
 //! `no-wire-yet` row). Drawing on from the loose end to a second device's point forms the second
 //! wire. Driven through the commands' JSON forms.
 

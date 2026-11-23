@@ -1,4 +1,4 @@
-//! Brief 026 (design 026 §14): numbering from outside, through the commands' JSON forms: folder
+//! Numbering from outside, through the commands' JSON forms: folder
 //! and selection scopes, the drawn provisional colour and `24V-?` labels, the Checks rows kept
 //! from each transaction's ops, save and reopen (tags, `tag_fixed`, the setting, the high-water
 //! mark), and hostile requests. The MCP contract tests are in `ecad-mcp`'s `numbering_contracts`.

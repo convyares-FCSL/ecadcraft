@@ -1,8 +1,8 @@
-//! Brief 004 (wires to cable, the slash gesture), written from the brief and design 004 (§4
-//! crossing rules, §5 interaction, §6 JSON form, §7 drawing, §8 existing commands, §9 debugger).
+//! Wires to cable, the slash gesture: the crossing rules, the interaction, the JSON form, the
+//! drawing, the existing commands and the debugger.
 //!
-//! Fixture F (design §10): three parallel wires W0, W5, W10 (tagged by their y) from x 0 to 60,
-//! and a plain line at y 15. The design's slash S runs from (28,-3) to (32,18).
+//! Fixture F: three parallel wires W0, W5, W10 (tagged by their y) from x 0 to 60,
+//! and a plain line at y 15. The slash S runs from (28,-3) to (32,18).
 
 use crate::common;
 

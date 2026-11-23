@@ -1,4 +1,4 @@
-//! The interactive forms (design 008 §5 to §8, design 004 §5). Each one resolves values from
+//! The interactive forms. Each one resolves values from
 //! clicks, keys and typed points, then commits the command's JSON form with them.
 
 pub(crate) mod add_connection_point;
@@ -29,7 +29,7 @@ pub(crate) fn other(m: impl Into<String>) -> EngineError {
 
 /// Run one step of a form. A panic (which the code is written never to raise) does not reach the
 /// engine, which would put back the drawing from before the command although earlier objects of
-/// this run are committed; instead the page is redrawn from the project (PROJ-02: roll forward)
+/// this run are committed; instead the page is redrawn from the project (the transaction stays: roll forward)
 /// and the command ends.
 pub(crate) fn safely(s: &mut Session, name: &str, f: impl FnOnce(&mut Session) -> R<Step>) -> R<Step> {
     match catch_unwind(AssertUnwindSafe(|| f(&mut *s))) {

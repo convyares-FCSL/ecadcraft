@@ -1,4 +1,4 @@
-//! Wire (design 008 §7).
+//! Wire.
 
 use super::{R, Safe, commit, hex_of, not_a_point, other, paper_guard, safely};
 use crate::commands::{MAX_WIRE_POINTS, on_project};
@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 /// point (or Enter) commits the wire.
 pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    // Brief 032 §2.4: joining starts on (the registered default) every time the tool starts.
+    // Joining starts on (the registered default) every time the tool starts.
     let join = read(s, |p, _| Ok(ecad_electrical::wires::commands::wires::join_by_default(p.ledger.document()))).map_err(other)?;
     Ok(Box::new(Safe(Wire { join, ..Wire::default() })))
 }
@@ -26,11 +26,11 @@ struct Wire {
     points: Vec<Pt>,
     /// The first point is on a connection point.
     first_on_connection_point: bool,
-    /// Asking for the potential of new wires (design 022 §6).
+    /// Asking for the potential of new wires.
     asking_potential: bool,
-    /// Brief 032 §2.4: ends that meet other wires join them (the Join keyword turns it off).
+    /// Ends that meet other wires join them (the Join keyword turns it off).
     join: bool,
-    /// Brief 050b (design 050 §6.9): asking for the category of new wires, and the one chosen
+    /// Asking for the category of new wires, and the one chosen
     /// for this run of the tool (`None`: auto, from the potential).
     asking_category: bool,
     category: Option<String>,
@@ -47,7 +47,7 @@ fn wire_potential(s: &Session) -> Option<String> {
 }
 
 impl Wire {
-    /// The open end of another wire within the pick radius of `p` (design 032 §2.4).
+    /// The open end of another wire within the pick radius of `p`.
     fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
         let tol = crate::interact::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
         read(s, |proj, page| Ok(ecad_electrical::wires::joining::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page))))
@@ -67,7 +67,7 @@ impl Wire {
         if let Some(c) = &self.category {
             params["category"] = json!(c);
         }
-        // A refusal (design 032 §2.4) draws nothing; the tool keeps its points, so the user can
+        // A refusal draws nothing; the tool keeps its points, so the user can
         // type J and finish.
         let r = match commit(s, "wire", &params) {
             Ok(r) => r,
@@ -190,7 +190,7 @@ impl Wire {
                 }
                 let (q, on_connection_point) = match connection_point_for(s, p) {
                     Some((_, at, _)) => (at, true),
-                    // Brief 032 §2.4: a click near another wire's open end lands on it.
+                    // A click near another wire's open end lands on it.
                     None if self.join => (self.open_end(s, p).unwrap_or_else(|| pt(p)), false),
                     None => (pt(p), false),
                 };
@@ -288,7 +288,7 @@ impl Interactive for Wire {
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let captured = capture_at(s, cursor);
         let mut out = captured.as_ref().map(|c| capture_preview(s, c, ATTACHED_ACI)).unwrap_or_default();
-        // Brief 032 §2.4: an end on another wire's open end joins it (`join`), on its interior or
+        // An end on another wire's open end joins it (`join`), on its interior or
         // on two or more ends lands on it (a T), a refused merge shows the reason in red; with
         // Join off, nothing.
         if captured.is_none()

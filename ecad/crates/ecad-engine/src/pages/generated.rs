@@ -71,7 +71,7 @@ impl Draw {
     }
 }
 
-/// The missing-data mark (design 033 §3.1, `ecad.missing-box`): `?` in a thin box inset by the
+/// The missing-data mark (`ecad.missing-box`): `?` in a thin box inset by the
 /// registry's `print.missing_box_inset` into the cell from `lo` to `hi` (model coordinates, `k`
 /// drawing units per millimetre), the text in `draw`. Both parts are [`FLAGGED_ACI`] on
 /// [`LAYER`]: yellow on screen; Print Book prints them in [`FLAGGED_PRINT_ACI`].
@@ -102,17 +102,17 @@ fn content(
     let draws = DrawStyles::new(doc);
     let draw = |kind| TextDraw::of(&draws, kind, input.unit);
     let (header, cell_draw, heading) = (draw(TextKind::TableHeader), draw(TextKind::Table), draw(TextKind::TableHeading));
-    // Brief 054b (design 054 §6): the cover's blocks.
+    // The cover's blocks.
     if kind == GenKind::Cover {
         return crate::pages::front::cover(doc, input, x0).0;
     }
-    // Brief 046: a graphic terminal plan draws its strip sheet.
+    // A graphic terminal plan draws its strip sheet.
     if kind == GenKind::TerminalBlocks
         && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic
     {
         return reports.map_or_else(Vec::new, |o| crate::terminal_strips::draw::content(doc, page, input, i, x0, o));
     }
-    // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
+    // The I/O list as ruled tables per card, the rack overview as tiles.
     if matches!(kind, GenKind::IoList | GenKind::PlcRack) {
         let a = ecad_electrical::plc::sheets::Area { l, b, r, t, scale: (r - l) / A3_AREA };
         let plc = reports.map(|o| &o.plc);
@@ -123,12 +123,12 @@ fn content(
         }
         return d.out;
     }
-    // The table and its sheets are laid out once per page, not once per sheet (brief 053).
+    // The table and its sheets are laid out once per page, not once per sheet.
     let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, reports));
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
-    // UI rev 3 (board 1.15): the BOM's Qty column is right aligned, and each location heading is
+    // The BOM's Qty column is right aligned, and each location heading is
     // ruled off with the frame's weight.
     let bom = kind == GenKind::BomLocation;
     let right = |c: usize| bom && c == BOM_QTY_COLUMN;
@@ -159,7 +159,7 @@ fn content(
         if row.heading {
             let text = row.cells.first().map_or("", String::as_str);
             if text == MISSING {
-                // Brief 052 (tester 052, finding 6): devices with no location head a `?` group,
+                // Devices with no location head a `?` group,
                 // flagged like a missing cell: the mark in the first column's width.
                 let w = widths.first().copied().unwrap_or(r - l).min(r - l);
                 d.out.extend(missing_mark(doc, d.p(l, y - row_mm()), d.p(l + w, y), d.k, heading));
@@ -224,7 +224,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Opt
     let Some(kind) = kind_of(doc, page) else { return crate::pages::frame::parts(input) };
     let n = sheets_of(doc, page, reports);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
-    // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
+    // A graphic page titles each sheet by its strip.
     let graphic = (kind == GenKind::TerminalBlocks
         && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic)
         .then_some(reports)
@@ -241,7 +241,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Opt
             inp.page_title = format!("{} ({}/{n})", input.page_title, i + 1);
         }
         if n > 1 {
-            // Design 033 §5.2: each sheet its own number; Next is the next sheet's.
+            // Each sheet its own number; Next is the next sheet's.
             inp.page = sheet_number(&input.page, i);
             if i + 1 < n {
                 inp.next = sheet_number(&input.page, i + 1);
@@ -277,7 +277,7 @@ pub fn parts_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) ->
     parts_of_pending(doc, page, reports, false)
 }
 
-/// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
+/// [`parts_of`] with the project's pending flag: the Rev box and the cover say
 /// when the drawing has changed since the newest issue.
 pub fn parts_of_pending(doc: &Document, page: PageId, reports: Option<&ReportModels>, pending: bool) -> Vec<Part> {
     let (input, total) = input_of(doc, page, reports);

@@ -1,4 +1,4 @@
-//! Cable Join (owner request).
+//! Cable Join.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{ATTACHED_ACI, CONNECTION_POINT_RING_PX, OUT_OF_RANGE, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};

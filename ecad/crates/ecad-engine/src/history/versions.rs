@@ -4,7 +4,7 @@ use super::*;
 
 // ---------------------------------------------------------------- versions
 
-/// Check a new version's name (design 020 §2.5.1).
+/// Check a new version's name.
 ///
 /// # Errors
 /// In words.

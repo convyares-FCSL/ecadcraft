@@ -1,5 +1,4 @@
-//! Brief 045a (design 045 §2, §3, §9 a-rows, §12 a-entries, §13 A–E, M, T; FP1's four
-//! conditions).
+//! PLC racks and slots.
 
 use cadcraft_engine::Input;
 use ecad_model::{DeviceId, Op};

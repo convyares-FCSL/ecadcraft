@@ -24,11 +24,11 @@ impl Project {
                 Author::User,
                 "New project",
                 vec![
-                    // The first page is numbered 1 (brief 019): stored, so moving pages never
+                    // The first page is numbered 1: stored, so moving pages never
                     // renumbers it.
                     Op::AddPage { id: page, page: first_page().map_err(|e| e.to_string())?, index: 0 },
                     Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
-                    // The length unit is recorded at creation (proposal §20.13).
+                    // The length unit is recorded at creation.
                     Op::SetProjectSettings {
                         before: ProjectSettings::default(),
                         after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
@@ -114,7 +114,7 @@ impl Project {
     }
 
     /// Reopen a project from a copy of the test store's bytes ([`MemoryStore::bytes`]), from its
-    /// latest snapshot (FILE-02). A damaged file opens read-only at the last state that verifies;
+    /// latest snapshot. A damaged file opens read-only at the last state that verifies;
     /// the report is kept in [`Project::open_report`].
     ///
     /// # Errors
@@ -201,8 +201,8 @@ impl Project {
         Ok(ProjectHandle::new(project))
     }
 
-    /// Open a project file from disk (`Persistence::File`): take its writer lock and replay it
-    /// (FILE-02). A damaged file opens its verified prefix read-only; a file another session is
+    /// Open a project file from disk (`Persistence::File`): take its writer lock and replay it.
+    /// A damaged file opens its verified prefix read-only; a file another session is
     /// editing opens read-only. Either can be saved as another file. Returns the handle and what
     /// opening found, in words (also recorded as a [`EventKind::ProjectOpened`] event).
     ///
@@ -236,7 +236,7 @@ impl Project {
             if reading { crate::file::Binding::open_read_only(&path, seed, &writer()) } else { crate::file::Binding::open(&path, seed, &writer()) }
                 .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
-        // Words in values that stay text (design 072 §9.5): read once on open, never per commit.
+        // Words in values that stay text: read once on open, never per commit.
         o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document()));
         let default_layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order().to_vec();
@@ -255,7 +255,7 @@ impl Project {
         if let Some(r) = o.binding.status().read_only {
             summary.push(format!("Opened read-only: {r}. Save As can save a copy."));
         }
-        // Cable views remembered by this user (brief 005); IDs not at the head are ignored.
+        // Cable views remembered by this user; IDs not at the head are ignored.
         let loaded = settings.load(o.project);
         if loaded.unreadable {
             summary.push(crate::cables::views::UNREADABLE.into());

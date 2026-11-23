@@ -1,4 +1,4 @@
-//! Brief 045a (design 045 §2, §3, §9 a-rows, §11, §13 A–E, M, T): racks, slots and cards.
+//! Racks, slots and cards.
 
 use ecad_electrical::reports::accessory_fix_commands;
 use ecad_engine::{Persistence, ProjectHandle};

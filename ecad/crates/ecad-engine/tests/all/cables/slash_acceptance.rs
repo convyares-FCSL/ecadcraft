@@ -1,6 +1,5 @@
-//! Independent tester's acceptance checks for brief 004 (cable slash), written from the brief, the
-//! owner's answers and design 004 only (fixture F of design §10, the crossing table of §4, the
-//! messages of §5.3/§5.4/§6 and the existing-command table of §8).
+//! Acceptance checks for the cable slash: fixture F, the crossing table, the messages and the
+//! existing-command table.
 //!
 //! Every check runs through the harness in `common`, which after each step asserts replay equals
 //! the live document, the drawing equals the projection and the handle map is one-to-one.

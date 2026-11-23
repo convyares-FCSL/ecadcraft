@@ -1,4 +1,4 @@
-//! Brief 051 (PLC visuals and the rack overview, design 051 §10.1): the tile model, `plcpage`, the
+//! The tile model, `plcpage`, the
 //! ruled I/O sheet and the `plcrack` sheet.
 
 use cadcraft_engine::doc::EntityKind;

@@ -1,4 +1,4 @@
-//! Issue 48 (lane D2): the report models and the Checks list are first built on the background
+//! The report models and the Checks list are first built on the background
 //! pool, on copies; a result computed before a commit landed is never installed.
 
 use std::time::Duration;

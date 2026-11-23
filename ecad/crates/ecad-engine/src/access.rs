@@ -106,7 +106,7 @@ impl ProjectHandle {
 
     /// Commit `ops` as one transaction labelled `label`, exactly as an ECAD command's JSON form
     /// does (validation, undo, refresh of the open pages). For objects no command makes yet: tests
-    /// build brief 010's cable reference ends with it.
+    /// build cable reference ends with it.
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`], a refused transaction, or a read-only project.
@@ -124,7 +124,7 @@ impl ProjectHandle {
     }
 
     /// Make `page` the active page, as `openpage` does: it is shown in the project's one page
-    /// window, which is opened if it was closed (brief 016).
+    /// window, which is opened if it was closed.
     ///
     /// # Errors
     /// [`BUSY`], an unknown page, or projection failure.
@@ -280,7 +280,7 @@ impl PagesRef<'_> {
         self.doc(uid).map(|d| d.doc.clone())
     }
 
-    /// Model-space entities of `page`'s drawing, without its sheet frame (brief 019; see
+    /// Model-space entities of `page`'s drawing, without its sheet frame (see
     /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
@@ -288,7 +288,7 @@ impl PagesRef<'_> {
             .unwrap_or_default()
     }
 
-    /// The sheet frame's entities of `page`'s drawing (brief 019).
+    /// The sheet frame's entities of `page`'s drawing.
     pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
             .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == crate::pages::frame::LAYER).cloned().collect()))

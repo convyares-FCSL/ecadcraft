@@ -1,5 +1,5 @@
-//! The engine side of the Checks list (design 065 §3): the from-scratch pass measuring text in
-//! CADCraft's fonts (cut 10, option F2), and the drawn handles a check's go-to selects. The kept
+//! The engine side of the Checks list: the from-scratch pass measuring text in
+//! CADCraft's fonts, and the drawn handles a check's go-to selects. The kept
 //! list is `ecad_electrical::views::ChecksView`, in the project's views.
 
 use ecad_model::{Document, PageId, Subject};
@@ -12,7 +12,7 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
     crate::project::engine_views().detached(doc).checks(doc, tol)
 }
 
-/// [`all`] with the report models already kept (brief 024: the project's, reused by `checks`).
+/// [`all`] with the report models already kept (the project's, reused by `checks`).
 pub fn all_with(doc: &Document, tol: f64, reports: &ecad_electrical::reports::kept::ReportModels) -> Vec<Check> {
     ecad_electrical::checks::all_measured(doc, tol, reports, &EngineMetrics)
 }
@@ -23,7 +23,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     let doc = p.ledger.document();
     let subject = match object {
-        // A wire's lines on the page: the routes drawing it (design 072 §4.3).
+        // A wire's lines on the page: the routes drawing it.
         Object::Wire(c) => {
             let routes: Vec<_> = ecad_electrical::wires::routes::routes_of_wire(doc, c)
                 .into_iter()

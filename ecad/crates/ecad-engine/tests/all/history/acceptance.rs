@@ -1,4 +1,4 @@
-//! Tester contracts for brief 020a (history, versions, restore, branches) through the typed
+//! Contracts for history, versions, restore and branches through the typed
 //! commands: branch switching never loses or misplaces unsaved work, undo is per branch, a
 //! second (read-only) opener sees branches created after it opened and writes nothing, a branch
 //! from an old version starts at that version, Restore is one undoable step that leaves version

@@ -1,4 +1,4 @@
-//! Brief 056 (the PLC signal list, design 056 §13.1, with the owner's change of 2026-11-14: no
+//! The PLC signal list (no
 //! sync, export and a one-way import): tags and safe states, Drives, Make tags, the generic CSV tag
 //! table, Import an I/O list, Export tags, the card type, the rack page in the book, Checks, and
 //! hostile files.

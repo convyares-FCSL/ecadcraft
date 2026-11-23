@@ -1,4 +1,4 @@
-//! Add Connection Point (design 008 §5).
+//! Add Connection Point.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{

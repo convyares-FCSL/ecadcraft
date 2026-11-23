@@ -1,11 +1,11 @@
-//! Graphical terminal-strip pages (brief 046, design 046): the `graphic` style of a `connection_points`
+//! Graphical terminal-strip pages: the `graphic` style of a `connection_points`
 //! generated page. Each strip is drawn as it is wired on the rail: one column per plan row of
 //! [`ecad_electrical::terminal_strips::strip_model::StripData::plan`], inside conductors up to their targets, outside conductors
 //! down, cable bars and boxes under them, jumper bars, bridges, levels and accessories in the band.
 //!
 //! It reads only the kept report models ([`ReportModels`]: the strips, the cable and device rows). It
 //! stores nothing in the document and is never a second model: the table style and this one draw
-//! the same rows. It does not draw panels, click-through or colour per text role (design 046 §15).
+//! the same rows. It does not draw panels, click-through or colour per text role.
 //!
 //! The kept layout data, the style and the sheets are [`ecad_electrical::terminal_strips::pages`]'s; this module
 //! draws.
@@ -26,20 +26,20 @@ use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
 use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
-/// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
+/// Guard: at most this many cable bar lanes; further cables share the last.
 pub(crate) const MAX_CABLE_LANES: usize = 8;
-/// Guard (§3.5): conductors drawn as leads on one side of a column; more are counted `+n`.
+/// Guard: conductors drawn as leads on one side of a column; more are counted `+n`.
 pub(crate) const MAX_LEADS_PER_SIDE: usize = 2;
-/// Guard (§4.2): far devices named under a cable box; more are counted `+n`.
+/// Guard: far devices named under a cable box; more are counted `+n`.
 pub(crate) const MAX_FAR_DEVICES: usize = 3;
 /// Lane spacing (`ecad.strip.lane-gap`): jumper bars, cable bars.
 const JUMPER_BAR_LANE_MM: f64 = 2.0;
 const CABLE_LANE_MM: f64 = 2.5;
 /// `ecad.jumper bar-stub`: a jumper bar's continuation past the sheet's first or last column.
 const JUMPER_BAR_STUB_MM: f64 = 4.0;
-/// Two leads on one side sit this far either side of the column centre (§3.5).
+/// Two leads on one side sit this far either side of the column centre.
 const LEAD_OFFSET_MM: f64 = 1.5;
-/// Cable box (§4.2): width and height.
+/// Cable box: width and height.
 const BOX_W_MM: f64 = 8.0;
 const BOX_H_MM: f64 = 24.0;
 /// Room for an outside target's text below its lead.
@@ -48,7 +48,7 @@ const OUT_TARGET_MM: f64 = 26.0;
 const IN_TARGET_MM: f64 = 45.0;
 /// `ecad.dot-size`: a connection dot's radius.
 const DOT_MM: f64 = 0.5;
-/// The area height (mm) at which the vertical layout is drawn at full size (§6.2).
+/// The area height (mm) at which the vertical layout is drawn at full size.
 const FULL_AREA_MM: f64 = 260.0;
 /// Below this area height the band and leads scale down.
 const SCALE_BELOW_MM: f64 = 160.0;
@@ -151,7 +151,7 @@ impl Pen {
         });
         self.out.push(Part { kind, weight: draw.weight, aci: None, layer: LAYER });
     }
-    /// A value, or 024's `?` box (design 033 §3.1) about `at` when it is missing.
+    /// A value, or the `?` box about `at` when it is missing.
     fn value(&mut self, doc: &Document, at: (f64, f64), draw: TextDraw, value: Option<&str>, h: HAlign, room: Option<f64>) {
         match value.map(str::trim).filter(|v| !v.is_empty()) {
             Some(v) => self.text(at, draw, v, h, true, room),
@@ -169,13 +169,13 @@ impl Pen {
     }
 }
 
-/// The text looks a strip page draws with (design 046 §7.1).
+/// The text looks a strip page draws with.
 struct Draws {
     tag: TextDraw,
     table: TextDraw,
-    /// A terminal's number or label (brief 066d: its own kind, `PointLabel`).
+    /// A terminal's number or label (its own kind, `PointLabel`).
     point: TextDraw,
-    /// The strip's location in the tag box (brief 066d: `LocationLabel`).
+    /// The strip's location in the tag box (`LocationLabel`).
     location: TextDraw,
     reference: TextDraw,
     wire: TextDraw,
@@ -202,7 +202,7 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
         cable: draw(TextKind::CableText),
         description: draw(TextKind::Description),
     };
-    // §6.2: a short area scales the band and the leads (texts keep their heights).
+    // A short area scales the band and the leads (texts keep their heights).
     let f = if t - b < SCALE_BELOW_MM { ((t - b) / FULL_AREA_MM).clamp(0.5, 1.0) } else { 1.0 };
     let yc = t - g.band_y * f;
     let lead = g.lead * f;
@@ -274,7 +274,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
     }
     let style = doc.settings().reference_style();
     let (half, yc) = (g.body / 2.0, fr.yc);
-    // §3.2: the strip tag box.
+    // The strip tag box.
     tag_box(pen, s, g, fr, lk);
     // Bodies, labels, leads.
     let mut out_leads: Vec<(f64, &SideCell)> = Vec::new();
@@ -304,7 +304,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
                     pen.text((cx + 2.0, mid), lk.reference, &place.text(style), HAlign::Center, true, Some(g.body * 0.55));
                 }
                 if r.breaks() {
-                    // §5.2: a fuse a 3 × 6 mm box on a line, a disconnect a slanted stroke.
+                    // A fuse a 3 × 6 mm box on a line, a disconnect a slanted stroke.
                     let (y0, y1) = (bot + 1.0, yc + up - 1.0);
                     if r.ty.code == "fuse" {
                         let m = (y0 + y1) / 2.0;
@@ -343,7 +343,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
     cables(doc, pen, &cols, c0, &out_leads, g, fr, lk, o);
 }
 
-/// §3.2: the tag box left of the first column.
+/// The tag box left of the first column.
 fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Draws) {
     let (x0, x1) = (fr.l, fr.l + g.tagbox);
     let (y0, y1) = (fr.yc - g.body / 2.0 - 4.0, fr.yc + g.body / 2.0 + 4.0);
@@ -362,7 +362,7 @@ fn tag_box(pen: &mut Pen, s: &StripData, g: &Geometry, fr: &Frame, lk: &Draws) {
     }
 }
 
-/// §5.3: a gap accessory's column.
+/// A gap accessory's column.
 fn gap(pen: &mut Pen, acc: Acc, p: &Placed<'_>, g: &Geometry, yc: f64, s: &StripData, lk: &Draws) {
     let half = g.body / 2.0;
     match acc {
@@ -408,7 +408,7 @@ fn side(doc: &Document, pen: &mut Pen, cells: &[SideCell], cx: f64, from: f64, t
     }
 }
 
-/// §3.1: one outline around the levels of a multi-level position (`ecad.level-box`), and §5.1's
+/// One outline around the levels of a multi-level position (`ecad.level-box`), and the
 /// internal bridges inside it.
 fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
     let half = g.body / 2.0;
@@ -457,7 +457,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
     }
 }
 
-/// §5.1: jumper bars in lanes in the band's upper half, with continuation stubs at the sheet's edges.
+/// Jumper bars in lanes in the band's upper half, with continuation stubs at the sheet's edges.
 fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
     let positions: Vec<usize> = placed.iter().filter_map(|p| if let Col::Term(i, _) = p.col { Some(s.position_index(i)) } else { None }).collect();
     let (Some(lo), Some(hi)) = (positions.iter().min().copied(), positions.iter().max().copied()) else { return };
@@ -497,7 +497,7 @@ fn jumper_bars(pen: &mut Pen, placed: &[Placed<'_>], s: &StripData, yc: f64) {
     }
 }
 
-/// §5.1: wire bridges (028's groups) in the band's lower half, with the group number.
+/// Wire bridges (the bridge groups) in the band's lower half, with the group number.
 fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Draws) {
     let mut groups: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
     for p in placed {
@@ -520,7 +520,7 @@ fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Dra
     }
 }
 
-/// §4: cable bars in lanes below the outside targets, one box per bar with its tag, type and
+/// Cable bars in lanes below the outside targets, one box per bar with its tag, type and
 /// maker, and an arrow to the far devices.
 #[allow(clippy::too_many_arguments)]
 fn cables(
@@ -560,7 +560,7 @@ fn cables(
     }
     let bar0 = fr.yc - g.body / 2.0 - fr.lead - 1.0 - OUT_TARGET_MM - g.bar;
     let used = lane_end.len().max(1);
-    // Kept above the area's bottom with the largest registry values (review of 046).
+    // Kept above the area's bottom with the largest registry values.
     let box_top = (bar0 - (used - 1) as f64 * CABLE_LANE_MM - 3.0).max(fr.b + 8.0);
     let box_bot = (box_top - BOX_H_MM).max(fr.b + 4.0);
     // A cable already on an earlier sheet of this strip says `(cont.)`.

@@ -1,6 +1,5 @@
-//! Brief 052a (design 052 §3, §4, §10.1–5): representation types and relations. Every symbol of
-//! a device is equal; its type is the part its definition declares, stored as its role (design
-//! 072 §4.4, F3′).
+//! Representation types and relations. Every symbol of
+//! a device is equal; its type is the part its definition declares, stored as its role.
 
 use crate::common::{H, id};
 

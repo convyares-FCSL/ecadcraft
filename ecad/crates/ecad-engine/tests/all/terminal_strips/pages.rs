@@ -1,6 +1,6 @@
-//! Brief 046 (design 046 §11): graphical terminal-strip pages. Fixture G is built through the
-//! commands' JSON forms: `-X01` at `+CP1` with four feed-through positions on fixture T's wires
-//! (028), one PE and one fuse position drawn, an offer adding spares of every kind, `-W01`
+//! Graphical terminal-strip pages. Fixture G is built through the
+//! commands' JSON forms: `-X01` at `+CP1` with four feed-through positions on fixture T's wires,
+//! one PE and one fuse position drawn, an offer adding spares of every kind, `-W01`
 //! (`YSLY-JZ 7G1.5`) with four cores, `jumper_bar.1 = 1-4`, a wire bridge 3–4, end stops at both ends, a
 //! partition after 2 and markers on 1–3.
 

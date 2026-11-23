@@ -1,6 +1,6 @@
 //! The release commands (`prerelease`, `release`); the release itself is [`crate::releases::release`].
 //!
-//! Both read their input through a params struct (brief 070), so a parameter that does not read is
+//! Both read their input through a params struct, so a parameter that does not read is
 //! refused at the edge in the uniform wording. The release (engine work: the checks, the reports,
 //! the files it writes) still takes its options as JSON: the shim writes the read parameters back
 //! (`serde_json::to_value`) and hands them over, and the release's own refusals keep their words.

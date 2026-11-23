@@ -1,7 +1,7 @@
-//! The page type and folder commands (brief 054, design 054): `folderprops`, `renumberpages` and
+//! The page type and folder commands: `folderprops`, `renumberpages` and
 //! `deletepage`. The rules (folder starts, renumbering, check rows) are [`ecad_electrical::pages::page_types`].
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::pages::commands::page_types`] decide, and the shim brings the reports up to date, opens
 //! the page shown, commits the ops, echoes and answers in JSON.
 

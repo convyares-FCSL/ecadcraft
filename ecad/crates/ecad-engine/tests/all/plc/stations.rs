@@ -1,4 +1,4 @@
-//! Lane 072 C (design 072 §3; acceptance A9, A11, A19): PLC stations with a CPU or coupler head,
+//! PLC stations with a CPU or coupler head,
 //! modules with a typed function and attributes, and their channels, stored and edited as fields.
 
 use ecad_model::objects::plc::{AddressStyle, Communication, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal, SystemKind};

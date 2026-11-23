@@ -1,4 +1,4 @@
-//! Drawing the PLC sheets (brief 051, design 051 §4): the I/O tables and the rack overview as the
+//! Drawing the PLC sheets: the I/O tables and the rack overview as the
 //! generated page's parts ([`crate::pages::generated::Draw`]), in paper millimetres. Packing and the
 //! sheet counts are [`ecad_electrical::plc::sheets`].
 
@@ -71,7 +71,7 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, draws: &
     }
 }
 
-/// A dashed rectangle (024's dashed look, drawn as dashes).
+/// A dashed rectangle (drawn as dashes).
 fn dashed_rect(d: &mut Draw, (x0, y0): (f64, f64), (x1, y1): (f64, f64)) {
     let (dash, gap) = (2.0, 1.5);
     let mut side = |a: (f64, f64), b: (f64, f64)| {
@@ -133,7 +133,7 @@ fn tile(doc: &Document, d: &mut Draw, draws: &DrawStyles, unit: LengthUnit, t: &
         return;
     }
     d.rect((x, y - TILE_H), (x + TILE_W, y), THIN_WEIGHT, None);
-    // Brief 056 (design 056 §8): `Slot 2` and the kind words, the tag, the description (else the
+    // `Slot 2` and the kind words, the tag, the description (else the
     // type name), the squares, the range, then `9 of 16 in use` and the place of the first run.
     let half = Some(TILE_W / 2.0 - 2.0);
     d.text(at(4.0), draw(TextKind::TableHeader), &t.head, HAlign::Left, Some(LABEL_ACI), half);

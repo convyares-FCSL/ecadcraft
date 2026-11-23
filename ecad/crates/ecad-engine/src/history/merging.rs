@@ -1,16 +1,16 @@
-//! Merge a branch into its parent, and update a branch from its parent (brief 020b, design 020
-//! §4–§6), with the `merge` and `undomerge` commands.
+//! Merge a branch into its parent, and update a branch from its parent,
+//! with the `merge` and `undomerge` commands.
 //!
-//! - **Sides.** A branch merges into, and updates from, its parent only (owner answer 14). The
+//! - **Sides.** A branch merges into, and updates from, its parent only. The
 //!   merge is appended to the **target**: Merge into main runs on main (switching there first,
-//!   saving the branch: owner answer 6), Update from main runs on the branch.
-//! - **Ancestor** (design §6.1): the fork, or the newest live merge between the two branches in
-//!   either direction, read from the merge index (FQ2), never from the logs.
-//! - **What is read** (§6.2): both branches' steps since the fork (only those stretches) for the
+//!   saving the branch), Update from main runs on the branch.
+//! - **Ancestor**: the fork, or the newest live merge between the two branches in
+//!   either direction, read from the merge index, never from the logs.
+//! - **What is read**: both branches' steps since the fork (only those stretches) for the
 //!   objects either side touched, and three states, each on a copy: the ancestor and the source
 //!   from their nearest snapshots (as Show and switching do), the target live when it is the
 //!   branch shown. The comparison is [`ecad_model::merge`], over the touched objects only.
-//! - **What is written** (§6.3): one transaction of kind merge (FQ1) on the target, ordinary
+//! - **What is written**: one transaction of kind merge on the target, ordinary
 //!   ops; the merge index row and, with Close branch, the source's `merged` status are written by
 //!   the save that writes it.
 //! - A prepared merge (its three states and scope) is kept while nothing it read changes, so the
@@ -53,7 +53,7 @@ pub struct Sides {
 }
 
 impl Sides {
-    /// The parent (`main` in the design's words) and the child (`branch`).
+    /// The parent (`main`) and the child (`branch`).
     pub fn parent(&self) -> BranchId {
         if self.update { self.source } else { self.target }
     }
@@ -125,7 +125,7 @@ pub struct Prepared {
     pub ancestor: (BranchId, u64),
     /// The ancestor as the header names it (`Rev A`, `"Before change"`, `main, step 640`).
     pub ancestor_text: String,
-    /// The header (crossing revisions, design §4.2).
+    /// The header (crossing revisions).
     pub header: String,
     /// Revisions the target issued after the ancestor.
     pub crossing: Vec<String>,
@@ -142,7 +142,7 @@ pub struct Prepared {
     target_revisions: Vec<(String, u64)>,
 }
 
-/// The newest live merge between the two sides, as the ancestor (design §6.1): a merge into the
+/// The newest live merge between the two sides, as the ancestor: a merge into the
 /// target from the source records the source's head (`A1`), a merge into the source from the
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
@@ -172,7 +172,7 @@ fn head_of(p: &Project, b: BranchId) -> Result<u64, String> {
     if b == history::current(p) { Ok(p.ledger.head()) } else { Ok(history::find_branch(p, &b.hex())?.1.head.seq) }
 }
 
-/// A point's name for texts (design §4.2): the revision or version there, else `<branch>, step n`
+/// A point's name for texts: the revision or version there, else `<branch>, step n`
 /// (with the nearest revision or version before it, when there is one).
 fn point_text(p: &Project, b: BranchId, seq: u64) -> String {
     let named = history::named_points(p, b).unwrap_or_default();
@@ -188,7 +188,7 @@ fn point_text(p: &Project, b: BranchId, seq: u64) -> String {
     }
 }
 
-/// Read what a merge of `sides` needs (design §6.2).
+/// Read what a merge of `sides` needs.
 ///
 /// # Errors
 /// The file could not be read.
@@ -230,7 +230,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
             at = next;
         }
     }
-    // Revisions on the target's line after the ancestor (crossing revisions, §4.2).
+    // Revisions on the target's line after the ancestor (crossing revisions).
     let target_revisions: Vec<(String, u64)> = history::named_points(p, sides.target)?
         .into_iter()
         .filter(|n| n.is_revision() && n.branch == sides.target)
@@ -304,17 +304,17 @@ fn join_and(v: &[String]) -> String {
 }
 
 /// Whether a merge into `target` writes this project property: revision fields are never
-/// merged into the release line (owner answer 10); an update brings them unchanged. The tag
-/// high-water resets (`numbering.high.<P>`, brief 026) are internal and never merged: the
+/// merged into the release line; an update brings them unchanged. The tag
+/// high-water resets (`numbering.high.<P>`) are internal and never merged: the
 /// target's stays, so its mark is never lowered, and the merge's own tag ops raise it to every
-/// tag brought in (reviewer 026, 4: no conflict row for them either).
+/// tag brought in (no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
     move |k: &str| ecad_model::naming::keys::NUMBERING_HIGH.parse(k).is_none() && (update || !k.starts_with("rev."))
 }
 
 /// Plan the prepared merge with `choices` (nothing is written). The plan's ops are then tried
 /// with the commit's own check, on the live document (the branch shown) or the prepared copy,
-/// and reverted (reviewer 020b, finding 1): a preview that says yes never ends in a refused
+/// and reverted: a preview that says yes never ends in a refused
 /// Merge. The cost follows the ops.
 pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>) -> Plan {
     let keep = keeps(prep.sides.update);
@@ -330,7 +330,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             None => p.ledger.document(),
         };
         let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::merge::edit_rule(target, obj, key, v).map_err(String::from);
-        // Brief 026, Make them one: 018's device merge, with fresh IDs from the project.
+        // Make them one: the device merge, with fresh IDs from the project.
         let ids = std::cell::RefCell::new(&mut p.ids);
         let join = |d: &Document, from: ecad_model::DeviceId, into: ecad_model::DeviceId| {
             let mut ids = ids.borrow_mut();
@@ -349,7 +349,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             join: &join,
         };
         let mut plan = apply::plan(&inp, choices);
-        // Brief 050a (design 050 §3.5): a built-in style's conflict is worded by its name, which
+        // A built-in style's conflict is worded by its name, which
         // only the app knows (`Text style "Tag"`, not the ID `tag`).
         for c in &mut plan.conflicts {
             let Some(rest) = c.id.strip_prefix("project/style.") else { continue };
@@ -440,8 +440,8 @@ pub(crate) struct TypedChoice {
     pub value: String,
 }
 
-/// The choices of a command's `choices`: `main` / `branch` name the parent's and the child's side
-/// (design §10), plus `loose`, `remove`, `bringback`, `renumber_branch`, `renumber_main` and
+/// The choices of a command's `choices`: `main` / `branch` name the parent's and the child's side,
+/// plus `loose`, `remove`, `bringback`, `renumber_branch`, `renumber_main` and
 /// `{"value": text}`.
 ///
 /// # Errors
@@ -504,7 +504,7 @@ fn framed(prep: &Prepared, obj: Obj) -> Option<String> {
     })
 }
 
-/// The preview as JSON (design §10): the header, the counts line, the conflicts with their
+/// The preview as JSON: the header, the counts line, the conflicts with their
 /// choices (`main` / `branch` words), the changes and what Merge would do.
 pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     let s = &prep.sides;
@@ -574,7 +574,7 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     })
 }
 
-/// The label of the merge transaction (design §6.3).
+/// The label of the merge transaction.
 fn label(prep: &Prepared) -> String {
     let s = &prep.sides;
     if s.update {
@@ -592,7 +592,7 @@ fn prep_latest_revision(prep: &Prepared) -> String {
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<UndomergeParams>("undomerge")];
 
-/// The commands this module adds (design §10).
+/// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("merge", "Merge", typed::<MergeParams>)
@@ -617,7 +617,7 @@ fn unanswered_refusal(prep: &Prepared, plan: &Plan) -> String {
     )
 }
 
-/// `merge {from, into?, preview?, choices?, close?}` (design §10): merge a branch into its parent,
+/// `merge {from, into?, preview?, choices?, close?}`: merge a branch into its parent,
 /// or update a branch from its parent: one step on the target. `preview` only reads.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -668,7 +668,7 @@ fn merge(
     let asked_close = close;
     let close = !sides.update && close.unwrap_or(true);
     let mut said = String::new();
-    // The merge runs on the target (owner answer 6): switch there, saving first.
+    // The merge runs on the target: switch there, saving first.
     if sides.target != history::current(p) {
         let left = history::current_name(p);
         let was_unsaved = p.unsaved();
@@ -689,7 +689,7 @@ fn merge(
         return Err(CmdError::refused(format!("{said}{problem}")));
     }
     // Nothing to merge only when the branch changed nothing; keeping main's side of every
-    // conflict is still a merge (tester 020b, defect 4): it is recorded, so the next merge
+    // conflict is still a merge: it is recorded, so the next merge
     // starts from it, and it closes the branch like any other.
     if plan.ops.is_empty() && plan.changes.is_empty() && plan.conflicts.is_empty() {
         let mut line = format!("{said}\"{}\" has no changes since {}.", sides.source_name, prep.ancestor_text);
@@ -743,7 +743,7 @@ fn merge(
 /// The file went away under a merge.
 const NO_FILE: &str = "no file";
 
-/// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
+/// The question `u` asks before undoing a merge, or `None` when the last step is
 /// not a merge.
 /// Whether `label` is a merge's or an update's (their undos and redos carry the same label).
 fn merge_label(label: &str) -> bool {
@@ -751,7 +751,7 @@ fn merge_label(label: &str) -> bool {
 }
 
 /// Whether the step on top of the undo stack is a merge (or the redo of one), cheaply: a redo is
-/// looked up in the merge index only when its label is a merge's (reviewer 020b, finding 8).
+/// looked up in the merge index only when its label is a merge's.
 fn top_is_merge(p: &Project) -> bool {
     let Some(top) = p.ledger.undo_top() else { return false };
     match top.kind {
@@ -764,7 +764,7 @@ fn top_is_merge(p: &Project) -> bool {
 }
 
 /// The branch the merge on top of the undo stack closed (or will close when saved), if it did:
-/// only that branch is reopened by undoing it (tester 020b, defect 1).
+/// only that branch is reopened by undoing it.
 fn closed_by_top(p: &Project) -> Option<BranchId> {
     let top = p.ledger.undo_top()?;
     let v = p.file.project()?;
@@ -780,7 +780,7 @@ fn closed_by_top(p: &Project) -> Option<BranchId> {
     (rec.status == BranchStatus::Merged && rec.merged.as_ref().is_some_and(|m| m.seq == top.seq && m.into == cur)).then_some(source)
 }
 
-/// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
+/// The question `u` asks before undoing a merge, or `None` when the last step is
 /// not a merge.
 pub(crate) fn undo_question(p: &Project) -> Option<String> {
     if !top_is_merge(p) {
@@ -827,7 +827,7 @@ fn undo_merge(p: &mut Project, pg: &mut Pages<'_>, _page: ecad_model::PageId) ->
     r.map_err(CmdError::refused)?;
     p.merge_cache = None;
     p.note_branch_change();
-    // Worded for what changed (reviewer 020b, finding 9): only a merge that closed its branch
+    // Worded for what changed: only a merge that closed its branch
     // reopens it.
     let line = match label.strip_prefix("Merge ").and_then(|r| r.split(" (based on").next()) {
         Some(name) if reopens => format!("Merge of {name} undone; the branch is open again (saved with the next Save)."),

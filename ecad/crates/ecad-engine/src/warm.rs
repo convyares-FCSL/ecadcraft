@@ -1,4 +1,4 @@
-//! The kept views' first builds off the UI thread (lane D2, issue 48): the report models and the
+//! The kept views' first builds off the UI thread (issue 48): the report models and the
 //! Checks list, which a project builds whole the first time something shows them, on the
 //! background pool ([`crate::background`]).
 //!

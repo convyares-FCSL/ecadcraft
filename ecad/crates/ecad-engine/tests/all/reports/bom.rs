@@ -1,4 +1,4 @@
-//! Brief 047 (design 047 §12): BOM completeness. Part lines, items and article numbers through
+//! BOM completeness. Part lines, items and article numbers through
 //! `partline`, `bomitem`, `article` and `setprop`; the flat and nested layouts; the Checks rows;
 //! the update map (the kept model equals a rebuild after every step); hostile input; save and
 //! reopen.

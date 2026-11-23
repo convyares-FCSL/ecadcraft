@@ -1,4 +1,4 @@
-//! Brief 022's click-based forms (design 022 §10): Join Wires, Fix Wire Number and Renumber Wires.
+//! The click-based forms: Join Wires, Fix Wire Number and Renumber Wires.
 //! Each resolves its values from clicks and typed text, then commits the command's JSON form.
 
 use cadcraft_engine::doc::{Entity, EntityKind};
@@ -38,7 +38,7 @@ fn highlight(s: &Session, w: WireId) -> Vec<Entity> {
     }
 }
 
-// ---------------------------------------------------------------- Join Wires (brief 032 §2.5)
+// ---------------------------------------------------------------- Join Wires
 
 /// `joinwires`: click where wire ends meet, until Enter.
 pub(crate) fn joinwires(s: &Session) -> R<Box<dyn Interactive>> {
@@ -127,7 +127,7 @@ impl WireNumber {
             Err(e) => {
                 let text = e.to_string();
                 if conflict.is_none() && text.contains("is used by another net") {
-                    // Never a dead end (owner answer Q14): ask which way.
+                    // Never a dead end: ask which way.
                     s.echo(text);
                     self.conflict = value.as_str().map(str::to_string);
                     self.picked = Some((w, String::new()));

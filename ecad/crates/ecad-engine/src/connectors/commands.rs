@@ -1,11 +1,11 @@
-//! The commands of brief 044 (design 044 §4, §5.3): `connector` (Place ▸ Connector) and `pinlabel`,
+//! The commands `connector` (Place ▸ Connector) and `pinlabel`,
 //! and `place` for a connector half or pin (Find Symbol).
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; nothing here opens a
 //! dialog. The interactive form of `connector` ([`crate::interact::connector`]) commits through
 //! this JSON form.
 //!
-//! `connector` and `pinlabel` are thin shims (brief 070): their params structs read the JSON, the
+//! `connector` and `pinlabel` are thin shims: their params structs read the JSON, the
 //! rules in [`ecad_electrical::connectors::commands`] decide, and the shim commits the ops and answers in
 //! JSON. `place`'s connector form is [`place_half`], part of `place`'s shim.
 //!
@@ -52,7 +52,7 @@ transaction; with connection_point and to \"next\", moves that one drawn pin to 
     ]
 }
 
-// ---------------------------------------------------------------- connector (§4)
+// ---------------------------------------------------------------- connector
 
 /// Pin names: numbers, letters, the names as text, or a list.
 #[derive(Deserialize, JsonSchema)]
@@ -64,7 +64,7 @@ enum NamesParam {
     Word(String),
 }
 
-/// `connector {…}` (design 044 §4.3): a row of whole halves, pins on the wires a line crosses, or a
+/// `connector {…}`: a row of whole halves, pins on the wires a line crosses, or a
 /// bulkhead. Absent fields take the registry's `connector.maker.*` answers; one transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -165,9 +165,9 @@ impl Command for ConnectorParams {
 
 // ---------------------------------------------------------------- place (Find Symbol)
 
-/// `place {symbol: <connector half or pin>, at, rotation?, mirror?, device?, tag?, pin?}` (design
-/// 044 §3.3): a new connector, or joining the connector named by `device` (or `tag`); a pin takes
-/// the next pin (§4.4) or `pin`, and on a wire it lands there. One transaction.
+/// `place {symbol: <connector half or pin>, at, rotation?, mirror?, device?, tag?, pin?}`:
+/// a new connector, or joining the connector named by `device` (or `tag`); a pin takes
+/// the next pin or `pin`, and on a wire it lands there. One transaction.
 pub(crate) fn place_half(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
@@ -227,7 +227,7 @@ pub(crate) fn place_half(
             ops.extend(l.ops.clone());
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
-        // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
+        // The place proposes; a half's conflict may answer Half.
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
@@ -264,9 +264,9 @@ pub(crate) fn place_half(
     Ok(v)
 }
 
-// ---------------------------------------------------------------- pinlabel (§5.3)
+// ---------------------------------------------------------------- pinlabel
 
-/// `pinlabel {device | terminal, pin?, to}` (design 044 §5.3): renames a connector pin on both
+/// `pinlabel {device | terminal, pin?, to}`: renames a connector pin on both
 /// halves, or with `connection_point` and `to: "next"` moves that one drawn pin to its half's next free pin.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

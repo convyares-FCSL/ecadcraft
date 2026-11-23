@@ -1,4 +1,4 @@
-//! The one runner of generic commands (owner decision 5, design `commands.md`).
+//! The one runner of generic commands.
 //!
 //! A generic command is a declaration in ecad-electrical: a params struct that implements
 //! [`Generic`]. [`spec`] registers it and [`typed`] lists it with its schema, access and file

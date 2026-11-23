@@ -1,5 +1,5 @@
-//! Brief 041 (U4b): what is under the cursor, and the running tool's intent. The action table's
-//! own tests moved to ecad-app with the table (design 065 §3 cut 13).
+//! What is under the cursor, and the running tool's intent. The action table's
+//! own tests are in ecad-app with the table.
 
 use crate::common::{H, id};
 

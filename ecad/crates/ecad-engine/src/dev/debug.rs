@@ -1,4 +1,4 @@
-//! Read-only debugger snapshots (persistence stage 2b, proposal §21).
+//! Read-only debugger snapshots (persistence stage 2b).
 //!
 //! The developer debugger follows one trail: **selected drawing objects → ECAD IDs → model objects
 //! → the transactions that touched them, with before/after values → whether each transaction is
@@ -58,11 +58,11 @@ pub enum ObjectId {
     Representation(RepresentationId),
     Wire(WireId),
     Cable(CableId),
-    /// A route (design 072 F31).
+    /// A route.
     Route(RouteId),
-    /// A drawing aid (design 072 §6.2).
+    /// A drawing aid.
     Aid(ecad_model::AidId),
-    /// A loose part (design 072 §6.4).
+    /// A loose part.
     LoosePart(ecad_model::LoosePartId),
     Definition(DefinitionId),
     /// The project settings (one per project).

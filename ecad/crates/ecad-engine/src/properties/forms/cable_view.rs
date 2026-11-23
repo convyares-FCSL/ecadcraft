@@ -1,4 +1,4 @@
-//! Cable View (design 005 §3).
+//! Cable View.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::cables::views::View;
@@ -24,8 +24,8 @@ pub(crate) const NOTHING_THERE: &str = "Nothing there. Click a cable slash, a fa
 pub(crate) const WIRE_NOT_IN_CABLE: &str = "That wire is not in a cable.";
 pub(crate) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable.";
 
-/// The cable a mapped object names (design 005 §3.3): a slash, a fan line, or a wire in a cable
-/// (and, brief 010, a cable reference's point or text).
+/// The cable a mapped object names: a slash, a fan line, or a wire in a cable
+/// (and, a cable reference's point or text).
 /// The wire a clicked line stands for when picking cable members: the first wire it carries that
 /// is in a cable, else the wire it stands for ([`ecad_electrical::wires::routes::wire_of_route`]).
 pub(crate) fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) -> Option<WireId> {
@@ -82,7 +82,7 @@ impl CableView {
     }
 
     /// Step 0: the cables the selection names, switched together (all fan → traditional,
-    /// otherwise all → fan; owner answer O6). `None` when the selection names no cable.
+    /// otherwise all → fan). `None` when the selection names no cable.
     fn selection(s: &mut Session) -> R<Option<Step>> {
         let sel = s.selection();
         let found = read(s, |p, page| {
@@ -105,7 +105,7 @@ impl CableView {
             return Ok(None);
         }
         let target = if found.iter().all(|(_, v, _, _)| *v == View::Fan) { View::Traditional } else { View::Fan };
-        // Each cable's own result; one that fails never stops the others (review M5).
+        // Each cable's own result; one that fails never stops the others.
         let (mut switched, mut other_lines) = (Vec::new(), Vec::new());
         for (k, current, one_wire, title) in found {
             if target == View::Fan && current != View::Fan && one_wire {

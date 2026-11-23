@@ -1,4 +1,4 @@
-//! Brief 027 acceptance (design 027 §14): the pre-release check, the orphan-reference Checks kind
+//! Release: the pre-release check, the orphan-reference Checks kind
 //! and its update map, releasing the pending revision in order (with a failure injected at each
 //! step), writing an issued revision's folder again, the existing-folder choices, and Reopen
 //! Revision showing the revision it opens. Driven through the commands' JSON forms.

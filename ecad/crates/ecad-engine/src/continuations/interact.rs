@@ -1,4 +1,4 @@
-//! The interactive form of Caption Continuations (brief 049, design 049 §5.1): select arrows,
+//! The interactive form of Caption Continuations: select arrows,
 //! then type the caption (Enter keeps the session's last one, `R` removes). Like every ECAD form it
 //! only collects values; the commit runs the JSON form `contcaption`. Esc writes nothing.
 

@@ -1,5 +1,4 @@
-//! Brief 048 (symbol builder, part a): the worker's in-process checks of design 048 §12 rows 1–9
-//! and 11–14: `symbolnew`, placing a project symbol, the refusals, the registry's family entries,
+//! In-process checks of the symbol builder: `symbolnew`, placing a project symbol, the refusals, the registry's family entries,
 //! the impact and its clashes, updates that keep IDs and move wire ends, edited built-ins, saving
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 

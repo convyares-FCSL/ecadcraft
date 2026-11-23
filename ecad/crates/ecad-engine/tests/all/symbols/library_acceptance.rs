@@ -1,11 +1,6 @@
-//! Tester 034 (component library build-up): acceptance checks from outside, written from brief 034
-//! and design 034 revision 2 only, before the implementation existed. They drive the JSON commands
+//! Acceptance checks for the component library, from outside. They drive the JSON commands
 //! (`place`, `symbols`, `setprop`, `tagsettings`, `wire`, `bom`, `checks`) and the catalogue API
-//! that 018 already had (`symbols::catalogue::STARTERS`, `by_key`, `Starter::definition`, `bounds`), so the
-//! file compiles before the worker's code lands. Tests of behaviour not built yet are
-//!
-//! The new API (`anchors`, `Family`, `Kind::ChangeOver`, quiet lists, the defaults registry) is
-//! checked in `tester_034_api.rs`, which is added to `main.rs` once the build is merged.
+//! (`symbols::catalogue::STARTERS`, `by_key`, `Starter::definition`, `bounds`).
 
 use std::collections::{BTreeMap, BTreeSet};
 

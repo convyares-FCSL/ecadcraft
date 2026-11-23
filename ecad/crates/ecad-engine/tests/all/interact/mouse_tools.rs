@@ -1,5 +1,4 @@
-//! Independent tester's contracts for brief 008 (ECAD tools by mouse), written from the brief and
-//! design 008 only.
+//! Contracts for the ECAD tools by mouse.
 //!
 //! - AC1: each interactive form, case by case, records exactly the transactions (and leaves exactly
 //!   the document) its JSON form records for the resolved values (fresh projects, same seed).
@@ -8,9 +7,9 @@
 //! - AC4: preview and click agree on capture, for clicks just inside and just outside the aperture.
 //! - AC7: hostile prompt input (unicode, empty, CRLF, huge, NaN, LISP, wrong keywords) never panics,
 //!   never commits from a non-finite value and leaves the project consistent.
-//! - Design §3.4: refusals when the project is busy or the page is unavailable.
-//! - Design §5 / owner answer Q2: the prompt names the default terminal name that is then used.
-//! - Owner answer Q3: loose ends are not red.
+//! - Refusals when the project is busy or the page is unavailable.
+//! - The prompt names the default connection point name that is then used.
+//! - Loose ends are not red.
 //! - Save and reopen after building by prompts; the reopened project takes the forms again.
 
 use crate::common;

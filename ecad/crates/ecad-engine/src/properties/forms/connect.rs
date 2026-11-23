@@ -1,4 +1,4 @@
-//! Connect and Disconnect (design 008 §8.1, §8.2).
+//! Connect and Disconnect.
 
 use super::{R, Safe, commit, end_name, not_a_point, other, paper_guard, safely};
 use crate::interact::{

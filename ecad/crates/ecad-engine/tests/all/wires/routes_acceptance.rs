@@ -1,4 +1,4 @@
-//! Tester probes for lane 072 D step F2c (design 072 §4.2–§4.4): wires point to point on routes,
+//! Probes of routes: wires point to point on routes,
 //! drawing order, the T-join rule, junctions not stored, and CADCraft edits (erase, undo, save)
 //! becoming the right transaction. Driven through the commands' JSON forms.
 

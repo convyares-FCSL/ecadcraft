@@ -1,4 +1,4 @@
-//! Brief 032 acceptance (design 032 §12): wires that meet end to end join, the reverse T, the way
+//! Nets: wires that meet end to end join, the reverse T, the way
 //! out (`join: false`), `joinwires`, a cable continued across pages, and the wire label rule.
 //! Driven through the commands' JSON forms.
 

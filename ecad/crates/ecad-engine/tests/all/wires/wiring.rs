@@ -1,4 +1,4 @@
-//! Brief 022 acceptance (design 022 §15): nets on the page, labels, stable numbers, the Checks
+//! Wiring: nets on the page, labels, stable numbers, the Checks
 //! list and its incremental upkeep. Driven through the commands' JSON forms.
 
 use ecad_electrical::checks::kept::Checks;

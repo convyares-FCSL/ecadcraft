@@ -1,4 +1,4 @@
-//! Brief 053, the performance batch (v0.2.1): the work the large-tier misses hid, counted.
+//! The performance batch: the work the large-tier misses hid, counted.
 
 use std::sync::atomic::Ordering;
 

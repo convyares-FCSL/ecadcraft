@@ -1,9 +1,8 @@
-//! Contract tests for brief 007 (upstream sync to CADCraft 0.15.1), written by the independent
-//! tester. CADCraft 0.15.1 brought command paths the previous base (0.6.2) did not have: LISP
+//! Contract tests for the upstream sync to CADCraft 0.15.1. It brought command paths the previous base (0.6.2) did not have: LISP
 //! (`entmake`, `entdel`, `(command …)`, its own undo grouping), the Block Editor (BEDIT, BSAVE,
 //! BCLOSE, which swap the drawing and write into the host drawing directly) and new clipboard
 //! commands (COPYBASE, PASTEBLOCK). On an ECAD page every one of them must either be recorded by
-//! the owner or refused, and leave the project consistent (proposal §17.4). The engine must push no
+//! the owner or refused, and leave the project consistent. The engine must push no
 //! undo step of its own for an owned page: the owner keeps the history.
 //!
 //! The LISP entity-list functions (`entmake`, `entmod`) are not available in this build; their

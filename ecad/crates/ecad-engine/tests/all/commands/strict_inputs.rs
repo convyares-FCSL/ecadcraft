@@ -1,4 +1,4 @@
-//! Brief 070, strict input (overseer, 2026-11-17): parameters that are not an object are refused
+//! Strict input: parameters that are not an object are refused
 //! by every typed command with one wording, and nothing is recorded. `null` reads as none.
 
 use ecad_electrical::commands::input::NOT_AN_OBJECT;

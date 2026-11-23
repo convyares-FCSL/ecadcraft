@@ -1,4 +1,4 @@
-//! The write gate (brief 011, moved here by brief 035): the policy check, the per-call
+//! The write gate: the policy check, the per-call
 //! transaction cap and its roll-back, the agent-undo rule and the agent's author, on whatever
 //! session and project the caller passes.
 //!
@@ -122,9 +122,9 @@ fn log_len(s: &mut Session, p: &ProjectHandle) -> Result<(String, usize), String
     p.read(s, |p, _| (crate::history::current(p).hex(), p.ledger.log().len())).map_err(|_| UNREADABLE.to_string())
 }
 
-/// The transactions recorded since `from`. A call that switched branch (brief 020) saved the
+/// The transactions recorded since `from`. A call that switched branch saved the
 /// branch it left first and switching is not a step, so what it recorded is the new branch's
-/// unsaved steps (a merge into the parent switches, then records one merge: brief 020b).
+/// unsaved steps (a merge into the parent switches, then records one merge).
 fn log_since(s: &mut Session, p: &ProjectHandle, from: &(String, usize)) -> Result<Vec<Transaction>, String> {
     p.read(s, |p, _| {
         if crate::history::current(p).hex() != from.0 {
@@ -153,10 +153,10 @@ pub fn focus_project(s: &mut Session) -> Result<(), String> {
 pub fn undo_step_for(t: &Transaction) -> &'static str {
     match t.kind {
         TxKind::Undo { .. } => "redo",
-        // Undoing a merge asks first; `undomerge` is that confirmation (reviewer 020b, 5).
+        // Undoing a merge asks first; `undomerge` is that confirmation.
         TxKind::Merge { .. } => "undomerge",
         TxKind::Redo { .. } if t.label.starts_with("Merge \"") || t.label.starts_with("Update from ") => "undomerge",
-        // Undoing an issue asks first too; `undoissue` confirms it (tester 026, 1).
+        // Undoing an issue asks first too; `undoissue` confirms it.
         TxKind::Edit | TxKind::Redo { .. } if ecad_electrical::releases::revisions::issue_in(&t.ops).is_some() => "undoissue",
         TxKind::Edit | TxKind::Redo { .. } => "u",
     }
@@ -191,7 +191,7 @@ pub fn not_own_step(seq: u64, label: &str) -> String {
 pub(crate) const RESTORE_OTHER_BRANCH: &str =
     "Refused: restoring a point of another branch would take back steps that are not this agent's; an agent undoes only its own steps.";
 
-/// The agent-undo rule for `restore` (review of PR #69, 2): the step it records takes back every
+/// The agent-undo rule for `restore`: the step it records takes back every
 /// step after the target, so every step after it on the branch shown must be the session's own.
 /// A target the engine cannot find is left to the engine's own refusal; a preview records nothing.
 fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &OwnedSteps) -> Result<(), String> {
@@ -217,7 +217,7 @@ fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &Own
     .map_err(|_| UNREADABLE.to_string())?
 }
 
-/// The agent-undo rule (design 035 §8.1): `u` (and its confirming forms) only when the step it
+/// The agent-undo rule: `u` (and its confirming forms) only when the step it
 /// would take back is the session's; `redo` only when the undo it would redo is; `restore` only
 /// when every step it takes back is.
 fn check_own_step(s: &mut Session, p: &ProjectHandle, id: &str, params: &Value, owned: &OwnedSteps) -> Result<(), String> {
@@ -272,8 +272,8 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
     // Fail closed: a call whose transactions cannot be counted does not run.
     let before = log_len(s, p)?;
     // What this call may still record, told to the project before it runs: a command that
-    // writes files (brief 027's release) refuses up front rather than write what the cap
-    // below would take back (tester 027, 3).
+    // writes files (a release) refuses up front rather than write what the cap
+    // below would take back.
     let line_used = *call.line_transactions;
     set_budget(s, p, Some(MAX_TRANSACTIONS_PER_CALL.saturating_sub(line_used)))?;
     let r = s.execute(&given, &params).map_err(|e| e.to_string());
@@ -282,7 +282,7 @@ pub fn execute(s: &mut Session, p: &ProjectHandle, call: &mut Call<'_>, req: &Va
     let new = log_since(s, p, &before).map_err(|e| format!("{name} ran, but its transactions could not be read back ({e}); check ecad_history."))?;
     let used = *call.line_transactions;
     // One call records at most one transaction: `issuerevision` and `release` record Finalise and
-    // the issue together (S4).
+    // the issue together.
     let allowed = MAX_TRANSACTIONS_PER_CALL;
     if used.saturating_add(new.len()) > allowed {
         let what = if used > 0 {

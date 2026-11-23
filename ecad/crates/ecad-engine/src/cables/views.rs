@@ -1,19 +1,19 @@
-//! Cable views (brief 005, design 005): whether each cable is shown **traditional** (every wire
+//! Cable views: whether each cable is shown **traditional** (every wire
 //! drawn, the cable shown by its slash) or **fan** (one trunk that fans out to the wire ends), the
 //! fan's geometry, and where each user's choice is remembered.
 //!
 //! # Semantics
 //! - A view is presentation only. It is never part of the ledger, never a transaction, never moves
-//!   the head and never marks the project unsaved (P5, SAVE-03). The project keeps the set of
+//!   the head and never marks the project unsaved. The project keeps the set of
 //!   cables shown in fan view; traditional is the absence of an entry.
 //! - The fan is computed, never stored: [`fan_on_page`] derives it from the cable's members and
-//!   their current routes every time a page is projected (design §5).
+//!   their current routes every time a page is projected.
 //! - Views are remembered per user, outside the `.ecad` file, in `cable-views.json` in the ECAD
-//!   settings folder ([`Settings`], design §7). A missing, unreadable or unwritable file never
+//!   settings folder ([`Settings`]). A missing, unreadable or unwritable file never
 //!   fails an open, a save or a switch: views then start traditional, or last for the session.
 //!
 //! This module records nothing in the document, has no UI and decides nothing about what the
-//! commands do: programmatic calls act on IDs whatever the views are (owner answer O4).
+//! commands do: programmatic calls act on IDs whatever the views are.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -27,7 +27,7 @@ use serde_json::{Map, Value, json};
 pub const LAYER: &str = "ECAD-CABLES";
 /// `ecad.cable`: ACI 6, magenta.
 pub(crate) const CABLE_ACI: u8 = 6;
-/// Refusal of an edit or a pick on a fan drawing (design §6.1).
+/// Refusal of an edit or a pick on a fan drawing.
 pub const FAN_REFUSED: &str = "This cable is shown in fan view; switch to traditional view to edit.";
 /// Refusal of new geometry drawn on [`LAYER`].
 pub const LAYER_RESERVED: &str = "the ECAD-CABLES layer is reserved for cable views";
@@ -35,7 +35,7 @@ pub const LAYER_RESERVED: &str = "the ECAD-CABLES layer is reserved for cable vi
 pub const NOT_REMEMBERED: &str = "Cable views will not be remembered: no settings folder.";
 /// Said at open when the settings file cannot be used.
 pub const UNREADABLE: &str = "Cable views file could not be read; all cables start in traditional view.";
-/// A cable of one wire is not offered fan view (owner answer Q4).
+/// A cable of one wire is not offered fan view.
 pub const ONE_WIRE: &str = "has one wire; fan view is for cables of two or more wires.";
 
 /// The settings file's name in the settings folder.
@@ -84,10 +84,10 @@ impl View {
     }
 }
 
-// ---------------------------------------------------------------- geometry (design 009 §4)
+// ---------------------------------------------------------------- geometry
 
 /// Refusal of an edit or a pick on a computed part of a traditional-view cable: a core label at
-/// the slash, or a reference end's flag (design 009 §8).
+/// the slash, or a reference end's flag.
 pub const DRAWN_REFUSED: &str = "This is drawn from the cable; use Core Label to change it, or move the reference point.";
 
 /// The refusal for an edit of computed drawing of `cable` on a page mapped by `map`.
@@ -100,19 +100,19 @@ pub fn refusal(map: &crate::project::HandleMap, cable: CableId) -> &'static str 
 pub enum FanOnPage {
     /// No member has a route here: the page is unchanged (a slash stays drawn).
     Nothing,
-    /// One of its wires is on this page: the cable is drawn traditional here (design 009 §4.1).
+    /// One of its wires is on this page: the cable is drawn traditional here.
     TooFew,
     /// The fan cannot be drawn here (a reference route of no length, or values that are not
     /// finite): the cable is drawn traditional on this page.
     Failed,
-    /// The fan (design 009 §4), with the items it hides.
+    /// The fan, with the items it hides.
     Drawn(Fan),
 }
 
-/// A cable's fan on one page (brief 009's look).
+/// A cable's fan on one page.
 pub type Fan = ecad_electrical::cables::layout::CableDrawing;
 
-/// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
+/// The fan of `cable` on `page`, measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
     let routed = doc.cables().get(&cable).is_some_and(|c| {
@@ -133,7 +133,7 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
     }
 }
 
-/// Every cable's computed drawing on `page` (design 009): fans for the cables in `fan` where they
+/// Every cable's computed drawing on `page`: fans for the cables in `fan` where they
 /// can be drawn, and core labels and reference ends for every cable, by cable.
 pub fn drawings_on_page(
     doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64,
@@ -141,7 +141,7 @@ pub fn drawings_on_page(
     ecad_electrical::cables::layout::cables_on_page(doc, page, fan, tol, &crate::cables::draw::font_width)
 }
 
-// ---------------------------------------------------------------- remembering (design §7)
+// ---------------------------------------------------------------- remembering
 
 /// Where cable views are remembered: the per-user ECAD settings folder, or none.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

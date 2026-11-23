@@ -1,8 +1,8 @@
-//! Lane 057 (wire and cable rating checks): design 057 §11, run through the commands.
+//! Circuit rating checks, run through the commands.
 //!
 //! **Every table and datasheet value in this file is synthetic**, made up to exercise the
-//! arithmetic; none is a value from a standard (owner, Q11). The expected numbers follow from them
-//! by the formulas of design 057 §3.
+//! arithmetic; none is a value from a standard. The expected numbers follow from them
+//! by the formulas in the rating checks.
 
 use ecad_electrical::circuits;
 use ecad_electrical::devices::ratings::dataset;

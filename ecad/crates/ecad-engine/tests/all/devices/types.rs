@@ -1,4 +1,4 @@
-//! Lane 072 B (design 072 §2.3, acceptance A7 and A8): a device's type comes from its symbol and
+//! A device's type comes from its symbol and
 //! agrees with what today's predicates say it is.
 
 use ecad_electrical::symbols::StarterKey;

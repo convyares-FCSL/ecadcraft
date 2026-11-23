@@ -1,4 +1,4 @@
-//! Tester probe for brief 024 (reports): device locations, location boxes, the kept report models,
+//! Probe of reports: device locations, location boxes, the kept report models,
 //! generated pages, Print Book and the file round trip.
 //!
 //! The random probe (`random_edits_keep_locations_and_reports_equal_to_a_rebuild`) draws, moves,
@@ -9,12 +9,12 @@
 //! - the kept report models (BOM by location and by part, wires, cables, the location Checks rows,
 //!   every device's location) equal a fresh `ReportModels::build`;
 //! - no command other than `setprop`, undo and redo changes a device's own `location` property,
-//!   except a proposal taken by a device that had none (brief 052d: place, box, page, project,
+//!   except a proposal taken by a device that had none (place, box, page, project,
 //!   the move follow-up);
 //! - a BOM page's sheet count from the kept models equals the rebuilt one;
 //! - the harness's own project checks (projection equals the page drawing, replay, mismatches).
 //!
-//! Bugs are kept as tests marked `#[ignore = "tester 024: <bug>"]`.
+//! Bugs are kept as tests marked `#[ignore]` with the bug named.
 
 use std::collections::BTreeMap;
 

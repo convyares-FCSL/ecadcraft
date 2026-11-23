@@ -1,5 +1,5 @@
-//! The interactive form of brief 044's `connector` (design 044 §4.1, §4.2): Place ▸ Connector. Its
-//! five questions run as prompts with keywords (041's intent line shows them as chips); like every
+//! The interactive form of `connector`: Place ▸ Connector. Its
+//! five questions run as prompts with keywords (the intent line shows them as chips); like every
 //! ECAD form it only collects answers, and each commit runs the JSON form.
 
 use cadcraft_engine::doc::{Entity, EntityKind};
@@ -414,7 +414,7 @@ impl Interactive for PlaceConnector {
             _ => Vec::new(),
         }
     }
-    /// The intent line at the cursor, and a ring at each crossing (design 044 §4.2).
+    /// The intent line at the cursor, and a ring at each crossing.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         if self.stage != Stage::Point || !in_range(cursor) {
             return Vec::new();

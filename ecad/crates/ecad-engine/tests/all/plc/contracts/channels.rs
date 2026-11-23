@@ -1,4 +1,4 @@
-//! Brief 045b (design 045 §4–§7, §9 b-rows, §13 F–M, T): channels, pins, addressing and texts.
+//! Channels, pins, addressing and texts.
 
 use ecad_electrical::checks::Fix;
 use ecad_electrical::devices::texts::TextOf;

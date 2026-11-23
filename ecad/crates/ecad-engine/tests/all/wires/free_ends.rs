@@ -1,4 +1,4 @@
-//! Lane 072 D, step F2c (design 072 §4.3, owner ruling 2026-11-18): a line with a free end carries
+//! A line with a free end carries
 //! no wire. It can still be slashed into a cable and continued; the cable's core then sits on the
 //! line (`CorePosition::Route`), and the wire forms, with the core moving onto it, when the line's
 //! other end lands on a connection point. Driven through the commands' JSON forms.

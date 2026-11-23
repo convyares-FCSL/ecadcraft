@@ -1,4 +1,4 @@
-//! A session command's typed input (brief 070): a params struct read with
+//! A session command's typed input: a params struct read with
 //! [`ecad_electrical::commands::input::parse`] that runs with the session ([`Command`]).
 //!
 //! Excludes: reading the parameters ([`ecad_electrical::commands::input`]) and generic commands

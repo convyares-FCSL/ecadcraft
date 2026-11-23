@@ -1,19 +1,19 @@
-//! Independent tester's contract tests for brief 009 (cable look and cores), written from the
-//! brief, design 009 and the overseer's decision that reference ends use brief 010's model (a
-//! `reference` representation of the cable holding one Point item, built directly here; there is
-//! no `cablereference` command in 009).
+//! Contract tests for the look of a cable and its cores. Reference ends use a
+//! `reference` representation of the cable holding one Point item, built directly here (the
+//! `cablecore` tests do not need the `cablereference` command).
 //!
 //! - AC2: one-sided fans at either end (fixture H1 and its mirror H1′), both ends at references, a
 //!   third reference that stops nothing.
 //! - AC3: `cablecore` undo, redo, save and reopen, replay equal to the live state, also in fan view.
 //! - AC4: core labels at the slash for vertical and right-to-left wires; labels at the tail start
-//!   on both sides of fixture H (design §4.5).
+//!   on both sides of fixture H.
 //! - AC5: the interactive and JSON forms record identical transactions for a table of inputs,
 //!   including picks of a fan tail and of a traditional core label.
 //! - AC6: a `cablecore` JSON contract table (valid, missing, invalid, wrong types, out of range);
 //!   long and empty labels stored by another route; NaN, infinite and overflowing geometry; a
 //!   20-core cable at a tight pitch, horizontal and vertical.
-//! - AC7: brief 005 criteria 1, 2 and 4 with cores and a reference end present.
+//! - AC7: the cable view criteria (switching, nothing written, fan geometry) with cores and a reference
+//!   end present.
 
 use crate::common;
 

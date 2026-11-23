@@ -1,7 +1,7 @@
-//! Lane 072 D (overseer ruling 1, 2026-11-18): the junction symbol is gone; a T is a line landing on
+//! The junction symbol is gone; a T is a line landing on
 //! a line. A file that still holds a junction (a tagless component of `kind = junction`) is read
 //! strictly: it opens read-only, naming the word, and the file is kept as it is (pre-v1, no
-//! conversion). Step F3: the T's dot is drawn with the page from the routes (design 072 §4.4),
+//! conversion). The T's dot is drawn with the page from the routes,
 //! and the hover names the line a T end joins.
 
 use std::path::PathBuf;

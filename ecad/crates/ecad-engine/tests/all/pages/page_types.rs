@@ -1,4 +1,4 @@
-//! Brief 054a (design 054 §2–§4, §8.3, §9): page types, `newpage {type, after}`, folder start
+//! Page types, `newpage {type, after}`, folder start
 //! numbers, Renumber pages, `deletepage`, and their Checks rows.
 
 use ecad_electrical::checks::Kind;

@@ -176,15 +176,15 @@ pub(crate) fn op_targets(op: &Op) -> Vec<ObjectId> {
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
         Op::SetProjectSettings { .. } | Op::ModifyProject { .. } => out.push(ObjectId::Settings),
-        // A device link (design 072 §2.6) shows in the history of both devices it joins.
+        // A device link shows in the history of both devices it joins.
         Op::AddDeviceLink { link, .. } | Op::RemoveDeviceLink { link, .. } => {
             out.push(ObjectId::Device(link.a));
             out.push(ObjectId::Device(link.b));
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
-        // Folders (brief 019) are not among the debugger's objects yet.
+        // Folders are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}
-        // The standard and style records (brief 050a) are project-wide, like the settings.
+        // The standard and style records are project-wide, like the settings.
         Op::SetStyle { .. } | Op::SetStandard { .. } => out.push(ObjectId::Settings),
     }
     let mut seen = BTreeSet::new();
@@ -228,21 +228,21 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
             r.representation = Some(rep);
             r.connection_point = Some(t);
         }
-        // A fan view line (brief 005) stands for its cable; it is no item.
+        // A fan view line stands for its cable; it is no item.
         Mapped::Fan(_) => {}
-        // A reference's derived text (brief 010) stands for its reference representation.
+        // A reference's derived text stands for its reference representation.
         Mapped::RefText(rep) => r.representation = Some(rep),
-        // A device's tag text or terminal label (brief 018) stands for its symbol representation.
+        // A device's tag text or terminal label stands for its symbol representation.
         Mapped::Tag(rep) => r.representation = Some(rep),
-        // A conductor label (brief 022) stands for its conductor.
+        // A conductor label stands for its conductor.
         Mapped::Label(_) => {}
-        // A line or text of the sheet frame (brief 019) stands for nothing stored.
+        // A line or text of the sheet frame stands for nothing stored.
         Mapped::Frame(_) => {}
-        // A device cross-reference (brief 025) stands for its contact or head representation.
+        // A device cross-reference stands for its contact or head representation.
         Mapped::DeviceReference(rep) => r.representation = Some(rep),
-        // A link line (brief 030) stands for its strip.
+        // A link line stands for its strip.
         Mapped::JumperBar(..) => {}
-        // A T's dot (lane 072 D) stands for the route that ends there.
+        // A T's dot stands for the route that ends there.
         Mapped::Tee(_) => {}
     }
     r.subject = match mapped {
@@ -261,7 +261,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     r.ids.extend(r.item.map(ObjectId::Item));
     r.ids.extend(r.representation.map(ObjectId::Representation));
     r.ids.extend(r.subject.map(ObjectId::from));
-    // A route's line: the wire it carries follows it (design 072 §4: routes draw, wires connect).
+    // A route's line: the wire it carries follows it (routes draw, wires connect).
     if let Some(Subject::Route(x)) = r.subject {
         r.ids.extend(ecad_electrical::wires::routes::wire_of_route(doc, x).map(ObjectId::Wire));
     }
@@ -295,9 +295,9 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
 
 /// The objects that refer to `id`: a definition's components and symbol instances, a component's
 /// terminals and representations, a terminal's attached conductors, a conductor's cables and
-/// representations, a cable's members (in member order) and then its representations (design 004
-/// §9: slash → cable → conductors). Representations of a conductor or a cable are listed by page,
-/// in page order (design 010 §8: a cable drawn on several pages, a conductor's route on each), and
+/// representations, a cable's members (in member order) and then its representations
+/// (slash → cable → conductors). Representations of a conductor or a cable are listed by page,
+/// in page order (a cable drawn on several pages, a conductor's route on each), and
 /// a cable reference's are its cable and its partner reference.
 pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     let page_index: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
@@ -399,7 +399,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             ItemKind::Symbol(_) => "symbol".into(),
         }),
         ObjectId::Device(c) => subject_label(doc, Subject::Device(c)),
-        // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
+        // A member of a cable shows its core: `W3 · core 1`.
         ObjectId::Wire(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables().get(k)).and_then(|k| {
                 k.cores.iter().find(|m| m.wire() == Some(c)).and_then(|m| {
@@ -422,7 +422,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             format!("{}:{name}", subject_label(doc, t.owner.subject()))
         }),
         ObjectId::Representation(i) => doc.representations().get(&i).map_or_else(String::new, |r| {
-            // A cable's reference end shows the text it draws (design 009 §8).
+            // A cable's reference end shows the text it draws.
             if r.role == ecad_model::Role::Reference && matches!(r.subject, Subject::Cable(_)) {
                 format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), ecad_electrical::cables::layout::reference_text(doc, i))
             } else {

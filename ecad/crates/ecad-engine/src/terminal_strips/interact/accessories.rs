@@ -1,4 +1,4 @@
-//! The interactive forms of brief 030 (design 030 §2.3, §5.4): Strip Accessory and Jumper. Like
+//! The interactive forms: Strip Accessory and Jumper. Like
 //! every ECAD form they only collect and resolve values; each commit runs the command's JSON form
 //! (`accessory`, `jumper`).
 
@@ -33,7 +33,7 @@ fn picked(s: &Session, p: Vec2) -> R<(ConnectionPointId, DeviceId, String, Pt)> 
     Ok((t, c, label, at))
 }
 
-// ---------------------------------------------------------------- Strip Accessory (§2.3)
+// ---------------------------------------------------------------- Strip Accessory
 
 /// `accessory`: a terminal (or Start/End), then the item; repeats until Enter or Esc.
 pub(crate) fn accessory(s: &Session) -> R<Box<dyn Interactive>> {
@@ -135,14 +135,14 @@ impl Interactive for StripAccessory {
         paper_guard(s, &i)?;
         safely(s, "accessory", |s| self.step(s, i))
     }
-    /// The mark beside the terminal: a short bar across it (§7.3).
+    /// The mark beside the terminal: a short bar across it.
     fn preview(&self, _s: &Session, _cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, _, _, Some(b))) = &self.at else { return Vec::new() };
         vec![line_kind(Pt::new(b.x - 3.0, b.y - 2.5), Pt::new(b.x + 3.0, b.y - 2.5))]
     }
 }
 
-// ---------------------------------------------------------------- Jumper (§5.4)
+// ---------------------------------------------------------------- Jumper
 
 /// `jumper`: a terminal (one already in a jumper bar extends it), then the next terminals; ranges
 /// between picks unless Skip; Enter writes one transaction, Esc nothing.

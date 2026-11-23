@@ -1,4 +1,4 @@
-//! The read-only page preview (brief 016, design 016 §5): another page drawn from the model into
+//! The read-only page preview: another page drawn from the model into
 //! an image, for checking a cable reference's other end without leaving the active page.
 //!
 //! Drawing a preview has two parts, so a caller can hold the project's lock only for the first:
@@ -19,7 +19,7 @@ use ecad_model::{PageId, Pt, RepresentationId, Subject};
 use crate::project::{HandleMap, Project, base_drawing, project_page_with};
 
 /// The width of drawing a preview on a reference shows, in millimetres (`ecad.preview-span`,
-/// design 016 §9: four columns of 40 mm).
+/// Four columns of 40 mm).
 pub const PREVIEW_SPAN_MM: f64 = 160.0;
 
 /// Where a preview looks: the drawing point at the centre of the image and the drawing height
@@ -66,7 +66,7 @@ pub struct PreviewImage {
     pub rgba: Vec<u8>,
 }
 
-/// The other end of the cable reference `reference`: its page and point (design 016 §5.3).
+/// The other end of the cable reference `reference`: its page and point.
 ///
 /// # Errors
 /// In words, as Preview Reference says them: not a reference, an orphan, or an end that cannot
@@ -115,7 +115,7 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
     .map(|(d, _)| d)
 }
 
-/// Project `page` of `doc` (another state of a project, such as an issued revision, brief 019)
+/// Project `page` of `doc` (another state of a project, such as an issued revision)
 /// into a fresh drawing with no cable views.
 ///
 /// # Errors

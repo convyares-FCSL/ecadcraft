@@ -20,7 +20,7 @@ pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) 
     ecad_electrical::continuations::shown_measured(doc, places, names, &EngineMetrics)
 }
 
-/// Colour a drawn continuation part (review of #85, 3; `ui-design-spec.md`, canvas colours): an
+/// Colour a drawn continuation part (canvas colours): an
 /// arrow's other-end text in Ink 2 of the sheet the page is projected for, as zone labels, pin
 /// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
 pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
@@ -39,7 +39,7 @@ mod tests {
         ecad_electrical::references::devices::table::Shape, ecad_electrical::references::devices::table::VAlign,
     };
 
-    /// FP3 (overseer ruling, 2026-11-13): an unrotated reference part draws byte-identically to
+    /// An unrotated reference part draws byte-identically to
     /// the entity drawn before `rotation` existed.
     #[test]
     fn an_unrotated_part_looks_as_before() {
@@ -70,7 +70,7 @@ mod tests {
             h,
             ecad_electrical::devices::TAG_LAYER,
         );
-        // Brief 066d: and in the Reference text style, as every reference text.
+        // And in the Reference text style, as every reference text.
         crate::styles::draw::DrawApply::apply(&draw.0, &mut before, ecad_electrical::styles::text_style::TextKind::Reference);
         assert_eq!(format!("{:?}", crate::project::device_reference_entity(&draw, &part, h)), format!("{before:?}"));
     }

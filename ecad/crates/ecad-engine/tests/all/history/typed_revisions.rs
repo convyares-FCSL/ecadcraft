@@ -1,4 +1,4 @@
-//! S4 (#37): revisions and versions are data. A user version `B` and revision `B` are two points
+//! Revisions and versions are data. A user version `B` and revision `B` are two points
 //! that survive save, reopen, Restore and a branch merge; the revision scheme is the project's and
 //! cannot change once something is issued; a rev outside the scheme is refused by name.
 

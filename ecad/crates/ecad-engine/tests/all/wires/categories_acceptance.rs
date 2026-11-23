@@ -1,13 +1,11 @@
-//! Tester 050b (wire categories): acceptance checks from outside, written from brief 050b and
-//! design 050 (§5, §6.9, §10, §12 checks 11–18, §13 FP5/FP6 and the overseer's old-key ruling)
-//! only, before the implementation existed.
+//! Acceptance checks for wire types, from outside.
 //!
 //! The checks drive `style {catalogue: "wire"}`, `category`, `wire {category}`, `potential`,
 //! `wiresettings`, `setprop`, `bom`, `wirelist`, `checks` and read the document, the page drawing
 //! (`ecad_engine::wires::draw::labels_on_page`, `draw::coloured_routes`, the route's entity) and the prints. The one
-//! new Rust name used is the design's `styles::wire::wire_draw` (§5.3).
+//! new Rust name used is `styles::wire::wire_draw`.
 //!
-//! Each test name starts with the §12 check (`b11`…`b18`) or the focus item it checks.
+//! Each test name starts with its check (`b11`…`b18`) or the focus item it checks.
 
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};

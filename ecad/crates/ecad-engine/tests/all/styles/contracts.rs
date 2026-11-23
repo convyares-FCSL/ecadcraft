@@ -1,4 +1,4 @@
-//! Brief 050a (design 050 §12, checks 1–9): the standard, the style catalogues and their
+//! The standard, the style catalogues and their
 //! commands, what the page draws from them, the style rows of Checks, the update map, and a
 //! hostile document.
 

@@ -1,4 +1,4 @@
-//! Tester 059a (brief 059, design 059 §2–§9, §11; the owner's rules 1–8 of the tester brief): the
+//! The
 //! cable manager's model, commands and checks, run through the JSON forms and the command line.
 //!
 //! Cable types, makers and part numbers here are synthetic (made-up names and values).
@@ -13,7 +13,7 @@
 //! - r6: the assign rule (crossing order, core labels, no `core-open` while not drawn, "not
 //!   assigned").
 //! - r7: typed params and bounded words, hostile and oversized input (JSON forms and the command
-//!   line; MCP in `ecad-mcp`'s `lane_059_tester`).
+//!   line).
 //! - r8: atomic, exact undo and redo, replay; update maps touch only that cable.
 
 use ecad_electrical::cables::{self, CableField, Side, Source};

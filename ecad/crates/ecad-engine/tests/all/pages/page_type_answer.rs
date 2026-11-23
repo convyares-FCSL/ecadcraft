@@ -1,4 +1,4 @@
-//! Brief 072 lane E (design 072 §5.1): one answer for a page's type. The registry's page-level
+//! One answer for a page's type. The registry's page-level
 //! read of `page.type` and `ecad_model::document::sheet::page_type_of` read the same field with the same
 //! rule, for a built-in type and for a project-defined one.
 

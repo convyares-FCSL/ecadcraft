@@ -57,7 +57,7 @@ fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
     }
 }
 
-/// Print `scope` of `p` (design 024 §4): the printed result as JSON.
+/// Print `scope` of `p`: the printed result as JSON.
 ///
 /// # Errors
 /// No page matches, or a projection, plot or write failure (nothing written).
@@ -67,7 +67,7 @@ pub fn print_project(
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {
         p.reports();
     }
-    // Brief 033: the book shows the pending marker as the screen does.
+    // The book shows the pending marker as the screen does.
     p.refresh_pending();
     let o = Options { pending: p.pending, ..o };
     let doc = p.ledger.document();
@@ -124,7 +124,7 @@ impl Command for PrintbookParams {
         let scope = scope_of(self.scope).map_err(|e| err(e.to_string()))?;
         let lineweights = self.lineweights.unwrap_or(true);
         let path = self.path;
-        // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by
+        // No `colour` given prints as the project's `print.colour` says (mono by
         // default).
         let colour = self.colour;
         let v = on_any_page(s, |p, _| {

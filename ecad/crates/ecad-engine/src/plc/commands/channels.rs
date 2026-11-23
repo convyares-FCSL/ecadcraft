@@ -1,4 +1,4 @@
-//! `plcchannels` and placing a channel cell (brief 045, design 045 §4): channels
+//! `plcchannels` and placing a channel cell: channels
 //! on the page. The rules are [`ecad_electrical::plc::channels`].
 
 use cadcraft_engine::Session;
@@ -18,8 +18,8 @@ use ecad_model::{Placement, Pt};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-/// `place {symbol: <channel symbol>, at, rotation?, mirror?, device?, tag?, channel?}` (design 045
-/// §4.4): joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
+/// `place {symbol: <channel symbol>, at, rotation?, mirror?, device?, tag?, channel?}`:
+/// joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
 /// the channel numbered `channel`; on a wire its first point lands there. One transaction.
 pub(crate) fn place_channel(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
@@ -79,7 +79,7 @@ pub(crate) fn place_channel(
                 pl.origin.y += y - q.y;
             }
         }
-        // On a wire: its first point lands there (design 045 §4.4), the symbol shifted onto it.
+        // On a wire: its first point lands there, the symbol shifted onto it.
         let landing = first_point(starter, &pl).and_then(|q| crate::terminal_strips::commands::landing_point(doc, page, q).map(|on| (q, on)));
         if let Some((q, on)) = &landing {
             pl.origin = Pt::new(pl.origin.x + on.at.x - q.x, pl.origin.y + on.at.y - q.y);
@@ -91,7 +91,7 @@ pub(crate) fn place_channel(
             wire = Some(land.route);
             ops.extend(land.ops);
         }
-        // Brief 052d (design 052 §5.3): the place proposes for the card.
+        // The place proposes for the card.
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
@@ -126,7 +126,7 @@ pub(crate) fn place_channel(
 }
 
 /// `plcchannels {card?, type?, first?, point?, from, to}` (the fence) or `{card, rest: true, at?}`
-/// (the rest; design 045 §4.5). One transaction.
+/// (the rest). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlcchannelsParams {

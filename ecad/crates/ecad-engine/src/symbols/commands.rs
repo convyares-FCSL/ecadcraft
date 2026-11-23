@@ -1,15 +1,15 @@
-//! The commands of brief 048, the symbol builder (design 048 §9): `symbolnew`, `symboledit`,
+//! The commands of the symbol builder: `symbolnew`, `symboledit`,
 //! `symbolimpact` (read only), `symbolupdate` and `makesymbol`, and `place` of a project symbol.
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; nothing here opens a
-//! dialog. The builder (048b) saves through these JSON forms.
+//! dialog. The builder saves through these JSON forms.
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::symbols::commands`] (content, impact, updates, promotion) decide, and the shim
 //! finds the selection on the page, commits the ops and answers in JSON.
 //!
-//! Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
-//! Properties and Devices (048c).
+//! Not here: the builder's drawing, drafts and the review drawer; "update available" in
+//! Properties and Devices.
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, Session};
@@ -49,14 +49,14 @@ component promoted, keeping its IDs)",
     ]
 }
 
-// ---------------------------------------------------------------- content (§3.5)
+// ---------------------------------------------------------------- content
 
 use ecad_electrical::symbols::builder::{Bridges, ContentFields, Points, Shapes, Slots};
 
-// ---------------------------------------------------------------- make symbol (§4)
+// ---------------------------------------------------------------- make symbol
 
 /// `makesymbol {handles? | component, name, key, points?, slots?, defaults?, replace?, graphics?,
-/// at?}` (design 048 §9.5): a symbol from plain geometry, or a drawn component promoted, keeping
+/// at?}`: a symbol from plain geometry, or a drawn component promoted, keeping
 /// its IDs.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -156,9 +156,9 @@ impl Command for MakeParams {
     }
 }
 
-// ---------------------------------------------------------------- placing (§5.1)
+// ---------------------------------------------------------------- placing
 
-/// `place {symbol: <project key>, at, rotation?, mirror?, device?, tag?}` (design 048 §5.1): the
+/// `place {symbol: <project key>, at, rotation?, mirror?, device?, tag?}`: the
 /// newest version of that project symbol. `None` when `key` names no project symbol.
 pub(crate) fn place_project_key(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str,
@@ -180,13 +180,13 @@ pub(crate) fn place_project_key(
         let Some(v) = symbols::project::project_by_key(doc, &key) else { return Ok(None) };
         let (id, def) = (v.id, v.def.clone());
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
-        // does for built-in symbols; devices and cables share one namespace (brief 026).
+        // does for built-in symbols; devices and cables share one namespace.
         let (device, tag) = ecad_electrical::devices::commands::place::project_target(doc, device, tag.as_deref())?;
         let pl = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = plain_style(p);
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
-        // Brief 052d (design 052 §5.3): the place proposes.
+        // The place proposes.
         let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;

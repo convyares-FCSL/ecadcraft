@@ -1,4 +1,4 @@
-//! Lane 072 F, F1c-2 (design 072 §6.2, brief 050a): a location box keeps its own location style
+//! A location box keeps its own location style
 //! as its aid's field. It draws in it, counts as the style's user, moves with a deleted style's
 //! replacement, and `setlocation` on a box names it as a box.
 

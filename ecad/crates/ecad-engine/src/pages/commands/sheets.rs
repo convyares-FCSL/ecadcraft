@@ -1,13 +1,13 @@
-//! The commands of brief 019 (design 019 §5–§7) that need the session: `issuerevision` (it may
+//! The revision commands that need the session: `issuerevision` (it may
 //! Finalise numbering as a transaction of its own first), `openrevision`, `closerevision` and
 //! `undoissue`. Page and project properties, folders and the pending revision are generic
 //! ([`ecad_electrical::pages::commands`]).
 //!
 //! Page number, `=`/`+` overrides, sheet and folder are page properties; title, drawing number,
-//! customer, status, defaults and revisions are project properties (decision FP1, FP4); folders
-//! are typed (FP3); the sheet and page-number step are project settings (FP2).
+//! customer, status, defaults and revisions are project properties; folders
+//! are typed; the sheet and page-number step are project settings.
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::pages::commands::sheets`] decide, and the shim commits the ops and answers in JSON.
 
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub use ecad_electrical::pages::commands::sheets::{IssuePlan, MAX_FOLDER_NAME, M
 use ecad_electrical::releases::revisions;
 pub use ecad_electrical::releases::revisions::folder_path;
 
-/// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
+/// A revision opened read-only: the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
 #[derive(Debug, Clone)]
 pub struct RevisionView {
@@ -38,7 +38,7 @@ pub struct RevisionView {
     /// The transaction it names.
     pub at: u64,
     pub doc: Arc<Document>,
-    /// The point bar's text when this is a point of the history (brief 020, `showpoint`), not an
+    /// The point bar's text when this is a point of the history (`showpoint`), not an
     /// issued revision opened from Revisions.
     pub bar: Option<String>,
     /// Distinct for every view opened in this process (the panel re-reads its pages when it moves).
@@ -51,7 +51,7 @@ pub(crate) fn next_view_id() -> u64 {
     N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// The question a plain undo across an issue stops with (owner answer Q7).
+/// The question a plain undo across an issue stops with.
 pub fn issue_undo_question(rev: &str, date: &str) -> String {
     let on = if date.is_empty() { String::new() } else { format!(" on {date}") };
     format!("Rev {rev} was issued{on}. Undo the issue? This removes the release mark.")
@@ -95,9 +95,9 @@ pub use ecad_electrical::pages::page_types::MAX_NUMBER_CHARS;
 // ---------------------------------------------------------------- pages
 
 /// The ops of `newpage {title, number?, folder?}`, the new page's ID and number.
-/// The page is placed right after page `after` in its folder when given (brief 054, design
-/// 054 §4.2: the page well's +), else last in `folder`. The first page of a folder with a start
-/// number takes it (design 054 §4.3).
+/// The page is placed right after page `after` in its folder when given (the page well's +),
+/// else last in `folder`. The first page of a folder with a start
+/// number takes it.
 pub(crate) fn new_page_ops_at(
     p: &mut Project, title: String, number: Option<String>, folder: Option<FolderId>, after: Option<PageId>,
 ) -> Result<(PageId, String, Vec<Op>), CmdError> {
@@ -125,11 +125,11 @@ pub(crate) fn new_page_ops_at(
 
 // ---------------------------------------------------------------- project
 
-/// Status suggestions (owner answer Q9: any text is allowed).
+/// Status suggestions (any text is allowed).
 pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construction", "As built"];
 
-/// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
-/// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
+/// The cover's notes, a project property of newline-separated notes, at most
+/// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters.
 pub use {
     ecad_electrical::pages::front::MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, ecad_electrical::pages::front::MAX_NOTES as MAX_COVER_NOTES,
     ecad_electrical::pages::front::NOTES_KEY as COVER_NOTES, ecad_electrical::pages::front::NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
@@ -137,8 +137,8 @@ pub use {
 
 // ---------------------------------------------------------------- revisions
 
-/// Revisions are issued, and the pending one edited, on a release line only (design 020 §2.5.2,
-/// owner answer 10): on another branch, the refusal names the way forward.
+/// Revisions are issued, and the pending one edited, on a release line only:
+/// on another branch, the refusal names the way forward.
 pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
     let v = p.file.project()?;
     let off_line = (!v.branch_record().release_line).then(|| v.branch_record().name.as_str());
@@ -154,7 +154,7 @@ fn plan_issue_of(p: &Project, before: &[Op], f: &RevisionFields) -> Result<Issue
     rules::plan_issue(&p.ledger, release_line_refusal(p, true), before, f, today)
 }
 
-/// Plan issuing the pending revision with no field writes (Release, brief 027), on the state the
+/// Plan issuing the pending revision with no field writes (Release), on the state the
 /// ops `before` (Finalise's, or none) leave.
 ///
 /// # Errors
@@ -196,8 +196,8 @@ impl Command for IssuerevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
         on_project(s, |p, pg, _| {
-            // Brief 026 (design §5.5): provisional tags and wire numbers are finalised first, or
-            // issued as they are, as asked; without an answer the ways forward are named. S4: the
+            // Provisional tags and wire numbers are finalised first, or
+            // issued as they are, as asked; without an answer the ways forward are named. The
             // Finalise and the issue are planned together, on the state Finalise leaves, and
             // recorded as ONE transaction: one history entry, one undo, nothing to take back.
             let (finalise, note) = crate::releases::release::numbering_seam::plan_before_issue_of(p, self.provisional.as_deref())?;
@@ -229,7 +229,7 @@ impl Command for OpenrevisionParams {
         let rev = self.rev.trim().to_string();
         on_any_page(s, |p, _| {
             let row = rules::issued(p.ledger.document(), &rev)?;
-            // The project as issued (brief 027 §16): the state after the issue transaction, so the
+            // The project as issued: the state after the issue transaction, so the
             // title block, the revision table and the generated Revision list read this revision.
             let rev = row.rev_value.ok_or_else(|| CmdError::refused("That row has no rev."))?;
             let (named, _, then) = crate::history::points::issued_state(p, rev).map_err(CmdError::refused)?;

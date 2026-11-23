@@ -1,4 +1,4 @@
-//! What is under the cursor, for the wheel (brief 041 step 3): the object's [`ObjectKind`], its
+//! What is under the cursor, for the wheel: the object's [`ObjectKind`], its
 //! IDs and the name its chip shows. Built from the hover lookups the page already has (the
 //! handle map, the terminal capture, the cable reference ends); read only.
 //!
@@ -45,7 +45,7 @@ pub struct Target {
     /// `at` is where the person pointed (the wheel's right-click), so a form may take it as its
     /// click; otherwise (a key or Ctrl+K on the selection) the object is given by its handle.
     pub pointed: bool,
-    /// Brief 048 (design 048 §4.2): a device's representation clicked is a drawing (from Convert
+    /// A device's representation clicked is a drawing (from Convert
     /// to Device), so its wheel offers Make symbol where a symbol's offers Edit symbol.
     pub drawn: bool,
 }
@@ -148,12 +148,12 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         return connection_point(p, page, t, strip, Some(cap.connection_point));
     }
     let Some(h) = picked else { return t };
-    // Brief 051 (review of #89, 2): a card frame's part stands for the card, through its symbol.
+    // A card frame's part stands for the card, through its symbol.
     let h = match map.get(h) {
         Some(Mapped::DeviceReference(r)) if ecad_electrical::plc::draw::is_frame_rep(doc, r) => {
             doc.representations().get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
-        // Lane 072 D: a T's dot stands for the line that ends there.
+        // A T's dot stands for the line that ends there.
         Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
         _ => h,
     };
@@ -221,7 +221,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.name = w.map_or_else(|| "wire line".into(), |w| wire_words(doc, w));
                     t.handles = crate::checks::handles_of(p, page, ecad_electrical::checks::Object::Route(r));
                 }
-                // Design 072 §6.2: a drawing aid (a continuation arrow, a location box) is its own
+                // A drawing aid (a continuation arrow, a location box) is its own
                 // kind; its handles are its own.
                 Subject::Aid(a) => {
                     t.kind = ObjectKind::Aid;
@@ -264,7 +264,7 @@ fn connection_point(p: &Project, page: PageId, mut t: Target, strip: DeviceId, t
     t.connection_point = term;
     let tag = ecad_electrical::devices::tags::tag_words(doc, strip);
     t.name = match term {
-        // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+        // A connector pin is named by its half (`-X10.S:3`).
         Some(x) => ecad_electrical::connectors::pin_name(doc, x).unwrap_or_else(|| format!("{tag}:{}", connection_point_name(doc, x))),
         None => tag,
     };

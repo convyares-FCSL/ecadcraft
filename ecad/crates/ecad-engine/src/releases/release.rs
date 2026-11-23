@@ -1,4 +1,4 @@
-//! Release (brief 027, design 027): the pre-release check, the named revision and the stamped
+//! Release: the pre-release check, the named revision and the stamped
 //! folder.
 //!
 //! # Semantics
@@ -7,9 +7,9 @@
 //!   project), grouped for a release by [`GROUPS`](ecad_electrical::releases::release::GROUPS) (a view: kinds keep their severities). A kind
 //!   not in the table lands in **Other**.
 //! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
-//!   nothing half-done (design 027 §5.2): refusals (each with its way out); 026's finalise (behind
+//!   nothing half-done: refusals (each with its way out); Finalise numbering (behind
 //!   [`numbering_seam`]); every output built from the state **as issued** (`ledger.preview` of the
-//!   issue's ops) and written to `<folder>.partial`; the issue transaction with FP1's
+//!   issue's ops) and written to `<folder>.partial`; the issue transaction with the recorded folder in
 //!   `rev.<n>.released`; a save; `release.json`; the rename. A failure before the issue removes
 //!   the staging folder and records nothing; one after it keeps the issue and says how to finish.
 //! - **Writing an issued revision's folder** (`release {rev}`): built from the state after that
@@ -18,10 +18,11 @@
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
 //!   but this module's own staging folder.
-//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-block-plan` and
-//!   `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON keys).
+//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; the terminal strips
+//!   fill `terminal-block-plan` and `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON
+//!   keys).
 //!
-//! # Update map (design 027 §11.1)
+//! # Update map
 //! The release folder is built on request only. The dialog's check reads the kept Checks (its
 //! `orphan-reference` rows follow `crate::checks`'s map); nothing here runs on an ordinary
 //! commit.
@@ -66,9 +67,9 @@ const MAX_MANIFEST_BYTES: u64 = 4 << 20;
 /// Most `Rev B (n)` folders tried for Keep both.
 const MAX_KEEP_BOTH: u32 = 1000;
 
-// ---------------------------------------------------------------- groups (design 027 §4.1)
+// ---------------------------------------------------------------- groups
 
-/// The check rows of the state to be issued (design 027 §4.1): the project's kept Checks and the
+/// The check rows of the state to be issued: the project's kept Checks and the
 /// report models' rows, in book order. The pending revision's field writes change no check, so
 /// these are the live project's.
 pub fn check_rows(p: &mut Project) -> Vec<Check> {
@@ -80,9 +81,9 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
     ecad_electrical::checks::sort(doc, rows)
 }
 
-// ---------------------------------------------------------------- 026 seam
+// ---------------------------------------------------------------- numbering seam
 
-/// The one place 027 calls brief 026's numbering (design 027 §4.4): the provisional items, the
+/// The one place a release calls the numbering: the provisional items, the
 /// refusal without a choice, and [`numbering_seam::before_issue`] (Finalise numbering as its own
 /// transaction before the issue, or issue them as they are).
 pub mod numbering_seam {
@@ -94,7 +95,7 @@ pub mod numbering_seam {
     use crate::project::Project;
     use ecad_electrical::checks::Check;
 
-    /// What `release` would refuse for provisional items without a choice (026's words), if any.
+    /// What `release` would refuse for provisional items without a choice (in numbering's words), if any.
     pub fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
@@ -108,19 +109,19 @@ pub mod numbering_seam {
         })
     }
 
-    /// 026's provisional step, planned without writing (release records it with the issue).
+    /// The provisional step, planned without writing (release records it with the issue).
     ///
     /// # Errors
-    /// 026's refusal or a bad `provisional`.
+    /// The numbering refusal or a bad `provisional`.
     pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::numbering::commands::BeforeIssue, String> {
         plan_before_issue(p, params).map_err(String::from)
     }
 
-    /// 026's provisional step for `issuerevision`: Finalise's ops (none when there is nothing to
+    /// The provisional step for `issuerevision`: Finalise's ops (none when there is nothing to
     /// number) to record in the issue's own transaction, or the note to issue with.
     ///
     /// # Errors
-    /// 026's refusal, or a bad `way`.
+    /// The numbering refusal, or a bad `way`.
     pub(crate) fn plan_before_issue_of(p: &mut Project, way: Option<&str>) -> Result<(Vec<ecad_model::Op>, Option<String>), CmdError> {
         match plan_before(p, way)? {
             BeforeIssue::Go(note) => Ok((Vec::new(), note)),
@@ -128,13 +129,13 @@ pub mod numbering_seam {
         }
     }
 
-    /// 026's provisional step as `provisional` names it, planned without writing.
+    /// The provisional step as `provisional` names it, planned without writing.
     fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, CmdError> {
         let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
         plan_before(p, way)
     }
 
-    /// 026's provisional step, `way` chosen: go on (with a note), or Finalise first.
+    /// The provisional step, `way` chosen: go on (with a note), or Finalise first.
     fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, CmdError> {
         match way_before_issue(p.ledger.document(), way)? {
             Some(note) => Ok(BeforeIssue::Go(note)),
@@ -146,7 +147,7 @@ pub mod numbering_seam {
     }
 }
 
-// ---------------------------------------------------------------- slots (design 027 §7.2)
+// ---------------------------------------------------------------- slots
 
 /// Every slot id `reports` may name.
 pub(crate) fn slot_ids() -> Vec<&'static str> {
@@ -179,7 +180,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
     }
 }
 
-// ---------------------------------------------------------------- names and places (§7.1)
+// ---------------------------------------------------------------- names and places
 
 /// The file stem: the drawing number, else the project file's name, else the project's name;
 /// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::releases::release::MAX_STEM) characters.
@@ -204,7 +205,7 @@ pub fn default_folder(p: &Project, rev: &str) -> Option<PathBuf> {
     Some(project_dir(p)?.join(RELEASE_DIR).join(folder_name(rev)))
 }
 
-/// FP1's value for `folder`: relative to the project file's folder (with `/`), absolute when it
+/// The recorded value for `folder`: relative to the project file's folder (with `/`), absolute when it
 /// is elsewhere (another drive).
 pub fn recorded(p: &Project, folder: &Path) -> String {
     if let Some(dir) = project_dir(p)
@@ -221,8 +222,8 @@ pub fn has_manifest(folder: &Path) -> bool {
     folder.join(MANIFEST).exists()
 }
 
-/// FP1's value read back as a folder, only when it is safe to write there again (review of
-/// PR #54, 1): a relative value must name a folder inside `<project folder>/release/`; an
+/// The recorded value read back as a folder, only when it is safe to write there again:
+/// a relative value must name a folder inside `<project folder>/release/`; an
 /// absolute one must hold a `release.json` (a folder a release wrote). Anything else (`""`, `"."`,
 /// a foreign folder, a hostile file) gives `None`, and callers fall back to [`default_folder`].
 pub fn from_recorded(p: &Project, v: &str) -> Option<PathBuf> {
@@ -276,7 +277,7 @@ fn same_or_below(a: &Path, b: &Path) -> bool {
 }
 
 /// Refuse a release folder that is the project's own folder, holds the project file, lies above
-/// it, or is `release/` itself or `release/replaced/` (review of PR #54, 1): Replace moves the
+/// it, or is `release/` itself or `release/replaced/`: Replace moves the
 /// target aside and Keep both writes beside it, so such a target would move the project.
 ///
 /// # Errors
@@ -312,7 +313,7 @@ fn shown(path: &Path) -> String {
 
 // ---------------------------------------------------------------- steps and faults
 
-/// A step of the release sequence (design 027 §5.2) that can fail.
+/// A step of the release sequence that can fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     /// Writing the staging folder.
@@ -430,7 +431,7 @@ pub(crate) fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, u
     std::fs::write(dir.join(STAGING_MARK), b"").map_err(|e| format!("Can't write to {}: {e}", shown(dir)))?;
     let mut st = Staged::default();
     let base = format!("{} Rev {}", b.stem, b.rev);
-    // The book: every page, generated ones included (Print Book, design 024 §4).
+    // The book: every page, generated ones included (Print Book).
     let pages = printbook::resolve(b.doc, &printbook::Scope::All)?.pages;
     let done = printbook::print(b.doc, &pages, b.fan, b.tol, Some(b.reports), b.options, None, progress)?;
     st.sheets = done.sheets;
@@ -466,7 +467,7 @@ pub(crate) fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, u
     Ok(st)
 }
 
-// ---------------------------------------------------------------- the existing folder (§9)
+// ---------------------------------------------------------------- the existing folder
 
 /// What to do with a folder already there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -582,7 +583,7 @@ fn keep_both(folder: &Path) -> Result<PathBuf, String> {
     Err(format!("Too many folders named {base}; choose another folder."))
 }
 
-/// `release/replaced/Rev B 2026-11-12 14-30` (its written time, else now), made unique.
+/// `release/replaced/Rev B <date> <time>` (its written time, else now), made unique.
 fn replaced_place(folder: &Path, old: &OldFolder) -> PathBuf {
     let base = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let when = old.written.as_deref().and_then(|w| chrono::DateTime::parse_from_rfc3339(w).ok()).map(|t| t.with_timezone(&chrono::Utc));
@@ -608,7 +609,7 @@ struct Landing {
     compare: Option<Compare>,
 }
 
-/// Decide what an existing `folder` means (design 027 §9).
+/// Decide what an existing `folder` means.
 ///
 /// # Errors
 /// A folder there and no `existing`, or Add missing when files differ: with the ways forward.
@@ -679,7 +680,7 @@ fn clear_staging(dir: &Path) {
     }
 }
 
-// ---------------------------------------------------------------- the manifest (FP2)
+// ---------------------------------------------------------------- the manifest
 
 /// What the manifest says of the issue.
 #[derive(Debug, Clone, Default)]
@@ -690,7 +691,7 @@ pub struct Issued {
     pub chain: Option<String>,
 }
 
-/// The manifest (design 027 §2, FP2).
+/// The manifest.
 pub fn manifest(
     doc: &Document, row: &revisions::Revision, issued: &Issued, b: &Build<'_>, st: &Staged, rows: &[Check], fan_tags: &[String],
 ) -> Value {
@@ -739,7 +740,7 @@ pub(crate) fn now_utc() -> Option<String> {
 
 // ---------------------------------------------------------------- refusals and warnings
 
-/// Why the pending revision cannot be released now, with the way out (design 027 §6); `None`
+/// Why the pending revision cannot be released now, with the way out; `None`
 /// when it can.
 pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
     if p.path.is_none() {
@@ -754,7 +755,7 @@ pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Op
         return Some(e.to_string());
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
-    // folder ships (review of PR #54, 2): checked by `release_pending` once it has them.
+    // folder ships: checked by `release_pending` once it has them.
     if !finalising(params)
         && params.get("accept").and_then(Value::as_str) != Some("errors")
         && let Some(r) = errors_refusal(p.ledger.document(), rows)
@@ -773,7 +774,7 @@ fn read_only(p: &Project) -> Option<String> {
 }
 
 /// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
-/// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
+/// fields: a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
 pub fn unchanged_since(p: &Project) -> Option<String> {
     let doc = p.ledger.document();
     let rev = ecad_electrical::releases::release::unchanged_since(doc, p.ledger.head(), |seq| p.ledger.transaction(seq))?;
@@ -787,7 +788,7 @@ pub fn nothing_changed(p: &Project) -> Option<String> {
 
 // ---------------------------------------------------------------- prerelease
 
-/// What the Release dialog and `prerelease` show (design 027 §4, §5.1, §8): the check of the
+/// What the Release dialog and `prerelease` show: the check of the
 /// state to be issued, grouped, with each row's place in words, and what a release would write
 /// or refuse.
 #[derive(Debug, Clone, Default)]
@@ -907,7 +908,7 @@ impl View {
         v
     }
 
-    /// The dialog's line about an existing folder (design 027 §5.1).
+    /// The dialog's line about an existing folder.
     pub fn exists_words(&self) -> Option<String> {
         let old = self.existing.as_ref()?;
         let rev = &self.rev;
@@ -920,7 +921,7 @@ impl View {
     }
 }
 
-/// `prerelease {rev?, limit?}` (design 027 §10): the check, grouped, and what `release` would
+/// `prerelease {rev?, limit?}`: the check, grouped, and what `release` would
 /// write or refuse. Records nothing.
 ///
 /// # Errors
@@ -932,8 +933,8 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
     Ok(view(p, want.as_deref(), accept, limit)?.json())
 }
 
-/// What the Release dialog's view of the pending revision depends on (design 027 §11.1, review of
-/// PR #54, 3): the rows (only when some row changed, `Checks::changed` and the report models'
+/// What the Release dialog's view of the pending revision depends on:
+/// the rows (only when some row changed, `Checks::changed` and the report models'
 /// check key), the pending revision's fields, the refusal's inputs (file, read-only, branch,
 /// provisional items) and the nothing-changed warning, with the tick. An edit that changes none of
 /// these leaves it, and the dialog takes no new view. `None` until the Checks are kept.
@@ -970,7 +971,7 @@ fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
 // ---------------------------------------------------------------- release
 
 fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String> {
-    // Brief 040: no `colour` given prints as the project's `print.colour` says (mono by default).
+    // No `colour` given prints as the project's `print.colour` says (mono by default).
     let mono = ecad_electrical::defaults::print::mono_param(doc, params)?;
     let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
     Ok(Options { mono, lineweights, pending: false })
@@ -1007,10 +1008,10 @@ fn folder_param(p: &Project, params: &Value, default: Option<PathBuf>) -> Result
     .and_then(|f| check_target(p, &f).map(|()| f))
 }
 
-/// `release` of the pending revision (design 027 §5.2).
+/// `release` of the pending revision.
 ///
 /// # Errors
-/// A refusal of §6 or a failure before the issue (nothing recorded, no `.partial` left); after
+/// A refusal or a failure before the issue (nothing recorded, no `.partial` left); after
 /// the issue, a finished result carries the problem in its message instead.
 pub(crate) fn release_pending(
     p: &mut Project, pg: &mut Pages<'_>, params: &Value, progress: &mut dyn FnMut(usize, usize) -> bool,
@@ -1027,15 +1028,15 @@ pub(crate) fn release_pending(
     let rev0 = revisions::pending_rev(p.ledger.document());
     let target = folder_param(p, params, default_folder(p, &rev0))?;
     let warning = nothing_changed(p);
-    // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
-    // release that stops before the issue records nothing at all (tester 027, 1).
+    // 2. Finalise numbering, when asked: planned now, recorded only with the issue, so a
+    // release that stops before the issue records nothing at all.
     let (finalise, note) = match numbering_seam::plan(p, params)? {
         ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
         ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
     // The caller's transaction budget (an agent's cap of one per call): known before anything
-    // reaches the disk, never found out after (tester 027, 3). Finalise and the issue are one
-    // transaction (S4), so the need is one either way.
+    // reaches the disk, never found out after. Finalise and the issue are one
+    // transaction, so the need is one either way.
     if let Some(budget) = p.tx_budget
         && budget < 1
     {
@@ -1084,7 +1085,7 @@ pub(crate) fn release_pending(
         }
     };
     let ((st, mut l), stem, o) = staged;
-    // Keep both lands elsewhere: FP1 names the folder it lands in.
+    // Keep both lands elsewhere: the recorded value names the folder it lands in.
     if l.folder != target {
         revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &l.folder));
     }
@@ -1167,8 +1168,8 @@ fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {
     std::fs::write(dir.join(MANIFEST), bytes).map_err(|e| format!("{}: {e}", shown(&dir.join(MANIFEST))))
 }
 
-/// `release {rev}`: write an issued revision's folder again from its issued state (design 027
-/// §8). Records nothing.
+/// `release {rev}`: write an issued revision's folder again from its issued state.
+/// Records nothing.
 ///
 /// # Errors
 /// Not issued, no place for the folder, a write failure (no `.partial` left), or an existing

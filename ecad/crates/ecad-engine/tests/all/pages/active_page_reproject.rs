@@ -1,4 +1,4 @@
-//! Overseer item O1 (design `ui-architecture.md` §8.4): the window re-projects the active page
+//! The window re-projects the active page
 //! after a commit only when the commit touched it. Generated pages are named in the touched set by
 //! their own update maps, so a shown terminal plan still redraws when its strip changes.
 //! Commands run through the session directly, so the harness's own checks (which work every page

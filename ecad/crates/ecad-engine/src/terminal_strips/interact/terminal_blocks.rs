@@ -1,5 +1,5 @@
-//! The interactive forms of brief 028 (design 028 §3.2, §4): Place Terminals and Draw Bridge.
-//! Brief 036 (design 036 §3.2) adds Place Terminals' type, level and position prompts.
+//! The interactive forms: Place Terminals and Draw Bridge.
+//! Place Terminals also asks for a type, level and position.
 //! Like every ECAD form they only collect and resolve values; each commit runs the command's JSON
 //! form (`connection_points`, `bridge`).
 
@@ -18,10 +18,10 @@ use crate::terminal_strips::commands::{self, MAX_FENCE};
 use ecad_electrical::terminal_strips;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 
-// ---------------------------------------------------------------- Place Terminals (§3.2)
+// ---------------------------------------------------------------- Place Terminals
 
-/// `connection_points`: which strip (Enter: the last one used, or a new one), the terminal type and level
-/// (brief 036), then a line across the wires.
+/// `connection_points`: which strip (Enter: the last one used, or a new one), the terminal type and level,
+/// then a line across the wires.
 pub(crate) fn terminal_blocks(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (last, last_type) = read(s, |p, _| {
@@ -42,11 +42,11 @@ pub(crate) fn terminal_blocks(s: &Session) -> R<Box<dyn Interactive>> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Stage {
     Strip,
-    /// Brief 036: the terminal type.
+    /// The terminal type.
     Type,
-    /// Brief 036: the level of a multi-level type.
+    /// The level of a multi-level type.
     Level,
-    /// Brief 036: the position of the first crossing (Enter: the next free one).
+    /// The position of the first crossing (Enter: the next free one).
     Position,
     Line,
 }
@@ -61,7 +61,7 @@ struct PlaceTerminalBlocks {
     /// The chosen strip (`None`: a new one).
     strip: Option<DeviceId>,
     pe: bool,
-    /// Brief 036: the type, its level (`None`: whole terminals), and a typed position.
+    /// The type, its level (`None`: whole terminals), and a typed position.
     ty: &'static tt::TermType,
     level: Option<u32>,
     position: Option<String>,
@@ -96,7 +96,7 @@ impl PlaceTerminalBlocks {
                 }
             }
         }
-        // `PE` at the strip prompt is 028's shortcut: a PE terminal, no type prompt.
+        // `PE` at the strip prompt is a shortcut: a PE terminal, no type prompt.
         if self.pe {
             self.ty = tt::by_code("pe").unwrap_or_else(tt::feedthrough);
             self.stage = Stage::Line;
@@ -158,7 +158,7 @@ impl PlaceTerminalBlocks {
                 let next = self.strip.map_or(1, |c| tt::highest_number(doc, c) + 1);
                 found.members.iter().take(MAX_FENCE).zip(next..).map(|(m, n)| (m.at, n.to_string())).collect()
             } else {
-                // Brief 036: the label each crossing would get, by §3.3's rule.
+                // The label each crossing would get, by the strip's numbering rule.
                 let mut chooser = tt::Chooser::new(doc, self.strip);
                 let mut named = self.position.clone();
                 let mut out = Vec::new();
@@ -189,7 +189,7 @@ impl PlaceTerminalBlocks {
         if let Some(c) = self.strip {
             params["strip"] = Value::String(c.hex());
         }
-        // Brief 036: the type, level and position (a legacy type keeps 028's call).
+        // The type, level and position (a legacy type keeps the plain call).
         if !self.ty.legacy() {
             params["type"] = json!(self.ty.code);
             params["level"] = json!(self.level.map_or_else(|| "All".to_string(), |n| n.to_string()));
@@ -299,7 +299,7 @@ impl Interactive for PlaceTerminalBlocks {
             _ => Vec::new(),
         }
     }
-    /// A ring and its label at each crossing (design 028 §3.2).
+    /// A ring and its label at each crossing.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let (Some(a), Some(px)) = (self.first, pixel(s)) else { return Vec::new() };
         if !in_range(cursor) {
@@ -317,11 +317,11 @@ impl Interactive for PlaceTerminalBlocks {
     }
 }
 
-// ---------------------------------------------------------------- Draw Bridge (§4)
+// ---------------------------------------------------------------- Draw Bridge
 
 /// `bridge`: click a terminal, then another; the chain then continues from the second (Enter
 /// ends, New starts a fresh pair). The engine passes no Shift state to forms, so continuing is
-/// the default rather than Shift-click (design 028 §4).
+/// the default rather than Shift-click.
 pub(crate) fn bridge(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     Ok(Box::new(Safe(DrawBridge { first: None })))

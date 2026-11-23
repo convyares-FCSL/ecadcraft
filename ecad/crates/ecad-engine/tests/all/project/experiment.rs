@@ -1,6 +1,6 @@
-//! The bounded integration experiment, scenario S1-S16 (proposal §17.2). One project, two pages,
+//! The bounded integration scenarios S1-S16. One project, two pages,
 //! real CADCraft commands driven through `Session` as the UI and control channel drive it. The
-//! checks of §17.4 run after every step (see `common::H::check`).
+//! harness checks run after every step (see `common::H::check`).
 
 use crate::common;
 

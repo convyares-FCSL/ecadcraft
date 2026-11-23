@@ -1,4 +1,4 @@
-//! Recovery after the ledger accepted a transaction (PROJ-02), checked without handle numbers.
+//! Recovery after the ledger accepted a transaction, checked without handle numbers.
 //!
 //! The normal path is checked by handle (`FidelityMismatch`, see `experiment.rs`). Here every
 //! rebuilt page is checked by content with `verify_page`, and the tests add their own independent

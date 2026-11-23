@@ -1,4 +1,4 @@
-//! Brief 045 (PLC racks and cards, design 045): contract tests by part.
+//! Contract tests by part.
 
 mod channels;
 mod fixes;

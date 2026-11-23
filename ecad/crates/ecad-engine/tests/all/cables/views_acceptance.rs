@@ -1,12 +1,11 @@
-//! Independent tester's contracts for brief 005 (traditional / fan cable view), written from the
-//! brief, design 005 and the owner's answers O1-O6, Q1-Q4 only.
+//! Contracts for the traditional and fan cable views.
 //!
 //! - AC1: ten mixed switches (JSON toggle, JSON explicit, typed + click, pickfirst selection, the
 //!   trunk clicked) leave the document, the log, the head, the ID allocator, `derive::nets`, the
 //!   change count and every tab's unsaved marker as they were.
 //! - AC2: switching writes nothing to the `.ecad` file and never marks the project unsaved; save and
 //!   reopen restore each cable's own view through `ECAD_SETTINGS_DIR` (child process, so the env var
-//!   never races another test and the owner's real settings are never read); a read-only second
+//!   never races another test and a real settings folder is never read); a read-only second
 //!   window reads the views; a hostile settings file (missing, garbage, truncated, wrong types,
 //!   another format, over 1 MiB, CRLF, BOM, a folder, read-only, a folder path that is a file)
 //!   never fails open or save and never panics.
@@ -15,7 +14,7 @@
 //! - AC4: undo / redo after a switch act on the last real edit.
 //! - AC6: edits of the fan (move, erase, copy, rotate, scale, mirror, stretch, grips, properties,
 //!   offset, explode, cut, mixed selections, new geometry on `ECAD-CABLES`) are refused with the
-//!   spec's message and leave the head and the drawing unchanged.
+//!   refusal message and leave the head and the drawing unchanged.
 
 use crate::common;
 

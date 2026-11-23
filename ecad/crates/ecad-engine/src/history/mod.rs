@@ -1,24 +1,24 @@
-//! The project's history as the user sees it (brief 020a, design 020): the History tab's graph,
+//! The project's history as the user sees it: the History tab's graph,
 //! versions, points shown read-only, Restore, and branches (create, rename, switch, archive,
 //! reopen), with their commands.
 //!
 //! - The graph is built from the `branches` and `versions` rows and **one** transaction row per
 //!   node (its time, author and label), plus, for the branch shown, the ledger's unsaved steps.
-//!   It never reads the logs (design 020 §8.1).
+//!   It never reads the logs.
 //! - A point is shown on a copy, from its nearest snapshot (the branch's own or its ancestry's)
 //!   and at most the snapshot interval of steps; nothing is recorded.
-//! - Restore is one ordinary transaction labelled `Restore "…"` (FQ6) whose ops are the
+//! - Restore is one ordinary transaction labelled `Restore "…"` whose ops are the
 //!   difference between the live state and the point's ([`ecad_model::document::diff`]), so they scale with
 //!   what differs; versions and revision fields are never restored (they are history, not
 //!   design).
-//! - Branch actions are written to the file at once (owner answer 4, FQ8), after saving the
-//!   branch shown (owner answer 3, "Save and switch").
+//! - Branch actions are written to the file at once, after saving the
+//!   branch shown.
 //!
-//! - Merges (brief 020b, [`crate::history::merging`]) are rows of their own, read from the merge index
-//!   (FQ2), drawn as joins from the source's line.
+//! - Merges ([`crate::history::merging`]) are rows of their own, read from the merge index,
+//!   drawn as joins from the source's line.
 //! - The graph reads one page of rows ([`PAGE`]) and the next on request (`limit`); each row
 //!   reads its step's time and author only when it comes into the page.
-//! - The graph's model (rows, lanes, session groups, time text, JSON rows) is
+//! - The graph's model (rows, session groups, time text, JSON rows) is
 //!   [`ecad_file::history`]; this module reads the project and the local zone for it.
 
 pub mod branches;
@@ -207,7 +207,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
     p.file.project().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
 }
 
-/// The local zone's offset from UTC at `ms`, in seconds (overseer, 2026-11-10: the graph and the
+/// The local zone's offset from UTC at `ms`, in seconds (the graph and the
 /// details show local time; the file keeps UTC). `None` when the time is out of range.
 pub(crate) fn local_offset(ms: u64) -> Option<i64> {
     use chrono::{Offset, TimeZone};
@@ -215,7 +215,7 @@ pub(crate) fn local_offset(ms: u64) -> Option<i64> {
     Some(i64::from(chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()))
 }
 
-/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, in local time (design 020 §2.2); ` UTC`
+/// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, in local time; ` UTC`
 /// follows when the local zone cannot be read.
 pub fn short_time(ms: Option<u64>, now_ms: Option<u64>) -> String {
     short_time_in(ms, now_ms, ms.and_then(local_offset))
@@ -232,7 +232,7 @@ pub fn group_text(g: &SessionGroup) -> String {
     g.text_in(g.from_ms.and_then(local_offset))
 }
 
-/// The graph of the project (design 020 §2.2): one row per node, newest first.
+/// The graph of the project: one row per node, newest first.
 ///
 /// # Errors
 /// The file could not be read.
@@ -282,7 +282,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             from: None,
         });
         // Rows other than Now read their step's time and author only when they come into the
-        // page (design 020 §8.1: one transaction row per node shown).
+        // page (one transaction row per node shown).
         let mut lazy: Vec<(Node, Option<u64>)> = Vec::new();
         let own = named_points(p, *id)?.into_iter().filter(|n| n.branch == *id);
         for n in own {
@@ -321,7 +321,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
                 ));
             }
         }
-        // Merges into this branch (the merge index, FQ2), its unsaved ones included.
+        // Merges into this branch (the merge index), its unsaved ones included.
         if let Some(v) = p.file.project() {
             let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
             for m in merges {
@@ -450,7 +450,7 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<ReopenbranchParams>("reopenbranch"),
 ];
 
-/// The commands this module adds (design 020 §10). Merge is brief 020b.
+/// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("history", "History", typed::<HistoryParams>)
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn times_read_in_the_local_zone() {
-        // 2026-11-10 09:12 UTC. This build reads the local zone: no label.
+        // 10 November 2026, 09:12 UTC. This build reads the local zone: no label.
         let ms = 1_794_301_920_000;
         assert!(local_offset(ms).is_some());
         assert!(!full_time(Some(ms)).ends_with("UTC"));

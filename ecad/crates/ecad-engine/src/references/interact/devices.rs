@@ -1,5 +1,5 @@
-//! The interactive form of Move Mirror Table (brief 025, design 025 §4.4) and the device side of
-//! Go to Reference (design 025 §5.3). Like every ECAD form they only collect and resolve values;
+//! The interactive form of Move Mirror Table and the device side of
+//! Go to Reference. Like every ECAD form they only collect and resolve values;
 //! each commit runs the command's JSON form (`mirrormove`, `refgoto`).
 
 use cadcraft_engine::doc::{EntityKind, Handle};
@@ -28,8 +28,8 @@ fn table_named(p: &Project, m: Mapped) -> Option<DeviceId> {
     (ecad_electrical::references::devices::classify::device(doc, c).head == Some(rep)).then_some(c)
 }
 
-/// The reference source and target a mapped object names for Go to Reference (design 025
-/// §5.3): a contact's text or symbol goes to its coil; a table row to its contact; a coil (or its
+/// The reference source and target a mapped object names for Go to Reference:
+/// a contact's text or symbol goes to its coil; a table row to its contact; a coil (or its
 /// table's bar) to its first contact.
 pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Handle) -> Option<(RepresentationId, Option<RepresentationId>)> {
     let doc = p.ledger.document();

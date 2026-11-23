@@ -1,4 +1,4 @@
-//! DXF logos and title blocks (brief 055, design 055 §4.6, §6).
+//! DXF logos and title blocks.
 //!
 //! # Semantics
 //! - A DXF is read with CADCraft's reader; its model space is exploded (block references to a
@@ -11,7 +11,7 @@
 //!   items (the user turns one into a field with Make field), and curves and solids one drawing
 //!   item (a logo) over their extents. The drawing's extents must fit the frame's block area.
 //!
-//! Only DXF in 0.2.2 (owner, Q3): raster logos need CADCraft to write images to PDF.
+//! Only DXF in 0.2.2: raster logos need CADCraft to write images to PDF.
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, Entity, EntityKind};
@@ -140,7 +140,7 @@ impl std::fmt::Display for LogoError {
 
 impl std::error::Error for LogoError {}
 
-/// Read the DXF file at `path` as a logo, with the file's name (design 055 §6; the app never reads disk).
+/// Read the DXF file at `path` as a logo, with the file's name (the app never reads disk).
 ///
 /// # Errors
 /// The file cannot be read, or as [`logo`].
@@ -150,7 +150,7 @@ pub fn logo_from_file(path: &std::path::Path) -> Result<(String, Vec<Primitive>)
     logo(&bytes).map(|prims| (name, prims)).map_err(LogoError)
 }
 
-/// Read `bytes` as a logo (design 055 §6).
+/// Read `bytes` as a logo.
 ///
 /// # Errors
 /// Unreadable, empty, or more than [`MAX_LOGO_PRIMS`] shapes, in words.
@@ -173,7 +173,7 @@ fn mm(v: f64) -> String {
     if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r:.1}") }
 }
 
-/// A whole title block from `bytes` at 1:1, for a frame on `spec` (design 055 §4.6). Also the
+/// A whole title block from `bytes` at 1:1, for a frame on `spec`. Also the
 /// number of entities skipped.
 ///
 /// # Errors
@@ -282,7 +282,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
     if params.get("item").is_some() {
         let n = params.get("item").and_then(Value::as_u64).ok_or_else(|| err("`item` is the logo item's number (from 0)."))?;
         let prims = logo(&bytes).map_err(err)?;
-        // Brief 070: this reader still refuses in words; they become a CmdError here.
+        // This reader still refuses in words; they become a CmdError here.
         return on_project(s, |p, pg, _| {
             (|| {
                 let doc = p.ledger.document();

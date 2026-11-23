@@ -1,7 +1,6 @@
-//! The selection half of the ECAD section of CADCraft's Properties palette (brief 019, design 019
-//! §8): which devices, wires, cables and references the drawing's selected handles stand for, and
-//! the view built from them by [`ecad_electrical::properties`], which holds the sections, their update
-//! map and the edit lines.
+//! The selection half of the ECAD section of CADCraft's Properties palette: which devices, wires, cables and
+//! references the drawing's selected handles stand for, and the view built from them by
+//! [`ecad_electrical::properties`], which holds the sections, their update map and the edit lines.
 
 use std::collections::BTreeSet;
 
@@ -18,15 +17,15 @@ use crate::project::{Mapped, Project};
 struct Picked {
     devices: BTreeSet<DeviceId>,
     symbol: Option<ecad_model::RepresentationId>,
-    /// Continuation arrows (design 072 §6.2), and the first one's symbol.
+    /// Continuation arrows, and the first one's symbol.
     aids: BTreeSet<ecad_model::AidId>,
     aid_symbol: Option<ecad_model::RepresentationId>,
-    /// Location boxes (design 072 §6.2).
+    /// Location boxes.
     boxes: BTreeSet<ecad_model::AidId>,
     wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     references: BTreeSet<ecad_model::RepresentationId>,
-    /// Brief 030: link lines picked: (strip, link).
+    /// Link lines picked: (strip, link).
     jumper_bars: BTreeSet<(DeviceId, u32)>,
     plain: usize,
 }
@@ -42,9 +41,9 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::DeviceReference(r)) => Some(r),
-            // Lane 072 D: a T's dot stands for the line that ends there.
+            // A T's dot stands for the line that ends there.
             Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).map(|(rid, _, _)| rid),
-            // Brief 030: a jumper bar shows its strip (Properties ▸ Jumper bar).
+            // A jumper bar shows its strip (Properties ▸ Jumper bar).
             Some(Mapped::JumperBar(c, n)) => {
                 out.jumper_bars.insert((c, n));
                 None
@@ -61,7 +60,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
                 continue;
             }
             Some(Mapped::Frame(_)) => continue,
-            // A conductor label (brief 022) stands for its wire.
+            // A conductor label stands for its wire.
             Some(Mapped::Label(w)) => {
                 out.wires.insert(w);
                 continue;
@@ -86,7 +85,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Subject::Cable(k) => {
                 out.cables.insert(k);
             }
-            // An aid is not a device, wire or cable (design 072 §6.2); a continuation has its own
+            // An aid is not a device, wire or cable; a continuation has its own
             // section.
             Subject::Aid(a) if ecad_electrical::continuations::continuation(doc, a).is_some() => {
                 out.aids.insert(a);
@@ -96,7 +95,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
                 out.boxes.insert(a);
             }
             Subject::Aid(_) => {}
-            // A drawn line stands for the wire it carries (design 072 §4.3).
+            // A drawn line stands for the wire it carries.
             Subject::Route(x) => match ecad_electrical::wires::routes::wire_of_route(doc, x) {
                 Some(w) => {
                     out.wires.insert(w);
@@ -108,7 +107,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
     out
 }
 
-/// The devices, cables and wires `selection` on `page` stands for, as hex IDs (brief 026: the
+/// The devices, cables and wires `selection` on `page` stands for, as hex IDs (the
 /// Renumber dialog's Sel scope).
 pub fn selected_objects(p: &Project, page: PageId, selection: &[Handle]) -> Vec<String> {
     let k = pick(p, page, selection);
@@ -121,7 +120,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     let mut v = PropsView::default();
     let Some(page) = page.filter(|pg| doc.pages().contains_key(pg)) else { return v };
     if selection.is_empty() {
-        // Project-level things are popouts of the Project panel (owner, fix round of 2026-11-08):
+        // Project-level things are popouts of the Project panel:
         // with nothing selected, Properties shows the page. Its Function and Location show the
         // project's defaults when the page has none, so the project is a dependency too.
         v.sections.push(page_section(doc, page));
@@ -130,7 +129,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         return v;
     }
     let k = pick(p, page, selection);
-    // Brief 030: a link line alone selects its link.
+    // A link line alone selects its link.
     if k.devices.is_empty()
         && k.aids.is_empty()
         && k.boxes.is_empty()
@@ -181,21 +180,21 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     if !k.devices.is_empty() {
         v.deps.extend(k.devices.iter().map(|c| ObjectRef::Device(*c)));
         v.deps.insert(ObjectRef::Page(page));
-        // Brief 025: the Coil and Contacts rows name places on the device's pages.
+        // The Coil and Contacts rows name places on the device's pages.
         for c in &k.devices {
             v.deps.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
         }
-        // Brief 052: codes come from the project's list, and an unset value's proposal from the
+        // Codes come from the project's list, and an unset value's proposal from the
         // selected symbol's page (its boxes and values) and the project's.
         v.deps.insert(ObjectRef::Project);
-        // Brief 045: a card's Rack row shows its rack's tag.
+        // A card's Rack row shows its rack's tag.
         v.deps.extend(k.devices.iter().filter_map(|c| ecad_electrical::plc::props_deps(doc, *c)));
         if let Some(r) = k.symbol.and_then(|s| doc.representations().get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
         v.sections.push(device_section(doc, p.kept_reports().map(|o| &o.plc), &k.devices, k.symbol));
     } else if !k.boxes.is_empty() {
-        // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
+        // An aid has no `ObjectRef`, so an aid op rebuilds the view
         // (`ecad_electrical::properties::view`). Devices inside and codes: its page and the list.
         v.deps.insert(ObjectRef::Project);
         for b in &k.boxes {
@@ -213,8 +212,8 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             }),
         }
     } else if !k.aids.is_empty() {
-        // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
-        // (`ecad_electrical::properties::view`); brief 049: the Other ends row names its partners'
+        // An aid has no `ObjectRef`, so an aid op rebuilds the view
+        // (`ecad_electrical::properties::view`): the Other ends row names its partners'
         // places, on their pages.
         for a in &k.aids {
             let partners = ecad_electrical::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();
@@ -230,7 +229,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // connection point added or removed, changes them.
         let ends = doc.wires().get(w).map(|c| c.ends.to_vec()).unwrap_or_default();
         v.deps.extend(ends.iter().filter_map(|t| doc.connection_points().get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
-        // Brief 022: the number, potential and Net block read the whole net: its conductors and
+        // The number, potential and Net block read the whole net: its conductors and
         // the devices (junctions and continuations included) at its connection points.
         let conn = doc.connectivity();
         if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {

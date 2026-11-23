@@ -1,4 +1,4 @@
-//! Lane 072 D, step c (owner rule, 2026-11-18): a core whose line has one end landed stays on the
+//! A core whose line has one end landed stays on the
 //! line and the checks say so; reading never works a core's place out, so a stored place the line
 //! no longer gives (a file made elsewhere) is reported, not changed.
 

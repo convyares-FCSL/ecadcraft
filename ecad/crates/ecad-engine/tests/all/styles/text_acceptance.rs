@@ -1,13 +1,12 @@
-//! Tester 031 (text styles, show and hide, placement; v0.15 lane T): acceptance checks from
-//! outside, written from brief 031 and design 031 (§13 T1–T16) only, before the implementation
-//! existed. They drive JSON commands (`textstyle`, `showtext`, `movetext`, `pagetexts`, `defaults`,
-//! and the commands 030 already had), the interactive tools by their inputs, and the page drawing.
+//! Acceptance checks for text styles, show and hide, and placement, from
+//! outside. They drive JSON commands (`textstyle`, `showtext`, `movetext`, `pagetexts`, `defaults`,
+//! and the strip commands), the interactive tools by their inputs, and the page drawing.
 //!
-//! un-ignored once the worker's branch is merged. A test that needs a stored value no command may
+//! A test that needs a stored value no command may
 //! write (a hostile `text.*` value, `text.run.gap`) commits the `SetProperty` straight to the
 //! ledger and then re-projects the page by switching pages, as a person would see it.
 //!
-//! Reading `pagetexts {page}` rows (design §10.4): `{representation, component, kind, terminal?,
+//! Reading `pagetexts {page}` rows: `{representation, component, kind, terminal?,
 //! value, at, justify, height, weight, shown, moved, overlaps, box: [[x,y],[x,y]]}`.
 
 use std::collections::{BTreeMap, BTreeSet};

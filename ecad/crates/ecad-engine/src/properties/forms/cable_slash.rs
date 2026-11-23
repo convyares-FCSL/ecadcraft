@@ -1,4 +1,4 @@
-//! Cable Slash (design 004 §5).
+//! Cable Slash.
 
 use super::{R, Safe, commit, hex_of, not_a_point, other, paper_guard, safely};
 use crate::interact::{
@@ -21,14 +21,14 @@ pub(crate) fn cableslash(s: &Session) -> R<Box<dyn Interactive>> {
 #[derive(Default)]
 struct CableSlash {
     first: Option<Pt>,
-    /// Brief 059 (design 059 §5.6): the cable picked (`Cable` keyword, or the options' picker);
-    /// `None` is New cable (Q7).
+    /// The cable picked (`Cable` keyword, or the options' picker);
+    /// `None` is New cable.
     cable: Option<CableId>,
     /// Asking `Cable tag or [New] <New>`.
     asking: bool,
 }
 
-/// Brief 059: the `Cable` keyword's prompt.
+/// The `Cable` keyword's prompt.
 pub(crate) const CABLE_PROMPT: &str = "Cable tag or [New] <New>";
 
 /// Rings drawn by the crossing preview at most (the text still counts every crossing).
@@ -65,7 +65,7 @@ impl CableSlash {
             } else if !blocked.is_empty() {
                 (format!("-> refused: {} already in a cable", slash::wires(blocked.len())), true)
             } else if n == 0 {
-                // Refused too (design 004 §5.2: red whenever the slash would be refused).
+                // Refused too (red whenever the slash would be refused).
                 ("-> no wires".to_string(), true)
             } else if others > 0 {
                 let objects = if others == 1 { "1 other object".to_string() } else { format!("{others} other objects") };
@@ -73,7 +73,7 @@ impl CableSlash {
             } else {
                 (format!("-> {}", slash::wires(n)), false)
             };
-            // Brief 059 (design 059 §5.6): onto a cable not drawn, the cores the wires get, in
+            // Onto a cable not drawn, the cores the wires get, in
             // order, so the order is seen before the commit; more wires than free cores is refused.
             let (text, refused) = match cable {
                 Some(k) if !refused && doc.cables().contains_key(&k) && !ecad_electrical::cables::is_drawn(doc, k) => {
@@ -138,8 +138,8 @@ impl CableSlash {
         Ok(Step::Done)
     }
 
-    /// Brief 059: the cable `text` names for the picker: a tag (or ID) of a cable that is not
-    /// drawn yet, or drawn and not slashed on this page (032).
+    /// The cable `text` names for the picker: a tag (or ID) of a cable that is not
+    /// drawn yet, or drawn and not slashed on this page.
     fn pick(s: &Session, text: &str) -> R<CableId> {
         read(s, |p, page| {
             let doc = p.ledger.document();
@@ -167,7 +167,7 @@ impl CableSlash {
     }
 
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        // Brief 059 (design 059 §5.6): `Cable` picks a cable by tag, `New` (or Enter) a new one.
+        // `Cable` picks a cable by tag, `New` (or Enter) a new one.
         if self.asking {
             return match i {
                 Input::Keyword(k) if k.eq_ignore_ascii_case("New") => {
@@ -248,7 +248,7 @@ impl Interactive for CableSlash {
             _ => Vec::new(),
         }
     }
-    /// The crossing preview (design 004 §5.2): a green ring on each wire that will join, a red one
+    /// The crossing preview: a green ring on each wire that will join, a red one
     /// on each wire that blocks the slash, and one line of text beside the cursor.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {
         let (Some(a), Some(px)) = (self.first, pixel(s)) else { return Vec::new() };

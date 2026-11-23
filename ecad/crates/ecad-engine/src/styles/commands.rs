@@ -1,9 +1,9 @@
-//! Brief 031's session commands (design 031 §10): `showtext` (Q3) and `hiddentext`. Writes commit
+//! The session commands `showtext` and `hiddentext`. Writes commit
 //! through [`crate::project::Project::apply_edit`] as one transaction; `textstyle`, `pagetexts`,
 //! `movetext` and `defaults` are generic commands in `ecad_electrical::styles::commands`, run by
 //! [`crate::generic`].
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::styles::commands::text`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -37,9 +37,9 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-// ---------------------------------------------------------------- showtext (§10.2)
+// ---------------------------------------------------------------- showtext
 
-/// `showtext {kind, show, representation? | component? | conductor? | page?}` (design 031 §10.2):
+/// `showtext {kind, show, representation? | component? | conductor? | page?}`:
 /// whether a kind of text is shown, at one level.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -90,7 +90,7 @@ impl Command for ShowtextParams {
     }
 }
 
-/// `hiddentext {on?}`: Show Hidden Text on, off, or toggled (design 031 §5.7). Display only.
+/// `hiddentext {on?}`: Show Hidden Text on, off, or toggled. Display only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HiddentextParams {

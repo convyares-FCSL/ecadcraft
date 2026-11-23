@@ -1,4 +1,4 @@
-//! Brief 031 Q1 (design 031 §2-§4, §13 T1-T4, T12): the drawn sizes and styles of derived
+//! Text styles: the drawn sizes and styles of derived
 //! texts, the styles installed in every page drawing, and `textstyle` redrawing the open page.
 
 use crate::common::{H, id};

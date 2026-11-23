@@ -1,6 +1,6 @@
-//! Tester 026 (numbering): probes that try to break tag uniqueness, fixed tags, the high-water
-//! mark (FP4), provisional tags and Finalise, Issue Revision, and save / reopen of old projects.
-//! A probe that found a bug is `#[ignore = "tester 026: <bug>"]` and fails until it is fixed.
+//! Probes that try to break tag uniqueness, fixed tags, the high-water
+//! mark, provisional tags and Finalise, Issue Revision, and save / reopen of old projects.
+//! A probe that found a bug is marked `#[ignore]` with the bug named, and fails until it is fixed.
 
 use crate::common;
 

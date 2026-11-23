@@ -1,4 +1,4 @@
-//! Lane 072 D, part c2 (design 072 §4.5): `cablenew`, `cableedit` and `setprop cores` record one
+//! `cablenew`, `cableedit` and `setprop cores` record one
 //! `ModifyCable` (or the `CreateCable`) holding every core the cable offers, unplaced until a line
 //! carries it; a slash places the stored core, never a second one of its label. The shield is the
 //! cable's field, not a property.

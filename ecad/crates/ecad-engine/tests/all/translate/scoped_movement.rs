@@ -10,9 +10,9 @@
 //! The harness runs its full project checks after each command.
 //!
 //! After each edit the probe also checks three things:
-//! - Every end attached on the other page is still attached: the M3 gate never detaches it.
+//! - Every end attached on the other page is still attached: the reconnection gate never detaches it.
 //! - Each drawn reference text reads `page-column-row` (or `/page.column`), or `/?` for an orphan.
-//! - The 010 note is echoed when a stub end leaving toward a reference is dropped on a terminal.
+//! - The reference note is echoed when a stub end leaving toward a reference is dropped on a connection point.
 
 use crate::common;
 

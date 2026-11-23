@@ -1,13 +1,13 @@
-//! Brief 010 (cable references across pages), written from the brief and design 010.
+//! Cable references across pages.
 //!
-//! Fixture R (design §11): page 1 renamed `Supply` holds K1 with connection points at (0,0), (0,5),
+//! Fixture R: page 1 renamed `Supply` holds K1 with connection points at (0,0), (0,5),
 //! (0,10), wires W0, W5, W10 from there to x = 60, and cable -C01 slashed across them; page 2
 //! `Field` holds K2 with connection points at (100,0), (100,5), (100,10).
 //!
 //! Every new or changed command (`cablereference`, `cablecontinue`, `cablegoto`, `cablereferences`,
 //! `renamepage`, `movepage`) is driven through its **JSON form** (`Session::execute`) in a table,
 //! checking the result and the transaction, or the absence of one, so the rows can move to the MCP
-//! harness of brief 011 unchanged.
+//! harness unchanged.
 
 use crate::common;
 

@@ -7,7 +7,6 @@ use crate::styles::draw::DrawApply as _;
 use {ecad_electrical::locations::LAYER, ecad_electrical::locations::LINETYPE, ecad_electrical::locations::boxes_on};
 
 /// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `draw`
-/// (design 031 §3.2).
 pub fn label_entity(
     draw: &crate::styles::draw::DrawStyles, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
@@ -19,7 +18,7 @@ pub fn label_entity(
     e
 }
 
-/// Brief 050a (design 050 §4.2): a box label in its box's label style when that is not the
+/// A box label in its box's label style when that is not the
 /// location text kind's own style: the style's height, weight and colour.
 pub(crate) fn styled_label_entity(
     doc: &Document, draw: &crate::styles::draw::DrawStyles, rep: RepresentationId, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
@@ -36,7 +35,7 @@ pub(crate) fn styled_label_entity(
     if label == ecad_electrical::styles::text_style::style_of(doc, TextKind::LocationLabel, ecad_electrical::defaults::Scope::project()) {
         return e;
     }
-    // Brief 066d: the label style as a whole (height, weight, font, colour), never a literal
+    // The label style as a whole (height, weight, font, colour), never a literal
     // style name; a font of its own is installed by the page (`install_family`).
     let own = ecad_electrical::styles::text_style::own_style_of(doc, &label);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
@@ -46,7 +45,7 @@ pub(crate) fn styled_label_entity(
     e
 }
 
-/// The font family a box's label style draws in when it is not the project font (brief 066d), for
+/// The font family a box's label style draws in when it is not the project font, for
 /// the page to install (`install_family`).
 pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations().get(&rep).and_then(|r| match r.subject {
@@ -57,7 +56,7 @@ pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<Stri
     ecad_electrical::styles::text_style::own_style_of(doc, &label).family
 }
 
-/// Brief 050a (design 050 §4.2): draw the outlines of `page`'s boxes in their location style
+/// Draw the outlines of `page`'s boxes in their location style
 /// (line type, weight and colour) instead of the stored item style. `item_handle` finds a box
 /// item's entity among `ents`.
 pub(crate) fn style_boxes(
@@ -82,7 +81,7 @@ pub(crate) fn style_boxes(
 /// Load [`LINETYPE`] into `d` from CADCraft's standard linetypes when it is missing, so box
 /// outlines draw and plot dashed.
 pub(crate) fn add_linetype(d: &mut cadcraft_engine::doc::Drawing) {
-    // Brief 050a: a location style may draw continuous or dash-dot as well.
+    // A location style may draw continuous or dash-dot as well.
     for name in [LINETYPE, "DASHDOT"] {
         if d.linetype(name).is_some() {
             continue;

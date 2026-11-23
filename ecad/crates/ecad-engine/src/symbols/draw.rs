@@ -1,4 +1,4 @@
-//! The engine side of placement proposals (design 052 §5.3; design 065 §3, cut 6): planning one
+//! The engine side of placement proposals: planning one
 //! for a placement in a live project, and keeping its conflicts waiting there afterwards. The
 //! rules are [`ecad_electrical::symbols::proposals`].
 
@@ -8,7 +8,7 @@ use serde_json::Value;
 use ecad_electrical::locations::designations::{Aspect, Pending};
 use ecad_electrical::symbols::proposals::*;
 
-/// Plan a placement's proposal (design 052 §5.3) for the symbol of device `c` at `at` on `page`,
+/// Plan a placement's proposal for the symbol of device `c` at `at` on `page`,
 /// with the `function` and `location` modes the place gave (function first). `half`: the side a
 /// connector half or pin draws (its location conflict can then be answered **Half**; JSON
 /// `location: "half"` answers it). `base` are the placement's own ops (creating the device), which

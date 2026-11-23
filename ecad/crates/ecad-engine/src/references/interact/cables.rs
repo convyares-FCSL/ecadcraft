@@ -1,6 +1,6 @@
-//! The interactive forms of the cable reference commands (brief 010, design 010 §4): Cable
+//! The interactive forms of the cable reference commands: Cable
 //! Reference, Continue Cable and Go to Reference. Like every ECAD form they only collect and
-//! resolve values; each commit runs the command's JSON form (design 008 §2 rule 3), so the
+//! resolve values; each commit runs the command's JSON form, so the
 //! interactive and JSON forms record identical transactions.
 
 use std::collections::BTreeSet;
@@ -75,7 +75,7 @@ fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
     }
 }
 
-// ---------------------------------------------------------------- Cable Reference (§4.1)
+// ---------------------------------------------------------------- Cable Reference
 
 /// `cablereference`: pick a cable (or take the selected one), then click where it leaves this page.
 pub(crate) fn cablereference(s: &Session) -> R<Box<dyn Interactive>> {
@@ -184,7 +184,7 @@ impl Interactive for CableRef {
     }
 }
 
-// ---------------------------------------------------------------- Continue Cable (§4.2)
+// ---------------------------------------------------------------- Continue Cable
 
 /// `cablecontinue`: name the cable (Enter takes the one waiting most recently), click where it
 /// arrives, then which way its wires run.
@@ -201,7 +201,7 @@ struct Continue {
     at: Option<Pt>,
 }
 
-/// The cable of the orphan reference linked most recently (design 010 §4.2 step 1, Q12): the
+/// The cable of the orphan reference linked most recently: the
 /// latest transaction in the history that linked a reference which is an orphan now.
 fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
     let doc = p.ledger.document();
@@ -226,7 +226,7 @@ fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
 /// Most orphan references `List` shows.
 const MAX_LISTED: usize = 20;
 
-/// The cable typed at step 1 (design 010 §4.2 1b): a tag (case-insensitive, exact), else a full ID
+/// The cable typed at step 1: a tag (case-insensitive, exact), else a full ID
 /// or a leading hex prefix of at least 8 digits naming one cable.
 fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     let t = typed.trim();
@@ -244,7 +244,7 @@ fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     }
 }
 
-/// The checks of step 1 (R2, R4 to R6) for `cable` on `page`, without any geometry.
+/// The checks of step 1 for `cable` on `page`, without any geometry.
 fn check_continue(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
     ecad_electrical::references::cables::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0)
         .map(|_| ())
@@ -422,7 +422,7 @@ impl Interactive for Continue {
     }
 }
 
-// ---------------------------------------------------------------- Go to Reference (§4.5)
+// ---------------------------------------------------------------- Go to Reference
 
 /// `cablegoto`: jump at once for a selected reference, else click one.
 pub(crate) fn cablegoto(s: &Session) -> R<Box<dyn Interactive>> {
@@ -432,7 +432,7 @@ pub(crate) fn cablegoto(s: &Session) -> R<Box<dyn Interactive>> {
 
 struct Goto;
 
-/// What Go to Reference found (design 025 §5.3 generalised it beyond cables).
+/// What Go to Reference found (it goes beyond cables).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Found {
     /// A cable reference end, and whether it is an orphan.
@@ -447,7 +447,7 @@ const ORPHAN: &str = "This reference has no other end (orphan); continue the cab
 
 impl Goto {
     /// The reference under a handle: a cable reference end and whether it has another end, else
-    /// a device reference source (brief 025).
+    /// a device reference source.
     fn named(s: &Session, h: Handle) -> Result<Found, String> {
         read(s, |p, page| {
             let view = p.pages.get(&page).ok_or(NOT_A_REFERENCE)?;

@@ -13,8 +13,8 @@ use {
     ecad_electrical::devices::texts::PageText, ecad_electrical::devices::texts::TextOf, ecad_electrical::devices::texts::kind_of,
 };
 
-/// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
-/// (brief 045, review of #84, 3); measured with CADCraft's fonts
+/// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one;
+/// measured with CADCraft's fonts
 /// ([`ecad_electrical::devices::texts::all_texts_measured`]).
 pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&ecad_electrical::plc::kept::Plc>) -> Vec<PageText> {
     ecad_electrical::devices::texts::all_texts_measured(doc, page, plc, &EngineMetrics)
@@ -26,7 +26,7 @@ pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
     ecad_electrical::devices::texts::texts_on_page_measured(doc, page, &EngineMetrics)
 }
 
-/// The lens of device `c` hovered through its representation `here` (design 018 §6.4), measured
+/// The lens of device `c` hovered through its representation `here`, measured
 /// with CADCraft's fonts ([`ecad_electrical::devices::hover::hover_lines_measured`]).
 pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
     ecad_electrical::devices::hover::hover_lines_measured(doc, c, here, &EngineMetrics)
@@ -34,15 +34,15 @@ pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<S
 
 /// Every derived text on `page`, shown or hidden: for each symbol representation of a component,
 /// its device's tag block (the tag, then its description and part number when they have values)
-/// and its terminals' labels; a continuation's name and other places. Visibility follows design
-/// 031 §5.2 (symbol, device, page, project, built-in) and a tag set to once per run is shown on
-/// the first symbol of its run only (§5.3). Hostile values (non-finite placements) give nothing
+/// and its terminals' labels; a continuation's name and other places. Visibility follows the settings, most
+/// specific first (symbol, device, page, project, built-in), and a tag set to once per run is shown on
+/// the first symbol of its run only. Hostile values (non-finite placements) give nothing
 /// for that representation.
 pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
     all_texts_on_page_with(doc, page, None)
 }
 
-/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `draw` (design 031 §3).
+/// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `draw`.
 pub fn text_entity(draw: &crate::styles::draw::DrawStyles, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(
         &t.value,
@@ -54,11 +54,11 @@ pub fn text_entity(draw: &crate::styles::draw::DrawStyles, t: &DerivedText, hand
         TAG_LAYER,
     );
     match &t.own {
-        // Brief 050a: the device's own text style (its height is already the text's).
+        // The device's own text style (its height is already the text's).
         Some(s) => draw.apply_own(&mut e, kind_of(t.of), s),
         None => draw.apply(&mut e, kind_of(t.of)),
     }
-    // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
+    // A channel description reads upwards under its cell.
     if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
         x.rotation = std::f64::consts::FRAC_PI_2;
     }

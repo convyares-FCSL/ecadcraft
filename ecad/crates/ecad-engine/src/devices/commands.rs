@@ -1,9 +1,9 @@
-//! The JSON forms of brief 018's commands (design 018 §8): `place` (every form), `symbols` and
+//! The JSON forms of the commands `place` (every form), `symbols` and
 //! `devices` (read only), `deviceprops`, `devicedelete`, `ecaddelete` and `tagsettings`; and the
 //! experiments' `convertcomponent` and `addconnectionpoint`.
 //!
-//! The interactive forms ([`crate::interact`]) commit through exactly these. `place` is a thin shim
-//! (brief 070): [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
+//! The interactive forms ([`crate::interact`]) commit through exactly these. `place` is a thin shim:
+//! [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
 //! which device a symbol joins, each form's planner builds the ops, and the shim commits and
 //! answers in JSON.
 
@@ -45,11 +45,11 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<AddConnectionPointParams>("addconnectionpoint"),
 ];
 
-/// `place {at, rotation?, mirror?, symbol?, definition?, device?, tag?, …}` (design 018 §8): a
-/// starter symbol as a new device or another symbol of one; a junction or continuation (brief
-/// 022), a terminal level (036), a connector half or pin (044), a PLC channel or card (045), a
-/// project symbol (048); without `symbol`, `device` and `tag`, the experiment's coil or
-/// `definition`. The function and location proposals (brief 052d) follow `function` and
+/// `place {at, rotation?, mirror?, symbol?, definition?, device?, tag?, …}`: a
+/// starter symbol as a new device or another symbol of one; a junction or continuation,
+/// a terminal level, a connector half or pin, a PLC channel or card, a
+/// project symbol; without `symbol`, `device` and `tag`, the experiment's coil or
+/// `definition`. The function and location proposals follow `function` and
 /// `location`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -105,7 +105,7 @@ pub(crate) struct PlaceParams {
 }
 
 impl PlaceParams {
-    /// The proposal modes `function` and `location` name (brief 052d).
+    /// The proposal modes `function` and `location` name.
     ///
     /// # Errors
     /// An empty word.
@@ -124,7 +124,7 @@ impl PlaceParams {
 
 impl Command for PlaceParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        // Brief 018: a starter symbol, as a new device or another symbol of one.
+        // A starter symbol, as a new device or another symbol of one.
         if self.symbol.is_some() || self.device.is_some() || self.tag.is_some() {
             return place_symbol(s, self);
         }
@@ -132,13 +132,13 @@ impl Command for PlaceParams {
     }
 }
 
-/// `place {at, rotation?, mirror?, symbol, device?, tag?}` (design 018 §8).
+/// `place {at, rotation?, mirror?, symbol, device?, tag?}`.
 fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result<Value> {
     if params.definition.is_some() && params.symbol.is_some() {
         return Err(err("`symbol` and `definition` are mutually exclusive"));
     }
     let key = params.symbol.clone().ok_or_else(|| err("`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"))?;
-    // Brief 048: a project symbol's key places its newest version.
+    // A project symbol's key places its newest version.
     let starter = match ecad_electrical::devices::json::starter(&key) {
         Ok(st) => st,
         Err(e) => return crate::symbols::commands::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
@@ -149,19 +149,19 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     }
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);
-    // Brief 022: a junction or continuation is a tagless component of its own.
+    // A junction or continuation is a tagless component of its own.
     if starter.kind == ecad_electrical::symbols::Kind::Tagless {
         return crate::wires::commands::place_tagless(s, &params, starter, at, degrees, mirror);
     }
-    // Brief 036: a level, a whole terminal, a disconnect or fuse terminal joins a strip as a position.
+    // A level, a whole terminal, a disconnect or fuse terminal joins a strip as a position.
     if ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(starter.key) {
         return crate::terminal_strips::commands::place_level(s, &params, starter, at, degrees, mirror);
     }
-    // Brief 045 (design 045 §4.4): a channel symbol joins a card as a channel.
+    // A channel symbol joins a card as a channel.
     if ecad_electrical::plc::channels::cell_type(starter).is_some() {
         return crate::plc::commands::channels::place_channel(s, &params, starter, at, degrees, mirror);
     }
-    // Brief 044: a connector half or pin makes or joins a connector (design 044 §3.3).
+    // A connector half or pin makes or joins a connector.
     if let ecad_electrical::symbols::Kind::ConnectorHalf { .. } = starter.kind {
         return crate::connectors::commands::place_half(s, &params, starter, at, degrees, mirror);
     }
@@ -174,14 +174,14 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
         let target = rules::device_target(doc, device, tag.as_deref())?;
-        // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
+        // A terminal clicked on a wire lands on it, splitting it.
         let landing = (starter.kind == ecad_electrical::symbols::Kind::TerminalBlock)
             .then(|| crate::terminal_strips::commands::landing_point(doc, page, at))
             .flatten();
         let origin = landing.map_or(at, |on| on.at);
         let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = style(p);
-        // Brief 025 (design 025 §4.3): a joined contact takes its part's next free offered labels.
+        // A joined contact takes its part's next free offered labels.
         let offer_slot = match (&target, starter.kind) {
             (ecad_electrical::devices::placing::Target::Join(c), ecad_electrical::symbols::Kind::Contact { make }) => {
                 ecad_electrical::references::devices::table::offer_labels(doc, *c, make, &ecad_electrical::devices::placing::labels_of(doc, *c))
@@ -199,7 +199,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             }
             _ => None,
         };
-        // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
+        // A new card goes in a rack's slot when the project has a rack.
         let card_slot = match ecad_electrical::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
                 let last = p.last_placed.map(|l| l.device);
@@ -211,7 +211,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             }
             _ => None,
         };
-        // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
+        // The context here proposes a function and a location; an
         // unset device takes it in this transaction, a device with another value is asked about.
         let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
@@ -314,7 +314,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
 
 // ---------------------------------------------------------------- drawn components (experiments)
 
-/// `convertcomponent {handles?}` (experiment 004): plain geometry (default: the selection) becomes
+/// `convertcomponent {handles?}`: plain geometry (default: the selection) becomes
 /// one new component, drawn.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -339,7 +339,7 @@ impl Command for ConvertcomponentParams {
             let map = &p.pages.get(&page).ok_or(CmdError::refused(PAGE_VIEW_NOT_FOUND))?.map;
             let mut items = Vec::new();
             // Computed parts of a traditional-view cable are left out of a selection with other
-            // objects (brief 009 review S2); on their own they are refused below.
+            // objects; on their own they are refused below.
             let mut drawn = None;
             for h in hs {
                 match map.get(h) {
@@ -363,7 +363,7 @@ impl Command for ConvertcomponentParams {
     }
 }
 
-/// `addconnectionpoint {handle, at, label?}` (experiment 008): a connection point on a drawn component.
+/// `addconnectionpoint {handle, at, label?}`: a connection point on a drawn component.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AddConnectionPointParams {

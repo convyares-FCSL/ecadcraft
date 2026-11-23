@@ -1,11 +1,11 @@
-//! The sheet frame and title block of a page (brief 019, design 019 §3, §4): derived graphics on
+//! The sheet frame and title block of a page: derived graphics on
 //! the reserved, locked layer [`LAYER`], drawn by the projection and never stored.
 //!
 //! # Semantics
 //! - [`FrameInput::of`] reads everything a page's frame shows: its sheet, the project and page
 //!   properties, the newest issued revisions, the page's number, the next page's number and the
 //!   page count. [`parts`] turns it into lines and texts.
-//! - **Update map** (design 019 §9, `ecad/CLAUDE.md` "Derived views"): [`touches`] says which ops
+//! - **Update map** (`ecad/CLAUDE.md` "Derived views"): [`touches`] says which ops
 //!   can change the frame of the page shown; the project keeps the last parts and recomputes them
 //!   only after such an op, on open and when another page becomes active. Every other op leaves
 //!   them as they are.
@@ -31,8 +31,8 @@ pub fn layer() -> cadcraft_engine::doc::Layer {
     l
 }
 
-/// Take the sheet frame's entities out of the active document's selection (design 019 §3.2:
-/// selecting the frame is refused; CADCraft selects objects on locked layers). Returns `true`
+/// Take the sheet frame's entities out of the active document's selection
+/// (selecting the frame is refused; CADCraft selects objects on locked layers). Returns `true`
 /// when the selection held nothing else, so the caller can say why it is empty. Cheap: reads the
 /// selection only.
 pub fn drop_from_selection(s: &mut cadcraft_engine::Session) -> bool {
@@ -58,7 +58,7 @@ pub struct Part {
     pub weight: Option<u16>,
     /// `None`: ByLayer (ACI 7).
     pub aci: Option<u8>,
-    /// Its layer: [`LAYER`], or a generated page's content layer (brief 024).
+    /// Its layer: [`LAYER`], or a generated page's content layer.
     pub layer: &'static str,
 }
 
@@ -76,12 +76,12 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
     }
 }
 
-/// Brief 050a: the frame style's line colour of `page` as drawn, or `None` for ink.
+/// The frame style's line colour of `page` as drawn, or `None` for ink.
 pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
     crate::cables::draw::colour_rgb(&ecad_electrical::styles::frame::frame_draw(doc, page).colour, crate::cables::draw::projection_sheet())
 }
 
-/// [`entity`] in the frame style's line colour `rgb` (brief 050a): the frame's own lines take it;
+/// [`entity`] in the frame style's line colour `rgb`: the frame's own lines take it;
 /// texts and parts with a colour of their own keep theirs.
 pub(crate) fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_engine::doc::color::Rgb>) -> Entity {
     let mut e = entity(part, handle);
@@ -95,8 +95,8 @@ pub(crate) fn styled_entity(part: &Part, handle: Handle, rgb: Option<cadcraft_en
     e
 }
 
-/// How a page's frame and title block are drawn from what they show (owner note of 2026-11-08:
-/// users will define their own borders and title blocks). Brief 055: the frame style's block
+/// How a page's frame and title block are drawn from what they show: users
+/// will define their own borders and title blocks. The frame style's block
 /// ([`frames::FrameInput::block`]) is the user-defined part; [`BuiltIn`] draws the border and that block.
 pub(crate) trait FrameLayout: Send + Sync {
     /// Every line and text of the frame `input` describes, in model coordinates (the paper's
@@ -104,7 +104,7 @@ pub(crate) trait FrameLayout: Send + Sync {
     fn parts(&self, input: &frames::FrameInput) -> Vec<Part>;
 }
 
-/// The frame drawn from its style: border, zones, centre marks and the block (design 055 §3).
+/// The frame drawn from its style: border, zones, centre marks and the block.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct BuiltIn;
 

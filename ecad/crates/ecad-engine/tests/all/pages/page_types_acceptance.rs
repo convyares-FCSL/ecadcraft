@@ -1,22 +1,19 @@
-//! Tester 054 (page types, Pages and sheets, generated front pages): acceptance checks from
-//! outside, written from brief 054 and design 054 (§2–§4, §6–§10, §12.1 AC1–AC12 and AC15, the
-//! owner's answers Q1 and Q13 and the overseer's FP1–FP7 rulings) only, before the implementation
-//! existed.
+//! Acceptance checks for page types, from outside.
 //!
-//! The owner's answers this file holds the build to: pages start at 1; **+** (`newpage {after}`)
+//! The rules this file holds the build to: pages start at 1; **+** (`newpage {after}`)
 //! inserts right after the current page with the next available number; a folder can carry a start
 //! number and **Renumber pages** renumbers each folder from its start; front, body and back never
 //! force placement.
 //!
-//! The checks drive the JSON commands the design names (`styles`, `setstyle`, `setdefault`,
+//! The checks drive the JSON commands (`styles`, `setstyle`, `setdefault`,
 //! `newpage`, `folderprops`, `renumberpages`, `deletepage`, `projectprops`, `checks`) and read the
 //! document, the book and the drawn page, leaning on as little of the new Rust API as possible:
-//! only `ecad_model::document::sheet::sheet_of` (FP3) and the existing book and frame accessors. Result field
-//! names the design does not give are read tolerantly.
+//! only `ecad_model::document::sheet::sheet_of` and the existing book and frame accessors. Result field
+//! names that are not fixed are read tolerantly.
 //!
 //! Test names start with the acceptance check (`ac1`…`ac15`) or the focus item (`num` numbering,
-//! `fp3` sheet resolution, `map` update maps). 054b's cover checks (`ac8`–`ac12`) are in this file
-//! too; the design gives 054b to the reviewer, the overseer asked the tester to cover it.
+//! `fp3` sheet resolution, `map` update maps). The cover checks (`ac8`–`ac12`) are in this file
+//! too.
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_model::document::book::Book;

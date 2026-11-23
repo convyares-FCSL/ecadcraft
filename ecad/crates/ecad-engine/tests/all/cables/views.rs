@@ -1,7 +1,7 @@
-//! Brief 005 (traditional / fan cable view), written from the brief and design 005 (§2 rules, §3
-//! switching, §4 what each view shows, §5 fan geometry, §6 editing in fan view, §7 remembering).
+//! The traditional and fan cable views: the rules, switching, what each view shows, fan geometry, editing in
+//! fan view and remembering the choice.
 //!
-//! Fixture G (design §9): two drawn components with connection points at x = 0 and x = 60, y = 0, 5, 10,
+//! Fixture G: two drawn components with connection points at x = 0 and x = 60, y = 0, 5, 10,
 //! three attached wires W0, W5, W10 between them, and the slash C1 from (28,-3) to (32,18).
 
 use crate::common;

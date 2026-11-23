@@ -13,9 +13,8 @@ use {crate::styles::draw::DrawStyles, ecad_electrical::styles::text_style::TextK
 
 /// The layer the screen-only outlines are drawn on (not printed).
 const OVERLAY: &str = crate::convert::MARKER_LAYER;
-/// Board 1.16's lines as fractions of the `Cover` text style's height (brief 066d, overseer ruling
-/// 5): block titles, body text, column heads, the customer line. The factors are `[layout]` data in
-/// `pages.toml`.
+/// The cover's lines as fractions of the `Cover` text style's height: block titles, body text, column
+/// heads, the customer line. The factors are `[layout]` data in `pages.toml`.
 fn cover_factor(key: &str) -> f64 {
     ecad_electrical::defaults::data::layout(key)
 }

@@ -1,4 +1,4 @@
-//! Brief 045's fix round (review of #84 and tester 045a): merging a rack keeps FP1 condition 2,
+//! Fixes to PLC racks: merging a rack keeps the rack's conditions,
 //! the I/O list follows target changes that are not a tag or a wire property, kept-model paths
 //! walk no project, and `plcslot {card}` takes the next free slot.
 

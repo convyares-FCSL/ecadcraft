@@ -1,4 +1,4 @@
-//! The engine side of the Devices tab (design 065 §3): the kept list read from a live project, and
+//! The engine side of the Devices tab: the kept list read from a live project, and
 //! "Go to" a symbol selects its drawn handles.
 
 use cadcraft_engine::doc::Handle;

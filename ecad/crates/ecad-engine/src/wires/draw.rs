@@ -10,13 +10,13 @@ use crate::styles::draw::{DrawApply as _, EngineMetrics};
 use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::labels::WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
-/// members' routes and their labels are not shown, brief 005 and owner 2026-11-09), measured with
+/// members' routes and their labels are not shown), measured with
 /// CADCraft's fonts ([`ecad_electrical::wires::labels::labels_measured`]).
 pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
     ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &EngineMetrics)
 }
 
-/// Brief 040: draw the page's wires and cores in their colour codes (spec §4): the route entity
+/// Draw the page's wires and cores in their colour codes: the route entity
 /// takes the first colour, and a two-colour code adds the second colour's 2 mm on / 2 mm off
 /// dashes over it on [`DASH_LAYER`], mapped to the conductor like its label (picking a dash
 /// picks the wire, [`crate::cables::draw::pick_routes`]). Colours are those of the sheet the page is
@@ -57,7 +57,7 @@ pub(crate) fn colour_routes(
     ents.extend(dashes);
 }
 
-/// Brief 050b (design 050 §5.5): draw `page`'s wire routes in their category's line type and
+/// Draw `page`'s wire routes in their category's line type and
 /// weight where these differ from the built-in (continuous, 0.25 mm), on screen and in print (a
 /// mono print keeps them: they are not colour). `item_handle` finds a route item's entity.
 pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], item_handle: impl Fn(ItemId) -> Option<Handle>) {
@@ -68,7 +68,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
         if r.form != Form::Drawn {
             continue;
         }
-        // A line looks as the wire it stands for (design 072 §4.3).
+        // A line looks as the wire it stands for.
         let Some(c) = ecad_electrical::wires::routes::wire_of_route(doc, x) else { continue };
         let draw = draws.draw(doc, c);
         let weight = (draw.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
@@ -109,7 +109,7 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
 /// A label as an entity on [`LABEL_LAYER`].
 ///
 /// Its style (the wire-label kind's font, weight, and bold lineweight in the stroke font) comes
-/// from lane T's resolved `draw` of the page ([`crate::styles::draw::DrawStyles::apply`]).
+/// from the page's resolved `draw` of the page ([`crate::styles::draw::DrawStyles::apply`]).
 pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handle: Handle) -> Entity {
     let p = Vec3::new(l.at.x, l.at.y, 0.0);
     let color = if l.error {
@@ -139,16 +139,16 @@ pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handl
         Some(o) => draw.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
         None => draw.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel),
     }
-    // Brief 050a: an error or provisional label keeps its own colour over the style's.
+    // An error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {
         e.common.color = color;
     }
     e
 }
 
-/// The quiet wire ends on `page` (cable reference ends, briefs 009 and 010): the ends a new wire
+/// The quiet wire ends on `page` (cable reference ends): the ends a new wire
 /// never joins and that show no loose-end square. Derived from the document and the cables shown
-/// as fans (`fan`), never from what is on screen (review of #65, finding 5). Only a page with a
+/// as fans (`fan`), never from what is on screen. Only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub fn quiet_ends_of(doc: &Document, page: PageId, fan: &std::collections::BTreeSet<ecad_model::CableId>, tol: f64) -> Vec<Pt> {
     if ecad_electrical::references::cables::markers_on_page(doc, page).is_empty() {

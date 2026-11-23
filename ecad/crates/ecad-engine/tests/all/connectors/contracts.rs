@@ -1,6 +1,5 @@
-//! Brief 044 (connector devices): the worker's in-process checks of design 044 §12 (rows 1–10,
-//! 12, 13), the registry, the F1 guard and the versioned starters. The tester's acceptance tests
-//! are separate.
+//! In-process checks of connectors: the registry, the guard and the versioned starters. The acceptance
+//! tests are separate.
 
 use ecad_electrical::connectors;
 use ecad_electrical::symbols::{self, Side};

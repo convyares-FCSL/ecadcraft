@@ -1,11 +1,10 @@
-//! Tester 033 (print and project, lane P): acceptance checks from outside, written from brief 033
-//! and design 033 §15 (AC1–AC15) only, before the implementation existed. They drive JSON
-//! commands and the public print, frame, generated-page and xref functions that 030 already had.
-//! that run now guard what 033 must not change (pixels of a printed page, old projects).
+//! Acceptance checks for printing, from outside. They drive JSON
+//! commands and the public print, frame, generated-page and xref functions. The checks
+//! guard what printing must not change (pixels of a printed page, old projects).
 //!
 //! Coordinates are paper coordinates on A3 (checked on the build): the title block runs from
 //! y 10 to its top line at y 50, the frame from x 10 to 410 and up to y 280, so the free area of
-//! design §4.1 starts at y 52.
+//! the sheet starts at y 52.
 
 use std::collections::BTreeSet;
 

@@ -1,13 +1,12 @@
-//! Tester 057 (brief 057, design 057 §11 checks 1–18; written from the brief and design only,
-//! before the implementation): the Datasheet, Table and Manual bases, volt drop and its limit,
+//! Acceptance checks for the rating checks: the Datasheet, Table and Manual bases, volt drop and its limit,
 //! rounding, the 40 °C panel and 30 °C field defaults, a missing bundling value, the protective
 //! device reader and trace, Checks rows with fixes, update maps, rating tables and hostile values.
 //!
-//! **Every number here is made up** (owner, Q11): no value from IEC 60364-5-52, BS 7671 or any
+//! **Every number here is made up**: no value from IEC 60364-5-52, BS 7671 or any
 //! other standard, and no temperature that would reproduce a standard's tabulated factor (the
-//! design's own examples use 40 °C and 35 °C against a 30 °C reference, whose computed factors equal
+//! 40 °C and 35 °C against a 30 °C reference would give computed factors equal to
 //! published ones; this file uses a 20 °C reference, an 80 °C conductor and odd temperatures
-//! instead). Every expected result is worked by hand below from design §3's formulas, not from the
+//! instead). Every expected result is worked by hand below from the formulas, not from the
 //! code:
 //!
 //! - k_temp = round2(sqrt((θmax − θ) / (θmax − θref))), capped at 1.00 (Datasheet), uncapped

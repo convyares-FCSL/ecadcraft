@@ -1,10 +1,10 @@
-//! A frame and its title block as parts (design 055 §3, §1.2): the border with zones and centre
+//! A frame and its title block as parts: the border with zones and centre
 //! marks, then the block's items in drawing order.
 //!
 //! Coordinates here are paper millimetres from the paper's bottom-left corner; [`Pen`] scales them
 //! to drawing units. Drawing never fails: items breaking a bound are skipped
 //! ([`TitleBlockLayout::usable`]), values longer than their box are narrowed, then cut with `…`
-//! (019's `fit`), and the cut fields are reported ([`Drawn::cut`]).
+//! (the `fit` rule), and the cut fields are reported ([`Drawn::cut`]).
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};
 use cadcraft_engine::geom::Vec3;
@@ -100,7 +100,7 @@ pub struct Drawn {
     pub cut: Vec<usize>,
 }
 
-/// The border of the frame `input` describes (design 055 §3): the paper edge, the frame, zones
+/// The border of the frame `input` describes: the paper edge, the frame, zones
 /// labelled on all four sides, centre marks.
 pub fn border(pen: &mut Pen, input: &FrameInput) {
     let s = input.sheet;
@@ -227,7 +227,7 @@ fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), va
     pen.text((origin.0 + x, y), tl, value, (h, VAlign::Middle), aci_of(draw.colour), Some(room))
 }
 
-/// A revision table (design 055 §3): columns from the project's revision columns, a header row,
+/// A revision table: columns from the project's revision columns, a header row,
 /// `rows` rows of the newest issued revisions.
 fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), rows: u8, header: bool, newest: Newest) {
     let (ox, oy) = (origin.0 + r.x, origin.1 + r.y);
@@ -276,7 +276,7 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
     }
 }
 
-/// A logo fitted into its box keeping its proportions, centred (design 055 §6).
+/// A logo fitted into its box keeping its proportions, centred.
 fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &[Primitive]) {
     let Some((lo, hi)) = ecad_model::geometry::geom::extents(prims) else { return };
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);

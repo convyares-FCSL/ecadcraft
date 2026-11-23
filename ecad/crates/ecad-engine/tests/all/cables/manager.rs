@@ -1,4 +1,4 @@
-//! Lane 059 (the cable manager): design 059 §11, run through the commands.
+//! The cable manager, run through the commands.
 //!
 //! Cable types here are synthetic (made-up names and values).
 

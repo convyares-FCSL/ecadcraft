@@ -1,4 +1,4 @@
-//! Brief 060 (tidy-up guards, R0): `setprop` on several components walks the same rules as on one.
+//! `setprop` on several components walks the same rules as on one.
 
 use ecad_model::DeviceId;
 use serde_json::{Value, json};

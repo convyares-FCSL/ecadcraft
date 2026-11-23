@@ -71,7 +71,7 @@ pub(crate) fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
     Err(CmdError::refused("Name a point: {\"version\": name}, {\"revision\": \"B\"} or {\"seq\": n}."))
 }
 
-/// The document at `pt` (on a copy, design 020 §2.4): the ledger for the branch shown, else read
+/// The document at `pt` (on a copy): the ledger for the branch shown, else read
 /// from the file.
 ///
 /// # Errors
@@ -105,7 +105,7 @@ pub(crate) fn read_rev(p: &Project, text: &str) -> Result<Rev, ecad_model::RevEr
 }
 
 /// The step that issued revision `rev`, whose `NameVersion` names step `at` of `branch`: the
-/// issue transaction itself (`at + 1`, the step after the point it names, design 027 §0), when
+/// issue transaction itself (`at + 1`, the step after the point it names), when
 /// that step does issue it.
 pub(crate) fn issue_seq(p: &Project, branch: BranchId, at: u64, rev: Rev) -> Option<u64> {
     let seq = at.checked_add(1)?;
@@ -113,9 +113,9 @@ pub(crate) fn issue_seq(p: &Project, branch: BranchId, at: u64, rev: Rev) -> Opt
     (revisions::issue_in(&t.ops)?.0 == rev).then_some(seq)
 }
 
-/// The project as revision `rev` was issued (design 027 §5.2, §8; brief 019 follow-up): the state
+/// The project as revision `rev` was issued: the state
 /// **after** its issue transaction, so its own title block and revision list read it. Found on the
-/// branch shown's line (020's `named_points`); returns the named point and that state. A hostile
+/// branch shown's line (`named_points`); returns the named point and that state. A hostile
 /// history whose step after the point does not issue it gets the point's state with the issued
 /// rows copied in (issued rows never change, so this is exact for what they say).
 ///
@@ -135,7 +135,7 @@ pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), Str
     let mut then = state_at(p, &pt)?;
     let live = p.ledger.document();
     let upto = revisions::list(live).into_iter().find(|r| r.issued && r.rev_value == Some(rev)).map_or(0, |r| r.n);
-    // Design 072 §5.3: the issued rows up to it, as they are now.
+    // The issued rows up to it, as they are now.
     let upto = usize::try_from(upto).unwrap_or(usize::MAX);
     then.edit_parts(|parts| {
         parts.project.revisions = live.project().revisions.iter().take(upto).filter(|r| r.issued).cloned().collect();
@@ -144,7 +144,7 @@ pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), Str
 }
 
 /// Whether `pt`'s state is read from the file (its nearest snapshot and at most the snapshot
-/// interval of steps, reviewer finding 2) rather than from the ledger: every saved point, of any
+/// interval of steps) rather than from the ledger: every saved point, of any
 /// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
 /// unsaved steps, so the cost never grows with the session's length.
 pub(crate) fn reads_saved(p: &Project, pt: &Point) -> bool {
@@ -152,7 +152,7 @@ pub(crate) fn reads_saved(p: &Project, pt: &Point) -> bool {
 }
 
 /// Whether `pt` lies on the branch shown's line: its own steps, or its ancestry's at or before
-/// each fork (owner answer 11: Restore only there).
+/// each fork (Restore only there).
 fn on_current_line(p: &Project, pt: &Point) -> Result<bool, String> {
     let line = lineage_of(p, current(p))?;
     for (i, (b, _)) in line.iter().enumerate() {
@@ -167,7 +167,7 @@ fn on_current_line(p: &Project, pt: &Point) -> Result<bool, String> {
 // ---------------------------------------------------------------- restore
 
 /// Whether Restore compares this project property: revision fields are history and stay as they
-/// are now (design 020 §2.5.3, §6.4 rule 1).
+/// are now.
 fn restores_key(key: &str) -> bool {
     !key.starts_with("rev.")
 }
@@ -178,8 +178,8 @@ fn restore_target(p: &Project, pt: &Point) -> Result<Document, String> {
     state_at(p, pt)
 }
 
-/// Work out a restore of `pt` (design 020 §2.5.3): the ops are the difference between the live
-/// state and the point's (overseer, 2026-11-10: they scale with what differs, not with how far
+/// Work out a restore of `pt`: the ops are the difference between the live
+/// state and the point's (they scale with what differs, not with how far
 /// back the point is), without version names or revision fields.
 ///
 /// # Errors
@@ -224,7 +224,7 @@ pub(crate) fn plan_restore(p: &Project, pt: &Point) -> Result<RestorePlan, Strin
 
 // ---------------------------------------------------------------- the details box
 
-/// What the details box shows about a point (design 020 §2.4).
+/// What the details box shows about a point.
 ///
 /// # Errors
 /// The history could not be read.
@@ -272,8 +272,8 @@ fn current_or(p: &Project, b: BranchId) -> BranchId {
     if lineage_of(p, current(p)).map(|l| l.iter().any(|x| x.0 == b)).unwrap_or(false) { current(p) } else { b }
 }
 
-/// Pages changed, added and removed between two saved snapshots, from their chunk hashes
-/// (design 020 §2.4): no document is built.
+/// Pages changed, added and removed between two saved snapshots, from their chunk hashes:
+/// no document is built.
 fn chunk_summary(p: &Project, this: &Named, prev: &Named) -> Vec<String> {
     let Some(v) = p.file.project() else { return Vec::new() };
     let Ok(r) = v.store().reader() else { return Vec::new() };
@@ -305,7 +305,7 @@ fn chunk_summary(p: &Project, this: &Named, prev: &Named) -> Vec<String> {
     if removed > 0 {
         out.push(plural(removed, "removed"));
     }
-    // Devices by tag, from the differing component chunks only (design 020 §8.3: at most three
+    // Devices by tag, from the differing component chunks only (at most three
     // named changes).
     let is_device = |k: &String| matches!(ChunkKey::parse(k), Some(ChunkKey::Model { kind: ModelKind::Device, .. }));
     let comp: Vec<&String> = model.iter().copied().filter(|k| is_device(k)).collect();
@@ -358,7 +358,7 @@ impl Command for PointinfoParams {
     }
 }
 
-/// The point bar's text (design 020 §2.4).
+/// The point bar's text.
 pub(crate) fn bar_text(p: &Project, pt: &Point) -> String {
     let bname = find_branch(p, &pt.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
     match pt.kind {
@@ -399,7 +399,7 @@ impl Command for ShowpointParams {
 /// `showpoint`'s work: the point's state as a read-only view.
 fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
     let pt = point_at(p, q)?;
-    // An issued revision is shown as issued (brief 027 §16): the step after the point it
+    // An issued revision is shown as issued: the step after the point it
     // names, so its title block reads it.
     let shown = match pt.kind {
         NodeKind::Revision => {
@@ -441,7 +441,7 @@ impl Command for ClosepointParams {
     }
 }
 
-/// The confirmation text of a restore (design 020 §2.5.3).
+/// The confirmation text of a restore.
 pub(crate) fn restore_question(p: &Project, pt: &Point, plan: &RestorePlan) -> String {
     let on = match plan.pages.len() {
         0 => String::new(),

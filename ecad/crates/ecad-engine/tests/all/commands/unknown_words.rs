@@ -1,4 +1,4 @@
-//! Lane 072 A1 (design 072 §9.5, F11, acceptance A4): a word this build does not know in a value
+//! A word this build does not know in a value
 //! that stays text opens the project read-only, names the word, the setting and where it is, and
 //! leaves the file exactly as it is.
 

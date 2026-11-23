@@ -1,4 +1,4 @@
-//! Lane 064 (design 064 §10): one update pipeline for derived views.
+//! One update pipeline for derived views.
 
 use std::collections::BTreeSet;
 

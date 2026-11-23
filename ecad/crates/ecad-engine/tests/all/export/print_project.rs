@@ -1,4 +1,4 @@
-//! Brief 033 (design 033): the missing-data mark of generated tables (§3, AC4).
+//! The missing-data mark of generated tables (AC4).
 
 use std::collections::BTreeSet;
 

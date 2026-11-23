@@ -1,4 +1,4 @@
-//! The commands of brief 028 (design 028 §3, §4, §10): a terminal placed on a wire splits it
+//! The commands: a terminal placed on a wire splits it
 //! (through `place`), `connection_points` (Place Terminals: one per wire a fence line crosses), `bridge`
 //! (Draw Bridge). The reads `stripplan` and `cablecores` are generic
 //! ([`ecad_electrical::terminal_strips::commands::reads`]).
@@ -6,7 +6,7 @@
 //! Every write is one transaction, committed through [`Project::apply_edit`]; the reads record
 //! nothing.
 //!
-//! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
+//! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::terminal_strips::commands::terminal_strips`] decide, and the shim commits the ops and answers in JSON.
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -42,14 +42,14 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-// ---------------------------------------------------------------- landing on a wire (§3.1)
+// ---------------------------------------------------------------- landing on a wire
 
 /// The echo of a landed terminal.
 fn land_words(doc: &Document, t: ConnectionPointId, land: &Land) -> String {
     format!("Placed {} on wire {} (split in two).", connection_point_words(doc, t), route_words(doc, land.route))
 }
 
-/// Where a terminal starter placed at `at` lands on a route (018's `place`), or `None` when `at`
+/// Where a terminal starter placed at `at` lands on a route (`place`), or `None` when `at`
 /// is on no route (or on a route's free end): it is then placed as before.
 pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
     let on = ecad_electrical::wires::placing::route_at(doc, page, at, ON_WIRE, None)?;
@@ -68,7 +68,7 @@ pub(crate) fn land_result(doc: &Document, t: ConnectionPointId, land: &Land) -> 
     (json!({"split": {"route": land.route.hex(), "new": land.new.hex()}}), land_words(doc, t, land))
 }
 
-// ---------------------------------------------------------------- Place Terminals (§3.2)
+// ---------------------------------------------------------------- Place Terminals
 
 /// The level a prompt or JSON names for type `t` on strip `c` ([`rules::level_word`]), for the
 /// prompt.
@@ -101,8 +101,8 @@ fn route_words(doc: &Document, r: RouteId) -> String {
     ecad_electrical::wires::routes::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
 }
 
-/// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}` (brief 036
-/// §3.3, §3.4): a level symbol (or whole terminal, disconnect or fuse terminal) joins strip `device`
+/// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}`:
+/// a level symbol (or whole terminal, disconnect or fuse terminal) joins strip `device`
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
@@ -154,7 +154,7 @@ pub(crate) fn place_level(
         if let Some(l) = &land {
             ops.extend(l.ops.clone());
         }
-        // Brief 052d (design 052 §5.3): the place proposes for the strip.
+        // The place proposes for the strip.
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
@@ -201,9 +201,9 @@ pub(crate) fn place_level(
     Ok(v)
 }
 
-// ---------------------------------------------------------------- Draw Bridge (§4)
+// ---------------------------------------------------------------- Draw Bridge
 
-/// `bridge {from, to}` (Draw Bridge, design 028 §4): a wire between two terminals; of one strip it
+/// `bridge {from, to}` (Draw Bridge): a wire between two terminals; of one strip it
 /// is a bridge.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

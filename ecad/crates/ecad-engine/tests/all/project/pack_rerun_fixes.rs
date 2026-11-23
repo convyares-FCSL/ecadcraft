@@ -1,4 +1,4 @@
-//! The drawing-pack re-run's bugs (2026-11-14), one test or more per bug, each from a generic
+//! The drawing-pack re-run's bugs, one test or more per bug, each from a generic
 //! repro: project symbols, tags, contact tables, references and PLC card drawing.
 
 use ecad_model::{DeviceId, Document, PageId};

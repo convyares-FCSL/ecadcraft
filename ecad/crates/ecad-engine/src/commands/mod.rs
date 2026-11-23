@@ -1,19 +1,14 @@
-//! ECAD commands (Path A). Their JSON forms build transactions from resolved inputs (IDs,
-//! coordinates) and commit them through [`Project::apply_edit`].
+//! The ECAD command registry ([`specs`]) and the shared helpers of the commands that need the session.
 //!
-//! They reach the command line, scripts, the control channel and MCP through the engine's
-//! extension command registry. `convertcomponent`, `addconnectionpoint`, `place`, `wire`, `connect`,
-//! `disconnect`, `cableslash`, `cableview` and `cablecore` also have click-based interactive forms
-//! ([`crate::interact`], briefs 008, 004, 005 and 009), started by a bare command name, a menu or a
-//! tool button; they commit through these JSON forms. `cableview` records nothing: a cable's
-//! view is presentation only ([`crate::cables::views`]).
-//! Brief 010 adds `cablereference`, `cablecontinue` and `cablegoto` (with interactive forms),
-//! `cablereferences` (read only) ([`crate::references`]).
-//! Programmatic calls (`Session::execute`, `name {json}`) always run the JSON form and never
-//! prompt.
-//!
-//! This module is the registry and the shared helpers; each area's commands are in `cmd/<area>`
-//! (lane 067 step 11; `cmd/plc/` has the PLC commands).
+//! A command's JSON form builds a transaction from resolved inputs (IDs, coordinates) and commits it through
+//! [`Project::apply_edit`]. Generic commands are declared in `ecad-electrical` and run by the one generic
+//! runner; the commands that need the session live in their feature area's `commands` module of this crate
+//! (for example [`crate::pages::commands`], [`crate::references::commands`]) and register in [`specs`].
+//! Commands reach the command line, scripts, the control channel and MCP through the engine's extension
+//! command registry. Some also have click-based forms ([`crate::interact`]), started by a bare command name, a
+//! menu or a tool button; those commit through the JSON forms. Programmatic calls (`Session::execute`,
+//! `name {json}`) always run the JSON form and never prompt. `cableview` records nothing: a cable's view is
+//! presentation only ([`crate::cables::views`]).
 
 pub mod input;
 pub mod reply;
@@ -340,7 +335,7 @@ pub(crate) fn err(m: impl Into<String>) -> EngineError {
 /// Run `f` with the project owning the active document. The closure gets [`Pages`], not the
 /// session, so it cannot call an owner-aware session method while the project is locked; the lock
 /// is taken with `try_lock`, so a re-entrant command is refused instead of deadlocking. The
-/// closure refuses with a [`CmdError`], which becomes text here, at the edge (brief 070).
+/// closure refuses with a [`CmdError`], which becomes text here, at the edge.
 pub(crate) fn on_project<R>(
     s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>,
 ) -> cadcraft_engine::Result<R> {
@@ -363,7 +358,7 @@ pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut 
     f(p, &mut Pages(s)).map_err(|e| err(e.to_string()))
 }
 
-/// Every command with a typed input (brief 070): its id, run function and parameter schema.
+/// Every command with a typed input: its id, run function and parameter schema.
 pub fn typed_commands() -> Vec<input::Typed> {
     [
         GENERIC_TYPED,
@@ -411,7 +406,8 @@ pub fn schema_of(id: &str) -> Option<Value> {
     typed_commands().into_iter().find(|t| t.id == id).map(|t| (t.schema)())
 }
 
-/// Refusal for edits on a page whose drawing could not be rebuilt (PROJ-02).
+/// Refusal for edits on a page whose drawing could not be rebuilt; the page takes edits again once it is closed
+/// and reopened.
 pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not be rebuilt); close and reopen it";
 
 /// An optional parameter of a given JSON type: absent or `null` is `None`, a wrong type is an error.
@@ -422,7 +418,7 @@ pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn
     }
 }
 
-/// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
+/// Most points one WIRE accepts: a route's own bound.
 pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::objects::route::MAX_POINTS;
 
 pub(crate) use ecad_electrical::cables::words::MAX_HANDLES;

@@ -1,4 +1,4 @@
-//! Brief 008: the click-based forms of the ECAD commands.
+//! The click-based forms of the ECAD commands.
 //!
 //! - Every interactive form records **exactly** the transaction its JSON form records for the same
 //!   resolved values (AC1): the same scene is built twice from the same seed, once by prompts and

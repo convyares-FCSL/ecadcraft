@@ -1,4 +1,4 @@
-//! The interactive form of brief 047's `bomitem` (design 047 §6.1, Reports ▸ BOM ▸ **+ Item**):
+//! The interactive form of `bomitem` (Reports ▸ BOM ▸ **+ Item**):
 //! description, quantity, unit, location, part number, maker; then one commit of the JSON form.
 //! Enter on an optional prompt keeps its default; Esc writes nothing.
 
@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::interact::can_start;
 use crate::properties::forms::{R, Safe, commit, other, safely};
 
-/// `bomitem`: the prompts of design 047 §6.1.
+/// `bomitem`: the prompts.
 pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (metres, location) = crate::interact::read(s, |p, _| {

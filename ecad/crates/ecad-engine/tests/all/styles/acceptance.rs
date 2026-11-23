@@ -1,16 +1,14 @@
-//! Tester 050a (the style model: standards and style catalogues): acceptance checks from outside,
-//! written from brief 050a and design 050 (§2–§4, §6, §10, §12 checks 1–9, §13 and the overseer's
-//! FP rulings) only, before the implementation existed.
+//! Acceptance checks for standards and styles, from outside.
 //!
-//! The checks drive the JSON commands the design names (`standard`, `style`, `deletestyle`,
+//! The checks drive the JSON commands (`standard`, `style`, `deletestyle`,
 //! `promote`, `styles`, `setdefault`, `textstyle`, `checks`) and read the document, so they depend
-//! on as little of the new code's Rust API as possible. The Rust names used are the ones the
-//! design fixes: `Document.standard` / `.styles` (FP1, FP2), `Op::SetStyle` / `Op::SetStandard`
-//! (by `Op::name`) and `ObjectRef::Standard` (FP3), `Kind::Style`, `Level::Standard`,
-//! `text_style` / `text_style_at` (§2.4). Result field names of the new commands are read
-//! tolerantly where the design gives none.
+//! on as little of the Rust API as possible. The Rust names used are
+//! `Document.standard` / `.styles`, `Op::SetStyle` / `Op::SetStandard`
+//! (by `Op::name`) and `ObjectRef::Standard`, `Kind::Style`, `Level::Standard`,
+//! `text_style` / `text_style_at`. Result field names of the commands are read
+//! tolerantly where they are not fixed.
 //!
-//! Each test name starts with the §12 check (`a01`…`a09`) or the focus item it checks (`fp1`…,
+//! Each test name starts with its check (`a01`…`a09`) or the focus item it checks (`fp1`…,
 //! `res` for resolution order, `ids` for stable IDs, `map` for the update map).
 
 use cadcraft_engine::doc::color::{Color, Rgb};

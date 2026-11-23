@@ -1,4 +1,4 @@
-//! The agent access preference (brief 035, design §3): whether the ECAD window lets an agent
+//! The agent access preference: whether the ECAD window lets an agent
 //! connect over its loopback port, read only or to change the project, and on which port.
 //!
 //! # Semantics
@@ -32,7 +32,7 @@ use crate::project::Project;
 pub const FILE_NAME: &str = "agent-access.json";
 /// The preference file's format.
 pub const FORMAT: &str = "ecad-agent-access/1";
-/// The port when none is set (design 035 §17, 1). A per-user window setting, not a drawing default:
+/// The port when none is set. A per-user window setting, not a drawing default:
 /// the project-scoped defaults registry does not hold it.
 pub const DEFAULT_PORT: u16 = 47823;
 /// The lowest port accepted (below are the system's).

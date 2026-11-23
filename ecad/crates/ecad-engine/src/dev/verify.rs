@@ -4,7 +4,7 @@
 //!
 //! - **Normal path (fidelity).** After a CADCraft command commits, the page is reprojected with the
 //!   engine's handles kept, and each entity is compared *by handle* with what the engine
-//!   committed (`FidelityMismatch` events, hypothesis H2). Handles are the identity there.
+//!   committed (`FidelityMismatch` events). Handles are the identity there.
 //! - **Recovery path (this module).** After a rebuild (fresh handles) or an owner recovery, handle
 //!   numbers mean nothing: they were all reissued. [`verify_page`] decodes the drawing back into
 //!   ECAD terms and compares it with the document by content: every item's geometry and style,
@@ -95,7 +95,7 @@ pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &Handle
     verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, reports)
 }
 
-/// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
+/// [`verify_page`] for a page projected with cable views: the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::cables::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
 pub(crate) fn verify_page_with(
@@ -104,7 +104,7 @@ pub(crate) fn verify_page_with(
     verify_page_shown(doc, page, drawing, map, fan, tol, false, reports)
 }
 
-/// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
+/// [`verify_page_with`] for a page drawn with Show Hidden Text on or off:
 /// with it on, the hidden derived texts are expected too, dimmed.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_page_shown(
@@ -114,8 +114,8 @@ pub(crate) fn verify_page_shown(
     verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, reports)
 }
 
-/// [`verify_page_shown`] for a project whose title block marks a pending revision (brief 033,
-/// overseer ruling 4): the frame is expected with the project's pending flag.
+/// [`verify_page_shown`] for a project whose title block marks a pending revision:
+/// the frame is expected with the project's pending flag.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
@@ -134,7 +134,7 @@ pub(crate) fn verify_page_pending(
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
-    // Device tags and terminal labels (brief 018), derived like the cable parts.
+    // Device tags and terminal labels, derived like the cable parts.
     for t in crate::devices::draw::all_texts_on_page(doc, page) {
         if !t.shown && !hidden_text {
             continue;
@@ -145,38 +145,38 @@ pub(crate) fn verify_page_pending(
         }
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
-    // Device cross-references (brief 025), derived the same way.
+    // Device cross-references, derived the same way.
     for part in crate::references::draw::devices::parts_on_page(doc, page) {
         let mut e = crate::project::device_reference_entity(&draw, &part, Handle(0));
-        // Brief 049: a continuation's other-end text in Ink 2, as the page draws it.
+        // A continuation's other-end text in Ink 2, as the page draws it.
         crate::continuations::draw::colour(doc, &part, &mut e);
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
-    // PLC card frames (brief 051), derived the same way.
+    // PLC card frames, derived the same way.
     for part in crate::plc::draw::card::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&draw, &part, Handle(0)))).or_default() += 1;
     }
-    // Link lines (brief 030), derived the same way.
+    // Link lines, derived the same way.
     for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::jumper_bar_entity(&part, Handle(0)))).or_default() += 1;
     }
-    // Location box labels (brief 024), derived the same way.
+    // Location box labels, derived the same way.
     for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::locations::draw::styled_label_entity(doc, &draw, rep, &value, at, Handle(0)))).or_default() += 1;
     }
-    // Wire labels (brief 022), derived the same way.
+    // Wire labels, derived the same way.
     for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden) {
         *fan_expected.entry(computed_key(&crate::wires::draw::label_entity(&draw, &l, Handle(0)))).or_default() += 1;
     }
-    // The sheet frame (brief 019), derived like the cable parts.
-    // Generated pages and Total in sheets (brief 024) come from the same function.
+    // The sheet frame, derived like the cable parts.
+    // Generated pages and Total in sheets come from the same function.
     let frame_rgb = crate::pages::frame::line_colour(doc, page);
     for part in crate::pages::generated::parts_of_pending(doc, page, reports, pending) {
         *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
-    // Brief 040: a two-colour wire's dashes, derived from its route like the labels.
+    // A two-colour wire's dashes, derived from its route like the labels.
     let budget = ecad_electrical::cables::words::dash_budget(doc, page);
     for r in crate::cables::draw::coloured_routes(doc, page, Some(map), crate::cables::draw::projection_sheet()) {
         if !budget.dashed.contains(&r.rep) {
@@ -187,7 +187,7 @@ pub(crate) fn verify_page_pending(
             *fan_expected.entry(computed_key(&e)).or_default() += 1;
         }
     }
-    // Brief 040: a route drawn in its wire colour reads back as its item in the item's own colour.
+    // A route drawn in its wire colour reads back as its item in the item's own colour.
     let plain = |e: &Entity| -> Entity {
         let mut e = e.clone();
         if map.is_coloured(e.handle)
@@ -196,8 +196,8 @@ pub(crate) fn verify_page_pending(
         {
             e.common.color = own.common.color;
         }
-        // Brief 050a: a location box outline drawn in its location style reads back as its item;
-        // brief 050b: a wire route drawn in its category's line type and weight likewise.
+        // A location box outline drawn in its location style reads back as its item;
+        // A wire route drawn in its category's line type and weight likewise.
         if let Some(Mapped::Item(id)) = map.get(e.handle)
             && doc
                 .representation_of_item(id)
@@ -226,7 +226,7 @@ pub(crate) fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
-        // A reference end's text (brief 010's live text in brief 009's marker): one of the computed
+        // A reference end's text (the live text in the marker): one of the computed
         // parts, mapped to its reference.
         if let Some(Mapped::RefText(r)) = map.get(e.handle) {
             if !doc.representations().contains_key(&r) {
@@ -242,7 +242,7 @@ pub(crate) fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
-        // A T's dot (lane 072 D): a ring at a point where its route ends on another route.
+        // A T's dot: a ring at a point where its route ends on another route.
         if let Some(Mapped::Tee(r)) = map.get(e.handle) {
             match &e.kind {
                 EntityKind::Circle(c) => tees_shown.push((r, Pt::new(c.center.x, c.center.y))),
@@ -282,7 +282,7 @@ pub(crate) fn verify_page_pending(
         let missing = expected.iter().filter(|(k, n)| shown.get(*k) != Some(n)).count();
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
     }
-    // T dots (lane 072 D): one dot of rings per route end on another route, where it lands.
+    // T dots: one dot of rings per route end on another route, where it lands.
     let tees: Vec<(ecad_model::RouteId, Pt)> = ecad_electrical::wires::routes::tees_on_page(doc, page)
         .into_iter()
         .filter(|(r, _, _)| ecad_electrical::wires::routes::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))

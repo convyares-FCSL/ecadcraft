@@ -1,4 +1,4 @@
-//! Brief 052d (design 052 §5.3–§5.6, §5.8, §10.17–21): placements, moves, boxes, pages and the
+//! Placements, moves, boxes, pages and the
 //! project propose a function and a location. Unset devices take them; a device with another
 //! value is listed (Leave by default) and never changed silently.
 

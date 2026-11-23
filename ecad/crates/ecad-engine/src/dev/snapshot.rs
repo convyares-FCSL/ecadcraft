@@ -1,4 +1,4 @@
-//! Project snapshots (from ecad-inspect): a JSON snapshot of a project, labelled with the
+//! Project snapshots: a JSON snapshot of a project, labelled with the
 //! transaction sequence it shows. A historical snapshot reconstructs that state separately
 //! ([`Ledger::state_at`]); the live project is never modified. The snapshot reuses the model's own
 //! serialisation (`Document`, `Transaction`), adding an index of readable labels and the results of
@@ -16,7 +16,7 @@ use crate::history::event_log::EventLog;
 ///
 /// `ecad-inspect/2` adds `persistence` (live snapshots only, `null` otherwise): where the project's
 /// file stands (path, header, writer state, record offsets, lock, read-only reason). Everything in
-/// `ecad-inspect/1` is unchanged. Brief 010 adds three derived entries to `checks`
+/// `ecad-inspect/1` is unchanged. `checks` also has three derived entries
 /// (`cable_references`, `orphan_references`, `over_referenced_cables`); readers that do not know
 /// them ignore them, so the tag is unchanged.
 pub(crate) const SNAPSHOT_FORMAT: &str = "ecad-inspect/2";
@@ -82,7 +82,7 @@ fn index(doc: &Document) -> Vec<Value> {
     for id in doc.wires().keys() {
         push("wire", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Wire(*id)));
     }
-    // A wire's net and its conductor (design 072 §4.2): named after the wire first in the net's
+    // A wire's net and its conductor: named after the wire first in the net's
     // order, and after the wire that is the conductor.
     let mut nets: std::collections::BTreeMap<ecad_model::NetId, (u16, String)> = std::collections::BTreeMap::new();
     for (id, w) in doc.wires() {
@@ -221,7 +221,7 @@ pub fn write_snapshot_file(snap: &Value, dir: &std::path::Path, why: &str, count
 mod tests {
     use ecad_model::{Author, ConductorId, ConnectionPoint, ConnectionPointId, Device, DeviceId, IdAllocator, NetId, Op, Wire, WireId};
 
-    /// Design 072 §4.2: a wire's net and conductor have labels in the snapshot's index, the net
+    /// A wire's net and conductor have labels in the snapshot's index, the net
     /// named after the wire first in its order.
     #[test]
     fn a_wires_net_and_conductor_are_labelled() {

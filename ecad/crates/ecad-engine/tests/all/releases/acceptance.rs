@@ -1,7 +1,7 @@
-//! Tester 027 (release), from the brief and design 027 only: the release sequence with real
-//! (not injected) failures, 026's finalise choice when the release then stops, `release.json`
+//! Release: the release sequence with real
+//! (not injected) failures, the Finalise numbering choice when the release then stops, `release.json`
 //! hashes checked by an independent SHA-256 (the OS tool), `checks.csv` against `prerelease`,
-//! FP1 through undo, redo, save and reopen, the existing-folder choices repeated, and Windows
+//! the recorded folder through undo, redo, save and reopen, the existing-folder choices repeated, and Windows
 //! paths (spaces, long paths, characters a file name cannot hold). A probe that found a bug is
 
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-//! Brief 049 (design 049 §10): continuation cross-references, from outside, through the commands'
+//! Continuation cross-references, from outside, through the commands'
 //! JSON forms. Fixture: pages 101, 102 and 103 in book order, each with a `24V` arrow.
 
 use std::collections::BTreeSet;

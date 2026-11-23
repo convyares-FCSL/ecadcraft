@@ -2,14 +2,14 @@
 
 use crate::project::*;
 
-/// Injected failures for the experiment (never set in normal use).
+/// Injected failures for tests (never set in normal use).
 #[derive(Debug, Clone, Default)]
 pub struct Faults {
     /// The next `n` projection attempts fail.
     pub fail_projections: u32,
     /// The next `n` cable view switches (`cableview` with a cable) fail before changing anything.
     pub fail_view_switches: u32,
-    /// The next release fails at this step (brief 027's failure-injection tests): the step's own
+    /// The next release fails at this step (for failure-injection tests): the step's own
     /// failure path runs, as when the disk or the save fails there.
     pub fail_release_at: Option<crate::releases::release::Step>,
     /// The next commit callback panics (`fault-injection` feature only).
@@ -116,7 +116,7 @@ impl Project {
         self.file.status()
     }
 
-    /// Save now, as Ctrl+S does (brief 027's release, step 5), whatever the persistence: the file,
+    /// Save now, as Ctrl+S does (the release's save step), whatever the persistence: the file,
     /// the test store, or the refusal when there is none.
     ///
     /// # Errors
@@ -138,8 +138,8 @@ impl Project {
         }
     }
 
-    /// Save the pending transactions to the bound file (Save, as the branch actions of brief 020
-    /// need before they write: owner answer 3, "Save and switch").
+    /// Save the pending transactions to the bound file (Save, as the branch actions
+    /// need before they write: "Save and switch").
     ///
     /// # Errors
     /// No file, or the save failed (in words).
@@ -150,7 +150,7 @@ impl Project {
         self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string())
     }
 
-    /// Show another branch's state (design 020 §3.3): `ledger` replaces the project's, every view
+    /// Show another branch's state: `ledger` replaces the project's, every view
     /// rebuilds once as on open, the active page stays if it exists on the new branch (else the
     /// first page in book order), and a read-only point view closes. Not a step.
     pub(crate) fn adopt_branch(&mut self, pg: &mut Pages<'_>, ledger: Ledger, tag_high: ecad_model::naming::tag::HighWater) -> Result<(), String> {
@@ -232,7 +232,7 @@ impl Project {
         self.branch_gen
     }
 
-    /// A branch action happened (brief 020a): every view of the branches refreshes.
+    /// A branch action happened: every view of the branches refreshes.
     pub(crate) fn note_branch_change(&mut self) {
         self.branch_gen += 1;
     }
@@ -299,7 +299,7 @@ impl Project {
     }
 
     /// Keep each open page's `saved` pointer in step with the project's unsaved state, so the
-    /// engine's own pointer comparison agrees with SAVE-01.
+    /// engine's own pointer comparison agrees with the ledger's own unsaved state.
     pub(crate) fn sync_saved(&self, pg: &mut Pages<'_>) {
         let unsaved = self.unsaved();
         for v in self.pages.values() {

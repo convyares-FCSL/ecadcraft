@@ -1,15 +1,13 @@
-//! Tester 044 (connector devices): acceptance checks from outside, written from brief 044 and
-//! design 044 (§12's table, rows 1–10 and 12–14, and the overseer's FP1–FP6 conditions) only,
-//! before the implementation existed. The checks drive JSON commands (`connector`, `pinlabel`,
+//! Acceptance checks for connectors, from outside. The checks drive JSON commands (`connector`, `pinlabel`,
 //! `place`, `setprop`, `setdefault`, `bom`, `wirelist`, `references`, `refgoto`, `checks`, `stripplan`)
 //! and read the document, so they depend on as little of the new code's Rust API as possible.
 //!
-//! Fixture C (design §12), simplified: page 100 with three vertical wires (the sensor's 24 V, 0 V
+//! Fixture C, simplified: page 100 with three vertical wires (the sensor's 24 V, 0 V
 //! and signal) at x 100/110/120 from y 250 to y 150; page 101 with a location box `+FIELD`;
 //! page 102 with a location box `+CP1`. The supply and the sensor `-B01` are left out: the checks
 //! look only at the wires, the pins and the nets.
 //!
-//! Each test name starts with the §12 row (`r01`…`r14`) or the focus item it checks.
+//! Each test name starts with its row (`r01`…`r14`) or the focus item it checks.
 
 use std::collections::BTreeMap;
 

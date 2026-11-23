@@ -1,7 +1,7 @@
 //! Conversion between ECAD items and CADCraft entities.
 //!
 //! Every conversion is checked by converting back: an entity is only accepted when the ECAD item
-//! reproduces it exactly (H2, projection fidelity). Anything else is reported as unsupported
+//! reproduces it exactly (projection fidelity). Anything else is reported as unsupported
 //! rather than silently simplified.
 
 use cadcraft_engine::doc::{
@@ -80,7 +80,7 @@ pub(crate) fn kind_for_primitive(p: &Primitive) -> EntityKind {
         Primitive::Arc { center, radius, start, end } => EntityKind::Arc(CArc { center: v3(*center), radius: *radius, start: *start, end: *end }),
         Primitive::Circle { center, radius } => EntityKind::Circle(Circle { center: v3(*center), radius: *radius }),
         Primitive::Text { at, height, rotation, value, halign, valign } => {
-            // Brief 031 (FP4, design §6.6): a justified text keeps its alignment point.
+            // A justified text keeps its alignment point.
             let (h, v) = (engine_halign(*halign), engine_valign(*valign));
             let left = h == HAlign::Left && v == VAlign::Baseline;
             EntityKind::Text(Text {
@@ -142,7 +142,7 @@ pub(crate) fn entity_for(doc: &Document, item: &Item, handle: Handle) -> Option<
         ItemKind::Primitive(p) => kind_for_primitive(p),
         ItemKind::Symbol(s) => kind_for_symbol(s),
     };
-    // Brief 066d: a free text on a page is drawn in the `Free` text style's font and weight (its
+    // A free text on a page is drawn in the `Free` text style's font and weight (its
     // height and colour are the user's own).
     if let EntityKind::Text(t) = &mut kind {
         t.style = ecad_electrical::styles::text_style::text_style(doc, ecad_electrical::styles::text_style::TextKind::Free).style_name.to_string();
@@ -170,7 +170,7 @@ pub(crate) fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
         EntityKind::Arc(a) => Primitive::Arc { center: pt(a.center), radius: a.radius, start: a.start, end: a.end },
         EntityKind::Circle(c) => Primitive::Circle { center: pt(c.center), radius: c.radius },
         EntityKind::Text(t) => {
-            // Brief 031 (FP4): left, centre and right with any vertical alignment are recorded at
+            // Left, centre and right with any vertical alignment are recorded at
             // their alignment point; Aligned, Middle and Fit are not (the round trip refuses them).
             let halign = match t.halign {
                 HAlign::Left => TextHAlign::Left,
@@ -216,11 +216,11 @@ pub fn kind_name(kind: &EntityKind) -> &'static str {
     }
 }
 
-/// Refusal of a CADCraft `table` on an ECAD page (brief 033, design 033 §11.1).
+/// Refusal of a CADCraft `table` on an ECAD page.
 pub const TABLE_REFUSED: &str =
     "Tables can't be placed on ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page ▸ Generated).";
 
-/// Why an entity of `kind` cannot be placed on an ECAD page (design 033 §11.2): each kind has its
+/// Why an entity of `kind` cannot be placed on an ECAD page: each kind has its
 /// own plural phrase, never a name with `s` added ("hatchs", "object of this kinds").
 pub(crate) fn not_placeable(kind: &EntityKind) -> String {
     match kind {
@@ -240,7 +240,7 @@ pub(crate) fn not_placeable(kind: &EntityKind) -> String {
 /// # Errors
 /// A message naming what ECAD pages do not support yet.
 pub fn item_from(doc: &Document, page: PageId, e: &Entity) -> Result<Item, String> {
-    // Brief 033 (design 033 §11.1): a table is refused first, whatever its layer, so its words
+    // A table is refused first, whatever its layer, so its words
     // are the ones the user sees; the commit is refused, so nothing is written.
     if matches!(e.kind, EntityKind::Table(_)) {
         return Err(TABLE_REFUSED.into());

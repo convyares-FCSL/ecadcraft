@@ -1,16 +1,14 @@
-//! Tester 045 (PLC racks, cards, channels and addresses): acceptance checks from outside, written
-//! from brief 045a, brief 045b and design 045 (§13's table A–T, §14's FP1 conditions) only, before
-//! the implementation existed. They drive the JSON forms the design names (`place` with `rack` and
+//! Acceptance checks for PLC racks and channels, from outside. They drive the JSON forms (`place` with `rack` and
 //! `slot`, `plcslot`, `plcracks`, `plcchannels`, `plcchannel`, `plcaddress`, `setdefault`,
-//! `setprop`, `checks`, `pagetexts`) and the ledger; every test that needs the build is ignored
-//! until phase 2. The worker's own tests are `plc_contracts`; these are the tester's, kept apart.
+//! `setprop`, `checks`, `pagetexts`) and the ledger. The in-process tests are `plc_contracts`; these are kept
+//! apart.
 //!
-//! Fixture P is simplified (as tester 036 did): plain vertical drops stand in for the contacts,
-//! sensors and lamps of design §13; a terminal strip across the input drops gives each fenced
-//! channel a connection on its net, so those channels are `used` (design §6).
+//! Fixture P is simplified: plain vertical drops stand in for the contacts,
+//! sensors and lamps; a terminal strip across the input drops gives each fenced
+//! channel a connection on its net, so those channels are `used`.
 //!
-//! IDs are passed as hex (as every ECAD command takes them); the design's examples name devices
-//! by tag. Every test name starts with the §13 letter it checks.
+//! IDs are passed as hex (as every ECAD command takes them). Every test name starts with the
+//! letter of the case it checks.
 
 use std::collections::BTreeMap;
 

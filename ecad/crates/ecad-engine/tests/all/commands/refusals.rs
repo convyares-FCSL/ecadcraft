@@ -1,4 +1,4 @@
-//! Refused and cancelled cases (proposal §17.3): every refusal leaves the ledger, the map and the
+//! Refused and cancelled cases: every refusal leaves the ledger, the map and the
 //! unsaved state as they were, and restores the drawing to the last projection.
 
 use crate::common;

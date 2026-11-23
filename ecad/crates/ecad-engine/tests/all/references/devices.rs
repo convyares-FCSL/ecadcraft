@@ -1,4 +1,4 @@
-//! Brief 025 (design 025 §10): device cross-references on the general reference index, from
+//! Device cross-references on the general reference index, from
 //! outside, through the commands' JSON forms. Fixture X: page 100 "Supply" with `-K01`'s coil
 //! (its A2 wired straight down to a rail) and its power contacts, page 105 "Motor control" with
 //! its NO and NC, and `-Q01` (an MCB) with an auxiliary NC.

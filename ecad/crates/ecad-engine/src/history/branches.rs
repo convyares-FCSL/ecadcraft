@@ -22,12 +22,12 @@ impl Command for BranchesParams {
     }
 }
 
-/// Branch actions with no version 2 file yet (design 020 §2.6).
+/// Branch actions with no version 2 file yet.
 const SAVE_FIRST: &str = "Branches live in the project file. Save it first.";
 /// The file went away under a branch action.
 const NO_FILE: &str = "no file";
 
-/// Why branch actions cannot run: no version 2 file yet (design 020 §2.6), or read-only.
+/// Why branch actions cannot run: no version 2 file yet, or read-only.
 pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
     match p.file.project() {
         None => Err("Branches live in the project file. Save it first.".into()),
@@ -109,7 +109,7 @@ impl Command for BranchParams {
             branch_file(p).map_err(CmdError::refused)?;
             let from = fork_of(p, from.as_ref())?;
             ecad_file::project::check_branch_name(&name).map_err(|e| CmdError::refused(e.to_string()))?;
-            // Saved first (owner answer 3): the fork point and the branch row are in the file.
+            // Saved first: the fork point and the branch row are in the file.
             p.save_pending(pg).map_err(CmdError::refused)?;
             let by = Some(author_text(&p.author));
             let v = p.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
@@ -168,8 +168,8 @@ impl Command for RenamebranchParams {
     }
 }
 
-/// The refusal of a switch with unsaved changes on a file that cannot be written (design 020
-/// §3.3: Save As or Cancel, never a silent loss).
+/// The refusal of a switch with unsaved changes on a file that cannot be written:
+/// Save As or Cancel, never a silent loss.
 pub(crate) fn read_only_refusal(p: &Project) -> String {
     let n = p.unsaved_transactions();
     format!(
@@ -179,7 +179,7 @@ pub(crate) fn read_only_refusal(p: &Project) -> String {
     )
 }
 
-/// The unsaved-steps refusal of `switchbranch` without `save` (design 020 §10).
+/// The unsaved-steps refusal of `switchbranch` without `save`.
 pub(crate) fn unsaved_refusal(p: &Project) -> String {
     let n = p.unsaved_transactions();
     format!("{} has {n} unsaved change{}; add \"save\": true to save them and switch.", current_name(p), if n == 1 { "" } else { "s" })
@@ -215,7 +215,7 @@ fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -
     }
     let read_only = p.file.project().and_then(|v| v.read_only()).is_some();
     if p.unsaved() && read_only {
-        // Never a silent loss (design 020 §3.3): the edits can only be kept by Save As.
+        // Never a silent loss: the edits can only be kept by Save As.
         return Err(CmdError::refused(read_only_refusal(p)));
     }
     if p.unsaved() {
@@ -287,7 +287,7 @@ fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Va
 }
 
 /// A name no open branch has: `base`, else `base (2)`, `base (3)`… (a reopen whose name was
-/// taken, brief 020a).
+/// taken).
 pub(crate) fn free_branch_name(p: &Project, base: &str, except: Option<BranchId>) -> String {
     let taken: BTreeSet<String> = branch_rows(p)
         .unwrap_or_default()

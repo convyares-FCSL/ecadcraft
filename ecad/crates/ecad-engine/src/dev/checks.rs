@@ -16,12 +16,12 @@ pub struct ProjectionInputs {
     pub head: u64,
     pub doc: Document,
     pub pages: Vec<PageInputs>,
-    /// Cables shown in fan view: the fresh projection uses the same views (design 005 §8).
+    /// Cables shown in fan view: the fresh projection uses the same views.
     pub views: std::collections::BTreeSet<ecad_model::CableId>,
     pub tolerance: f64,
-    /// Show Hidden Text (brief 031): the fresh projection draws hidden texts the same way.
+    /// Show Hidden Text: the fresh projection draws hidden texts the same way.
     pub hidden_text: bool,
-    /// Brief 033: the project's pending flag, so the fresh frame shows the same Rev box.
+    /// The project's pending flag, so the fresh frame shows the same Rev box.
     pub pending: bool,
 }
 
@@ -43,8 +43,8 @@ pub struct Check {
     pub lines: Vec<String>,
 }
 
-/// Rebuild the reference index (brief 025) from a copy of the document and compare it with a copy
-/// of the kept one (the debugger's **Check index**, design 025 §3.3).
+/// Rebuild the reference index from a copy of the document and compare it with a copy
+/// of the kept one (the debugger's **Check index**).
 pub fn verify_index(doc: &Document, kept: &ecad_electrical::references::devices::index::RefIndex, head: u64) -> Check {
     let (members, groups, edges) = kept.sizes();
     match kept.verify(doc) {
@@ -130,7 +130,7 @@ pub fn verify_replay_from(base: u64, history: Option<&Arc<dyn ecad_model::Histor
     Check { what: "replay", at_seq, ok: ok && invariants.is_ok(), lines }
 }
 
-/// **Verify file** for a version 2 file (EEP-0005 §5.8): replay the branch from the root with
+/// **Verify file** for a version 2 file: replay the branch from the root with
 /// every check and check every snapshot against the replay, then compare the file's rows with the
 /// copied history (after `base`) up to the saved position. Reads only, on request.
 pub fn verify_store(store: &ecad_file::Store, base: u64, log: &[Transaction], persisted: u64) -> Check {

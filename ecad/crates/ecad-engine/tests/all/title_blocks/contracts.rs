@@ -1,4 +1,4 @@
-//! Brief 055 (design 055 §12.2): title blocks: the house block, frames with bodies, bindings and
+//! Title blocks: the house block, frames with bodies, bindings and
 //! their update map, sheet resolution through the frame, the checks, DXF logos and import, and
 //! hostile bodies.
 

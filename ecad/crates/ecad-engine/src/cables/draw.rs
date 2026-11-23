@@ -1,4 +1,4 @@
-//! The engine half of how a cable looks on a page (brief 009, design 009): text measured with the
+//! The engine half of how a cable looks on a page: text measured with the
 //! drafting font CADCraft draws text with ([`font_width`]), the box a reference end's marker covers
 //! ([`marker_box`]), and the canvas: the sheet in use, coloured routes and painted marks.
 //!
@@ -14,7 +14,7 @@ pub use ecad_electrical::cables::words::{
     dash_budget, dash_count, dash_segments, shorten, wire_colours,
 };
 pub use ecad_electrical::cables::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
-/// The representation role of a cable's reference end: brief 010's, one definition for both briefs.
+/// The representation role of a cable's reference end.
 pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 /// The width of `text` per unit of text height in the drafting font CADCraft draws text with (0
 /// for anything that does not measure): multiply by the height it is drawn at.
@@ -25,14 +25,14 @@ pub fn font_width(text: &str) -> f64 {
 
 /// The box a reference end's marker covers on the page (its flag, point included), for a
 /// reference end at `at` showing `text` with its flag on `side`: what a pick of the marker hits
-/// (brief 010's pick-first rule). It follows the flag to whichever side it is drawn.
+/// (the pick-first rule). It follows the flag to whichever side it is drawn.
 pub fn marker_box(at: Pt, text: &str, side: FlagSide, h: f64) -> (Pt, Pt) {
     ecad_electrical::cables::words::flag_box(at, font_width(&shorten(text, 64)) * h, side, h)
 }
 
-// ---------------------------------------------------------------- the canvas (brief 040)
+// ---------------------------------------------------------------- the canvas
 
-/// The dark sheet is in use (brief 040, step 1): a viewing preference of the person, set by the
+/// The dark sheet is in use: a viewing preference of the person, set by the
 /// app, never stored in the project. Process-wide, as there is one window.
 static DARK_SHEET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -113,7 +113,7 @@ pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
     ]
 }
 
-/// `canvassheet {dark}` (brief 040): the sheet the app shows, for the colours ECAD draws in; the
+/// `canvassheet {dark}`: the sheet the app shows, for the colours ECAD draws in; the
 /// open page is redrawn when it changes. Display only, nothing recorded.
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -142,7 +142,7 @@ pub fn rgb(c: ecad_drawing_style::Color) -> cadcraft_engine::doc::color::Rgb {
     cadcraft_engine::doc::color::Rgb(c.r, c.g, c.b)
 }
 
-/// A wire route drawn in its colours on a page (brief 040, step 3).
+/// A wire route drawn in its colours on a page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColouredRoute {
     pub conductor: WireId,
@@ -171,7 +171,7 @@ pub fn coloured_routes(
         if r.form != ecad_model::Form::Drawn {
             continue;
         }
-        // A line is coloured as the wire it stands for (design 072 §4.3).
+        // A line is coloured as the wire it stands for.
         let Some(c) = ecad_electrical::wires::routes::wire_of_route(doc, x) else { continue };
         let Some(item) = r.items.first() else { continue };
         let handle = map.and_then(|m| m.item(*item));
@@ -195,7 +195,7 @@ pub fn coloured_routes(
     out
 }
 
-/// A marker ECAD paints over the page in a shape CADCraft's marks lack (brief 040, step 2):
+/// A marker ECAD paints over the page in a shape CADCraft's marks lack:
 /// display only, never an entity, so it never reaches a plot.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Painted {
@@ -217,7 +217,7 @@ pub fn painted_marks(p: &crate::Project, uid: u64) -> Vec<Painted> {
 }
 
 /// The handles of the provisional device tags drawn on `page` (`-K?1`): painted in the
-/// provisional colour with a dotted underline (spec §5, "dotted means not final yet").
+/// provisional colour with a dotted underline ("dotted means not final yet").
 pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft_engine::doc::Handle> {
     let doc = p.ledger.document();
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
@@ -230,7 +230,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
         .collect()
 }
 
-/// A text style's colour as drawn on `sheet` (brief 050a): its own colour, or its colour code's
+/// A text style's colour as drawn on `sheet`: its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
 pub(crate) fn text_colour_rgb(
     c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_drawing_style::Sheet,

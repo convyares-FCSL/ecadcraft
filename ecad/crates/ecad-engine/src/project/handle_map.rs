@@ -8,31 +8,31 @@ pub enum Mapped {
     Item(ecad_model::ItemId),
     /// A terminal marker of a drawn representation.
     Marker(RepresentationId, ConnectionPointId),
-    /// A line of a cable's fan view (brief 005): computed, not an item. Edits of it are refused.
+    /// A line of a cable's fan view: computed, not an item. Edits of it are refused.
     Fan(CableId),
-    /// The derived text of a cable reference (brief 010), by its reference representation:
+    /// The derived text of a cable reference, by its reference representation:
     /// computed, not an item. Erasing it erases its reference; other edits are refused.
     RefText(RepresentationId),
-    /// A device's derived tag text or terminal label beside one of its symbols (brief 018), by
+    /// A device's derived tag text or terminal label beside one of its symbols, by
     /// the symbol representation: computed, not an item. Erasing it erases its representation;
     /// other edits of it alone are refused.
     Tag(RepresentationId),
-    /// A conductor's derived label (brief 022): computed, not an item. Left out of an edit that
+    /// A conductor's derived label: computed, not an item. Left out of an edit that
     /// also touches other objects; an edit of it alone is refused.
     Label(WireId),
-    /// A line or text of the page's sheet frame or title block (brief 019), by its index among
+    /// A line or text of the page's sheet frame or title block, by its index among
     /// the frame's parts: computed, not an item. Every edit of it is refused.
     Frame(u32),
-    /// A device cross-reference (brief 025): the text under a contact (by the contact's
+    /// A device cross-reference: the text under a contact (by the contact's
     /// representation) or a part of the contact table under a head (by the head's): computed,
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
     DeviceReference(RepresentationId),
-    /// A segment of a strip's link line (brief 030, design 030 §5.3), by strip and link number:
+    /// A segment of a strip's link line, by strip and link number:
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
     JumperBar(DeviceId, u32),
-    /// A ring of a T's dot (design 072 §4.4), by the route that ends on another route: computed,
+    /// A ring of a T's dot, by the route that ends on another route: computed,
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
     Tee(ecad_model::RouteId),
@@ -44,40 +44,40 @@ pub struct HandleMap {
     by_handle: HashMap<Handle, Mapped>,
     items: BTreeMap<ecad_model::ItemId, Handle>,
     markers: BTreeMap<(RepresentationId, ConnectionPointId), Handle>,
-    /// Computed cable drawing (fans, core labels, reference flags; briefs 005, 009): (cable,
+    /// Computed cable drawing (fans, core labels, reference flags): (cable,
     /// index of the part) → handle.
     fans: BTreeMap<(CableId, u32), Handle>,
     /// The cables drawn as fans on this page.
     fan_cables: BTreeSet<CableId>,
     /// The member and the reference end each computed part belongs to, where it has one.
     parts: HashMap<Handle, (Option<WireId>, Option<RepresentationId>)>,
-    /// Loose wire ends at a cable end that stops at a reference (design 009 §7.3): no loose-end
+    /// Loose wire ends at a cable end that stops at a reference: no loose-end
     /// square is shown there.
     pub(super) quiet: Vec<Pt>,
-    /// Brief 032 §2.6: open ends lying on another wire (the yellow looks-connected ring).
+    /// Open ends lying on another wire (the yellow looks-connected ring).
     pub(super) draws: Vec<Pt>,
-    /// Reference texts (brief 010): reference representation → handle.
+    /// Reference texts: reference representation → handle.
     reference_texts: BTreeMap<RepresentationId, Handle>,
-    /// Tag texts and terminal labels (brief 018): (symbol representation, which text) → handle.
+    /// Tag texts and terminal labels: (symbol representation, which text) → handle.
     tags: BTreeMap<(RepresentationId, ecad_electrical::devices::texts::TextOf), Handle>,
-    /// Wire labels (brief 022): route representation → (conductor, handle).
+    /// Wire labels: route representation → (conductor, handle).
     labels: BTreeMap<RepresentationId, (WireId, Handle)>,
-    /// The sheet frame's parts (brief 019): index → handle.
+    /// The sheet frame's parts: index → handle.
     frame: BTreeMap<u32, Handle>,
-    /// Device cross-references (brief 025): (contact or head representation, part index) → handle.
+    /// Device cross-references: (contact or head representation, part index) → handle.
     references: BTreeMap<(RepresentationId, u32), Handle>,
     /// The part each cross-reference handle is.
     device_reference_parts: HashMap<Handle, (RepresentationId, u32)>,
-    /// Brief 030: link line segments: (strip, link, index) → handle.
+    /// Link line segments: (strip, link, index) → handle.
     jumper_bars: BTreeMap<(DeviceId, u32, u32), Handle>,
-    /// Brief 040: a two-colour wire's dashes, (route representation, index) → handle, mapped to
+    /// A two-colour wire's dashes, (route representation, index) → handle, mapped to
     /// the conductor as its label is (derived: left out of an edit with other objects, refused
     /// alone), and each dash's route handle.
     dashes: BTreeMap<(RepresentationId, u32), Handle>,
     dash_routes: HashMap<Handle, Handle>,
-    /// Brief 040: the route handles drawn in a wire colour.
+    /// The route handles drawn in a wire colour.
     coloured: BTreeSet<Handle>,
-    /// Lane 072 D: the rings of the T dots, (route, end index, ring) → handle.
+    /// The rings of the T dots, (route, end index, ring) → handle.
     tees: BTreeMap<(ecad_model::RouteId, u8, u8), Handle>,
 }
 
@@ -106,7 +106,7 @@ impl HandleMap {
         self.fans.insert((cable, index), h);
         self.by_handle.insert(h, Mapped::Fan(cable));
     }
-    /// A computed part of `cable`'s drawing (brief 009): `fan` when the cable is drawn as a fan on
+    /// A computed part of `cable`'s drawing: `fan` when the cable is drawn as a fan on
     /// this page; the member (`core`) and the reference end it belongs to.
     pub fn insert_part(&mut self, cable: CableId, index: u32, h: Handle, fan: bool, core: Option<WireId>, reference: Option<RepresentationId>) {
         self.insert_fan(cable, index, h);
@@ -117,11 +117,11 @@ impl HandleMap {
             self.parts.insert(h, (core, reference));
         }
     }
-    /// Loose wire ends that show no loose-end square (design 009 §7.3).
+    /// Loose wire ends that show no loose-end square.
     pub fn quiet_ends(&self) -> &[Pt] {
         &self.quiet
     }
-    /// Open ends that look connected (design 032 §2.6), computed with the page's projection.
+    /// Open ends that look connected, computed with the page's projection.
     pub fn looks_connected(&self) -> &[Pt] {
         &self.draws
     }
@@ -157,7 +157,7 @@ impl HandleMap {
         self.tags.insert((rep, of), h);
         self.by_handle.insert(h, Mapped::Tag(rep));
     }
-    /// The derived text a handle draws (brief 031: Show/Hide Text and Move Text pick by it).
+    /// The derived text a handle draws (Show/Hide Text and Move Text pick by it).
     pub fn tag_text_of(&self, h: Handle) -> Option<(RepresentationId, ecad_electrical::devices::texts::TextOf)> {
         self.tags.iter().find(|(_, x)| **x == h).map(|(k, _)| *k)
     }
@@ -185,11 +185,11 @@ impl HandleMap {
         self.frame.insert(index, h);
         self.by_handle.insert(h, Mapped::Frame(index));
     }
-    /// The handle of cross-reference part `index` of `rep` (brief 025).
+    /// The handle of cross-reference part `index` of `rep`.
     pub fn reference(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.references.get(&(rep, index)).copied()
     }
-    /// Brief 030: the handle of segment `index` of link `n` of `strip`.
+    /// The handle of segment `index` of link `n` of `strip`.
     pub fn jumper_bar(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
         self.jumper_bars.get(&(strip, n, index)).copied()
     }
@@ -197,7 +197,7 @@ impl HandleMap {
         self.jumper_bars.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::JumperBar(strip, n));
     }
-    /// Lane 072 D: the handle of ring `ring` of the T dot at end `end` of route `r`.
+    /// The handle of ring `ring` of the T dot at end `end` of route `r`.
     pub fn tee(&self, r: ecad_model::RouteId, end: u8, ring: u8) -> Option<Handle> {
         self.tees.get(&(r, end, ring)).copied()
     }
@@ -209,7 +209,7 @@ impl HandleMap {
     pub fn tee_handles(&self) -> impl Iterator<Item = Handle> + '_ {
         self.tees.values().copied()
     }
-    /// Brief 040: the handle of dash `index` of route `rep`.
+    /// The handle of dash `index` of route `rep`.
     pub fn dash(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.dashes.get(&(rep, index)).copied()
     }

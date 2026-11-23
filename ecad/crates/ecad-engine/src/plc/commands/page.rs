@@ -1,4 +1,4 @@
-//! `plcpage` ("Make its page", brief 051, design 051 §3.6): a new schematic page with every channel
+//! `plcpage`: a new schematic page with every channel
 //! of a card not drawn yet as cells in rows, and the card body after the last cell when the body is
 //! drawn nowhere. One transaction.
 //!
@@ -30,7 +30,7 @@ use crate::commands::{on_any_page, plain_style};
 use ecad_electrical::commands::input::TextOrNumber;
 use ecad_electrical::plc::channels::first_number;
 
-/// Brief 051's commands: `plcpage`.
+/// The command `plcpage`.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("plcpage", "Make Card Page", typed::<PlcpageParams>)
@@ -39,7 +39,7 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
-/// `plcpage {card, after?}` (design 051 §3.6). One transaction labelled `Make card page`.
+/// `plcpage {card, after?}`. One transaction labelled `Make card page`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlcpageParams {
@@ -92,7 +92,7 @@ impl Command for PlcpageParams {
     }
 }
 
-/// Brief 056 (design 056 §8, tester 056 F1): the ops that put the generated `plcrack` page ("PLC
+/// The ops that put the generated `plcrack` page ("PLC
 /// racks") in the book, when `ops` place the project's first rack body and the book has no such
 /// page; empty otherwise. They join the same transaction, so undoing the placement removes the
 /// page too.

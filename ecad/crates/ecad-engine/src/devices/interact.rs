@@ -1,7 +1,7 @@
-//! The interactive forms of brief 018 (design 018 §5.3, §6.2, §6.3): Place Symbol with starter
+//! The interactive forms: Place Symbol with starter
 //! symbols and devices, Device Properties and Delete Device. Each commits through its JSON form.
 //!
-//! A duplicate tag is never a dead end (owner, 2026-11-08): a tag that exists offers to add the
+//! A duplicate tag is never a dead end: a tag that exists offers to add the
 //! symbol to that device (placing) or to make the device part of it (renaming), with "Choose
 //! another" as the other answer.
 
@@ -45,7 +45,7 @@ fn yes(i: &Input) -> Option<bool> {
     }
 }
 
-// ---------------------------------------------------------------- Place Symbol (§5.3)
+// ---------------------------------------------------------------- Place Symbol
 
 /// `place`: choose a symbol (typed search, or a click for the default), then click it onto the
 /// page as a new device or as another symbol of one; repeat until Enter.
@@ -75,7 +75,7 @@ pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
 enum Stage {
     /// Step 1: which symbol.
     Symbol,
-    /// §5.2: which symbol to add to this device.
+    /// Which symbol to add to this device.
     DeviceSymbol(DeviceId),
     /// Step 2: where.
     Point,
@@ -87,7 +87,7 @@ enum Stage {
     ConfirmJoin(DeviceId, String),
     /// The typed device does not exist: make it a new device with that tag?
     ConfirmNew(String),
-    /// Brief 045 (design 045 §2.4): which rack a new card goes in.
+    /// Which rack a new card goes in.
     Rack,
     /// Which slot of that rack.
     Slot,
@@ -106,11 +106,11 @@ struct Place {
     tag: Option<String>,
     /// The device of the most recent placement in this command.
     last: Option<DeviceId>,
-    /// Brief 045: the rack the next card goes in, once answered (`Some(None)`: no rack).
+    /// The rack the next card goes in, once answered (`Some(None)`: no rack).
     rack: Option<Option<DeviceId>>,
     /// The slot answered for it (`None`: the next free one).
     slot: Option<u32>,
-    /// Brief 048: a project symbol typed by its key (its newest version), placed instead of a
+    /// A project symbol typed by its key (its newest version), placed instead of a
     /// starter: `place {symbol: key}` resolves it the same way.
     project: Option<ProjectPick>,
 }
@@ -118,7 +118,7 @@ struct Place {
 /// Why a project symbol is not added to a device by hand (its `join` default says how it joins).
 const PROJECT_JOINS: &str = "A project symbol joins devices as its own Join setting says; place it as a new device.";
 
-/// A project symbol chosen at Place Symbol's first prompt (brief 048, design 048 §8.2).
+/// A project symbol chosen at Place Symbol's first prompt.
 #[derive(Debug, Clone)]
 struct ProjectPick {
     key: String,
@@ -145,7 +145,7 @@ impl Place {
         }
     }
 
-    /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
+    /// Whether the next placement is a new card that still needs its
     /// rack answered (the project has a rack).
     fn needs_rack(&self, s: &Session) -> bool {
         let card = ecad_electrical::plc::rack::CardType::of_symbol(self.symbol()).is_some_and(|t| !t.is_rack());
@@ -231,8 +231,7 @@ impl Place {
         .ok()
     }
 
-    /// Resolve a typed symbol (design 018 §5.3 step 1): one match is taken; a device tag goes to
-    /// §5.2.
+    /// Resolve a typed symbol: one match is taken; a device tag goes to the step that adds a symbol to that device.
     fn choose(&mut self, s: &mut Session, text: &str) -> R<Step> {
         let t = text.trim();
         // A typed point that could not be used (not finite, out of range) is no symbol name.
@@ -254,7 +253,7 @@ impl Place {
             return Ok(Step::Continue);
         }
         self.project = None;
-        // Brief 048: a project symbol's key (its newest version), before the starters'.
+        // A project symbol's key (its newest version), before the starters'.
         let project = read(s, |p, _| {
             Ok(symbols::project::project_by_key(p.ledger.document(), t)
                 .and_then(|v| Some(ProjectPick { key: v.key()?.to_string(), name: v.def.name.clone(), def: v.def.clone() })))
@@ -310,7 +309,7 @@ impl Place {
         } else if let Some(t) = &self.tag {
             params["tag"] = Value::String(t.clone());
         }
-        // Brief 045: the rack and slot answered for a new card.
+        // The rack and slot answered for a new card.
         match self.rack {
             Some(Some(r)) => {
                 params["rack"] = Value::String(r.hex());
@@ -332,7 +331,7 @@ impl Place {
             .filter_map(|t| t.get("label").and_then(Value::as_str))
             .collect();
         let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DeviceId::from);
-        // Brief 028: a terminal landed on a wire; the JSON form has said so.
+        // A terminal landed on a wire; the JSON form has said so.
         let landed = r.get("split").is_some();
         if landed {
             if r.get("joined").and_then(Value::as_bool) == Some(true) {
@@ -350,7 +349,7 @@ impl Place {
         // A typed tag names one device; the next click makes a new one with the next number.
         self.tag = None;
         self.last = component;
-        // Brief 045: the next card goes in the same rack's next free slot (the Rack keyword changes
+        // The next card goes in the same rack's next free slot (the Rack keyword changes
         // it), so Enter at the insertion point still ends the command.
         self.slot = None;
         Ok(Step::Continue)
@@ -386,7 +385,7 @@ impl Place {
                         Ok(Step::Continue)
                     }
                     // Rotate and Mirror take the default symbol and turn it (Place Symbol, R, as
-                    // before brief 018).
+                    // it always did).
                     Input::Keyword(k) if device.is_none() && (k == "Rotate" || k == "Mirror") => {
                         if k == "Rotate" {
                             self.rotation = (self.rotation + 90) % 360;
@@ -421,7 +420,7 @@ impl Place {
                         }
                         Ok(Step::Continue)
                     }
-                    // A click takes the default symbol and places it there (click-first, design 008).
+                    // A click takes the default symbol and places it there (click-first).
                     Input::Point(p) if device.is_none() => {
                         self.take_default();
                         self.go_to_point(s);
@@ -622,8 +621,8 @@ impl Interactive for Place {
                     .default_device(s)
                     .and_then(|c| read(s, |p, _| Ok(ecad_electrical::devices::tags::tag_words(p.ledger.document(), c))).ok())
                     .unwrap_or_else(|| "New".into());
-                // The default device is a keyword too, so a click on it answers (owner's trial,
-                // 2026-11-08: no Enter needed after a click).
+                // The default device is a keyword too, so a click on it answers
+                // (no Enter needed after a click).
                 let keywords: Vec<&str> = if default == "New" { vec!["New"] } else { vec![default.as_str(), "New"] };
                 prompt("Enter device to join", Accept::TEXT, &keywords, Some(default.clone()))
             }
@@ -695,7 +694,7 @@ impl Interactive for Place {
         if let Some((_, tag, labels)) = self.outcome(s) {
             let at: Vec<(TextOf, String, ecad_model::Pt)> =
                 def.connection_points.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
-            // The project's sizes (design 031 §3.2), as the page will draw them.
+            // The project's sizes, as the page will draw them.
             let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::texts::TagSizes::of(p.ledger.document()))) else { return out };
             for (_, value, p, h, ha, va) in ecad_electrical::devices::texts::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let (ha, va) = (crate::convert::engine_halign(ha), crate::convert::engine_valign(va));
@@ -746,7 +745,7 @@ fn from_selection(s: &Session) -> Option<DeviceId> {
     device_of(s, *first).ok()
 }
 
-// ---------------------------------------------------------------- Device Properties (§6.2)
+// ---------------------------------------------------------------- Device Properties
 
 /// `deviceprops`: pick a device, then change its tag, description, maker, part number, location
 /// or function at the command line.
@@ -921,7 +920,7 @@ impl Interactive for Props {
     }
 }
 
-// ---------------------------------------------------------------- Delete Device (§6.3)
+// ---------------------------------------------------------------- Delete Device
 
 /// `devicedelete`: pick a device, confirm, and it goes with every symbol on every page.
 pub(crate) fn devicedelete(s: &Session) -> R<Box<dyn Interactive>> {

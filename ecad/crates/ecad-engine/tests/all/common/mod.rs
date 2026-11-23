@@ -1,5 +1,6 @@
 //! Shared harness for the integration experiment: a CADCraft session with one ECAD project, and
-//! the checks of proposal §17.4 run after every step.
+//! the harness checks (replay equals the live document, the drawing equals the projection) run after
+//! every step.
 
 #![allow(dead_code)]
 

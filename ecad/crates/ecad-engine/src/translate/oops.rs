@@ -1,4 +1,4 @@
-//! OOPS on ECAD pages (brief 023, overseer decision 2026-11-09).
+//! OOPS on ECAD pages.
 //!
 //! CADCraft 0.17.0 added OOPS: it brings back what the drawing's last ERASE, BLOCK or -WBLOCK
 //! removed, with the objects' old handles and no provenance. On an ECAD page that is safe for plain

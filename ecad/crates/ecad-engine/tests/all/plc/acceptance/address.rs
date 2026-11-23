@@ -1,8 +1,8 @@
-//! Brief 045b, addressing (design 045 §5, §9 b-rows `address-*`, `no-address`, §13 I, J, K, M, T).
+//! PLC addressing (`address-*`, `no-address`).
 //!
-//! Addresses are read where a person reads them in 045b: the `Address` text on each drawn cell
+//! Addresses are read where a person reads them: the `Address` text on each drawn cell
 //! (`pagetexts`), and `plcracks`' per-card `inputs`/`outputs` (an IO-Link port's cell shows its
-//! input address only, §5.2). The I/O list (045c) is not used here.
+//! input address only). The I/O list is not used here.
 
 use std::collections::BTreeSet;
 

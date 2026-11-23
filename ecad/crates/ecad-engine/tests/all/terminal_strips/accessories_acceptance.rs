@@ -1,10 +1,9 @@
-//! Tester 030 (terminal strip accessories and jumper jumper bars): acceptance checks from outside,
-//! written from brief 030 and design 030 §12 only, before the implementation existed, then run
-//! against the build. They drive only JSON commands, the Jumper tool's inputs and APIs that 028
-//! already had. Defects found are kept as `#[ignore = "tester 030: defect, …"]` probes.
+//! Acceptance checks for strip accessories and jumper bars, from outside. They drive only JSON
+//! commands, the Jumper tool's inputs and the strip APIs. Defects found are kept as
+//! `#[ignore]` probes with the defect named.
 //!
-//! Jumper bar lines are derived drawing (design §5.3). They are found as page entities mapped to a
-//! `Mapped` variant that 028 did not have (by its Debug name), so the test does not depend on what
+//! Jumper bar lines are derived drawing. They are found as page entities mapped to a
+//! `Mapped` variant (by its Debug name), so the test does not depend on what
 //! the variant is called.
 
 use std::collections::BTreeMap;

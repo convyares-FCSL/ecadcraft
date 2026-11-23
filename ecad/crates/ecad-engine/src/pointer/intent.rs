@@ -1,4 +1,4 @@
-//! The electrical intent of the running tool at the cursor (brief 041 step 4, spec principle 4:
+//! The electrical intent of the running tool at the cursor (the principle:
 //! "the click says what it will do, electrically, before you make it"). The intent line shows
 //! it beside the prompt. Read only; `None` where nothing is known beyond the prompt.
 //!
@@ -61,7 +61,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
 /// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
 fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     let name = crate::interact::connection_point_name(doc, t);
-    // Brief 044: a connector pin is named by its half (`-X10.S:3`).
+    // A connector pin is named by its half (`-X10.S:3`).
     if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
         return n;
     }

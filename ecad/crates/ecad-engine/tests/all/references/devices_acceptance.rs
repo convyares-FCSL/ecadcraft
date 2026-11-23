@@ -1,4 +1,4 @@
-//! Tester probes for brief 025 (device cross-references on the general reference index).
+//! Probes of device cross-references on the general reference index.
 //!
 //! What they try to break:
 //! 1. The incremental index and the per-commit update map against a full rebuild, after seeded
@@ -6,14 +6,14 @@
 //!    placements, renumbering, page moves, settings, cables, undo and redo), and through branch
 //!    switch, merge and update-from-main.
 //! 2. Save and reopen of `.ecad` v2: the index and every drawn reference part match; a project
-//!    without the 025 properties saves back byte-identical.
+//!    without the reference properties saves back byte-identical.
 //! 3. Contact labelling: offers, too many contacts, contacts with no coil, a coil with no
 //!    contacts, duplicate tags.
 //! 4. `translate.rs`: texts and tables move with their owner, are refused alone; rotate and
 //!    mirror of a selection holding a coil.
 //!
 //! Oracles after each step: `RefIndex` equals `RefIndex::build`; every page whose drawn reference
-//! parts changed is named by `changes_since` (the update map, design 025 §6); the harness's
+//! parts changed is named by `changes_since` (the update map); the harness's
 //! projection checks; no command reports an internal error.
 
 use std::collections::{BTreeMap, BTreeSet};

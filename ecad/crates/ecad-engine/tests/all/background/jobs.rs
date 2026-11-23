@@ -1,4 +1,4 @@
-//! Lane R11 (design 061, rayon): the background pool's jobs. A result is kept only for the state it
+//! The background pool's jobs. A result is kept only for the state it
 //! was computed at, and a job that panics is a failure, never a crash.
 
 use std::time::Duration;

@@ -1,4 +1,4 @@
-//! A builder for the small projects most tests start from (brief 062), behind the `test-support`
+//! A builder for the small projects most tests start from, behind the `test-support`
 //! cargo feature. Never part of a release or the desktop app: only tests enable the feature.
 //!
 //! ```ignore
@@ -120,7 +120,7 @@ impl ProjectBuilder {
 
     /// Draw a wire between two ends: points on the page, or the first connection point of a tagged
     /// device. Both ends are attached when they meet a connection point; a line with an end that
-    /// meets none carries no wire (design 072) and adds nothing to [`Built::wires`].
+    /// meets none carries no wire and adds nothing to [`Built::wires`].
     pub fn wire(mut self, a: impl Into<End>, b: impl Into<End>) -> Self {
         self.steps.push(Step::Wire(a.into(), b.into()));
         self
@@ -141,7 +141,7 @@ impl ProjectBuilder {
     /// Run the steps. Panics, naming the step and the command's message, when a command refuses.
     pub fn build(self) -> Built {
         crate::install();
-        // Never the developer's own cable-views.json (brief 005 review M4).
+        // Never the developer's own cable-views.json.
         crate::cables::views::isolate_for_tests();
         let mut s = Session::empty();
         let project = Project::create(&mut s, "Demo", self.seed).expect("create the project");

@@ -13,7 +13,7 @@ pub fn reference_at(doc: &ecad_model::Document, page: PageId, p: Pt, radius: f64
     ecad_electrical::references::cables::reference_at_measured(doc, page, p, radius, &EngineMetrics)
 }
 
-/// `cableslash` with an existing cable's tag (design 072 §4.4, F5, superseding design 032 §3.3):
+/// `cableslash` with an existing cable's tag:
 /// a slash representation of `cable` on this page over cores it already has here. One
 /// transaction, `Cable slash`; no new cable, no new member.
 ///

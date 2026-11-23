@@ -1,4 +1,4 @@
-//! Brief 062: `test_support::ProjectBuilder` builds what the commands build, and a test can start
+//! `test_support::ProjectBuilder` builds what the commands build, and a test can start
 //! from it in one expression.
 
 use ecad_engine::dev::test_support::ProjectBuilder;

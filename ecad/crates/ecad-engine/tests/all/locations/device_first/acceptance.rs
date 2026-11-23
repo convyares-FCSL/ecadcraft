@@ -1,4 +1,4 @@
-//! Tester 052 (brief 052a–c on `feature/device-first`): old projects, the format round trip,
+//! Old projects, the format round trip,
 //! atomic refusals and exact inverses, update maps, rename and merge, bounded input, and the
 //! BOM-by-location `?` heading. The harness checks after every command that replay equals the
 //! document and the shown page equals a fresh projection.

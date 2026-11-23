@@ -1,4 +1,4 @@
-//! `titleblockimport` (brief 055, design 055 §9): a new frame from a DXF, or a logo into a title
+//! `titleblockimport`: a new frame from a DXF, or a logo into a title
 //! block's item. It reads the DXF with CADCraft's reader ([`crate::title_blocks::dxf`]), so it is the
 //! engine's; the other title block commands are generic ([`ecad_electrical::title_blocks::commands`]).
 
@@ -35,9 +35,9 @@ pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdErro
 /// `titleblockimport {path | dxf, sheet?, name?}` makes a new frame from a DXF drawing;
 /// `{id | name, item, path | dxf}` puts a DXF drawing into a logo item. One transaction.
 ///
-/// The import itself is the DXF reader's ([`crate::title_blocks::dxf::run_import`], lane 066d's
+/// The import itself is the DXF reader's ([`crate::title_blocks::dxf::run_import`]
 /// drawing code), which still takes JSON: [`Command::run`] writes the read parameters back
-/// (`serde_json::to_value`) and calls it, so the input is checked strictly here. Lane 066d may take
+/// (`serde_json::to_value`) and calls it, so the input is checked strictly here. The import may take
 /// this struct directly later.
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

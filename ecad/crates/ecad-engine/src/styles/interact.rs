@@ -1,4 +1,4 @@
-//! Brief 031's text tools (design 031 §5.5, §6.5): Show/Hide Text and Move Text. Like every ECAD form it only collects
+//! The text tools: Show/Hide Text and Move Text. Like every ECAD form it only collects
 //! and resolves values; each click commits the command's JSON form (`showtext`).
 
 use cadcraft_engine::doc::Handle;
@@ -18,7 +18,7 @@ const FREE_TEXT: &str = "That is free text; erase it to remove it.";
 const NOTHING_HIDDEN: &str = "Nothing is hidden on this symbol.";
 const LEVELS: [&str; 4] = ["Device", "Page", "Project", "Symbol"];
 
-/// The level the next click writes (design 031 §5.5; default Symbol).
+/// The level the next click writes (default Symbol).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Level {
     #[default]
@@ -129,7 +129,7 @@ impl ShowText {
     }
 }
 
-/// The echo after a change (design 031 §5.5): `Tag -X01 hidden on this symbol.`…
+/// The echo after a change: `Tag -X01 hidden on this symbol.`…
 fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
     let what = ecad_electrical::styles::text_style::kind_words(kind);
     let mut what = what.to_string();
@@ -189,7 +189,7 @@ impl Interactive for ShowText {
     }
 }
 
-// ---------------------------------------------------------------- Move Text (design 031 §6.5)
+// ---------------------------------------------------------------- Move Text
 
 const PICK_TO_MOVE: &str = "Pick a tag or label to move.";
 const FREE_TEXT_MOVE: &str = "That is free text; use MOVE.";

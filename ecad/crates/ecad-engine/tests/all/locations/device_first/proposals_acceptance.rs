@@ -1,4 +1,4 @@
-//! Tester 052d (design 052 §5.3–§5.6, §5.8, §10.17–21): every place path proposes in its own
+//! Every place path proposes in its own
 //! transaction (the project-symbol path included), the conflict answers (Move, Move per row, Half,
 //! Leave) and their undo, stale conflicts, page, project and box-move proposals, and hostile
 //! proposal parameters. The harness checks replay and the shown page after every command.

@@ -1,5 +1,5 @@
-//! Tester contract for brief 029 FP1 (design §10), through the app: a v2 file whose snapshot was
-//! written by a build before 026 (marks without cable tags, no rule in the row) opens with
+//! Through the app: a v2 file whose snapshot was
+//! written by an older build (marks without cable tags, no rule in the row) opens with
 //! `ProjectHandle::open_file`, and the app's `cableadd` gives the next unused cable number, not
 //! the number of a cable deleted before that snapshot.
 
