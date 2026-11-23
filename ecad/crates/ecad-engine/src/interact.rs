@@ -36,9 +36,9 @@ use crate::access::{owner_of_active, try_lock};
 use crate::cables::views::{FanOnPage, View, fan_on_page};
 use crate::project::{Mapped, Project};
 use crate::translate::connection_point_at;
-pub use ecad_electrical::cables::words::{MAX_COORD, MAX_HOVER_LINES, OUT_OF_RANGE};
+use ecad_electrical::cables::words::{MAX_COORD, MAX_HOVER_LINES};
+use ecad_electrical::terminal_strips::terminal_blocks::connection_point_name;
 use ecad_electrical::terminal_strips::terminal_blocks::short;
-pub use ecad_electrical::terminal_strips::terminal_blocks::{connection_point_name, position_label};
 
 pub(crate) use crate::connectors::interact::connector;
 pub(crate) use crate::continuations::interact::contcaption;
@@ -147,7 +147,7 @@ pub(crate) fn pick(s: &Session, p: Vec2) -> Option<Handle> {
     // The sheet frame is not an object to pick. It is drawn behind everything else, so
     // it is only picked where nothing else is.
     let d = s.doc().ok()?;
-    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == crate::pages::frame::LAYER);
+    let frame = |h: Handle| d.entity(h).is_some_and(|e| e.common.layer == ecad_electrical::pages::frames::LAYER);
     if !frame(h) {
         return Some(h);
     }
@@ -738,7 +738,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
         Some(Mapped::Item(i)) => i,
         Some(Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Label(_) | Mapped::DeviceReference(_)) => return Err(NOT_OUTLINE.into()),
         Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
-        Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
+        Some(Mapped::Frame(_)) => return Err(ecad_electrical::pages::frames::DERIVED.into()),
         Some(Mapped::JumperBar(..)) => return Err(ecad_electrical::terminal_strips::jumper_bars::JUMPER_BAR_DERIVED.into()),
         Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),

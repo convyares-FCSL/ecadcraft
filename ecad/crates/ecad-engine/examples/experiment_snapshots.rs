@@ -34,7 +34,7 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle.hex())
         .collect();
     let c = run(&mut s, "convertcomponent", json!({"handles": lines}));

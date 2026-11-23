@@ -168,7 +168,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     ok(&mut h, r#"place {"symbol":"coil","at":[200,100]}"#);
     let sym = {
         let t = h.state_mut();
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).last().unwrap().handle
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).last().unwrap().handle
     };
     let _ = sym;
     let coil_items: Vec<_> = {

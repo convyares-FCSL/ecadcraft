@@ -134,9 +134,9 @@ fn with_writes_off_conflict_answers_are_refused() {
     c.exec("conflicts", json!({}));
     for answer in ["move", "half"] {
         let m = c.refused("execute", json!({"command": "conflicts", "params": {"answer": answer}}));
-        assert_eq!(m, ecad_mcp::policy::WRITES_OFF, "{answer}");
+        assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF, "{answer}");
     }
     let m = c.refused("execute", json!({"command": "place", "params": {"symbol": "coil", "at": [0, 0], "location": "move"}}));
-    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
     assert_eq!(c.log().len(), before);
 }

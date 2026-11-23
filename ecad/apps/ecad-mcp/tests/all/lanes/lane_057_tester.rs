@@ -5,7 +5,8 @@
 //! and record nothing while `ratings` works and reads what it read before. Every table value is
 //! made up.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Op;
 use serde_json::{Value, json};
 

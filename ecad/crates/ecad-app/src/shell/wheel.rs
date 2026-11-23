@@ -10,7 +10,8 @@
 //! Update map: the wheel reads the object's kind and each slot's `enabled` once, when it opens;
 //! nothing while it is closed.
 
-use crate::commands::actions::{self, Action, App, Choices, Context, Enabled, IdOf, ObjectKind, Params};
+use crate::commands::actions::{self, Action, App, Choices, Context, Enabled, IdOf, Params};
+use ecad_electrical::devices::kinds::ObjectKind;
 use ecad_engine::cad::Input;
 use ecad_engine::cad::Vec2;
 use ecad_engine::pointer::kind::{self, Target};

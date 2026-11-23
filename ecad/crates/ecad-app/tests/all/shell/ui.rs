@@ -386,7 +386,7 @@ fn delete_erases_the_selection() {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
             .map(|e| e.handle)
             .collect::<Vec<_>>()
     };

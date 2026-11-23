@@ -186,7 +186,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 /// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::releases::release::MAX_STEM) characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
-    let raw = ecad_electrical::pages::frames::project_text(doc, crate::pages::frame::DRAWING_NUMBER)
+    let raw = ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::frames::DRAWING_NUMBER)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
@@ -705,8 +705,8 @@ pub fn manifest(
     json!({
         "ecad_release": MANIFEST_VERSION,
         "project": b.stem.clone(),
-        "drawing_number": prop(crate::pages::frame::DRAWING_NUMBER),
-        "title": prop(crate::pages::frame::TITLE),
+        "drawing_number": prop(ecad_electrical::pages::frames::DRAWING_NUMBER),
+        "title": prop(ecad_electrical::pages::frames::TITLE),
         "rev": row.rev(),
         "date": row.get("date"),
         "description": row.get("description"),

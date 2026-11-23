@@ -349,7 +349,7 @@ fn say(line: &str) {
 pub fn preferred_folder(snapshots: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
     let dir = snapshots?;
     match dir.to_str() {
-        Some(typed) => ecad_engine::expand_home(typed, home).ok(),
+        Some(typed) => ecad_file::binding::expand_home(typed, home).ok(),
         None => Some(dir.to_path_buf()),
     }
 }

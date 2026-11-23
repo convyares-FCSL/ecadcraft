@@ -713,7 +713,7 @@ impl IoView {
     /// model (words only; no rows made).
     fn after_sync(&mut self, doc: &Document, o: &ReportModels) {
         let plc = &o.plc;
-        self.project_name = ecad_electrical::pages::frames::project_text(doc, ecad_engine::pages::frame::TITLE)
+        self.project_name = ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::frames::TITLE)
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "Project".into());

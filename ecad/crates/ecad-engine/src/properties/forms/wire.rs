@@ -3,12 +3,14 @@
 use super::{R, Safe, commit, hex_of, not_a_point, other, paper_guard, safely};
 use crate::commands::{MAX_WIRE_POINTS, on_project};
 use crate::interact::{
-    ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, capture_at, capture_preview, connection_point_for, connection_point_name, in_range,
-    line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
+    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, capture_at, capture_preview, connection_point_for, in_range, line_kind, pixel, preview_entity,
+    preview_text, pt, read, ring_kind, v2,
 };
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::terminal_strips::terminal_blocks::connection_point_name;
 use ecad_model::Pt;
 use serde_json::{Value, json};
 

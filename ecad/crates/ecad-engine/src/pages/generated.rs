@@ -8,7 +8,9 @@ use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, GenKind, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT};
+use crate::pages::frame::{FrameInput, Part};
+use ecad_electrical::pages::frames::LABEL_ACI;
+use ecad_electrical::pages::frames::THIN_WEIGHT;
 use ecad_electrical::pages::generated::*;
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::look::TextDraw;
@@ -53,7 +55,7 @@ impl Draw {
             return;
         }
         let height = draw.mm;
-        let (shown, wf) = crate::pages::frame::fit(value, height, room);
+        let (shown, wf) = ecad_electrical::pages::frames::fit(value, height, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
         let kind = EntityKind::Text(Text {
@@ -85,7 +87,7 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, draw: TextDraw) -> V
     let mut d = Draw { k, x0: 0.0, out: Vec::new() };
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
     let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
-    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), crate::cables::draw::WIRE_WEIGHT, Some(FLAGGED_ACI));
+    d.rect((x0 + inset, y0 + inset), (x1 - inset, y1 - inset), ecad_electrical::cables::words::WIRE_WEIGHT, Some(FLAGGED_ACI));
     d.text((x0 + inset + 1.0, (y0 + y1) / 2.0), draw, MISSING, HAlign::Left, Some(FLAGGED_ACI), Some(x1 - x0 - 2.0 * inset - 1.0));
     d.out
 }

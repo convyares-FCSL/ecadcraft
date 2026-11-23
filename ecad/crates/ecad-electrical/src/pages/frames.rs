@@ -19,9 +19,6 @@ pub const FRAME_ACI: u8 = 7;
 /// `ecad.frame-label` and `ecad.sheet-edge`: ACI 8.
 pub const LABEL_ACI: u8 = 8;
 
-/// `ecad.frame-weight` (hundredths of a millimetre).
-pub const FRAME_WEIGHT: u16 = 50;
-
 /// `ecad.wire-weight`.
 pub const THIN_WEIGHT: u16 = 25;
 

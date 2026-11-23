@@ -13,15 +13,17 @@ use ecad_model::objects::title_block::{Align, BlockItem, Ink, LineWeight, Newest
 use ecad_model::{LengthUnit, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{LABEL_ACI, LAYER, Part};
+use crate::pages::frame::Part;
 use ecad_electrical::pages::frames::FrameInput;
+use ecad_electrical::pages::frames::LABEL_ACI;
+use ecad_electrical::pages::frames::LAYER;
 use ecad_model::look::TextDraw;
 
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
 pub const RED_ACI: u8 = 1;
 /// How far a zone tick reaches into the margin, mm.
 pub(crate) const TICK_MM: f64 = 3.0;
-pub use ecad_electrical::title_blocks::INSET_MM;
+use ecad_electrical::title_blocks::INSET_MM;
 /// Gap under a caption before the value area, mm.
 pub(crate) const CAPTION_GAP_MM: f64 = 1.5;
 /// The most of a revision row its text may fill: a fit bound (it keeps a large `TitleValue` style

@@ -176,7 +176,7 @@ fn opening_a_non_project_read_only_reports_why() {
 ",
     )
     .unwrap();
-    let e = ecad_engine::file::Binding::open_read_only(&p, 1, "test").err().unwrap().to_string();
+    let e = ecad_file::binding::Binding::open_read_only(&p, 1, "test").err().unwrap().to_string();
     assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
 }
 

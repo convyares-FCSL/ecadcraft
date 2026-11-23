@@ -320,7 +320,7 @@ fn a_connector_pin_is_never_read_as_a_strip_level() {
     let t = pin(&d, c, ".s", "2");
     let tag = ecad_electrical::devices::tags::tag_words(&d, c);
     assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t), Some(format!("{tag}.S:2")));
-    assert_eq!(ecad_engine::interact::connection_point_name(&d, t), format!("{tag}.S:2"));
+    assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&d, t), format!("{tag}.S:2"));
 }
 
 #[test]

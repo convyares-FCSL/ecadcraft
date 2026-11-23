@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use crate::cables::views::{self, View};
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_any_page, on_project, plain_style};
+use ecad_electrical::cables::cable_title;
 use ecad_electrical::cables::layout::{FanEnd, MarkerEnd};
 use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
 use ecad_electrical::commands::input::{Bounded, OrNull, Point, nullable};
@@ -56,8 +57,8 @@ pub(crate) struct CableslashParams {
 
 impl Command for CableslashParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let from = self.from.within(crate::interact::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
-        let to = self.to.within(crate::interact::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
+        let from = self.from.within(ecad_electrical::cables::words::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
+        let to = self.to.within(ecad_electrical::cables::words::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;
@@ -223,7 +224,7 @@ impl Command for CablefanParams {
             if !doc.cables().contains_key(&cable) {
                 return Err(CmdError::refused("no such cable"));
             }
-            let title = views::cable_title(doc, cable);
+            let title = cable_title(doc, cable);
             let ends = ecad_electrical::cables::layout::fan_ends(
                 doc,
                 page,
@@ -357,7 +358,7 @@ impl Command for CableviewParams {
             let current = p.view_of(k);
             let target = view.unwrap_or_else(|| current.toggled());
             if target == View::Fan && current != View::Fan && !ecad_electrical::cables::layout::offers_fan(doc, k) {
-                return Err(CmdError::refused(format!("Cable {} {}", views::cable_title(doc, k), views::ONE_WIRE)));
+                return Err(CmdError::refused(format!("Cable {} {}", cable_title(doc, k), views::ONE_WIRE)));
             }
             let (changed, stored) = p.set_view(pg, k, target);
             let mut r = json!({"cable": k.hex(), "view": target.name()});

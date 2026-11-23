@@ -112,7 +112,7 @@ pub struct ClipSnapshot {
 
 impl Project {
     /// Where the project's file stands (`Persistence::File`).
-    pub fn file_status(&self) -> crate::file::FileStatus {
+    pub fn file_status(&self) -> ecad_file::binding::FileStatus {
         self.file.status()
     }
 
@@ -257,15 +257,15 @@ impl Project {
         let what = if save_as { "saveas" } else { "qsave" };
         let target = path.filter(|p| !p.trim().is_empty());
         let r: Result<(Option<String>, Option<String>), String> = match target {
-            None if save_as => Err(crate::file::SAVE_AS_NEEDS_PATH.into()),
+            None if save_as => Err(ecad_file::binding::SAVE_AS_NEEDS_PATH.into()),
             None => self.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
             Some(p) => crate::file::normalize(p).map_err(|e| e.to_string()).and_then(|p| {
                 let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
                 Ok((
                     Some(p),
                     match w {
-                        crate::file::Written::Confirmed => None,
-                        crate::file::Written::Unconfirmed(m) => Some(m),
+                        ecad_file::binding::Written::Confirmed => None,
+                        ecad_file::binding::Written::Unconfirmed(m) => Some(m),
                     },
                 ))
             }),

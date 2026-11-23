@@ -5,7 +5,8 @@
 //!
 //! Every value here is synthetic.
 
-use ecad_mcp::{EcadMcp, MAX_REQUEST_BYTES, Options};
+use ecad_engine::agent::MAX_REQUEST_BYTES;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Document;
 use serde_json::{Value, json};
 

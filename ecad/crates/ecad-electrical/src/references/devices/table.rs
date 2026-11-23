@@ -24,7 +24,7 @@ pub(crate) const SPARE_ACI: u8 = 8;
 /// `ecad.orphan`: ACI 1, for rows drawn beyond the offer.
 pub(crate) const OVER_ACI: u8 = crate::references::cables::ORPHAN_ACI;
 /// `ecad.mirror-row`: the table's row pitch, millimetres.
-pub const ROW_PITCH_MM: f64 = 4.0;
+pub(crate) const ROW_PITCH_MM: f64 = 4.0;
 /// The gap before the first auxiliary row after power rows, millimetres.
 pub(crate) const GROUP_GAP_MM: f64 = 2.0;
 /// What a spare row shows for its place.

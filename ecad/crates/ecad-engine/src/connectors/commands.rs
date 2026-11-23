@@ -123,7 +123,7 @@ impl Command for ConnectorParams {
         });
         for p in at.iter().chain(line.iter().flat_map(|(a, b)| [a, b])) {
             if rules::out_of_range(*p) {
-                return Err(err(crate::interact::OUT_OF_RANGE));
+                return Err(err(ecad_electrical::cables::words::OUT_OF_RANGE));
             }
         }
         let names = self.names.map(|n| match n {
@@ -181,7 +181,7 @@ pub(crate) fn place_half(
         let (device, new_tag) = ecad_electrical::devices::commands::place::connector_target(doc, side, device.as_deref(), tag.as_deref())?;
         let style = plain_style(p);
         let mut ops = Vec::new();
-        let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
+        let def = ecad_electrical::terminal_strips::commands::terminal_strips::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let taken = BTreeSet::new();
         let pin_starter = cn::is_pin_starter(starter);
         let names: Vec<String> = match (device, pin_starter) {

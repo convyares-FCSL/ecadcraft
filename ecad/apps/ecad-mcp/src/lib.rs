@@ -32,22 +32,16 @@ pub mod bridge;
 pub mod demo;
 pub mod launch;
 
-// The gate, policy and tools live in `ecad_engine::agent`, shared with the window's live bridge.
-pub use ecad_engine::agent::{gate, policy, tools};
-
 use std::cell::RefCell;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
 use cadcraft_mcp::{Backend, Headless, Server};
+use ecad_engine::agent::{CADCRAFT_TOOLS, MAX_BATCH, MAX_REQUEST_BYTES, UNNAMED_AGENT, agent_name, gate, not_offered, tools};
 use ecad_engine::cad::Session;
 use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::Author;
 use serde_json::{Value, json};
-
-pub use ecad_engine::agent::{
-    CADCRAFT_TOOLS, MAX_AGENT_NAME, MAX_BATCH, MAX_REQUEST_BYTES, MAX_TRANSACTIONS_PER_CALL, UNNAMED_AGENT, UNREADABLE, agent_name, not_offered,
-};
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
@@ -703,6 +697,6 @@ mod tests {
     fn agent_names() {
         assert_eq!(agent_name("  claude-code\n"), "claude-code");
         assert_eq!(agent_name("\u{7}"), UNNAMED_AGENT);
-        assert_eq!(agent_name(&"a".repeat(500)).chars().count(), MAX_AGENT_NAME);
+        assert_eq!(agent_name(&"a".repeat(500)).chars().count(), ecad_engine::agent::MAX_AGENT_NAME);
     }
 }

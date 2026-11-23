@@ -4,7 +4,8 @@
 //! is refused and `stripplan`, `bom`, `checks` and the renumber preview give what they gave before
 //! the save and record nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{ObjectRef, Op, Transaction};
 use serde_json::{Value, json};
 

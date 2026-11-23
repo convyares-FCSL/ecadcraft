@@ -15,9 +15,10 @@ use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, WireId};
 
-use crate::interact::{capture, connection_point_name, pick, pixel, pt, read, route_ends};
+use crate::interact::{capture, pick, pixel, pt, read, route_ends};
 use crate::project::{Mapped, Project};
 use ecad_electrical::devices::kinds::ObjectKind;
+use ecad_electrical::terminal_strips::terminal_blocks::connection_point_name;
 
 /// The object a wheel was opened on.
 #[derive(Debug, Clone, PartialEq)]

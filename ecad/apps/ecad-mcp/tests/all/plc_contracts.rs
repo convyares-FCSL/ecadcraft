@@ -2,7 +2,7 @@
 //! transaction by `Author::Agent(<client>)` and is refused with writes off; the reads work with
 //! writes off and record nothing.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 

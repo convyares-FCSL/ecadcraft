@@ -32,7 +32,7 @@ use crate::styles::page as ptype;
 use ecad_model::GenKind;
 
 /// Most characters of a page number.
-pub const MAX_NUMBER_CHARS: usize = 12;
+pub(crate) const MAX_NUMBER_CHARS: usize = 12;
 
 /// Most characters of a start number.
 pub(crate) const MAX_START_DIGITS: usize = 6;

@@ -259,7 +259,7 @@ impl App {
             out.push(String::new());
             out.push(format!("Cables ({}):", doc.cables().len()));
             for (k, cable) in doc.cables() {
-                out.push(format!("  {:<8} {} members  {}", ecad_engine::cables::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
+                out.push(format!("  {:<8} {} members  {}", ecad_electrical::cables::cable_title(doc, *k), cable.cores.len(), k.hex()));
             }
             out.push(String::new());
             out.push(format!(

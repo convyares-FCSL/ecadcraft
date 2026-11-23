@@ -142,7 +142,7 @@ fn a_page_first_opens_with_the_sheet_fitted_24_px_inside_the_canvas() {
     let xf = h.state().cad.canvas.xf.unwrap();
     let d = h.state().cad.session.doc().unwrap();
     let mut b = cadcraft_engine::geom::Bounds2::default();
-    for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER) {
+    for e in d.model.iter().filter(|e| e.common.layer == ecad_electrical::pages::frames::LAYER) {
         b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
     }
     assert!(!b.is_empty(), "the page has a frame");
@@ -215,7 +215,7 @@ fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
         h.run_steps(2);
     }
     let t = h.state().wheel_target().cloned().expect("the page wheel");
-    assert_eq!(t.kind, ecad_app::commands::actions::ObjectKind::PageRow);
+    assert_eq!(t.kind, ecad_electrical::devices::kinds::ObjectKind::PageRow);
     assert_eq!(t.page, Some(order[4]));
 }
 

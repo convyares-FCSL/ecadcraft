@@ -67,7 +67,7 @@ fn tag(d: &Document, c: DeviceId) -> String {
 
 fn name(h: &mut H, t: ConnectionPointId) -> String {
     let d = h.doc();
-    ecad_electrical::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_engine::interact::connection_point_name(&d, t))
+    ecad_electrical::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&d, t))
 }
 
 fn net(h: &mut H, t: ConnectionPointId) -> Option<ecad_model::NetKey> {
@@ -238,7 +238,7 @@ fn read_everything(h: &mut H) {
     let _ = d.connectivity();
     let _ = ecad_engine::checks::all(&d, 1e-6);
     for t in d.connection_points().keys() {
-        let _ = ecad_engine::interact::connection_point_name(&d, *t);
+        let _ = ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&d, *t);
         let _ = ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, *t);
     }
     same_as_built(h);
@@ -902,7 +902,7 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
                 Some(want.as_str()),
                 "shown_label of {want}"
             );
-            assert_eq!(ecad_engine::interact::connection_point_name(&d, t), want);
+            assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&d, t), want);
         }
         assert!(ecad_electrical::terminal_strips::strip_of(&d, x).is_none(), "{tg} is not a strip");
     }
@@ -1280,7 +1280,7 @@ fn bulkheads_stay_one_piece() {
         for (t, x) in d.connection_points_of(b) {
             assert!(!matches!(x.key.as_ref().map(ToString::to_string).as_deref(), Some(".s" | ".p")), "{fam}: no side keys");
             assert!(ecad_electrical::connectors::pin_name(&d, t).is_none(), "{fam}: a bulkhead pin has no half name");
-            let n = ecad_engine::interact::connection_point_name(&d, t);
+            let n = ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&d, t);
             assert!(!n.contains(".S") && !n.contains(".P"), "{fam}: bulkhead pin {bt}:{n}");
         }
         assert_eq!(bom_rows(&mut c.h, &bt).len(), 1, "{fam}: one BOM row");
@@ -1510,13 +1510,15 @@ fn r13_save_and_reopen_keep_everything() {
     let before = c.h.doc();
     let reads = |h: &mut H| (bom(h), wirelist(h), h.run("references", json!({"limit": 2000})).unwrap(), h.run("checks", json!({})).unwrap());
     let r_before = reads(&mut c.h);
-    let names_before: Vec<String> = before.connection_points().keys().map(|t| ecad_engine::interact::connection_point_name(&before, *t)).collect();
+    let names_before: Vec<String> =
+        before.connection_points().keys().map(|t| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&before, *t)).collect();
     let (mut h, _) = reload(c.h, "reopen", 0x7044_00d1);
     let head = h.head();
     let after = h.doc();
     assert_eq!(model_parts(&after), model_parts(&before), "model after reopen");
     assert_eq!(reads(&mut h), r_before, "reports after reopen");
-    let names_after: Vec<String> = after.connection_points().keys().map(|t| ecad_engine::interact::connection_point_name(&after, *t)).collect();
+    let names_after: Vec<String> =
+        after.connection_points().keys().map(|t| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(&after, *t)).collect();
     assert_eq!(names_after, names_before);
     assert_eq!(h.doc().connectivity().net_of_connection_point(s3), h.doc().connectivity().net_of_connection_point(p3), "mated after reopen");
     assert_eq!(h.head(), head, "open writes nothing");

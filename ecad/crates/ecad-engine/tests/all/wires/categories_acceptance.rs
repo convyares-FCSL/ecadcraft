@@ -427,7 +427,7 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
     let lines = |m: &cadcraft_engine::doc::Drawing| {
         m.model
             .iter()
-            .filter(|e| matches!(e.kind, EntityKind::LwPolyline(_) | EntityKind::Line(_)) && e.common.layer != ecad_engine::pages::frame::LAYER)
+            .filter(|e| matches!(e.kind, EntityKind::LwPolyline(_) | EntityKind::Line(_)) && e.common.layer != ecad_electrical::pages::frames::LAYER)
             .cloned()
             .collect::<Vec<_>>()
     };

@@ -461,7 +461,7 @@ impl App {
     pub fn fit_sheet_in(&mut self, rect: Rect) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
         let mut b = ecad_engine::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER) {
+        for e in d.model.iter().filter(|e| e.common.layer == ecad_electrical::pages::frames::LAYER) {
             b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {

@@ -5,7 +5,8 @@
 //! and records nothing, and `plcracks`, `checks` and `defaults {group: "PLC"}` read and record
 //! nothing. The merge preview names a rack by its tag, never by its hex ID.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Op;
 use serde_json::{Value, json};
 

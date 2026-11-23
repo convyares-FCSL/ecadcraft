@@ -13,8 +13,9 @@
 use std::path::PathBuf;
 
 use cadcraft_engine::Session;
+use ecad_engine::agent::policy;
 use ecad_engine::{Persistence, Project, ProjectHandle};
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::connectivity::derive::cable_references;
 use ecad_model::{Author, Document, PageId, Transaction};
 use serde_json::{Value, json};

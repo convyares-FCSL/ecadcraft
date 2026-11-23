@@ -4,7 +4,8 @@
 //! (`stripplan`, `cablecores`, `cablelist`, `checks`, a renumber preview) works, gives what it gave
 //! before the save, and records nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, ObjectRef, Op};
 use serde_json::{Value, json};
 

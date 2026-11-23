@@ -2,7 +2,8 @@
 //! `point` and `place` of a project symbol with `tag` each record one transaction by
 //! `Author::Agent(<client>)` and are refused with writes off.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::{Value, json};
 

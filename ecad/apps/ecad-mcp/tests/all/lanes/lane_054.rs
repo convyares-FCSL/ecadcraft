@@ -2,7 +2,7 @@
 //! `deletepage` through MCP. Each write records one transaction by `Author::Agent(<client>)` that
 //! one `u` undoes, and is refused with writes off.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, Document, Op};
 use serde_json::{Value, json};
 

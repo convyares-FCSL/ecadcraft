@@ -20,6 +20,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
 use cadcraft_mcp::{Backend, Remote};
+use ecad_engine::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
 use serde_json::{Value, json};
 
 /// The port the desktop app listens on by default.
@@ -28,9 +29,6 @@ pub const DEFAULT_PORT: u16 = ecad_engine::agent::access::DEFAULT_PORT;
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 /// How long `ecad.bye` may take when the server stops.
 pub const BYE_TIMEOUT: Duration = Duration::from_secs(1);
-
-// The words the window shares, at their old paths.
-pub use ecad_engine::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
 
 /// Where the server's calls go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

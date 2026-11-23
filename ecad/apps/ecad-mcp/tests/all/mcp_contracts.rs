@@ -12,8 +12,11 @@ use std::process::{Command, Stdio};
 
 use crate::common::writer;
 use cadcraft_engine::Session;
+use ecad_engine::agent::MAX_BATCH;
+use ecad_engine::agent::MAX_REQUEST_BYTES;
+use ecad_engine::agent::policy;
 use ecad_engine::{Persistence, Project, ProjectHandle};
-use ecad_mcp::{EcadMcp, MAX_BATCH, MAX_REQUEST_BYTES, Options, policy};
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document, Transaction};
 use serde_json::{Value, json};
 
@@ -354,7 +357,7 @@ fn the_agent_name_comes_from_the_client_or_from_the_agent_option() {
     let mut c = Client { s: EcadMcp::in_memory("x", 3, Options { write: true, agent: None }).unwrap(), next: 1 };
     c.no_settings();
     c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
-    assert_eq!(c.log().last().unwrap().author, Author::Agent(ecad_mcp::UNNAMED_AGENT.into()));
+    assert_eq!(c.log().last().unwrap().author, Author::Agent(ecad_engine::agent::UNNAMED_AGENT.into()));
 }
 
 // ---------- criterion 3 ----------
@@ -749,7 +752,7 @@ fn the_first_initialize_names_the_author_and_later_ones_do_not() {
     c.exec("wire", json!({"points": [[0, 0], [10, 0]]}));
     assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
     // Invisible characters never reach a recorded name.
-    assert_eq!(ecad_mcp::agent_name("ad\u{202E}min\u{200B}"), "admin");
+    assert_eq!(ecad_engine::agent::agent_name("ad\u{202E}min\u{200B}"), "admin");
 }
 
 #[test]

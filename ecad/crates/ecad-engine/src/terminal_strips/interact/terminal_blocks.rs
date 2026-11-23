@@ -10,12 +10,16 @@ use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
 use crate::interact::{
-    ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, connection_point_for, in_range, line_kind, pixel, preview_entity, preview_text, pt,
-    read, ring_kind, v2,
+    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, connection_point_for, in_range, line_kind, pixel, preview_entity, preview_text, pt, read,
+    ring_kind, v2,
 };
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::terminal_strips::commands::{self, MAX_FENCE};
+use crate::terminal_strips::commands::{self};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
+use ecad_electrical::terminal_strips::commands::terminal_strips::MAX_FENCE;
+use ecad_electrical::terminal_strips::commands::terminal_strips::staple;
+use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 
 // ---------------------------------------------------------------- Place Terminals
@@ -341,7 +345,7 @@ impl DrawBridge {
                 let Some((t, at, _)) = connection_point_for(s, p) else {
                     return Err(other("No terminal there. Click a terminal of a strip (its ring)."));
                 };
-                let words = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 match self.first.take() {
                     None => {
                         self.first = Some((t, at, words));
@@ -397,7 +401,7 @@ impl Interactive for DrawBridge {
             return Vec::new();
         }
         let b = connection_point_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);
-        let pts = commands::staple(*a, b);
+        let pts = staple(*a, b);
         pts.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect()
     }
 }

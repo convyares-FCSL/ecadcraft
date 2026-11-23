@@ -2,7 +2,7 @@
 //! row and as pins, `place` joining a half, and `pinlabel` each record one transaction by
 //! `Author::Agent(<client>)`; the refusals record nothing; with writes off each is refused.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{DeviceId, Op};
 use serde_json::{Value, json};
 

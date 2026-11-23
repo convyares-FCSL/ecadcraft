@@ -284,14 +284,18 @@ impl PagesRef<'_> {
     /// [`PagesRef::frame_entities_of`]).
     pub fn entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer != crate::pages::frame::LAYER).cloned().collect()))
+            .and_then(|d| {
+                d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).cloned().collect())
+            })
             .unwrap_or_default()
     }
 
     /// The sheet frame's entities of `page`'s drawing.
     pub fn frame_entities_of(&self, p: &Project, page: PageId) -> Vec<Arc<Entity>> {
         self.drawing_of(p, page)
-            .and_then(|d| d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == crate::pages::frame::LAYER).cloned().collect()))
+            .and_then(|d| {
+                d.space(&Space::Model).map(|m| m.iter().filter(|e| e.common.layer == ecad_electrical::pages::frames::LAYER).cloned().collect())
+            })
             .unwrap_or_default()
     }
 

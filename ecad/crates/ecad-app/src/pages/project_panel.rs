@@ -1267,7 +1267,8 @@ impl ProjectPanel {
                     }
                     // Terminal strips after Terminal plan.
                     if k == ecad_model::GenKind::TerminalBlocks {
-                        let b = ui.button(ecad_engine::terminal_strips::draw::TITLE).on_hover_text("ecad.project.newpage.terminal_blocks-graphic");
+                        let b =
+                            ui.button(ecad_electrical::terminal_strips::pages::TITLE).on_hover_text("ecad.project.newpage.terminal_blocks-graphic");
                         if b.clicked() {
                             out.push(Action::NewStripPage);
                             ui.close();

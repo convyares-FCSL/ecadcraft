@@ -38,7 +38,7 @@ pub(crate) fn place_channel(
         let doc = p.ledger.document();
         let (card, new_tag) = ecad_electrical::devices::commands::place::card_target(doc, device, tag.as_deref())?;
         let mut ops = Vec::new();
-        let def = crate::terminal_strips::commands::definition_for(doc, &mut p.ids, starter, &mut ops)?;
+        let def = ecad_electrical::terminal_strips::commands::terminal_strips::definition_for(doc, &mut p.ids, starter, &mut ops)?;
         let (card, card_tag, new) = match card {
             Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c), false),
             None => {
@@ -160,7 +160,7 @@ impl Command for PlcchannelsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let rest = self.rest.unwrap_or(false);
         let first = self.first.map(|t| rules::channel_number(&t.text())).transpose().map_err(|e| err(e.to_string()))?;
-        let bad = |q: Pt| !(q.x.abs() <= crate::interact::MAX_COORD && q.y.abs() <= crate::interact::MAX_COORD);
+        let bad = |q: Pt| !(q.x.abs() <= ecad_electrical::cables::words::MAX_COORD && q.y.abs() <= ecad_electrical::cables::words::MAX_COORD);
         let v = on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let doc = p.ledger.document();
@@ -179,7 +179,7 @@ impl Command for PlcchannelsParams {
                 let from = self.from.ok_or(CmdError::input("`from` [x,y] is required"))?.0;
                 let to = self.to.ok_or(CmdError::input("`to` [x,y] is required"))?.0;
                 if bad(from) || bad(to) {
-                    return Err(CmdError::refused(crate::interact::OUT_OF_RANGE));
+                    return Err(CmdError::refused(ecad_electrical::cables::words::OUT_OF_RANGE));
                 }
                 if from.near(to, p.tolerance) {
                     return Err(CmdError::input("`from` and `to` must differ"));

@@ -25,7 +25,7 @@ use crate::symbols::proposals::{self, Mode, Planned};
 use ecad_model::GenKind;
 
 /// Most characters of a folder name.
-pub const MAX_FOLDER_NAME: usize = 100;
+pub(crate) const MAX_FOLDER_NAME: usize = 100;
 /// Most characters in a page title.
 pub const MAX_PAGE_TITLE: usize = ecad_model::document::page::MAX_PAGE_TITLE;
 /// The project property keys the dialog and the title block use, in order.
@@ -33,7 +33,7 @@ pub const PROJECT_KEYS: [&str; 6] = [TITLE, DRAWING_NUMBER, CUSTOMER, STATUS, FU
 /// Most characters of a free property key.
 pub const MAX_KEY_CHARS: usize = 40;
 /// The page-number step's range.
-pub const MAX_STEP: u32 = ecad_model::naming::builtins::MAX_PAGE_NUMBER_STEP;
+pub(crate) const MAX_STEP: u32 = ecad_model::naming::builtins::MAX_PAGE_NUMBER_STEP;
 
 /// A `SetProperty` of `key` on `object` (whose properties are `props`) to `after`, when it changes.
 fn set(object: ObjectRef, props: Option<&Properties>, key: &str, after: Option<String>) -> Option<Op> {

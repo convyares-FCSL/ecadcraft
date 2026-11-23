@@ -493,7 +493,7 @@ const fn slot(
 
 use ObjectKind as K;
 use Slot as S;
-pub use ecad_electrical::devices::kinds::ObjectKind;
+use ecad_electrical::devices::kinds::ObjectKind;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[

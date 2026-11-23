@@ -3,7 +3,7 @@
 //! `wiresettings` through `execute` record the agent's transaction (or none), and are refused with
 //! writes off.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 

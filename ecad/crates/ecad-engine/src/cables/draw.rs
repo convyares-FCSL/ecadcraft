@@ -9,13 +9,8 @@
 
 use ecad_model::{Document, ItemKind, PageId, Pt, Subject, WireId};
 
-pub use ecad_electrical::cables::words::{
-    CODE_COLOURS, DashBudget, MAX_CODE_CHARS, MAX_CORE_CHARS, MAX_DASHES, MAX_PAGE_DASHES, colour_code, conductor_colour, conductor_colour_in,
-    dash_budget, dash_count, dash_segments, shorten, wire_colours,
-};
-pub use ecad_electrical::cables::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape};
-/// The representation role of a cable's reference end.
-pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
+use ecad_electrical::cables::words::FlagSide;
+use ecad_electrical::cables::words::{conductor_colour_in, shorten, wire_colours};
 /// The width of `text` per unit of text height in the drafting font CADCraft draws text with (0
 /// for anything that does not measure): multiply by the height it is drawn at.
 pub fn font_width(text: &str) -> f64 {

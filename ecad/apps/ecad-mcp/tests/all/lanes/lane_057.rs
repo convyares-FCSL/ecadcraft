@@ -4,7 +4,8 @@
 //!
 //! The table rows here are synthetic, made up for the test; none is from a standard.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document};
 use serde_json::{Value, json};
 

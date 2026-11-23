@@ -237,7 +237,7 @@ pub(crate) fn plan_lines(s: &StripData) -> usize {
 ///
 /// # Errors
 /// Longer than [`crate::cables::words::MAX_CORE_CHARS`] characters, or a control character, in words.
-pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
+pub(crate) fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.chars().any(char::is_control) {
         return Err(CmdError::refused("A core label cannot contain control characters."));

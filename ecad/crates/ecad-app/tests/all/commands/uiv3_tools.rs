@@ -194,7 +194,7 @@ fn the_wheel_is_about_190_px_with_icon_slots_that_name_themselves() {
     pointer(&mut h, LAMP, PointerButton::Secondary, true);
     pointer(&mut h, LAMP, PointerButton::Secondary, false);
     let t = h.state().wheel_target().cloned().expect("the device wheel");
-    assert_eq!(t.kind, ecad_app::commands::actions::ObjectKind::Device);
+    assert_eq!(t.kind, ecad_electrical::devices::kinds::ObjectKind::Device);
     // Fixed slots: go-to at the right, its row at the bottom right, delete at the bottom.
     let slot = |h: &H, i: usize| h.state().shell.tools.wheel.as_ref().and_then(|w| w.slots[i]).map(|a| a.id);
     assert_eq!(slot(&h, 2), Some("device.goto"));

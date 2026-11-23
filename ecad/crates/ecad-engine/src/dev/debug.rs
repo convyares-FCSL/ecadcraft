@@ -212,7 +212,7 @@ pub struct FileFacts {
     /// What opening found, when the project was opened from a file.
     pub open_report: Option<String>,
     /// The file's facts (the debugger's Storage view).
-    pub storage: Option<crate::file::StorageFacts>,
+    pub storage: Option<ecad_file::binding::StorageFacts>,
 }
 
 impl FileFacts {
@@ -400,7 +400,7 @@ impl Project {
         match self.persistence {
             Persistence::TestStore => {
                 f.in_memory = true;
-                f.storage = self.store.project().map(crate::file::StorageFacts::of);
+                f.storage = self.store.project().map(ecad_file::binding::StorageFacts::of);
                 f.read_only = self.store.project().and_then(|p| p.read_only()).map(str::to_string);
             }
             Persistence::File => {

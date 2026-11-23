@@ -2,7 +2,8 @@
 //! `setdefault` of `terminal_block.plan.style` at page level each record one transaction by
 //! `Author::Agent(<client>)`; with writes off both are refused and nothing is recorded.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, PageId};
 use serde_json::json;
 

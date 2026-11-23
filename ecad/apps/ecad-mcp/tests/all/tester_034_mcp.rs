@@ -6,7 +6,8 @@
 //! recorded; hostile input is an error, never a panic.
 
 use ecad_electrical::symbols::{self, STARTER_LIBRARY};
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{DeviceId, Op};
 use serde_json::{Value, json};
 

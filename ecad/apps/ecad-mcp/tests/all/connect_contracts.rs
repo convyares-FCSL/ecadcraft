@@ -54,7 +54,7 @@ fn with_no_window_a_connect_server_is_headless_and_says_so() {
     assert_eq!(v["port"], json!(port));
     assert_eq!(v["agent"], json!("tester"));
     let shot = call(&mut s, 3, "screenshot", json!({}));
-    assert_eq!(shot["result"]["content"][0]["text"], json!(ecad_mcp::tools::NO_WINDOW));
+    assert_eq!(shot["result"]["content"][0]["text"], json!(ecad_engine::agent::tools::NO_WINDOW));
     // A change headless sticks: the server never bridges after it.
     let w = call(&mut s, 4, "execute", json!({"command": "wire", "params": {"points": [[0, 0], [10, 0]]}}));
     assert_ne!(w["result"]["isError"], json!(true), "{w}");
@@ -69,7 +69,7 @@ fn agentaccess_is_refused_to_agents_with_and_without_write() {
         for params in [json!({}), json!({"mode": "write"}), json!({"port": 50000})] {
             let r = call(&mut s, 1, "execute", json!({"command": "agentaccess", "params": params}));
             assert_eq!(r["result"]["isError"], json!(true), "{r}");
-            assert_eq!(r["result"]["content"][0]["text"], json!(ecad_mcp::policy::AGENT_ACCESS), "write {write}");
+            assert_eq!(r["result"]["content"][0]["text"], json!(ecad_engine::agent::policy::AGENT_ACCESS), "write {write}");
         }
         let log = s.with_session(|s, p| p.read(s, |p, _| p.ledger.log().len()).unwrap()).unwrap();
         assert_eq!(log, before, "nothing recorded");

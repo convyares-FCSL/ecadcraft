@@ -3,7 +3,7 @@
 //! `Author::Agent(<client>)`, are refused with writes off, and one undo restores the document;
 //! `titleblocks` and `titleblock {id}` read with writes off. `path` names a file: refused.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 

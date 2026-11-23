@@ -400,7 +400,7 @@ fn the_quick_start_runs_headless() {
     // 1. Draw a rectangle and convert it into a component with a terminal.
     ok(&mut t, "line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle).collect();
     assert_eq!(lines.len(), 4);
     t.cad.session.set_selection(lines.clone());
     ok(&mut t, "convertcomponent");
@@ -411,7 +411,7 @@ fn the_quick_start_runs_headless() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .find(|e| matches!(&e.kind, EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle)
         .unwrap();
@@ -469,7 +469,7 @@ fn the_quick_start_runs_headless() {
     // The line, not counting the sheet frame (brief 019); its ends are free, so it carries no
     // wire and shows no label (design 072).
     assert_eq!(
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count(),
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).count(),
         1,
         "page 2's wire is drawn again"
     );
@@ -521,7 +521,7 @@ fn the_command_field_keeps_trailing_enters() {
     assert!(t.cad.session.running.is_some(), "LINE waits for its next point");
     assert!(t.submit_command("").is_none());
     assert!(t.cad.session.running.is_none(), "an empty line is Enter");
-    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count(), 2);
+    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).count(), 2);
     assert!(t.submit_command("   ").is_none(), "blank with nothing running does nothing");
 }
 

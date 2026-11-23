@@ -14,10 +14,8 @@
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
+use ecad_electrical::symbols::commands::not_plain;
 use ecad_electrical::symbols::commands::{self as rules, MakeAt};
-pub use ecad_electrical::symbols::commands::{
-    Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
-};
 use ecad_model::geometry::units::Radians;
 use ecad_model::{DeviceId, Placement};
 use schemars::JsonSchema;
@@ -29,8 +27,6 @@ use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
 use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
-pub use ecad_electrical::symbols::graphics::POINT_GRID_MM;
-pub use ecad_electrical::symbols::graphics::update_available;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
@@ -164,8 +160,8 @@ pub(crate) fn place_project_key(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str,
 ) -> cadcraft_engine::Result<Option<Value>> {
     let at = params.at.0;
-    if !(at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
-        return Err(err(crate::interact::OUT_OF_RANGE));
+    if !(at.x.abs() <= ecad_electrical::cables::words::MAX_COORD && at.y.abs() <= ecad_electrical::cables::words::MAX_COORD) {
+        return Err(err(ecad_electrical::cables::words::OUT_OF_RANGE));
     }
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);

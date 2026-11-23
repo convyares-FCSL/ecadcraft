@@ -3,7 +3,8 @@
 //! refusals (cores in use, drawn, more wires than cores, an unknown key) write nothing; with
 //! writes off every one is refused. A cable not drawn round-trips through the file.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document, Op};
 use serde_json::{Value, json};
 

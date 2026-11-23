@@ -6,7 +6,7 @@
 use ecad_electrical::symbols::{Family, STARTER_LIBRARY, StarterKey};
 
 use ecad_electrical::symbols::catalogue::STARTERS;
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Op;
 use serde_json::{Value, json};
 

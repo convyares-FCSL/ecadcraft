@@ -57,7 +57,7 @@ pub struct Project {
     /// The test-only project file in memory (`Persistence::TestStore`).
     pub store: MemoryStore,
     /// The project's file on disk (`Persistence::File`).
-    pub file: crate::file::Binding,
+    pub file: ecad_file::binding::Binding,
     /// What opening reported, when the project was opened from a file on disk or from the test
     /// store.
     pub open_report: Option<ecad_file::Report>,
@@ -266,7 +266,7 @@ pub(crate) fn part_entity(draw: &crate::styles::draw::DrawStyles, part: &ecad_el
     };
     let lineweight = match part.weight {
         Weight::Cable => Lineweight::Mm100(ecad_electrical::cables::layout::CABLE_WEIGHT),
-        Weight::Wire => Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT),
+        Weight::Wire => Lineweight::Mm100(ecad_electrical::cables::words::WIRE_WEIGHT),
         Weight::Text => Lineweight::ByLayer,
     };
     let color = part.color.map_or(cadcraft_engine::doc::color::Color::ByLayer, cadcraft_engine::doc::color::Color::Index);
@@ -310,7 +310,7 @@ pub(crate) fn device_reference_entity(
         },
     };
     if part.bar {
-        e.common.lineweight = Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT);
+        e.common.lineweight = Lineweight::Mm100(ecad_electrical::cables::words::WIRE_WEIGHT);
     }
     if let Some(aci) = part.aci {
         e.common.color = cadcraft_engine::doc::color::Color::Index(aci);
@@ -325,7 +325,7 @@ pub(crate) fn jumper_bar_entity(part: &ecad_electrical::terminal_strips::jumper_
         common: Common {
             layer: ecad_electrical::terminal_strips::jumper_bars::LAYER.into(),
             linetype: ecad_electrical::locations::LINETYPE.into(),
-            lineweight: Lineweight::Mm100(crate::cables::draw::WIRE_WEIGHT),
+            lineweight: Lineweight::Mm100(ecad_electrical::cables::words::WIRE_WEIGHT),
             ..Common::default()
         },
         kind: kind_for_primitive(&ecad_model::Primitive::Line { a: part.a, b: part.b }),
@@ -476,7 +476,7 @@ pub(crate) fn project_page_kept(
         l.color = cadcraft_engine::doc::color::Color::Index(ecad_electrical::wires::LABEL_ACI);
         d.layers.push(l);
     }
-    if d.layer(crate::pages::frame::LAYER).is_none() {
+    if d.layer(ecad_electrical::pages::frames::LAYER).is_none() {
         d.layers.push(crate::pages::frame::layer());
     }
     crate::locations::draw::add_linetype(&mut d);

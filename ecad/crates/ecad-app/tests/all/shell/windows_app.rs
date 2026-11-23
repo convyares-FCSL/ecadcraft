@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use ecad_app::shell::app::App;
-use ecad_engine::{HOME_UNKNOWN, normalize_with};
+use ecad_file::binding::HOME_UNKNOWN;
+use ecad_file::binding::normalize_with;
 use serde_json::json;
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -342,7 +343,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let mut t = new_app(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
-    let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count();
+    let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).count();
     let p = t.project().unwrap().clone();
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap();
     match save_as(&mut t, &typed) {
@@ -373,7 +374,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     assert!(s.file.read_only.is_none(), "{:?}", s.file);
     assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()));
     assert_eq!(
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).count(),
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).count(),
         model,
         "the same drawing"
     );

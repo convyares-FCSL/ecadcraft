@@ -150,7 +150,7 @@ pub(crate) fn rgb(c: ecad_model::palette::Color) -> Rgb {
 /// The paper colour an IEC code draws in (040's table).
 pub(crate) fn code_colour(code: &str) -> Color {
     Color::True(rgb(ecad_model::objects::wire::Colours::parse(code)
-        .and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &PAPER))
+        .and_then(|c| ecad_electrical::cables::words::wire_colours(&c, &PAPER))
         .unwrap_or_else(|| panic!("{code} is a colour"))
         .solid))
 }
@@ -360,7 +360,7 @@ fn a01_built_in_styles_draw_todays_page() {
     reproject(&mut h);
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let frame_ents = h.pv(|p, pg| pg.frame_entities_of(p, page));
-    let frame: Vec<_> = frame_ents.iter().filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER).collect();
+    let frame: Vec<_> = frame_ents.iter().filter(|e| e.common.layer == ecad_electrical::pages::frames::LAYER).collect();
     assert!(!frame.is_empty(), "the frame is drawn");
     let weights: std::collections::BTreeSet<_> = frame.iter().map(|e| format!("{:?}", e.common.lineweight)).collect();
     for w in [Lineweight::Mm100(50), Lineweight::Mm100(25)] {
@@ -933,7 +933,7 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
         h.activate(p);
         h.pv(|pr, pg| pg.frame_entities_of(pr, p))
             .into_iter()
-            .filter(|e| e.common.layer == ecad_engine::pages::frame::LAYER)
+            .filter(|e| e.common.layer == ecad_electrical::pages::frames::LAYER)
             .map(|e| e.common.lineweight)
             .collect::<Vec<_>>()
     };

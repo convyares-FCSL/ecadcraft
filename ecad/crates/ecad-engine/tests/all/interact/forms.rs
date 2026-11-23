@@ -18,7 +18,8 @@ use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_engine::interact::{self, NOT_OWNED, OUT_OF_RANGE};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_engine::interact::{self, NOT_OWNED};
 use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, RouteEnd, RouteId, Transaction, WireId};
 use serde_json::{Value, json};
 
@@ -80,7 +81,7 @@ fn line_at(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) -> Handle {
 
 fn rectangle(h: &mut H) -> Vec<Handle> {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
-    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect()
+    h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle).collect()
 }
 
 fn page(h: &mut H) -> PageId {
@@ -317,7 +318,7 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
         ("convert after picks", |h, _| {
             start(h, "convertcomponent");
             let all: Vec<Handle> =
-                h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
+                h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle).collect();
             h.s.input(Input::Pick(all)).unwrap();
         }),
         ("terminal name pending", |h, _| {

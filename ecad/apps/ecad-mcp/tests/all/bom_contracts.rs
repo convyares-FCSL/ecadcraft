@@ -4,7 +4,7 @@
 //! is refused in words and writes nothing; `bom` works with writes off and records nothing;
 //! hostile values are errors in words.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use serde_json::{Value, json};
 
 use crate::common::{assert_one_labelled, writer};

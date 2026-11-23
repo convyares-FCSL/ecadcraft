@@ -64,10 +64,7 @@ mod translate;
 pub mod warm;
 pub mod wires;
 pub use crate::access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
-pub use crate::file::{
-    FileStatus, HOME_UNKNOWN, NO_FILE_YET, SAVE_AS_NEEDS_PATH, SaveAsError, SaveAsRefused, ensure_default_folder, expand_home, home, normalize,
-    normalize_resolved, normalize_with, same_path, save_project_as, without_extension,
-};
+pub use crate::file::{SaveAsError, SaveAsRefused, ensure_default_folder, home, normalize, normalize_resolved, save_project_as, without_extension};
 pub use crate::project::{
     Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_with,
     session_seed, tree_rows, writer,

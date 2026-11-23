@@ -260,7 +260,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 let built = ecad_electrical::terminal_strips::strip_model::Strips::build(doc, o, &cx);
                 // The graphic pages' kept data, built with the strips.
                 let t2 = Instant::now();
-                std::hint::black_box(ecad_engine::terminal_strips::draw::StripPages::build(doc, &built));
+                std::hint::black_box(ecad_electrical::terminal_strips::pages::StripPages::build(doc, &built));
                 sp.push(ms(t2));
                 for k in doc.cables().keys() {
                     std::hint::black_box(ecad_electrical::terminal_strips::cores::cable_cores(doc, *k));

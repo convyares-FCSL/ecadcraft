@@ -190,7 +190,7 @@ fn drawn_ref_texts(t: &mut App) -> (Option<ecad_model::PageId>, Vec<String>) {
         let texts = p.pages[&page]
             .map
             .ref_text_handles()
-            .filter_map(|hd| d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).find(|e| e.handle == hd))
+            .filter_map(|hd| d.model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
                 _ => None,
@@ -233,7 +233,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
                 .unwrap()
                 .model
                 .iter()
-                .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+                .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
                 .map(|e| e.handle)
                 .filter(|hd| !matches!(map.get(*hd), Some(ecad_engine::Mapped::Marker(..))))
                 .map(|hd| hd.hex())

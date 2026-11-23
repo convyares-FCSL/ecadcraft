@@ -3,7 +3,8 @@
 //! the refusals write nothing; the `contacts` reply carries `table`; reopened with
 //! writes off, every write is refused and reads give what they gave.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Op;
 use serde_json::{Value, json};
 

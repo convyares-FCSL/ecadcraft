@@ -12,7 +12,6 @@ use cadcraft_engine::doc::{Drawing, EntityKind, EntityStore, Space};
 use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_engine::export::printbook::{self, Sheet};
-use ecad_engine::pages::frame;
 use ecad_model::{DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
@@ -730,5 +729,5 @@ fn ac15_hostile_settings_never_panic() {
     assert_eq!(nums.len(), n, "{nums:?}");
     h.run("pageprops", json!({"page": plan.hex(), "number": "999"})).unwrap();
     assert_eq!(sheet_numbers(&mut h, plan)[..2], ["999".to_string(), "1000".to_string()]);
-    let _ = frame::LAYER;
+    let _ = ecad_electrical::pages::frames::LAYER;
 }

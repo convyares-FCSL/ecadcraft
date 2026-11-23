@@ -52,7 +52,7 @@ fn ok(h: &mut Harness<'static, App>, line: &str) {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -61,7 +61,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())

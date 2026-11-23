@@ -352,7 +352,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .collect();
     let touched = removed.len() + changed_handles.len() + added_handles.len();
     if !framed.is_empty() && framed.len() + skipped.len() >= touched {
-        return Err(crate::pages::frame::DERIVED.into());
+        return Err(ecad_electrical::pages::frames::DERIVED.into());
     }
     let skipped: BTreeSet<Handle> = skipped.into_iter().chain(framed).collect();
     if !skipped.is_empty() && skipped.len() == touched {
@@ -679,7 +679,7 @@ fn copy_batch(
         match map.get(h) {
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(ecad_electrical::references::cables::TEXT_DERIVED.into()),
-            Some(Mapped::Frame(_)) => return Err(crate::pages::frame::DERIVED.into()),
+            Some(Mapped::Frame(_)) => return Err(ecad_electrical::pages::frames::DERIVED.into()),
             Some(Mapped::Tee(_)) => return Err(ecad_electrical::wires::TEE_DERIVED.into()),
             _ => {}
         }

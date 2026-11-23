@@ -83,7 +83,7 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     let page = h.first_page();
     let ents = h.pv(|p, pg| pg.frame_entities_of(p, page));
     assert!(!ents.is_empty());
-    assert!(ents.iter().all(|e| e.common.layer == frame::LAYER));
+    assert!(ents.iter().all(|e| e.common.layer == ecad_electrical::pages::frames::LAYER));
     let texts = frame_texts(&mut h, page);
     for label in ["A", "B", "C", "D", "E", "F", "1", "2", "3", "4", "5", "6", "7", "8", "Page", "Of", "Rev"] {
         assert!(texts.iter().any(|t| t == label), "{label} in {texts:?}");
@@ -104,7 +104,7 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     let v = h.s.state().unwrap().view();
     assert!(v.height >= 297.0 - 1e-6, "{v:?}");
     // The layer is locked.
-    assert!(h.s.doc().unwrap().layer(frame::LAYER).is_some_and(|l| l.locked));
+    assert!(h.s.doc().unwrap().layer(ecad_electrical::pages::frames::LAYER).is_some_and(|l| l.locked));
     // Erasing a frame line alone is refused with the design's words; nothing recorded.
     let head = h.head();
     let line = ents.iter().find(|e| matches!(e.kind, EntityKind::Line(_))).unwrap().handle;
@@ -112,7 +112,7 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
     // translation refuses it with the design's words.
     match h.run("erase", json!({"handles": [line.hex()]})) {
         Ok(v) => assert_eq!(v["erased"], 0, "{v}"),
-        Err(e) => assert!(e.contains(frame::DERIVED), "{e}"),
+        Err(e) => assert!(e.contains(ecad_electrical::pages::frames::DERIVED), "{e}"),
     }
     assert_eq!(h.head(), head);
     h.check();

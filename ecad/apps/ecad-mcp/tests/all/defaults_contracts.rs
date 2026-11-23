@@ -2,7 +2,8 @@
 //! `Author::Agent(<client>)`, a refused level gives the reason and the allowed levels, and with
 //! writes off it is refused and records nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::json;
 

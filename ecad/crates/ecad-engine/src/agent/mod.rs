@@ -26,7 +26,7 @@ pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_BATCH: usize = 64;
 /// Most transactions one tool call may record. One `execute` runs one command, which records at
 /// most one; a call that records more is undone and refused.
-pub const MAX_TRANSACTIONS_PER_CALL: usize = 1;
+pub(crate) const MAX_TRANSACTIONS_PER_CALL: usize = 1;
 /// Longest agent name recorded as an author, in characters.
 pub const MAX_AGENT_NAME: usize = 64;
 /// The author name before (or without) a client name.

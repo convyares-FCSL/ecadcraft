@@ -72,7 +72,7 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
         let Some(c) = ecad_electrical::wires::routes::wire_of_route(doc, x) else { continue };
         let draw = draws.draw(doc, c);
         let weight = (draw.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
-        if draw.line_type == "continuous" && weight == crate::cables::draw::WIRE_WEIGHT {
+        if draw.line_type == "continuous" && weight == ecad_electrical::cables::words::WIRE_WEIGHT {
             continue;
         }
         let Some(e) = r.items.first().and_then(|i| item_handle(*i)).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };

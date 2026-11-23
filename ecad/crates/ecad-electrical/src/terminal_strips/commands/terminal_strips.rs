@@ -25,7 +25,7 @@ use crate::wires::placing::OnRoute;
 /// Most wires one Place Terminals line lands on.
 pub const MAX_FENCE: usize = 200;
 /// How far a bridge's staple stands off its terminals, in millimetres.
-pub const BRIDGE_STANDOFF: f64 = 4.0;
+pub(crate) const BRIDGE_STANDOFF: f64 = 4.0;
 
 /// The definition ID of starter `s` in `doc`, embedding it in `ops` when it is not yet there.
 ///
@@ -100,7 +100,7 @@ pub fn plan_fence(
 
 /// What a Place Terminals line places.
 #[derive(Debug, Clone)]
-pub struct FenceKind {
+pub(crate) struct FenceKind {
     pub ty: &'static tt::TermType,
     /// The level (`None`: whole-terminal symbols).
     pub level: Option<u32>,
@@ -113,7 +113,7 @@ pub struct FenceKind {
 /// # Errors
 /// As [`plan_fence`], and a named position that cannot take the level.
 #[allow(clippy::too_many_arguments)]
-pub fn plan_fence_typed(
+pub(crate) fn plan_fence_typed(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<DeviceId>, kind: FenceKind, from: Pt,
     to: Pt, tol: f64,
 ) -> Result<Fence, CmdError> {

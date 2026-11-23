@@ -414,7 +414,7 @@ impl App {
     ///
     /// # Errors
     /// The path starts with `~` and the home folder is not known.
-    pub(crate) fn resolve(&self, typed: &str) -> Result<PathBuf, ecad_engine::file::PathError> {
+    pub(crate) fn resolve(&self, typed: &str) -> Result<PathBuf, ecad_file::binding::PathError> {
         crate::shell::host::resolve(typed, self.home.as_deref())
     }
 
@@ -422,7 +422,7 @@ impl App {
     ///
     /// # Errors
     /// As [`App::resolve`], or the path is not a file name.
-    pub(crate) fn resolve_ecad(&self, typed: &str) -> Result<String, ecad_engine::file::PathError> {
+    pub(crate) fn resolve_ecad(&self, typed: &str) -> Result<String, ecad_file::binding::PathError> {
         self.resolve(typed).and_then(|p| ecad_engine::normalize_resolved(&p))
     }
 }

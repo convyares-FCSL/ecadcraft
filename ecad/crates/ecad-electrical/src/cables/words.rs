@@ -48,7 +48,7 @@ pub const CODE_COLOURS: [(ConductorColour, ecad_model::palette::Color, ecad_mode
 };
 
 /// Longest colour code looked at (characters after trimming).
-pub const MAX_CODE_CHARS: usize = 16;
+pub(crate) const MAX_CODE_CHARS: usize = 16;
 
 /// The colours of a colour code: one colour (`BU`, `BLU`, `blue`), or two, the first solid and
 /// the second laid over it as dashes (`GNYE`, `GN/YE`, `GRN/YEL`, `RDBU`, `YEBN`), as indexes into
@@ -151,7 +151,7 @@ pub const MAX_PAGE_DASHES: usize = 20_000;
 /// An upper bound of the dashes [`dash_segments`] makes along `points` (`on` + `off` apart): per
 /// segment its whole periods and two more. Saturates; a length that is not finite counts as
 /// `usize::MAX`.
-pub fn dash_count(points: &[Pt], on: f64, off: f64) -> usize {
+pub(crate) fn dash_count(points: &[Pt], on: f64, off: f64) -> usize {
     let period = on + off;
     if !(period.is_finite() && period > 0.0) {
         return 0;

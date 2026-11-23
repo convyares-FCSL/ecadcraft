@@ -2,7 +2,8 @@
 //! records one transaction by `Author::Agent(<client>)` with the expected ops, and is
 //! refused with writes off.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Op, Transaction};
 use serde_json::{Value, json};
 

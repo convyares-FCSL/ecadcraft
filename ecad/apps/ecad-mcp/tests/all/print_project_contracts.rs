@@ -1,7 +1,7 @@
 //! MCP contracts: the `contacts` reply's `table` and `table`'s refusal, through `execute`; the writes are the
 //! agent's transactions and are refused with writes off.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 

@@ -2,7 +2,7 @@
 //! marker, revision columns and custom fields, the tag style and its rewrite,
 //! renumbering under `typed`. Each write is the agent's transaction; writes off refuse.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 

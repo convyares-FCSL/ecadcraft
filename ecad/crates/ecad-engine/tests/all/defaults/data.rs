@@ -457,7 +457,7 @@ fn the_cable_draw_follows_the_cable_text_style() {
     let doc = h.doc();
     assert!((ecad_electrical::cables::words::label_height(&doc, &ecad_engine::styles::draw::LOOK) - 3.0).abs() < 1e-9);
     // A reference flag is laid out around text of that height: its rectangle is two heights tall.
-    let f = ecad_engine::cables::draw::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_engine::cables::draw::FlagSide::Right, 3.0);
+    let f = ecad_electrical::cables::words::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_electrical::cables::words::FlagSide::Right, 3.0);
     assert!((f.hi.y - f.lo.y - 6.0).abs() < 1e-9, "{:?} {:?}", f.lo, f.hi);
 }
 

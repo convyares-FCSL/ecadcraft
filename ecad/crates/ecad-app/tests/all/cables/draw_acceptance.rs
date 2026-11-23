@@ -40,7 +40,7 @@ fn views_of(h: &mut Harness<'static, App>) -> Value {
 #[allow(dead_code)]
 fn fan_lines(h: &mut Harness<'static, App>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
+    d.model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).filter(|e| e.common.layer == views::LAYER).count()
 }
 
 fn screen(h: &Harness<'static, App>, x: f64, y: f64) -> Pos2 {
@@ -196,7 +196,7 @@ fn drawn_near(img: &egui::ColorImage, at: Pos2, r: i32) -> bool {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -205,7 +205,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())

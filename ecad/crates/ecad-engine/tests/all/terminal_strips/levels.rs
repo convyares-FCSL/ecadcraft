@@ -175,7 +175,7 @@ fn terminalblocklabel_relabels_a_position_and_sets_a_level_label() {
     let e = h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "position": "3"})).unwrap_err();
     assert!(e.contains("already has a position 3"), "{e}");
     h.run("terminalblocklabel", json!({"connection_point": t2.hex(), "text": "2.1S"})).unwrap();
-    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t2)), "2.1S");
+    assert_eq!(h.p(|p| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(p.ledger.document(), t2)), "2.1S");
     let s = plan(&mut h, x1);
     let row = s["rows"].as_array().unwrap().iter().find(|r| r["connection_point"] == json!(t2.hex())).cloned().unwrap();
     assert_eq!((row["label"].as_str(), row["label_overridden"].as_bool(), row["position"].as_str()), (Some("2.1S"), Some(true), Some("2.1")));
@@ -183,11 +183,11 @@ fn terminalblocklabel_relabels_a_position_and_sets_a_level_label() {
     let t1 = connection_points(&s1)[0];
     h.run("projectprops", json!({"props": {"terminal_block.level.separator": ""}})).unwrap();
     assert_eq!(h.doc().display().get("terminal_block.level.separator").map(String::as_str), Some("none"));
-    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1S");
+    assert_eq!(h.p(|p| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(p.ledger.document(), t1)), "1S");
     same_as_built(&mut h);
     // The strip's own value wins.
     h.run("setprop", json!({"component": x1.hex(), "key": "terminal_block.level.separator", "value": "/"})).unwrap();
-    assert_eq!(h.p(|p| ecad_engine::interact::connection_point_name(p.ledger.document(), t1)), "1/S");
+    assert_eq!(h.p(|p| ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(p.ledger.document(), t1)), "1/S");
     same_as_built(&mut h);
     h.check();
 }

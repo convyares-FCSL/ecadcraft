@@ -60,7 +60,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
 
 /// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
 fn point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let name = crate::interact::connection_point_name(doc, t);
+    let name = ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(doc, t);
     // A connector pin is named by its half (`-X10.S:3`).
     if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
         return n;

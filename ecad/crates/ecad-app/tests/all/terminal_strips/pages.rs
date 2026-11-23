@@ -99,8 +99,8 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
     let d = doc(&mut h);
     assert_eq!(d.page_order().len(), pages + 1, "one new page");
     let page: PageId = *d.page_order().last().unwrap();
-    assert_eq!(d.pages()[&page].title, ecad_engine::terminal_strips::draw::TITLE);
-    assert!(ecad_engine::terminal_strips::draw::is_graphic(&d, page));
+    assert_eq!(d.pages()[&page].title, ecad_electrical::terminal_strips::pages::TITLE);
+    assert!(ecad_electrical::terminal_strips::pages::is_graphic(&d, page));
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);
     view(&mut h, 0.0, 0.0, 420.0, 297.0);

@@ -280,7 +280,7 @@ fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
 
     h.state_mut().agent.pref.mode = ecad_engine::agent::access::Mode::Write;
     let mut b = server(port, false, "reader");
-    assert_eq!(b.exec_refused(&mut h, "wire", wire(0.0)), ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(b.exec_refused(&mut h, "wire", wire(0.0)), ecad_engine::agent::policy::WRITES_OFF);
     assert!(b.refused(&mut h, "save", json!({})).contains("read-only"));
     assert!(b.ok(&mut h, "ecad_history", json!({}))["count"].as_u64().is_some());
     assert_eq!(log_len(&mut h), before);
@@ -598,7 +598,7 @@ fn an_agent_restore_over_the_persons_steps_is_refused_and_over_its_own_works() {
     a.exec(&mut h, "wire", wire(10.0));
     let before = log_len(&mut h);
     let e = a.exec_refused(&mut h, "restore", json!({"seq": start}));
-    assert_eq!(e, ecad_mcp::gate::not_own_step(start + 2, "Wire"), "the person's #{} is in the way", start + 2);
+    assert_eq!(e, ecad_engine::agent::gate::not_own_step(start + 2, "Wire"), "the person's #{} is in the way", start + 2);
     assert_eq!(log_len(&mut h), before, "nothing recorded");
     assert_eq!(conductors(&mut h), 3);
     // Back to just before the agent's own last wire: only its own step is taken back.

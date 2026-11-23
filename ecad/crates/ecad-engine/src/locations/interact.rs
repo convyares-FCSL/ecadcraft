@@ -14,8 +14,9 @@ use ecad_model::{ItemId, ItemKind, Primitive, Pt, Subject};
 use serde_json::json;
 
 use crate::convert::kind_for_primitive;
-use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::interact::{ATTACHED_ACI, can_start, in_range, pick_radius, preview_entity, pt, read};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 
 /// The drawing mode kept for the session (rectangle unless Polyline was chosen).
 static POLYLINE: AtomicBool = AtomicBool::new(false);

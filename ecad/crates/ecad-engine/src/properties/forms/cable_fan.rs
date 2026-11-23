@@ -1,11 +1,12 @@
 //! Cable Join.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{ATTACHED_ACI, CONNECTION_POINT_RING_PX, OUT_OF_RANGE, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
+use crate::interact::{ATTACHED_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
 use crate::project::Mapped;
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_model::{CableId, Pt};
 use serde_json::{Value, json};
 

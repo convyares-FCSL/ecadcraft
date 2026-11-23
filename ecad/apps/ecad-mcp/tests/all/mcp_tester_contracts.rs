@@ -13,8 +13,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use cadcraft_engine::Session;
+use ecad_engine::agent::MAX_REQUEST_BYTES;
+use ecad_engine::agent::policy;
 use ecad_engine::{Persistence, Project, ProjectHandle};
-use ecad_mcp::{EcadMcp, MAX_REQUEST_BYTES, Options, policy};
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document, Transaction};
 use serde_json::{Value, json};
 
@@ -554,7 +556,7 @@ fn hostile_lines_get_json_rpc_errors_and_never_panic() {
     }
     // The hostile client name was cut to a safe author name.
     let name = c.s.agent();
-    assert!(name.chars().count() <= ecad_mcp::MAX_AGENT_NAME && !name.chars().any(char::is_control), "{name:?}");
+    assert!(name.chars().count() <= ecad_engine::agent::MAX_AGENT_NAME && !name.chars().any(char::is_control), "{name:?}");
     // Extreme numbers in parameters: refused or recorded, never a panic, never more than one step.
     for p in [
         json!({"points": [[1e308, 1e308], [-1e308, -1e308]]}),

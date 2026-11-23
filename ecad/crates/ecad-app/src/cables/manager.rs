@@ -93,7 +93,7 @@ impl crate::shell::app::App {
         }
         // The slash tool with the cable already picked: the same `Cable` keyword the command
         // line takes; the tool says `Slash the wires of -W03 (4 cores).`
-        let tag = p.read(&mut self.cad.session, |p, _| ecad_engine::cables::views::cable_title(p.ledger.document(), cable));
+        let tag = p.read(&mut self.cad.session, |p, _| ecad_electrical::cables::cable_title(p.ledger.document(), cable));
         let Ok(tag) = tag else { return };
         self.focus_drawing = true;
         if let Err(e) = self.cad.session.start("cableslash") {

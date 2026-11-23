@@ -4,7 +4,7 @@
 //! the document; `styles` and `standard {}` read with writes off. `standard {from}` names another
 //! project file, which agents may not read (the server's file rule): refused in words.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::json;
 

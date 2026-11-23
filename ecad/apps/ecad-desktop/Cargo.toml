@@ -15,6 +15,8 @@ workspace = true
 ecad-app = { path = "../../crates/ecad-app" }
 ecad-engine = { path = "../../crates/ecad-engine" }
 ecad-model = { workspace = true }
+# A folder typed with `~` is expanded as the file crate does.
+ecad-file = { workspace = true }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
 # remembers the window's size and position (brief 023).

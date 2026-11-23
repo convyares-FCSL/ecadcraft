@@ -59,7 +59,7 @@ pub struct Drawing {
 /// cable type's colour at that place.
 pub(crate) fn core_colour(label: &str, i: usize, colours: &[String]) -> Option<String> {
     let l = label.trim();
-    if l.chars().any(|c| c.is_ascii_alphabetic()) && ecad_engine::cables::draw::colour_code(l).is_some() {
+    if l.chars().any(|c| c.is_ascii_alphabetic()) && ecad_electrical::cables::words::colour_code(l).is_some() {
         return Some(l.to_ascii_uppercase());
     }
     colours.get(i).cloned()
@@ -76,7 +76,7 @@ fn pin(of: &str) -> &str {
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
     match code
         .and_then(ecad_model::objects::wire::Colours::parse)
-        .and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
+        .and_then(|c| ecad_electrical::cables::words::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
     {
         Some(w) => (ecad_widgets::color(w.solid), w.dashes.map(ecad_widgets::color)),
         None => (ecad_widgets::color(ecad_widgets::SHELL.text_2), None),
@@ -86,7 +86,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
 pub fn bars(code: &str) -> Vec<ecad_widgets::tokens::Color> {
     match ecad_model::objects::wire::Colours::parse(code)
-        .and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
+        .and_then(|c| ecad_electrical::cables::words::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
     {
         Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
         None => Vec::new(),

@@ -11,9 +11,10 @@ use crate::pages::project_panel::{Header, ProjectPanel};
 use crate::{agent, developer, library, publish, settings, shell};
 use cadcraft_ui_egui::closing::Closing;
 use cadcraft_ui_egui::{CadApp, Services};
+use ecad_engine::ProjectHandle;
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Session;
-use ecad_engine::{FileStatus, ProjectHandle};
+use ecad_file::binding::FileStatus;
 use ecad_model::PageId;
 use eframe::egui::{self};
 use serde_json::json;
@@ -488,7 +489,7 @@ impl App {
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
         let mut b = ecad_engine::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER) {
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER) {
             b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
@@ -510,7 +511,7 @@ impl App {
         let only_frame = ecad_engine::pages::frame::drop_from_selection(&mut self.cad.session);
         self.frame_checked = self.cad.session.selection();
         if only_frame {
-            self.cad.session.echo(ecad_engine::pages::frame::DERIVED);
+            self.cad.session.echo(ecad_electrical::pages::frames::DERIVED);
         }
     }
 

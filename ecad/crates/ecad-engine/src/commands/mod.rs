@@ -26,7 +26,6 @@ use ecad_electrical::circuits::commands as rating;
 use ecad_electrical::continuations::commands as continuation;
 use ecad_electrical::numbering::commands as numbering;
 use ecad_electrical::properties::commands as prop;
-pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::{
     cables::commands::cables as cable, devices::commands::device_links as device_link, devices::commands::devices as device,
     locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom, reports::commands::boxes,

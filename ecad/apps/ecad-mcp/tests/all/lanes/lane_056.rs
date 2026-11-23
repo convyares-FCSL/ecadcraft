@@ -3,7 +3,7 @@
 //! by `Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
 //! `plcexport` and `iolist` work with writes off and record nothing.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 

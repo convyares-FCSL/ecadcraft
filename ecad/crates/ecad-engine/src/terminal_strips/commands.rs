@@ -12,9 +12,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::terminal_strips::commands::terminal_strips::{self as rules, Bridge};
-pub use ecad_electrical::terminal_strips::commands::terminal_strips::{
-    BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
-};
+use ecad_electrical::terminal_strips::commands::terminal_strips::{Fence, definition_for, land_level, level_symbol, plan_fence};
 use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{ConnectionPointId, DeviceId, Document, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, WireId};
 use schemars::JsonSchema;
@@ -23,9 +21,8 @@ use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_project, plain_style};
-pub use ecad_electrical::connectors::strip_connection_point_at;
-pub use ecad_electrical::connectors::{Land, plan_land};
-pub use ecad_electrical::terminal_strips::connection_point_words;
+use ecad_electrical::connectors::Land;
+use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::placing::OnRoute};
 

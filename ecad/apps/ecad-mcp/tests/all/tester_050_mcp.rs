@@ -7,7 +7,8 @@
 //! branches is one conflict worded with the style's name; different styles, different standard
 //! values and a concurrent drawing edit merge cleanly; the standard header is one unit.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document, Op};
 use serde_json::{Value, json};
 

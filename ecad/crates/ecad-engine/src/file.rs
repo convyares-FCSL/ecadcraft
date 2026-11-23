@@ -1,9 +1,8 @@
-//! A project's file on disk: the binding (`ecad_file::binding`, re-exported here) and the parts
+//! A project's file on disk: the parts of binding a project to its file (`ecad_file::binding`)
 //! that read the environment, the home folder ([`home`]) and [`normalize`].
 
-pub use ecad_file::binding::*;
-/// Whether `a` and `b` name the same file or folder (`ecad_store::disk::same_path_or_spelling`).
-pub use ecad_store::disk::same_path_or_spelling as same_path;
+use ecad_file::binding::*;
+use ecad_store::disk::same_path_or_spelling as same_path;
 
 /// The user's home folder (`std::env::home_dir`: on Windows the user profile, whether or not
 /// `HOME` is set). `None` when it is not known.

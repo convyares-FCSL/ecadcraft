@@ -8,7 +8,7 @@ use crate::Report;
 use ecad_model::{Ledger, ProjectId};
 
 /// What Save says when a project has never been saved and no file was chosen.
-pub const NO_FILE_YET: &str = "this project has no file yet; use Save As and choose a .ecad file";
+pub(crate) const NO_FILE_YET: &str = "this project has no file yet; use Save As and choose a .ecad file";
 /// What Save As says without a file name.
 pub const SAVE_AS_NEEDS_PATH: &str = "Save As needs a file name (a .ecad file)";
 

@@ -32,17 +32,17 @@ use crate::symbols::project::{PROJECT_SYMBOLS, Version};
 use crate::symbols::{self, Join};
 
 /// Most shapes a symbol holds.
-pub const MAX_SHAPES: usize = 4000;
+pub(crate) const MAX_SHAPES: usize = 4000;
 /// Most connection points a symbol holds.
 pub const MAX_POINTS: usize = 512;
 /// Most text slots a symbol holds.
 pub const MAX_SLOTS: usize = 16;
 /// Coordinates of a symbol stay within this many millimetres of its origin.
-pub const MAX_EXTENT: f64 = 1000.0;
+pub(crate) const MAX_EXTENT: f64 = 1000.0;
 /// Most characters of a symbol's name.
 pub const MAX_NAME: usize = 64;
 /// Most copies one update or impact names.
-pub const MAX_COPIES: usize = 100_000;
+pub(crate) const MAX_COPIES: usize = 100_000;
 /// Most vertices of one polyline in a symbol.
 const MAX_VERTICES: usize = 10_000;
 /// Most characters of a point's key or label.

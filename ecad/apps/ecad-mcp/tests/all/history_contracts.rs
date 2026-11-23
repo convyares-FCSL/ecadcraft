@@ -2,7 +2,8 @@
 //! through `execute` records the same transaction (or branch row) as the click, by the agent,
 //! and is refused with writes off; the read forms work with writes off and record nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 

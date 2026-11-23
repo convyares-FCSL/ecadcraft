@@ -6,7 +6,8 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{DefinitionId, Document, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, LABEL_ACI, Part};
+use crate::pages::frame::{FrameInput, Part};
+use ecad_electrical::pages::frames::LABEL_ACI;
 use ecad_electrical::pages::front::*;
 use ecad_model::look::TextDraw;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::LAYER};
@@ -42,7 +43,7 @@ fn outline(d: &mut Draw, r: R, aci: u8, caption: &str, draw: TextDraw) {
             let s1 = ((i as f64 * (dash + gap) + dash) / len).min(1.0);
             let p = |s: f64| (a.0 + (z.0 - a.0) * s, a.1 + (z.1 - a.1) * s);
             let kind = kind_for_primitive(&Primitive::Line { a: d.p(p(s0).0, p(s0).1), b: d.p(p(s1).0, p(s1).1) });
-            d.out.push(Part { kind, weight: Some(crate::pages::frame::THIN_WEIGHT), aci: Some(aci), layer: OVERLAY });
+            d.out.push(Part { kind, weight: Some(ecad_electrical::pages::frames::THIN_WEIGHT), aci: Some(aci), layer: OVERLAY });
         }
     };
     seg((l, t), (rr, t));
@@ -89,7 +90,7 @@ fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_mo
         Some([a]) => fill(d, at.0, at.0 + w, rgb(*a)),
         _ => {}
     }
-    d.rect((at.0, at.1 - h / 2.0), (at.0 + w, at.1 + h / 2.0), crate::cables::draw::WIRE_WEIGHT, None);
+    d.rect((at.0, at.1 - h / 2.0), (at.0 + w, at.1 + h / 2.0), ecad_electrical::cables::words::WIRE_WEIGHT, None);
 }
 
 /// A definition's graphics fitted into the box `cell` (paper millimetres, centred).
@@ -143,7 +144,7 @@ fn symbol(d: &mut Draw, doc: &Document, def: DefinitionId, cell: R) {
             }
             _ => continue,
         };
-        d.out.push(Part { kind: kind_for_primitive(&mapped), weight: Some(crate::pages::frame::THIN_WEIGHT), aci: None, layer: LAYER });
+        d.out.push(Part { kind: kind_for_primitive(&mapped), weight: Some(ecad_electrical::pages::frames::THIN_WEIGHT), aci: None, layer: LAYER });
     }
 }
 

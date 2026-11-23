@@ -98,7 +98,7 @@ fn wire_point_to_point_through_mcp_records_the_route_and_its_wire_as_the_agent()
     let mut r = reader();
     let before = r.log();
     let m = r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}));
-    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
 
@@ -137,7 +137,7 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
     let mut r = reader();
     let before = r.log();
     let m = r.refused("execute", json!({"command": "cableslash", "params": {"from": [30, -5], "to": [30, 5]}}));
-    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
 
@@ -181,7 +181,7 @@ fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
     let mut r = reader();
     let before = r.log();
     let m = r.refused("execute", json!({"command": "wiresettings", "params": {"number_by": "conductor"}}));
-    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
 
@@ -258,7 +258,7 @@ fn a_cables_values_set_through_mcp_record_one_modify_cable() {
     ] {
         let before = r.log();
         let m = r.refused("execute", json!({"command": cmd, "params": params}));
-        assert_eq!(m, ecad_mcp::policy::WRITES_OFF, "{cmd}");
+        assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF, "{cmd}");
         assert_eq!(r.log(), before, "{cmd}: nothing recorded with writes off");
     }
 }

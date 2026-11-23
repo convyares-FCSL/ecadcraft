@@ -19,9 +19,7 @@ use ecad_model::{Document, PageId};
 
 use crate::styles::draw::LOOK;
 use ecad_electrical::pages::frames;
-pub use ecad_electrical::pages::frames::{
-    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, fit, touches,
-};
+use ecad_electrical::pages::frames::{FRAME_ACI, LAYER};
 use ecad_model::look::Look as _;
 
 /// The layer as the projection adds it.

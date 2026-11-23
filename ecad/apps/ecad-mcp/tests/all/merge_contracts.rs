@@ -3,7 +3,8 @@
 //! the preview reads and records nothing, also with writes off; a conflict without a choice is
 //! refused naming it and how to choose; plain undo of a merge asks first.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, TxKind};
 use serde_json::{Value, json};
 

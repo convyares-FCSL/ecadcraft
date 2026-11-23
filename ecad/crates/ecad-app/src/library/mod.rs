@@ -226,7 +226,7 @@ impl App {
             return Ok(());
         }
         let handles = match target.filter(|t| !t.handles.is_empty()) {
-            Some(t) if t.kind == crate::commands::actions::ObjectKind::Mixed => self.cad.session.selection(),
+            Some(t) if t.kind == ecad_electrical::devices::kinds::ObjectKind::Mixed => self.cad.session.selection(),
             Some(t) => t.handles.clone(),
             None => self.cad.session.selection(),
         };

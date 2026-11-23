@@ -19,9 +19,11 @@ use ecad_model::document::sheet::unit_scale;
 use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT};
+use crate::pages::frame::{FrameInput, Part};
+use ecad_electrical::pages::frames::THIN_WEIGHT;
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
+use ecad_electrical::terminal_strips::pages::*;
 use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
 use ecad_model::look::TextDraw;
 use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
@@ -135,7 +137,7 @@ impl Pen {
         if value.is_empty() {
             return;
         }
-        let (shown, wf) = crate::pages::frame::fit(value, draw.mm, room);
+        let (shown, wf) = ecad_electrical::pages::frames::fit(value, draw.mm, room);
         let at = self.p(at.0, at.1);
         let pt = Vec3::new(at.x, at.y, 0.0);
         let kind = EntityKind::Text(Text {
@@ -619,4 +621,3 @@ fn cables(
         }
     }
 }
-pub use ecad_electrical::terminal_strips::pages::*;

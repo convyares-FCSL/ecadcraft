@@ -6,7 +6,8 @@
 use std::path::{Path, PathBuf};
 
 use ecad_app::shell::app::{App, DialogKind, status_line};
-use ecad_engine::{HOME_UNKNOWN, normalize_with};
+use ecad_file::binding::HOME_UNKNOWN;
+use ecad_file::binding::normalize_with;
 use serde_json::{Value, json};
 
 /// A fresh folder under the system temp folder, removed when dropped.

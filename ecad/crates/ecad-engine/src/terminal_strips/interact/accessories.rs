@@ -8,10 +8,11 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
-use crate::interact::{OUT_OF_RANGE, can_start, connection_point_for, in_range, line_kind, pt, read, v2};
+use crate::interact::{can_start, connection_point_for, in_range, line_kind, pt, read, v2};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use crate::terminal_strips::commands;
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
+use ecad_electrical::terminal_strips::connection_point_words;
 
 /// A picked terminal: its strip, its label and where it is drawn.
 fn picked(s: &Session, p: Vec2) -> R<(ConnectionPointId, DeviceId, String, Pt)> {
@@ -95,7 +96,7 @@ impl StripAccessory {
         match i {
             Input::Point(p) => {
                 let (t, c, label, at) = picked(s, p)?;
-                let words = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                let words = read(s, |p, _| Ok(connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                 self.at = Some((c, label, words, Some(at)));
                 Ok(Step::Continue)
             }
@@ -220,7 +221,7 @@ impl Jumper {
                         self.extend = found.1;
                     }
                     Some((sc, tag)) if *sc != c => {
-                        let w = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
+                        let w = read(s, |p, _| Ok(connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                         return Err(other(format!(
                             "{w} is on another strip; a jumper bar stays on one strip. Pick a terminal of {tag}, or Enter to finish."
                         )));

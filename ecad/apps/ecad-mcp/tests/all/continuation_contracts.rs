@@ -3,7 +3,7 @@
 //! off; `references` and `refgoto` read an arrow's other ends and record nothing; hostile captions are
 //! errors in words.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use serde_json::{Value, json};
 
 use crate::common::{assert_one_labelled, writer};

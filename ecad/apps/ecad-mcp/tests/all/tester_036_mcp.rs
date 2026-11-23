@@ -7,7 +7,8 @@
 //! `stripplan`, `bom`, `checks` and `defaults {group: "Terminals"}` read and record nothing;
 //! reopened with writes off, every write is refused and the reads give what they gave before.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Op;
 use serde_json::{Value, json};
 

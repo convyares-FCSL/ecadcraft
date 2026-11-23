@@ -25,9 +25,8 @@ use crate::commands::input::{Command, Typed};
 use crate::commands::{on_any_page, on_project};
 use crate::project::Project;
 use ecad_electrical::commands::input::nullable;
-pub use ecad_electrical::pages::commands::sheets::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
+use ecad_electrical::pages::commands::sheets::IssuePlan;
 use ecad_electrical::releases::revisions;
-pub use ecad_electrical::releases::revisions::folder_path;
 
 /// A revision opened read-only: the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
@@ -87,8 +86,6 @@ present, `provisional` says whether to finalise them first or issue them as they
 }
 
 // ---------------------------------------------------------------- page numbers
-
-pub use ecad_electrical::pages::page_types::MAX_NUMBER_CHARS;
 
 // ---------------------------------------------------------------- folders
 

@@ -47,7 +47,7 @@ impl Project {
             ids,
             id,
             store: MemoryStore::default(),
-            file: crate::file::Binding::default(),
+            file: ecad_file::binding::Binding::default(),
             open_report: None,
             pages: BTreeMap::new(),
             events: EventLog::default(),
@@ -139,7 +139,7 @@ impl Project {
             ids,
             id,
             store: MemoryStore { backend, project: Some(Box::new(file)) },
-            file: crate::file::Binding::default(),
+            file: ecad_file::binding::Binding::default(),
             open_report: Some(report),
             pages: pages.iter().map(|p| (*p, PageView::default())).collect(),
             events: EventLog::default(),
@@ -232,9 +232,12 @@ impl Project {
         s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings, reading: bool,
     ) -> Result<(ProjectHandle, String), String> {
         let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
-        let mut o =
-            if reading { crate::file::Binding::open_read_only(&path, seed, &writer()) } else { crate::file::Binding::open(&path, seed, &writer()) }
-                .map_err(|e| e.to_string())?;
+        let mut o = if reading {
+            ecad_file::binding::Binding::open_read_only(&path, seed, &writer())
+        } else {
+            ecad_file::binding::Binding::open(&path, seed, &writer())
+        }
+        .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
         // Words in values that stay text: read once on open, never per commit.
         o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document(), &ecad_drawing_style::REGISTRY));

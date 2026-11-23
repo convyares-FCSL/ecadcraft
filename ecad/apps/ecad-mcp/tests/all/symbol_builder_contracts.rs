@@ -3,7 +3,7 @@
 //! `Author::Agent(<client>)` with the expected ops, and are refused with writes off with the head
 //! unchanged; `symbolimpact` reads only and is allowed with writes off.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Op;
 use serde_json::{Value, json};
 

@@ -1317,7 +1317,7 @@ pub fn segments(v: &[Pt]) -> impl Iterator<Item = (Pt, Pt)> + '_ {
 }
 
 /// The terminal of any strip drawn at `at` on `page`.
-pub fn strip_connection_point_at(doc: &Document, page: PageId, at: Pt) -> Option<ConnectionPointId> {
+pub(crate) fn strip_connection_point_at(doc: &Document, page: PageId, at: Pt) -> Option<ConnectionPointId> {
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };

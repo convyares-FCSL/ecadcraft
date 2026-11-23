@@ -12,12 +12,11 @@ use ecad_model::connectivity::derive::CableReference;
 use ecad_model::{CableId, Document, Op, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
-use crate::interact::{
-    OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
-};
+use crate::interact::{can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
 use crate::project::{Mapped, Project};
 use crate::properties::forms::cable_view::{NOTHING_THERE, cable_named};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use {ecad_electrical::references::cables::ORPHAN_ACI, ecad_electrical::references::cables::REFERENCE_ACI};
 
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).

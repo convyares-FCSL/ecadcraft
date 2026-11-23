@@ -18,7 +18,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::plc::commands as rules;
-pub use ecad_electrical::plc::commands::{LEFT_MM, ROW_PITCH_MM, title};
+use ecad_electrical::plc::commands::title;
 use ecad_model::document::book::{self, Book};
 use ecad_model::{Op, Page, PageId};
 use schemars::JsonSchema;

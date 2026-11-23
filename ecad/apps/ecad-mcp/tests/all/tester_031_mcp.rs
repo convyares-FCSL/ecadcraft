@@ -6,7 +6,8 @@
 //! an explanatory message; reopened with writes off, every write is refused and the reads give what they
 //! gave before.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use serde_json::{Value, json};
 
 use crate::common::assert_one_by_agent;

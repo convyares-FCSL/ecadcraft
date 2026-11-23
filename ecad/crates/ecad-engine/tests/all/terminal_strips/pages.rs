@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::terminal_strips::pages::StripPages;
 use ecad_engine::pages::frame::Part;
-use ecad_engine::terminal_strips::draw::{self, StripPages};
 use ecad_model::{CableId, ConnectionPointId, DeviceId, PageId};
 use serde_json::{Value, json};
 
@@ -136,8 +136,8 @@ fn a_graphic_page_draws_the_strip_as_wired() {
     let mut g = fixture(0x46_01);
     let page = strip_page(&mut g);
     let doc = g.h.doc();
-    assert_eq!(doc.pages()[&page].title, draw::TITLE);
-    assert_eq!(draw::style_of(&doc, page), draw::Style::Graphic);
+    assert_eq!(doc.pages()[&page].title, ecad_electrical::terminal_strips::pages::TITLE);
+    assert_eq!(ecad_electrical::terminal_strips::pages::style_of(&doc, page), ecad_electrical::terminal_strips::pages::Style::Graphic);
     let p = parts(&mut g.h, page);
     let o = reports(&mut g.h);
     let s = o.strips.get(g.x1).unwrap();
@@ -199,10 +199,10 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     assert!(titles.len() == 2 && titles[0].ends_with(" (1/2)") && titles[1].ends_with(" (2/2)"), "{titles:?}");
     // No position split: every position's levels are on one sheet (the layout is by block).
     let strip = o.strips.get(g.x1).unwrap();
-    let geometry = draw::Geometry::of(&doc);
-    let (cols, blocks) = draw::columns(strip, &geometry);
+    let geometry = ecad_electrical::terminal_strips::pages::Geometry::of(&doc);
+    let (cols, blocks) = ecad_electrical::terminal_strips::pages::columns(strip, &geometry);
     let widths: Vec<f64> = blocks.iter().map(|b| b.2).collect();
-    let sheets = draw::paginate(&widths, geometry.available(&ecad_model::document::sheet::sheet_of(&doc, page)));
+    let sheets = ecad_electrical::terminal_strips::pages::paginate(&widths, geometry.available(&ecad_model::document::sheet::sheet_of(&doc, page)));
     assert_eq!(sheets.len(), 2);
     assert_eq!(blocks.iter().map(|b| b.1 - b.0).sum::<usize>(), cols.len(), "blocks cover every column");
     // jumper_bar.2 (30-45) crosses the break: a stub past the first column of sheet 2 and past the last
@@ -322,7 +322,7 @@ fn an_old_terminal_blocks_page_still_draws_the_table() {
     let mut g = fixture(0x46_09);
     let page: PageId = id(&g.h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     let doc = g.h.doc();
-    assert_eq!(draw::style_of(&doc, page), draw::Style::Table);
+    assert_eq!(ecad_electrical::terminal_strips::pages::style_of(&doc, page), ecad_electrical::terminal_strips::pages::Style::Table);
     assert!(has(&parts(&mut g.h, page), "Inside target"));
 }
 
@@ -331,7 +331,7 @@ fn an_old_terminal_blocks_page_still_draws_the_table() {
 fn empty_and_hostile_states_draw_without_crashing() {
     let mut h = H::new(0x46_0a);
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminal_blocks", "style": "graphic"})).unwrap(), "page");
-    assert!(has(&parts(&mut h, page), draw::NO_STRIPS));
+    assert!(has(&parts(&mut h, page), ecad_electrical::terminal_strips::pages::NO_STRIPS));
     let mut g = fixture(0x46_0b);
     g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminal_blocks", "value": "999"})).unwrap();
     let page = strip_page(&mut g);
@@ -351,10 +351,10 @@ fn empty_and_hostile_states_draw_without_crashing() {
 /// Paging never splits a block and puts a block wider than the sheet on a sheet of its own.
 #[test]
 fn paginate_keeps_blocks_whole() {
-    assert_eq!(draw::paginate(&[], 100.0), vec![(0, 0)]);
-    assert_eq!(draw::paginate(&[40.0, 40.0, 40.0], 100.0), vec![(0, 2), (2, 3)]);
-    assert_eq!(draw::paginate(&[150.0, 10.0], 100.0), vec![(0, 1), (1, 2)]);
-    assert_eq!(draw::paginate(&[f64::NAN, 10.0], 100.0).len(), 1);
+    assert_eq!(ecad_electrical::terminal_strips::pages::paginate(&[], 100.0), vec![(0, 0)]);
+    assert_eq!(ecad_electrical::terminal_strips::pages::paginate(&[40.0, 40.0, 40.0], 100.0), vec![(0, 2), (2, 3)]);
+    assert_eq!(ecad_electrical::terminal_strips::pages::paginate(&[150.0, 10.0], 100.0), vec![(0, 1), (1, 2)]);
+    assert_eq!(ecad_electrical::terminal_strips::pages::paginate(&[f64::NAN, 10.0], 100.0).len(), 1);
 }
 
 /// Review of 046, finding 1: a style switch changes a page's sheet count on the document alone;

@@ -225,7 +225,7 @@ fn ac3_quick_start_with_clicked_connection_points_matches_the_json_example() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle.hex())
         .collect();
     ok(&mut j, &format!("convertcomponent {}", json!({ "handles": lines })));
@@ -237,7 +237,7 @@ fn ac3_quick_start_with_clicked_connection_points_matches_the_json_example() {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
             .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x))
             .map(|e| e.handle.hex())
             .unwrap()
@@ -352,7 +352,7 @@ fn ac5_hovering_a_connection_point_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle.hex())
         .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
@@ -364,7 +364,7 @@ fn ac5_hovering_a_connection_point_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -377,7 +377,7 @@ fn ac5_hovering_a_connection_point_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 0.0 && l.b.x == 0.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -466,7 +466,7 @@ fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle.hex())
         .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
@@ -733,7 +733,7 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .map(|e| e.handle.hex())
         .collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));

@@ -42,7 +42,7 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .filter(|e| matches!(e.kind, EntityKind::Line(_)))
         .map(|e| e.handle)
         .collect()

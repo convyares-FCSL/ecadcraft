@@ -2,7 +2,7 @@
 //! record one transaction by `Author::Agent(<client>)` and are refused with writes off; `plcracks`
 //! returns the tiles' data with writes off and records nothing.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 

@@ -349,7 +349,7 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != frame::LAYER)
+        .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
             _ => None,
@@ -422,7 +422,7 @@ fn a_standard_switch_redraws_the_frame() {
     let doc = ecad_model::Document::default();
     let shown = FrameInput::of(&doc, page, &Book::of(&doc));
     let op = ecad_model::Op::SetStandard { before: Some(a), after: Some(b) };
-    assert!(frame::touches(&[op], page, &shown));
+    assert!(ecad_electrical::pages::frames::touches(&[op], page, &shown));
 }
 
 /// Review of #110, 1: the update maps of the cable references and the Devices list follow a

@@ -19,7 +19,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-pub use ecad_electrical::cables::cable_title;
 use ecad_model::{CableId, Document, PageId, ProjectId};
 use serde_json::{Map, Value, json};
 

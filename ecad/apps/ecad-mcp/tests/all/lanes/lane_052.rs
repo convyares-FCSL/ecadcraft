@@ -3,7 +3,7 @@
 //! `designationremove` through `execute` record the agent's transaction and are refused with
 //! writes off; `designations` reads with writes off.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 

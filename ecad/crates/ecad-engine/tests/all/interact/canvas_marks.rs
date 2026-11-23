@@ -23,7 +23,12 @@ fn rgb(c: ecad_model::palette::Color) -> Rgb {
 #[test]
 fn colour_codes_are_one_or_two_colours() {
     let one = |c: &str| {
-        draw::colour_code(c).map(|(a, b)| (draw::CODE_COLOURS[a].0.forms().code2.as_str(), b.map(|i| draw::CODE_COLOURS[i].0.forms().code2.as_str())))
+        ecad_electrical::cables::words::colour_code(c).map(|(a, b)| {
+            (
+                ecad_electrical::cables::words::CODE_COLOURS[a].0.forms().code2.as_str(),
+                b.map(|i| ecad_electrical::cables::words::CODE_COLOURS[i].0.forms().code2.as_str()),
+            )
+        })
     };
     for (code, want) in [
         ("BU", Some(("BU", None))),
@@ -42,18 +47,18 @@ fn colour_codes_are_one_or_two_colours() {
     ] {
         assert_eq!(one(code), want, "{code}");
     }
-    let gnye = draw::wire_colours(&ecad_model::objects::wire::Colours::parse("GNYE").unwrap(), &PAPER).unwrap();
+    let gnye = ecad_electrical::cables::words::wire_colours(&ecad_model::objects::wire::Colours::parse("GNYE").unwrap(), &PAPER).unwrap();
     assert_eq!(
         (gnye.solid, gnye.dashes),
         (ecad_model::palette::wire::PE.paper.solid, ecad_model::palette::wire::PE.paper.dashes),
         "GNYE is the PE look"
     );
     assert_eq!(
-        draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
+        ecad_electrical::cables::words::wire_colours(&ecad_model::objects::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
         Some(ecad_model::palette::wire::DC_24V.paper.solid)
     );
     assert_eq!(
-        draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid),
+        ecad_electrical::cables::words::wire_colours(&ecad_model::objects::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid),
         Some(PAPER.ink),
         "black is ink"
     );
@@ -61,7 +66,7 @@ fn colour_codes_are_one_or_two_colours() {
 
 #[test]
 fn dashes_are_two_on_two_off_round_corners() {
-    let d = draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0), Pt::new(5.0, 5.0)], 2.0, 2.0);
+    let d = ecad_electrical::cables::words::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0), Pt::new(5.0, 5.0)], 2.0, 2.0);
     let near = |a: Pt, b: Pt| a.dist(b) < 1e-9;
     let want = [
         (Pt::new(0.0, 0.0), Pt::new(2.0, 0.0)),
@@ -74,9 +79,13 @@ fn dashes_are_two_on_two_off_round_corners() {
     for ((a, b), (c, e)) in d.iter().zip(want) {
         assert!(near(*a, c) && near(*b, e), "{d:?}");
     }
-    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(1e12, 0.0)], 2.0, 2.0).len() <= draw::MAX_DASHES, "bounded");
-    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0)], 0.0, 2.0).is_empty());
-    assert!(draw::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], 2.0, 2.0).is_empty());
+    assert!(
+        ecad_electrical::cables::words::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(1e12, 0.0)], 2.0, 2.0).len()
+            <= ecad_electrical::cables::words::MAX_DASHES,
+        "bounded"
+    );
+    assert!(ecad_electrical::cables::words::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(5.0, 0.0)], 0.0, 2.0).is_empty());
+    assert!(ecad_electrical::cables::words::dash_segments(&[Pt::new(0.0, 0.0), Pt::new(f64::NAN, 0.0)], 2.0, 2.0).is_empty());
 }
 
 #[test]
@@ -265,12 +274,12 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
         h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "GNYE"})).unwrap();
     }
     let doc = h.doc();
-    let budget = draw::dash_budget(&doc, page);
+    let budget = ecad_electrical::cables::words::dash_budget(&doc, page);
     assert_eq!((budget.dashed.len(), budget.left_out.len()), (5, 2), "{budget:?}");
     assert!(budget.left_out.contains(wires.last().unwrap()), "the 100 km wire is left out");
     let ents = h.pv(|p, pg| pg.entities_of(p, page));
     let dashes = ents.iter().filter(|e| e.common.layer == ecad_electrical::wires::DASH_LAYER).count();
-    assert!(dashes > 0 && dashes <= draw::MAX_PAGE_DASHES, "{dashes} dashes");
+    assert!(dashes > 0 && dashes <= ecad_electrical::cables::words::MAX_PAGE_DASHES, "{dashes} dashes");
     // Every wire still has its first colour.
     let green = Color::True(rgb(ecad_model::palette::wire::PE.paper.solid));
     let handles: Vec<_> = wires.iter().map(|w| h.route_handle(page, *w)).collect();

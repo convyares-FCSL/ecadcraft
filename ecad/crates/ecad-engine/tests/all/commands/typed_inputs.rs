@@ -1760,7 +1760,7 @@ fn place_keeps_its_rule_words() {
         ),
         (json!({"tag": "-K9", "at": [0, 0]}), "`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"),
         (json!({"symbol": "nope", "at": [0, 0]}), "No symbol \"nope\". Type List to see them."),
-        (json!({"symbol": "coil", "at": [1e15, 0]}), ecad_engine::interact::OUT_OF_RANGE),
+        (json!({"symbol": "coil", "at": [1e15, 0]}), ecad_electrical::cables::words::OUT_OF_RANGE),
         (json!({"symbol": "coil", "at": [0, 0], "device": "zz"}), "`device` must be a device ID (32 hex digits)"),
         (json!({"symbol": "coil", "at": [0, 0], "device": coil, "tag": "-K9"}), "`tag` is for a new device; `device` joins an existing one"),
         (json!({"symbol": "coil", "at": [0, 0], "device": "000000000000000000000000000000ab"}), "No such device."),

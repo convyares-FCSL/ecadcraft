@@ -1,6 +1,7 @@
 //! The action table over the existing commands.
 
-use ecad_app::commands::actions::{self, ACTIONS, Key, ObjectKind, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
+use ecad_app::commands::actions::{self, ACTIONS, Key, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
+use ecad_electrical::devices::kinds::ObjectKind;
 use ecad_widgets::tokens::Icon;
 use std::collections::{BTreeSet, HashSet};
 

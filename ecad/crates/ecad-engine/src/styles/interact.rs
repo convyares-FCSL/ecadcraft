@@ -7,9 +7,10 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
-use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
+use crate::interact::{can_start, in_range, pick, read};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_electrical::devices::texts::TextOf;
 use ecad_model::look::TextKind;
 

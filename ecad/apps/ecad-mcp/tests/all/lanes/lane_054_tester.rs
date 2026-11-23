@@ -6,7 +6,8 @@
 //! `Author::Agent(<client>)`, and one `u` restores the document; `styles {catalogue: page}` records
 //! nothing; with writes off every write is refused with `WRITES_OFF` and reads are unchanged.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Document, Op};
 use serde_json::{Value, json};
 

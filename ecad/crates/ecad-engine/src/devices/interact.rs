@@ -12,11 +12,10 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
-use crate::interact::{
-    CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, OUT_OF_RANGE, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind,
-};
+use crate::interact::{CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_electrical::devices::texts::TextOf;
 use ecad_electrical::symbols::{self, Starter};
 

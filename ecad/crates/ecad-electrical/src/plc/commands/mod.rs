@@ -684,10 +684,10 @@ pub(crate) fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> 
 // ---------------------------------------------------------------- a card's page
 
 /// The first cell's distance from the left of the drawing area, mm.
-pub const LEFT_MM: f64 = 40.0;
+pub(crate) const LEFT_MM: f64 = 40.0;
 /// From one row of cells to the next, mm: a card's frame (about 40 deep) and 30 clear under it for
 /// its rotated channel texts.
-pub const ROW_PITCH_MM: f64 = 70.0;
+pub(crate) const ROW_PITCH_MM: f64 = 70.0;
 /// Most characters of a page number `after` names (longer cannot be a page).
 const MAX_AFTER: usize = 64;
 

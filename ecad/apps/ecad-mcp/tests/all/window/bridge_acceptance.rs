@@ -664,7 +664,7 @@ fn ac4_a_batch_is_one_call_and_records_at_most_one() {
     let before = live.log();
     for (cmd, params) in [("undo", json!({"count": 2})), ("redo", json!({"count": 3}))] {
         let m = a.exec_refused(&mut live, cmd, params);
-        assert_eq!(m, ecad_mcp::policy::one_step(cmd), "{cmd}");
+        assert_eq!(m, ecad_engine::agent::policy::one_step(cmd), "{cmd}");
     }
     assert_eq!(live.log(), before);
     // The banner shows the refusal of the call, cleared by the next accepted one (§7.1).
@@ -889,7 +889,7 @@ fn ac7_a_server_without_write_is_refused_with_011s_words() {
     let mut a = Agent::start(&mut live, AGENT, false);
     let before = live.log();
     let m = a.exec_refused(&mut live, "wire", json!({"points": [[0, 0], [60, 0]]}));
-    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(m, ecad_engine::agent::policy::WRITES_OFF);
     let m = a.refused(&mut live, "save", json!({}));
     assert!(m.contains("--write"), "{m}");
     assert_eq!(live.log(), before);

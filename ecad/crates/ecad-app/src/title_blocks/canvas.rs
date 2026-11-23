@@ -230,7 +230,7 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
         return false;
     }
     let room = r.w - 2.0;
-    let (shown, wf) = ecad_engine::pages::frame::fit(value, draw.size, Some(room));
+    let (shown, wf) = ecad_electrical::pages::frames::fit(value, draw.size, Some(room));
     let cut = shown.ends_with('…') && !value.ends_with('…');
     let px = (draw.size as f32 * v.k / 0.72).max(4.0);
     let y = r.y + (r.h - top_gap).max(0.0) / 2.0;
@@ -359,7 +359,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
                 };
                 let y = at.top() - rh * (row + usize::from(header)) as f64 - rh / 2.0;
                 if let Some(val) = rev.get(i) {
-                    let (shown, _) = ecad_engine::pages::frame::fit(val, 2.5, Some(w - 2.0));
+                    let (shown, _) = ecad_electrical::pages::frames::fit(val, 2.5, Some(w - 2.0));
                     p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, ecad_widgets::style::ui_font(vpx), ink);
                 }
             }

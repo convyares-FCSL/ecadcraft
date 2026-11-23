@@ -107,13 +107,13 @@ mod hover_and_marks {
     fn scene(h: &mut Harness<'static, App>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let edge = |x: f64| {
             model
                 .iter()
                 .find(|e| {
-                    e.common.layer != ecad_engine::pages::frame::LAYER
+                    e.common.layer != ecad_electrical::pages::frames::LAYER
                         && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x)
                 })
                 .map(|e| e.handle.hex())
@@ -408,12 +408,12 @@ mod layout_refusals {
     fn scene(h: &mut Harness<'static, App>) {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
             .find(|e| {
-                e.common.layer != ecad_engine::pages::frame::LAYER
+                e.common.layer != ecad_electrical::pages::frames::LAYER
                     && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0)
             })
             .map(|e| e.handle.hex())
@@ -466,7 +466,7 @@ mod layout_refusals {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_electrical::pages::frames::LAYER)
             .map(|e| e.handle)
             .collect();
         h.state_mut().cad.session.set_selection(all);

@@ -87,7 +87,7 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
                 .filter(|p| ecad_electrical::pages::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
                     *k != GenKind::TerminalBlocks
-                        || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic)
+                        || (ecad_electrical::terminal_strips::pages::style_of(doc, **p) == ecad_electrical::terminal_strips::pages::Style::Graphic)
                             == style.is_some()
                 })
                 .map(|p| book.number(doc, *p))
@@ -96,7 +96,7 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
         out.push(KindRow { label: k.title(), kind: *k, style: None, in_book: in_book(None) });
         if *k == GenKind::TerminalBlocks {
             let g = ecad_electrical::defaults::strip_pages::GRAPHIC;
-            out.push(KindRow { label: ecad_engine::terminal_strips::draw::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
+            out.push(KindRow { label: ecad_electrical::terminal_strips::pages::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
         }
     }
     out

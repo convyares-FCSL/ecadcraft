@@ -2,12 +2,13 @@
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{
-    CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, NO_OUTLINE, OUT_OF_RANGE, can_start, drawn_component, from_cursor, in_range,
-    next_connection_point_name, pick, pixel, preview_entity, pt, read, ring_kind, v2, valid_name,
+    CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, NO_OUTLINE, can_start, drawn_component, from_cursor, in_range, next_connection_point_name, pick,
+    pixel, preview_entity, pt, read, ring_kind, v2, valid_name,
 };
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_model::{DeviceId, Pt, Subject};
 use serde_json::json;
 use std::collections::BTreeSet;

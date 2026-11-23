@@ -350,13 +350,17 @@ fn a_24v_wire_takes_the_24_v_dc_category() {
     let label = label_of(&mut h, page, w).unwrap();
     assert!(label.ends_with(" 0.5 BU") && label.starts_with("24V-"), "{label}");
     let doc = h.doc();
-    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, w).map(|c| c.to_string()).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
+    assert_eq!(
+        ecad_electrical::cables::words::conductor_colour(&doc, w).map(|c| c.to_string()).as_deref(),
+        Some("BU"),
+        "drawn blue (line colour: wire)"
+    );
     let rows = h.run("wirelist", json!({})).unwrap();
     assert!(rows.to_string().contains("24 V DC"), "{rows}");
     // A power wire is drawn in ink, heavier.
     let l = wire(&mut h, 170.0, Some("L1"));
     let doc = h.doc();
-    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, l), None, "power in ink");
+    assert_eq!(ecad_electrical::cables::words::conductor_colour(&doc, l), None, "power in ink");
     assert!((styles::wire::wire_draw(&doc, l).line_weight - 0.6).abs() < 1e-9);
 }
 
@@ -368,14 +372,14 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
-    assert_eq!(ecad_engine::cables::draw::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
+    assert_eq!(ecad_electrical::cables::words::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
+    assert_eq!(ecad_electrical::cables::words::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
     assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
     let draw = styles::wire::wire_draw(&doc, b);
     assert_eq!(draw.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
-    assert_eq!(ecad_engine::cables::draw::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
+    assert_eq!(ecad_electrical::cables::words::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
 }
 
 #[test]

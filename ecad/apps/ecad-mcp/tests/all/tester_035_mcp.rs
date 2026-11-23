@@ -8,8 +8,9 @@ use std::net::TcpListener;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use ecad_engine::agent::policy;
 use ecad_mcp::args::{Invocation, USAGE, parse_args};
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::{Value, json};
 
@@ -161,11 +162,11 @@ fn an_oversized_line_is_capped_in_connect_mode_too() {
     let before = c.log();
     let big = format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{{\"name\":\"execute\",\"arguments\":{{\"command\":\"wire\",\"params\":{{\"pad\":\"{}\"}}}}}}}}",
-        "x".repeat(ecad_mcp::MAX_REQUEST_BYTES)
+        "x".repeat(ecad_engine::agent::MAX_REQUEST_BYTES)
     );
     let r: Value = serde_json::from_str(&c.s.handle_line(&big).unwrap()).unwrap();
     assert_eq!(r["error"]["code"], json!(-32600), "{r}");
-    let batch: Vec<Value> = (0..=ecad_mcp::MAX_BATCH as u64)
+    let batch: Vec<Value> = (0..=ecad_engine::agent::MAX_BATCH as u64)
         .map(|i| json!({"jsonrpc":"2.0","id":i,"method":"tools/call","params":{"name":"ecad_connection","arguments":{}}}))
         .collect();
     let r: Value = serde_json::from_str(&c.s.handle_line(&Value::Array(batch).to_string()).unwrap()).unwrap();

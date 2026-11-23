@@ -5,7 +5,8 @@
 use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
-use crate::pages::frame::{LABEL_ACI, THIN_WEIGHT};
+use ecad_electrical::pages::frames::LABEL_ACI;
+use ecad_electrical::pages::frames::THIN_WEIGHT;
 use ecad_electrical::plc::overview::{self, Square, Tile, TileKind};
 use ecad_electrical::plc::sheets::*;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::row_mm};

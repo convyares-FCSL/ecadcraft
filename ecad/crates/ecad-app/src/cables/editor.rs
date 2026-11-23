@@ -66,7 +66,7 @@ pub struct Copy {
 /// Read cable `k`'s editor copy.
 pub fn copy(doc: &Document, k: CableId) -> Copy {
     use ecad_electrical::locations::designations::{self, Aspect};
-    let mut c = Copy { cable: Some(k), tag: ecad_engine::cables::views::cable_title(doc, k), drawn: cables::is_drawn(doc, k), ..Copy::default() };
+    let mut c = Copy { cable: Some(k), tag: ecad_electrical::cables::cable_title(doc, k), drawn: cables::is_drawn(doc, k), ..Copy::default() };
     c.values.insert(CableField::Tag, (c.tag.clone(), ""));
     if let Some(v) = cables::read(doc, k, CableField::Type) {
         c.values.insert(CableField::Type, (v, Source::Here.hint()));

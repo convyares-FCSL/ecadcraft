@@ -34,7 +34,7 @@ fn run() -> Result<(), String> {
         }
     }
     let typed = path.unwrap_or_else(|| DEFAULT.to_string());
-    let path = ecad_engine::normalize_with(&typed, ecad_engine::home().as_deref()).map_err(|e| e.to_string())?;
+    let path = ecad_file::binding::normalize_with(&typed, ecad_engine::home().as_deref()).map_err(|e| e.to_string())?;
     if std::path::Path::new(&path).exists() {
         if !force {
             return Err(format!("{path} exists; give --force to replace it (nothing was written)"));

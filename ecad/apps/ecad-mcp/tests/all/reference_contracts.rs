@@ -3,7 +3,7 @@
 //! refused with writes off; `references`, `contacts` and `refgoto` work with writes off and record
 //! nothing.
 
-use ecad_mcp::policy;
+use ecad_engine::agent::policy;
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 

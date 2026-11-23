@@ -2,12 +2,13 @@
 
 use super::cable_view::{WIRE_NOT_IN_CABLE, cabled_wire};
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick, preview_entity, read};
+use crate::interact::{ATTACHED_ACI, can_start, in_range, pick, preview_entity, read};
 use crate::project::Mapped;
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_electrical::cables::slash;
+use ecad_electrical::cables::words::OUT_OF_RANGE;
 use ecad_model::{Primitive, Subject, WireId};
 use serde_json::{Value, json};
 
