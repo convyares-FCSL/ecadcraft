@@ -4,8 +4,9 @@
 //! [`Generic`]. [`spec`] registers it and [`typed`] lists it with its schema, access and file
 //! parameters; [`run`] does the whole path: read the parameters, read the files it declares, lock
 //! the project, give the command its [`Cx`] and its declared state, commit its edit as one
-//! transaction under its id ([`Project::apply_edit`]: history, undo, views), write the files it
-//! returns, echo its message and answer. The agent gate reads the same declaration
+//! transaction under its id ([`Project::apply_edit`]: history, undo, views), echo its message and
+//! answer. The files it returns are written before its edit is committed, so a file that cannot be
+//! written leaves the project as it was. The agent gate reads the same declaration
 //! ([`Typed::access`], [`Typed::files`]).
 //!
 //! Excludes: commands that need the session (their shims in [`crate::commands`], [`crate::commands::input`]).
@@ -38,9 +39,6 @@ pub(crate) const fn typed<P: Generic>() -> Typed {
 /// What each read parameter of `P` that `params` gives read.
 type Read = BTreeMap<&'static str, Result<Got, Unread>>;
 
-/// The files a command returns to write: a write parameter and the bytes.
-type Writes = Vec<(&'static str, Vec<u8>)>;
-
 /// The state a command declares, as given to it: kept once its edit is committed.
 enum Held {
     None,
@@ -58,9 +56,9 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
     let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
     p.check(&ecad_drawing_style::REGISTRY).map_err(|e| err(e.to_string()))?;
     let read: Read = P::IO.reads.iter().filter_map(|(k, what)| Some((*k, read_file(given(params, k)?, *what)))).collect();
-    let (v, writes, lines) = match P::PAGES {
-        Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p, None))?,
-        Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, &read, p, None))?,
+    let (v, lines) = match P::PAGES {
+        Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), params, &read, p, None))?,
+        Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, params, &read, p, None))?,
         Runs::ReadAnywhere => {
             let uid = s.state()?.uid;
             on_any_page(s, |proj, pg| {
@@ -69,16 +67,10 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
                     None => Some("page view not found"),
                     Some(page) => proj.pages.get(&page).is_some_and(|v| v.unavailable).then_some(UNAVAILABLE),
                 };
-                commit::<P>(proj, pg, page, &read, p, no_edit)
+                commit::<P>(proj, pg, page, params, &read, p, no_edit)
             })?
         }
     };
-    for (key, bytes) in writes {
-        let target = P::IO.writes.contains(&key).then(|| given(params, key)).flatten();
-        let target = target.ok_or_else(|| err(format!("`{key}` is not a file this command writes")))?;
-        cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(target), &bytes)
-            .map_err(|e| err(format!("Could not write {target}: {e}")))?;
-    }
     for line in lines {
         s.echo(line);
     }
@@ -104,12 +96,13 @@ fn read_file(path: &str, what: Reads) -> Result<Got, Unread> {
     }
 }
 
-/// Run `p` on the project, commit its edit, and answer with the files to write and the line to
-/// echo. The declared state is given as a copy, kept only once the edit is committed. An edit is
-/// refused with `no_edit` when given (the page is not one an edit runs on).
+/// Run `p` on the project, write the files it returns to the paths `params` gives, commit its edit,
+/// and answer with the lines to echo. A file that cannot be written refuses the whole command:
+/// nothing is committed. The declared state is given as a copy, kept only once the edit is
+/// committed. An edit is refused with `no_edit` when given (the page is not one an edit runs on).
 fn commit<P: Generic>(
-    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, read: &Read, p: P, no_edit: Option<&'static str>,
-) -> Result<(Value, Writes, Vec<String>), CmdError> {
+    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P, no_edit: Option<&'static str>,
+) -> Result<(Value, Vec<String>), CmdError> {
     let mut held = match P::STATE {
         State::None => Held::None,
         State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
@@ -146,10 +139,18 @@ fn commit<P: Generic>(
         };
         p.run(&mut cx)?
     };
+    if edit.is_some()
+        && let Some(why) = no_edit
+    {
+        return Err(CmdError::refused(why));
+    }
+    for (key, bytes) in writes {
+        let target = P::IO.writes.contains(&key).then(|| given(params, key)).flatten();
+        let target = target.ok_or_else(|| CmdError::refused(format!("`{key}` is not a file this command writes")))?;
+        cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(target), &bytes)
+            .map_err(|e| CmdError::refused(format!("Could not write {target}: {e}")))?;
+    }
     if let Some(e) = edit {
-        if let Some(why) = no_edit {
-            return Err(CmdError::refused(why));
-        }
         proj.apply_edit(pg, P::ID, &e.label, e.ops)?;
     }
     match held {
@@ -168,5 +169,52 @@ fn commit<P: Generic>(
         Echo::Lines(l) => l,
         Echo::Message => v.get("message").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
     };
-    Ok((v, writes, echo))
+    Ok((v, echo))
+}
+
+#[cfg(test)]
+mod tests {
+    use ecad_electrical::commands::run::Io;
+
+    use super::*;
+
+    /// A command that edits the project and writes a file.
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    struct EditAndWrite {}
+
+    impl Generic for EditAndWrite {
+        const ID: &'static str = "editandwrite";
+        const TITLE: &'static str = "Edit and write";
+        const HELP: &'static str = "{path}";
+        const PAGES: Runs = Runs::Any;
+        const IO: Io = Io { reads: &[], writes: &["path"] };
+
+        fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+            let before = cx.doc.project().clone();
+            let mut after = before.clone();
+            after.info.title = Some(ecad_model::document::project::InfoText::new("Edited").map_err(|e| CmdError::refused(e.to_string()))?);
+            let mut out = Outcome::edit("Edit and write", vec![ecad_model::document::op::Op::ModifyProject { before, after }], Value::Null);
+            out.writes.push(("path", b"x".to_vec()));
+            Ok(out)
+        }
+    }
+
+    /// A file that cannot be written refuses the command, and its edit is not committed.
+    #[test]
+    fn a_file_that_cannot_be_written_commits_nothing() {
+        crate::install();
+        let mut s = Session::empty();
+        let handle = Project::create(&mut s, "P", 1).unwrap();
+        let head = handle.read(&mut s, |p, _| p.ledger.head()).unwrap();
+        // Its folder is a file, so the folder cannot be made and the file cannot be written.
+        let dir = std::env::temp_dir().join(format!("ecad-editandwrite-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let blocker = dir.join("a-file");
+        std::fs::write(&blocker, b"").unwrap();
+        let target = blocker.join("out.csv");
+        let r = run::<EditAndWrite>(&mut s, &serde_json::json!({"path": target.to_string_lossy()}));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(r.is_err_and(|e| e.to_string().contains("Could not write")));
+        assert_eq!(handle.read(&mut s, |p, _| p.ledger.head()).unwrap(), head);
+    }
 }

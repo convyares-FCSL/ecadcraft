@@ -132,8 +132,8 @@ pub struct Outcome {
     pub edit: Option<Edit>,
     /// The JSON answer.
     pub answer: Answer,
-    /// Files to write once the edit is committed: a write parameter of [`Generic::IO`] (its value
-    /// is the path) and the bytes. The engine writes them.
+    /// Files to write before the edit is committed: a write parameter of [`Generic::IO`] (its value
+    /// is the path) and the bytes. The engine writes them; one that cannot be written commits nothing.
     pub writes: Vec<(&'static str, Vec<u8>)>,
     /// What to echo on the command line, once the edit is committed.
     pub echo: Echo,
@@ -244,7 +244,7 @@ pub enum Access {
 pub struct Io {
     /// Parameters naming a file read before the command runs, and what is read from it.
     pub reads: &'static [(&'static str, Read)],
-    /// Parameters naming a file written after the commit ([`Outcome::writes`]).
+    /// Parameters naming a file written before the commit ([`Outcome::writes`]).
     pub writes: &'static [&'static str],
 }
 
