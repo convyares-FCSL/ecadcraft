@@ -1,5 +1,5 @@
 //! What the app gets from the operating system: the default projects folder, the login name, the file
-//! manager, the local clock and CADCraft's file-pick hooks (design 065: the app has no disk, OS or
+//! manager, the local clock and CADCraft's file-pick hooks (the app has no disk, OS or
 //! time-zone access of its own).
 
 use std::path::Path;

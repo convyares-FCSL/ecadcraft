@@ -1,4 +1,4 @@
-//! Contracts for the app's start-up timing (brief 015): the switch, the marks that need no
+//! Contracts for the app's start-up timing: the switch, the marks that need no
 //! window (1 to 3, 5a and 5b), their sums, the JSON file and the process-age parsing.
 
 use std::time::{Duration, Instant, SystemTime};

@@ -1,4 +1,4 @@
-//! Start-up timing for the app (brief 015), switched on by `ECAD_STARTUP_TIMING=1`.
+//! Start-up timing for the app, switched on by `ECAD_STARTUP_TIMING=1`.
 //!
 //! Marks the steps from process start to the first presented frame, prints each on stderr and
 //! writes them all to a small JSON file. With the switch off nothing is created, printed or written.
@@ -66,7 +66,7 @@ impl Step {
     pub const ALL: [Step; 9] =
         [Step::Main, Step::Install, Step::RunNative, Step::Creator, Step::Shell, Step::Project, Step::SetWgpu, Step::FirstUpdate, Step::FirstPresent];
 
-    /// The mark's number in brief 015 (step 5 is split into `5a` and `5b`).
+    /// The mark's number (step 5 is split into `5a` and `5b`).
     pub fn number(self) -> &'static str {
         match self {
             Step::Main => "1",

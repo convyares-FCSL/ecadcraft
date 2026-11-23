@@ -1,7 +1,8 @@
-//! `ecad-desktop`: the ECAD desktop program, still an experiment. It runs
-//! ecad-app's [`ecad_app::shell::app::App`] in an eframe window.
+//! `ecad-desktop`: the ECAD desktop program. It runs ecad-app's [`ecad_app::shell::app::App`] in an
+//! eframe window.
 //!
-//! Usage: `ecad-desktop [--snapshots <dir>] [<project.ecad>]`
+//! Usage: `ecad-desktop [--snapshots <dir>] [--control <port>] [--cad-ui] [<project.ecad>]` (see
+//! [`ecad_desktop::args`]).
 //!
 //! With a project file, the app opens it; otherwise it starts a new, unsaved project.
 //! `--snapshots <dir>` enables exporting inspector snapshots (a banner button, before a project is
@@ -68,7 +69,7 @@ impl eframe::App for Desktop {
         }
     }
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        // Brief 038: the shell state and page views, only when they changed (eframe calls this
+        // The shell state and page views, only when they changed (eframe calls this
         // every `auto_save_interval` and on exit).
         let (shell, views) = self.0.shell.to_save();
         if let Some(s) = shell {
@@ -77,17 +78,17 @@ impl eframe::App for Desktop {
         if let Some(v) = views {
             storage.set_string(ecad_app::shell::state::VIEWS_KEY, v);
         }
-        // Brief 048 (design 048 §3.2): the symbol builder's drafts.
+        // The symbol builder's drafts.
         if let Some(d) = self.0.library.to_save() {
             storage.set_string(ecad_app::library::draft::DRAFTS_KEY, d);
         }
-        // Brief 055 (design 055 §4.2): the title block editor's drafts.
+        // The title block editor's drafts.
         if let Some(d) = self.0.library.tb.to_save() {
             storage.set_string(ecad_app::title_blocks::draft::DRAFTS_KEY, d);
         }
     }
     fn auto_save_interval(&self) -> std::time::Duration {
-        // Saved on change, debounced to once a second (design 038 §5.4).
+        // Saved on change, debounced to once a second.
         std::time::Duration::from_secs(1)
     }
     fn on_exit(&mut self) {
@@ -103,7 +104,7 @@ impl eframe::App for Desktop {
 }
 
 fn main() -> eframe::Result {
-    // Verify mode (brief 013): the model reads no environment, so the program passes the switch in.
+    // Verify mode: the model reads no environment, so the program passes the switch in.
     ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(
         std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref(),
     ));
@@ -126,9 +127,9 @@ fn main() -> eframe::Result {
     ecad_app::shell::host::install(ecad_desktop::host::host());
     // Before the engine's command list is first built.
     ecad_engine::install();
-    // Brief 040: the sheet font for the page (US3), before any text is drawn.
+    // The sheet font for the page (US3), before any text is drawn.
     ecad_app::canvas::register_sheet_faces();
-    // Brief 024: Print Book plots through CADCraft's PDF plotter.
+    // Print Book plots through CADCraft's PDF plotter.
     ecad_engine::export::printbook::install_io();
     if let Some(t) = &mut timing {
         t.mark(Step::Install);
@@ -137,7 +138,7 @@ fn main() -> eframe::Result {
         Switch::parse("CADCRAFT_VSYNC", std::env::var("CADCRAFT_VSYNC").ok().as_deref()),
         cfg!(all(unix, not(target_os = "macos"))),
     );
-    // The window's size and position are remembered between sessions (brief 023).
+    // The window's size and position are remembered between sessions.
     let restoring = window::restores_window();
     let mut options = window::options(restoring);
     options.wgpu_options = eframe::egui_wgpu::WgpuConfiguration::default().with_surface_config(surface);
@@ -172,14 +173,14 @@ fn main() -> eframe::Result {
             }
             let mut app = App::start(snapshots, project.as_deref(), timing.as_mut())?;
             app.cad.services = ecad_desktop::host::services(app.save_as_flag());
-            // Brief 038: the shell's remembered state and page views; `--cad-ui` turns the
+            // The shell's remembered state and page views; `--cad-ui` turns the
             // developer switch on.
             app.shell.state.cad_chrome = cad_ui;
             let stored = |k: &str| cc.storage.and_then(|s| s.get_string(k));
             app.shell.load(stored(ecad_app::shell::state::SHELL_KEY).as_deref(), stored(ecad_app::shell::state::VIEWS_KEY).as_deref());
             app.library.load(stored(ecad_app::library::draft::DRAFTS_KEY).as_deref());
             app.library.tb.load(stored(ecad_app::title_blocks::draft::DRAFTS_KEY).as_deref());
-            // Brief 035: agent access on for this run (not remembered).
+            // Agent access on for this run (not remembered).
             if let Some(port) = control {
                 app.agent.control_flag(port);
             }

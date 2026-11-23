@@ -1,5 +1,5 @@
-//! The program's command line: [`parse_args`] and [`USAGE`] (code review finding 9: split out of
-//! the app's library). The default projects folder it names is [`crate::folder::DEFAULT_FOLDER`].
+//! The program's command line: [`parse_args`] and [`USAGE`]. The default projects folder it names is
+//! [`crate::folder::DEFAULT_FOLDER`].
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -20,8 +20,8 @@ See ecad/docs/quick-start.md."
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invocation {
     /// Start the app: open `project` if given, allow snapshots into `snapshots` if given, and
-    /// turn agent access on for this run on port `control` if given (brief 035).
-    /// `cad_ui`: the shell's developer switch on from the start (`--cad-ui`, brief 038).
+    /// turn agent access on for this run on port `control` if given.
+    /// `cad_ui`: the shell's developer switch on from the start (`--cad-ui`).
     Run { snapshots: Option<PathBuf>, project: Option<String>, control: Option<u16>, cad_ui: bool },
     /// Print [`USAGE`].
     Help,

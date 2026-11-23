@@ -1,4 +1,4 @@
-//! Tester's contracts for brief 015: marks 5a and 5b around opening an existing project file, and
+//! Start-up timing marks 5a and 5b around opening an existing project file, and
 //! `App::start` without timing behaving as before.
 
 use std::time::{Instant, SystemTime};

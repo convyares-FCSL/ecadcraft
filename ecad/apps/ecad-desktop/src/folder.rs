@@ -21,7 +21,7 @@ macro_rules! default_folder {
     };
 }
 
-/// What the app is, in full (the top banner that showed it was removed, owner 2026-11-08).
+/// What the app is, in full.
 pub const BANNER: &str = concat!(
     "ECAD DESKTOP (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
     crate::default_folder!(),
@@ -29,6 +29,6 @@ pub const BANNER: &str = concat!(
 );
 
 /// Where the Save As dialog suggests saving, created by the first save into it: `C:\dev\ecad-projects`
-/// on Windows (owner decision 2026-10-31; never the OneDrive-redirected Documents folder),
+/// on Windows (never the OneDrive-redirected Documents folder),
 /// `~/ecad-projects` elsewhere.
 pub const DEFAULT_FOLDER: &str = crate::default_folder!();

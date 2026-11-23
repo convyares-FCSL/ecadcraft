@@ -1,5 +1,5 @@
-//! The app's main window: size, placement, and remembering them between sessions (brief 023,
-//! as CADCraft 0.17.0's desktop app does, #2595 and #1129).
+//! The app's main window: size, placement, and remembering them between sessions, as CADCraft 0.17.0's
+//! desktop app does.
 //!
 //! eframe saves the window's size, position and maximized state in its storage file (`app.ron`,
 //! under [`APP_ID`]) and restores them at the next launch. The first launch opens centred; a later
@@ -24,7 +24,7 @@ pub const STENCIL_BITS: u8 = 8;
 
 /// The first launch's inner size before it is fitted to the monitor (and when the monitor's size
 /// is not known): wide enough for the shell's default left panel, tool strip, main view and open
-/// right panel (264 + 48 + 760 + 340 = 1412, design 038 §5.2), and inside a 1920 × 1080 screen
+/// right panel (264 + 48 + 760 + 340 = 1412), and inside a 1920 × 1080 screen
 /// with its title bar and task bar.
 pub const DEFAULT_SIZE: [f32; 2] = [1680.0, 940.0];
 
@@ -133,7 +133,7 @@ mod tests {
     use super::{DEFAULT_SIZE, FirstFit, MIN_SIZE, fit_to_monitor, options, saved_window};
     use eframe::egui::{Rect, ViewportCommand, ViewportInfo, pos2, vec2};
 
-    /// Left panel, tool strip, main view's minimum and right panel at their defaults (design 038).
+    /// Left panel, tool strip, main view's minimum and right panel at their defaults.
     const THREE_REGIONS: f32 = 264.0 + 48.0 + 760.0 + 340.0;
 
     #[test]

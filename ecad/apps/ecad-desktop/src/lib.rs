@@ -1,4 +1,4 @@
-//! `ecad-desktop`: the ECAD desktop program (design 065 §2.2). It parses the command line
+//! `ecad-desktop`: the ECAD desktop program. It parses the command line
 //! ([`args`]), sizes and places the window ([`window`]), times start-up ([`startup`]) and runs
 //! ecad-app's [`ecad_app::shell::app::App`] in an eframe window (`main.rs`).
 //!
