@@ -45,12 +45,10 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<AddConnectionPointParams>("addconnectionpoint"),
 ];
 
-/// `place {at, rotation?, mirror?, symbol?, definition?, device?, tag?, …}`: a
-/// starter symbol as a new device or another symbol of one; a junction or continuation,
-/// a terminal level, a connector half or pin, a PLC channel or card, a
-/// project symbol; without `symbol`, `device` and `tag`, the experiment's coil or
-/// `definition`. The function and location proposals follow `function` and
-/// `location`.
+/// Places a starter symbol (`symbol`, see `symbols`) as a new device or as another symbol of one (`device`; `tag`
+/// names a new device or adds to the device that has it); also a continuation, a terminal level, a
+/// connector half or pin, a PLC channel or card, or a project symbol. Without `symbol`, `device` and `tag`, it
+/// places `definition`. `function` and `location` say what happens to the proposals.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlaceParams {
@@ -149,7 +147,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     }
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);
-    // A junction or continuation is a tagless component of its own.
+    // A continuation is a tagless component of its own.
     if starter.kind == ecad_electrical::symbols::Kind::Tagless {
         return crate::wires::commands::place_tagless(s, &params, starter, at, degrees, mirror);
     }
@@ -314,8 +312,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
 
 // ---------------------------------------------------------------- drawn components (experiments)
 
-/// `convertcomponent {handles?}`: plain geometry (default: the selection) becomes
-/// one new component, drawn.
+/// Plain geometry (default: the selection) becomes one new component, drawn.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConvertcomponentParams {
@@ -363,7 +360,7 @@ impl Command for ConvertcomponentParams {
     }
 }
 
-/// `addconnectionpoint {handle, at, label?}`: a connection point on a drawn component.
+/// A connection point on a drawn component.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AddConnectionPointParams {

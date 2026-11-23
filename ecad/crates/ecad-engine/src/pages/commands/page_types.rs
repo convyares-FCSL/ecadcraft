@@ -21,15 +21,10 @@ pub const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
 
 /// The commands this module adds (registered in [`crate::lanes`]).
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("deletepage", "Delete Page", crate::commands::input::typed::<DeletepageParams>)
-            .params("{page: id} or {pages: [id]} (generated pages only: a cover, a contents, a report…; one transaction)")
-            .noundo(),
-    ]
+    vec![CommandSpec::new("deletepage", "Delete Page", crate::commands::input::typed::<DeletepageParams>).noundo()]
 }
 
-/// `deletepage {page | pages}`: generated pages only (a cover, a contents, a report…), in one
-/// transaction.
+/// Deletes generated pages only (a cover, a contents, a report…): `page`, or several `pages`. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeletepageParams {

@@ -34,12 +34,10 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<CableviewParams>("cableview"),
 ];
 
-/// `cableslash {from, to, tag?, cable?}`: the conductors the
-/// slash `from → to` crosses on the active page become one new cable, in crossing order, with the
-/// slash as its drawn representation; one transaction. With `cable`, or the `tag` of a cable that
-/// exists, it continues that cable, or assigns the wires to it when it is not
-/// drawn yet. Refused when it crosses no wire, more than [`MAX_CABLE_MEMBERS`], or a
-/// wire already in a cable.
+/// The wires the slash from `from` to `to` crosses on the active page become one new cable, in crossing order,
+/// with the slash as its drawing; one transaction. With `cable`, or the `tag` of a cable that exists, it
+/// continues that cable, or assigns the wires to it when it is not drawn yet. Refused when it crosses no wire,
+/// too many, or a wire already in a cable.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CableslashParams {
@@ -86,8 +84,7 @@ impl Command for CableslashParams {
     }
 }
 
-/// `cableadd {cable?, conductors, tag?}`: the wires join `cable`, or a new cable (tagged `tag`, or
-/// the next free tag) when `cable` is not given.
+/// The wires join `cable`, or a new cable (tagged `tag`, or the next free tag) when `cable` is not given.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CableaddParams {
@@ -111,9 +108,8 @@ impl Command for CableaddParams {
     }
 }
 
-/// `cablecore {conductor, core}` or `{cable, cores}`: set or clear the core
-/// label of one member, or of every member of a cable at once (null, empty or spaces clear). One
-/// transaction; nothing changed, no transaction.
+/// Sets or clears the core label of one member (`{conductor, core}`), or of every member of a cable at once
+/// (`{cable, cores}`); null, empty or spaces clear. One transaction; when nothing changes, none.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CablecoreParams {
@@ -189,11 +185,8 @@ enum JoinAt {
     Middle,
 }
 
-/// `cablefan {cable, end?, at}`: where the trunk joins one
-/// fanned end of a cable on the active page. The join is stored as a `fan-anchor` representation
-/// of the cable holding one Point item (existing ops, no format change), snapped onto the spine;
-/// `null` removes it and the trunk joins the middle again. Works whatever the cable's view
-/// (programmatic calls ignore views).
+/// Where the trunk joins one fanned end of a cable on the active page, snapped onto the spine; null removes it
+/// and the trunk joins the middle again. Works whatever the cable's view.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CablefanParams {
@@ -316,10 +309,9 @@ pub(crate) enum ViewParam {
     Fan,
 }
 
-/// `cableview {cable?, view?}`: show a cable traditional or fan.
-/// Presentation only: no transaction, no head move, no unsaved change, never refused because of
-/// the project's state (read-only, an unavailable page). Without `cable` it changes nothing and
-/// lists every cable's view; without `view` it toggles.
+/// Shows a cable traditional or fan; without `view` it toggles, without `cable` it lists every cable's view.
+/// Presentation only: nothing is recorded, and it is never refused because of the project's state (read-only, an
+/// unavailable page).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CableviewParams {

@@ -45,7 +45,7 @@ pub fn default_branch_name(p: &Project) -> String {
     (1..).map(|n| format!("Branch {n}")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| "Branch".into())
 }
 
-/// `version {name, description?}`: keep the project as it is now under this name; one step.
+/// Keeps the project as it is now under this name: one step.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct VersionParams {

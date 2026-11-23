@@ -34,7 +34,7 @@ use ecad_electrical::{
     wires::commands::nets as net,
 };
 
-/// The commands this crate adds.
+/// The commands this crate adds, each with its parameters text made from its schema ([`help_of`]).
 pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
     v.extend(GENERIC.iter().map(Entry::spec));
@@ -54,6 +54,9 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::plc::commands::page::specs());
     v.extend(crate::pages::commands::page_types::specs());
     v.extend(crate::title_blocks::commands::specs());
+    for s in &mut v {
+        s.params = help_of(s.id);
+    }
     v
 }
 
@@ -160,64 +163,40 @@ const GENERIC: &[Entry] = &[
 fn base_specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("convertcomponent", "Convert to Device", crate::commands::input::typed::<crate::devices::commands::ConvertcomponentParams>)
-            .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
             .noundo(),
-        CommandSpec::new("addconnectionpoint", "Add Connection Point", crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>)
-            .params("{handle: hex (an item of the component), at: [x,y], label?}")
-            .interactive(interact::addconnectionpoint)
-            .noundo(),
-        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>)
-            .params(
-                "{points: [[x,y], …], potential?: string, join?: bool (true)} (ends on connection points attach; an end on another wire's open end joins it into one line, an end on a line's middle lands there (a T); open ends lying on the new line land on it)",
-            )
-            .interactive(interact::wire)
-            .noundo(),
+        CommandSpec::new(
+            "addconnectionpoint",
+            "Add Connection Point",
+            crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>,
+        )
+        .interactive(interact::addconnectionpoint)
+        .noundo(),
+        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>).interactive(interact::wire).noundo(),
         CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::typed::<crate::cables::commands::CableslashParams>)
-            .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
             .noundo(),
         CommandSpec::new("cableview", "Cable View", crate::commands::input::typed::<crate::cables::commands::CableviewParams>)
-            .params("{cable?: id, view?: \"traditional\"|\"fan\"} (no cable: every cable's view; presentation only)")
             .interactive(interact::cableview)
             .noundo(),
         CommandSpec::new("cablecore", "Core Label", crate::commands::input::typed::<crate::cables::commands::CablecoreParams>)
-            .params(
-                "{conductor: id, core: string|null} | {cable: id, cores: [string|null, …]} (null, empty or spaces clear)",
-            )
             .interactive(interact::cablecore)
             .noundo(),
         CommandSpec::new("cablefan", "Cable Join", crate::commands::input::typed::<crate::cables::commands::CablefanParams>)
-            .params(
-                "{cable: id, end?: \"A\"|\"B\", at: [x,y] | fraction 0..1 | null} (where the trunk joins a fanned \
-end's spine; null: the middle)",
-            )
             .interactive(interact::cablefan)
             .noundo(),
         CommandSpec::new("cablegoto", "Go to Reference", crate::commands::input::typed::<crate::references::commands::cables::CablegotoParams>)
-            .params("{reference: id} (opens the other end's page; records nothing)")
             .interactive(interact::cablegoto)
             .noundo(),
-        CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>)
-            .params("{cable?: id, conductors: [id], tag?}")
-            .noundo(),
+        CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>).noundo(),
         CommandSpec::new("place", "Place Symbol", crate::commands::input::typed::<crate::devices::commands::PlaceParams>)
-            .params(
-                "{at: [x,y], rotation?: degrees, mirror?: bool, symbol?: key, definition?: id, device?: id, tag?} (`symbol`: a starter symbol, see `symbols`; `device` adds it to that device; `tag` names a new one, or adds it to the device that has that tag)",
-            )
             .interactive(interact::place)
             .noundo(),
-        CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>)
-            .params(
-                "{title?, number?, folder?: id, after?: page id, type?: page type, generated?: kind, strip?: id, style?: \"table\"|\"graphic\"} (after: right after that page, in its folder; type: \"schematic\", \"network\", \"front\"… (front and report need generated); number: default the next after the page before it, or a folder's start number for its first page; generated: \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" (strip: one strip; style: the terminal plan's style) or \"cables\")",
-            )
-            .noundo(),
-        CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).params("{page: id}").noundo(),
+        CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>).noundo(),
+        CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).noundo(),
         CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::typed::<crate::pages::commands::pages::EcadinspectParams>)
-            .params("{seq?: n} (read-only snapshot)")
             .noundo(),
         CommandSpec::new("joinwires", "Join Wires", crate::commands::input::typed::<crate::wires::commands::JoinwiresParams>)
-            .params("{at: [x,y]} (two open ends there become one line; open ends on a line's middle, or three or more ends, land on one line there (a T))")
             .interactive(interact::joinwires)
             .noundo(),
     ]

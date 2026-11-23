@@ -21,16 +21,8 @@ pub const TYPED: &[Typed] = &[Typed::of::<PrereleaseParams>("prerelease"), Typed
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::typed::<PrereleaseParams>)
-            .params("{rev?: an issued rev (default the pending one), limit?: rows per group (50, max 2000)} (read only)")
-            .noundo(),
-        CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>)
-            .params(
-                "{rev?: an issued rev to write again (records nothing; default: issue the pending one), folder?, reports?: [slot], \
-accept?: \"errors\", provisional?: \"finalise\"|\"issue\", existing?: \"add-missing\"|\"replace\"|\"keep-both\", colour?: \"mono\"|\"screen\", \
-lineweights?: bool}",
-            )
-            .noundo(),
+        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::typed::<PrereleaseParams>).noundo(),
+        CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>).noundo(),
     ]
 }
 
@@ -39,8 +31,7 @@ fn as_json<P: Serialize>(p: &P) -> cadcraft_engine::Result<Value> {
     serde_json::to_value(p).map_err(|e| err(e.to_string()))
 }
 
-/// `prerelease {rev?, limit?, accept?}` (read only): the pre-release check of the pending revision,
-/// or of an issued one.
+/// The pre-release check of the pending revision, or of an issued one. Read only.
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PrereleaseParams {
@@ -62,9 +53,8 @@ impl Command for PrereleaseParams {
     }
 }
 
-/// `release {rev?, folder?, reports?, accept?, provisional?, existing?, colour?, lineweights?}`:
-/// issue the pending revision and write its folder, or write an issued revision's folder again
-/// (`rev`; records nothing).
+/// Issues the pending revision and writes its release folder, or with `rev` writes an issued revision's folder
+/// again (recording nothing).
 #[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReleaseParams {

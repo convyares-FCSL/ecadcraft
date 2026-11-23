@@ -3,7 +3,7 @@
 use super::points::point_at;
 use super::*;
 
-/// `branches {}` (read only): the branch list.
+/// The branch list. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]
@@ -85,8 +85,7 @@ pub(crate) struct FromParams {
     now: Option<bool>,
 }
 
-/// `branch {name, from?, switch?}`: a new branch (saving first; written at once), shown unless
-/// `switch` is false.
+/// A new branch, saving first (it is written at once); shown unless `switch` is false.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BranchParams {
@@ -143,7 +142,7 @@ pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Re
     Ok(())
 }
 
-/// `renamebranch {branch, name}`.
+/// Renames a branch.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RenamebranchParams {
@@ -185,8 +184,7 @@ pub(crate) fn unsaved_refusal(p: &Project) -> String {
     format!("{} has {n} unsaved change{}; add \"save\": true to save them and switch.", current_name(p), if n == 1 { "" } else { "s" })
 }
 
-/// `switchbranch {branch, save?}`: show another branch; refused with unsaved changes unless
-/// `save` is true.
+/// Shows another branch. Refused with unsaved changes unless `save` is true.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SwitchbranchParams {
@@ -241,7 +239,7 @@ fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -
     Ok(json!({"branch": id.hex(), "name": rec.name, "switched": true, "message": line}))
 }
 
-/// `archivebranch {branch}`: archive a branch (the branch shown first gives way to its parent).
+/// Archives a branch; when it is the branch shown, its parent is shown instead.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ArchivebranchParams {
@@ -301,8 +299,8 @@ pub(crate) fn free_branch_name(p: &Project, base: &str, except: Option<BranchId>
     (2..).map(|n| format!("{base} ({n})")).find(|n| !taken.contains(&n.to_lowercase())).unwrap_or_else(|| base.to_string())
 }
 
-/// `reopenbranch {branch, name?}`: open an archived or merged branch again; `name` reopens it under
-/// that name, in one step, when another open branch has its name.
+/// Opens an archived or merged branch again; `name` reopens it under that name, in one step, when another open
+/// branch has its name.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ReopenbranchParams {

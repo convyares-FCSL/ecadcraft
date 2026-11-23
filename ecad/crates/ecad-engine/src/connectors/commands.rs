@@ -34,21 +34,8 @@ pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>)
-            .params(
-                "{device?: id | tag (absent: a new connector), halves?: socket|plug|both, family?: plain|dsub|m12|rj45|usba|usbb, \
-pins?: 1..64, names?: numbers|letters|[\"L\",\"N\",\"PE\"], layout?: row|pins, at?: [x,y], rotation?: 0|90|180|270, swap?: bool (row), \
-line?: [[x,y],[x,y]] | wire?: id (pins), pin?: name (the first pin), page?: id} (design 044 §4.3; absent fields take the registry's \
-connector.maker.* answers; one transaction)",
-            )
-            .interactive(crate::interact::connector)
-            .noundo(),
-        CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>)
-            .params(
-                "{device?: id | tag, pin?: name, connection_point?: id, to: new name | \"next\"} (renames a connector pin on both halves in one \
-transaction; with connection_point and to \"next\", moves that one drawn pin to its half's next free pin)",
-            )
-            .noundo(),
+        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>).interactive(crate::interact::connector).noundo(),
+        CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>).noundo(),
     ]
 }
 
@@ -64,8 +51,8 @@ enum NamesParam {
     Word(String),
 }
 
-/// `connector {…}`: a row of whole halves, pins on the wires a line crosses, or a
-/// bulkhead. Absent fields take the registry's `connector.maker.*` answers; one transaction.
+/// A connector: a row of whole halves, pins on the wires a line crosses (`line`) or on one wire (`wire`), or a
+/// bulkhead. Absent fields take the registry's `connector.maker.*` answers. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConnectorParams {
@@ -266,8 +253,8 @@ pub(crate) fn place_half(
 
 // ---------------------------------------------------------------- pinlabel
 
-/// `pinlabel {device | terminal, pin?, to}`: renames a connector pin on both
-/// halves, or with `connection_point` and `to: "next"` moves that one drawn pin to its half's next free pin.
+/// Renames a connector pin on both halves in one transaction, or with `connection_point` and `to: "next"` moves
+/// that one drawn pin to its half's next free pin.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PinlabelParams {

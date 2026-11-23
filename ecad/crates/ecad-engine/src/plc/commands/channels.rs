@@ -125,8 +125,10 @@ pub(crate) fn place_channel(
     Ok(v)
 }
 
-/// `plcchannels {card?, type?, first?, point?, from, to}` (the fence) or `{card, rest: true, at?}`
-/// (the rest). One transaction.
+/// Draws PLC channel cells, in one transaction: one cell on each wire the line from `from` to `to` crosses, in
+/// order (at most 256; a cell with several points spans its own wires when they are spaced as its points; turned
+/// 180° where the wires run down), or with `{card, rest: true, at?}` every channel not drawn yet as cells in a
+/// row, without wires.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlcchannelsParams {

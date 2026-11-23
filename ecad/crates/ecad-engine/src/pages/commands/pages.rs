@@ -27,9 +27,9 @@ fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
     Ok(json!({"page": page.hex(), "document": uid}))
 }
 
-/// `newpage {title?, number?, folder?, after?, type?, generated?, strip?, style?}`: a new page,
-/// opened. Right after page `after` in its folder, else last in `folder`; numbered `number`, else
-/// the next after the page before it (or a folder's start number for its first page).
+/// A new page, opened: right after page `after` in its folder, else last in `folder`; numbered `number`, else the
+/// next after the page before it (or a folder's start number for its first page). A type such as "front" or
+/// "report" needs `generated`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct NewpageParams {
@@ -84,7 +84,7 @@ impl Command for NewpageParams {
     }
 }
 
-/// `openpage {page}`: open the page, or bring it to the front.
+/// Opens a page, or brings it to the front.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OpenpageParams {
@@ -98,7 +98,7 @@ impl Command for OpenpageParams {
     }
 }
 
-/// `ecadinspect {seq?}`: a read-only snapshot of the project, as it is or at step `seq`.
+/// A read-only snapshot of the project, as it is or at step `seq`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct EcadinspectParams {

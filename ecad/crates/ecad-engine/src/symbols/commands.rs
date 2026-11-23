@@ -33,16 +33,7 @@ pub const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
 
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-
-        CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>)
-            .params(
-                "{handles?: [hex] (default: the selection) | component: id, name, key, points?: [{key, label?, at: [x,y] on the page}], \
-slots?: [… at on the page], defaults?, replace?: bool (default true), graphics?: the drawing as edited in the builder, in the symbol's frame (points and slots then in that frame too), at?: [x,y] the page point of its origin} (design 048 §9.5: a symbol from plain geometry, or a drawn \
-component promoted, keeping its IDs)",
-            )
-            .noundo(),
-    ]
+    vec![CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>).noundo()]
 }
 
 // ---------------------------------------------------------------- content
@@ -51,9 +42,8 @@ use ecad_electrical::symbols::builder::{Bridges, ContentFields, Points, Shapes, 
 
 // ---------------------------------------------------------------- make symbol
 
-/// `makesymbol {handles? | component, name, key, points?, slots?, defaults?, replace?, graphics?,
-/// at?}`: a symbol from plain geometry, or a drawn component promoted, keeping
-/// its IDs.
+/// A symbol from plain geometry (`handles`, default the selection), or a drawn component promoted (`component`),
+/// keeping its IDs.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MakeParams {

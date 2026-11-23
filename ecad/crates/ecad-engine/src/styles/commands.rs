@@ -26,21 +26,16 @@ pub const TYPED: &[Typed] = &[Typed::of::<ShowtextParams>("showtext"), Typed::of
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("showtext", "Show/Hide Text", crate::commands::input::typed::<ShowtextParams>)
-            .params(
-                "{kind: word, show: \"on\"|\"off\"|\"first\"|null, representation?: id | component?: id | conductor?: id | page?: id} (at most one target; none = the project; null: inherit)",
-            )
             .interactive(crate::styles::interact::showtext)
             .noundo(),
-        CommandSpec::new("hiddentext", "Show Hidden Text", crate::commands::input::typed::<HiddentextParams>)
-            .params("{on?: bool} (display only; no field toggles)")
-            .noundo(),
+        CommandSpec::new("hiddentext", "Show Hidden Text", crate::commands::input::typed::<HiddentextParams>).noundo(),
     ]
 }
 
 // ---------------------------------------------------------------- showtext
 
-/// `showtext {kind, show, representation? | component? | conductor? | page?}`:
-/// whether a kind of text is shown, at one level.
+/// Whether a kind of text is shown, at one level: a symbol, a device, a wire or a page (at most one of them; none
+/// is the project). Null inherits.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ShowtextParams {
@@ -90,7 +85,7 @@ impl Command for ShowtextParams {
     }
 }
 
-/// `hiddentext {on?}`: Show Hidden Text on, off, or toggled. Display only.
+/// Show Hidden Text on, off, or toggled when `on` is absent. Display only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HiddentextParams {

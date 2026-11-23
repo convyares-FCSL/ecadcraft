@@ -64,9 +64,9 @@ impl Entry {
     }
 }
 
-/// The registration of generic command `P`; its parameters text is made from its schema.
+/// The registration of generic command `P` (its parameters text is set by [`crate::commands::specs`]).
 fn spec<P: Generic>() -> CommandSpec {
-    CommandSpec::new(P::ID, P::TITLE, run::<P>).params(crate::commands::help_of(P::ID)).noundo()
+    CommandSpec::new(P::ID, P::TITLE, run::<P>).noundo()
 }
 
 /// What each read parameter of `P` that `params` gives read.

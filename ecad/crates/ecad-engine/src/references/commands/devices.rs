@@ -17,15 +17,10 @@ use crate::commands::on_any_page;
 pub const TYPED: &[Typed] = &[Typed::of::<RefgotoParams>("refgoto")];
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::typed::<RefgotoParams>)
-            .params("{source: id, target?: id} (a cable reference end, a contact, a coil or a continuation arrow: opens the place it shows; records nothing)")
-            .noundo(),
-    ]
+    vec![CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::typed::<RefgotoParams>).noundo()]
 }
 
-/// `refgoto {source, target?}`: opens the place a cable reference end, a contact, a coil or a
-/// continuation arrow shows; records nothing.
+/// Opens the place a cable reference end, a contact, a coil or a continuation arrow shows. Records nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RefgotoParams {

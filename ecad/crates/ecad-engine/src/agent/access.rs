@@ -182,11 +182,7 @@ pub struct Status {
 pub const TYPED: &[Typed] = &[Typed::of::<AgentaccessParams>("agentaccess")];
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("agentaccess", "Agent Access", typed::<AgentaccessParams>)
-            .params("{mode?: \"off\"|\"read\"|\"write\", port?: 1024–65535} (no fields: reads; set by the person only)")
-            .noundo(),
-    ]
+    vec![CommandSpec::new("agentaccess", "Agent Access", typed::<AgentaccessParams>).noundo()]
 }
 
 fn reply(st: Option<&Status>, pref: Preference) -> Value {
@@ -199,8 +195,8 @@ fn reply(st: Option<&Status>, pref: Preference) -> Value {
     })
 }
 
-/// `agentaccess {mode?, port?}`: the window's agent access; no fields reads it. Set by the person
-/// only (agents are refused by the policy).
+/// The window's agent access: no fields reads it; `mode` and `port` set it. Set by the person only: agents are
+/// refused.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AgentaccessParams {

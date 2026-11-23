@@ -596,13 +596,8 @@ pub const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<Und
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("merge", "Merge", typed::<MergeParams>)
-            .params(
-                "{from, into?, preview?: bool, choices?: {<conflict id>: \"main\"|\"branch\"|\"loose\"|\"bringback\"|\"renumber_branch\"|\"renumber_main\"|{\"value\": text}}, close?: true} \
-                 (merges a branch into its parent, or updates a branch from its parent: one step on the target; preview only reads)",
-            )
-            .noundo(),
-        CommandSpec::new("undomerge", "Undo Merge", typed::<UndomergeParams>).params("{} (undoes the last step when it is a merge, as u asks)").noundo(),
+        CommandSpec::new("merge", "Merge", typed::<MergeParams>).noundo(),
+        CommandSpec::new("undomerge", "Undo Merge", typed::<UndomergeParams>).noundo(),
     ]
 }
 
@@ -618,8 +613,8 @@ fn unanswered_refusal(prep: &Prepared, plan: &Plan) -> String {
     )
 }
 
-/// `merge {from, into?, preview?, choices?, close?}`: merge a branch into its parent,
-/// or update a branch from its parent: one step on the target. `preview` only reads.
+/// Merges a branch into its parent, or updates a branch from its parent: one step on the target. `preview` only
+/// reads.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct MergeParams {
@@ -803,7 +798,7 @@ pub(crate) fn undo_question(p: &Project) -> Option<String> {
     Some(format!("The last step merged {name} into {} ({changes}).\nUndo the merge?{reopened}", history::current_name(p)))
 }
 
-/// `undomerge {}`: undo the last step when it is a merge, as `u` asks.
+/// Undoes the last step when it is a merge, as `u` asks.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]

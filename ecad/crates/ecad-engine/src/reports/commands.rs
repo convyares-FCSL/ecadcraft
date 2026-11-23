@@ -21,10 +21,8 @@ pub const TYPED: &[Typed] = &[Typed::of::<PrintbookParams>("printbook"), Typed::
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("printbook", "Print Book", crate::commands::input::typed::<PrintbookParams>)
-            .params("{scope?: \"all\" | {folder: id} | {pages: \"100, 105-110\"}, path?: pdf file, colour?: \"mono\"|\"colour\", lineweights?: bool}")
-            .noundo(),
-        CommandSpec::new("reports", "Reports", crate::commands::input::typed::<ReportsParams>).params("{} (opens the Reports window)").noundo(),
+        CommandSpec::new("printbook", "Print Book", crate::commands::input::typed::<PrintbookParams>).noundo(),
+        CommandSpec::new("reports", "Reports", crate::commands::input::typed::<ReportsParams>).noundo(),
     ]
 }
 
@@ -100,7 +98,7 @@ pub fn print_project(
         "unknown": resolved.unknown, "notes": resolved.notes.iter().chain(done.notes.iter()).collect::<Vec<_>>(), "message": message}))
 }
 
-/// `printbook {scope?, path?, colour?, lineweights?}`: the project's pages as a PDF.
+/// The project's pages as a PDF.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PrintbookParams {
@@ -141,7 +139,7 @@ impl Command for PrintbookParams {
     }
 }
 
-/// `reports {}`: opens the Reports window.
+/// Opens the Reports window.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]

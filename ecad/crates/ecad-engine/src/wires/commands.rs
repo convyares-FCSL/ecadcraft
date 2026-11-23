@@ -31,9 +31,8 @@ fn not_auto(v: Option<String>) -> Option<String> {
 
 // ---------------------------------------------------------------- joinwires
 
-/// `joinwires {at: [x,y]}` on the active page: two free route
-/// ends that meet become one route; free ends on a route's middle, or three or more ends, land on
-/// one route there (a T).
+/// On the active page, two open ends at `at` become one line; open ends on a line's middle, or three or more
+/// ends, land on one line there (a T).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct JoinwiresParams {
@@ -62,7 +61,8 @@ impl Command for JoinwiresParams {
 
 // ---------------------------------------------------------------- wire
 
-/// `wire {points, potential?, join?: bool, category?}`.
+/// A wire along `points`. Ends on connection points attach; an end on another wire's open end joins it into one
+/// line, an end on a line's middle lands there (a T); open ends lying on the new line land on it.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WireParams {

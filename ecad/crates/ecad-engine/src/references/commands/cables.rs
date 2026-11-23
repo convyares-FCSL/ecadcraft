@@ -16,9 +16,8 @@ use crate::commands::on_any_page;
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<CablegotoParams>("cablegoto")];
 
-/// `cablegoto {reference}`: open (or front) the page of the other end of
-/// `reference`, centre the view on it and select its point. Records nothing; works on a read-only
-/// project.
+/// Opens (or fronts) the page of the other end of a cable reference, centres the view on it and selects its
+/// point. Records nothing; works on a read-only project.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CablegotoParams {

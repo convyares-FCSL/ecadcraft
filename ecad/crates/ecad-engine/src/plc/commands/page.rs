@@ -32,14 +32,10 @@ use ecad_electrical::plc::channels::first_number;
 
 /// The command `plcpage`.
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("plcpage", "Make Card Page", typed::<PlcpageParams>)
-            .params("{card: id or tag, after?: page number (absent: after the rack's last card page)} (a new page with every channel not drawn yet, and the body)")
-            .noundo(),
-    ]
+    vec![CommandSpec::new("plcpage", "Make Card Page", typed::<PlcpageParams>).noundo()]
 }
 
-/// `plcpage {card, after?}`. One transaction labelled `Make card page`.
+/// A new page with every channel of a PLC card not drawn yet, and the card's body. One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PlcpageParams {

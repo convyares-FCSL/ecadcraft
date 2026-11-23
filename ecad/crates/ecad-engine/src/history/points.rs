@@ -330,7 +330,8 @@ fn chunk_summary(p: &Project, this: &Named, prev: &Named) -> Vec<String> {
     out
 }
 
-/// `pointinfo {branch?, version? | revision? | seq?, now?}` (read only): the details of a point.
+/// The details of a point of the history, named by `version`, `revision` or `seq` (or a branch's head). Read
+/// only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PointinfoParams {
@@ -376,8 +377,8 @@ pub(crate) fn bar_text(p: &Project, pt: &Point) -> String {
     }
 }
 
-/// `showpoint {branch?, version? | revision? | seq?, now?}`: that state, read only; records
-/// nothing.
+/// Shows the project as it was at a point of the history, named by `version`, `revision` or `seq` (or a branch's
+/// head). Read only; records nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ShowpointParams {
@@ -435,7 +436,7 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
     Ok(json!({"title": pt.title, "branch": pt.branch.hex(), "seq": pt.seq, "bar": bar, "pages": pages}))
 }
 
-/// `closepoint {}`: back to the current state.
+/// Back to the current state from a point shown with `showpoint`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]
@@ -470,8 +471,8 @@ pub(crate) fn restore_question(p: &Project, pt: &Point, plan: &RestorePlan) -> S
     q
 }
 
-/// `restore {version? | revision? | seq?, branch?, now?, preview?}`: make the project as it was
-/// there; one step, undoable. `preview` only asks.
+/// Makes the project as it was at a point of the history, named by `version`, `revision` or `seq` (or a branch's
+/// head): one step, undoable. `preview` only asks.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RestoreParams {

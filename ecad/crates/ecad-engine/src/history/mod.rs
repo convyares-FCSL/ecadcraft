@@ -453,42 +453,23 @@ pub const TYPED: &[Typed] = &[
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("history", "History", typed::<HistoryParams>)
-            .params("{autos?: bool, archived?: bool, limit?: 200} (the History graph, newest first, `limit` rows; read only)")
-            .noundo(),
-        CommandSpec::new("steps", "History Steps", typed::<StepsParams>)
-            .params("{branch?, before?: seq, limit?: 50} (steps newest first, read only)")
-            .noundo(),
-        CommandSpec::new("pointinfo", "Point Info", typed::<PointinfoParams>)
-            .params("{branch?, version?|revision?|seq?} (the details of a point, read only)")
-            .noundo(),
-        CommandSpec::new("version", "New Version", typed::<VersionParams>)
-            .params("{name, description?} (keeps the project as it is now under this name: one step)")
-            .noundo(),
-        CommandSpec::new("showpoint", "Show Point", typed::<ShowpointParams>)
-            .params("{branch?, version?|revision?|seq?} (that state read only; records nothing)")
-            .noundo(),
-        CommandSpec::new("closepoint", "Back to Current", typed::<ClosepointParams>).params("{}").noundo(),
-        CommandSpec::new("restore", "Restore", typed::<RestoreParams>)
-            .params("{version?|revision?|seq?, branch?, preview?: bool} (makes the project as it was there: one step, undoable; preview only asks)")
-            .noundo(),
-        CommandSpec::new("branches", "Branches", typed::<BranchesParams>).params("{} (the branch list, read only)").noundo(),
-        CommandSpec::new("branch", "New Branch", typed::<BranchParams>)
-            .params("{name, from?: {branch?, version?|revision?|seq?}, switch?: true} (saves first; written at once)")
-            .noundo(),
-        CommandSpec::new("renamebranch", "Rename Branch", typed::<RenamebranchParams>).params("{branch, name}").noundo(),
-        CommandSpec::new("switchbranch", "Switch Branch", typed::<SwitchbranchParams>)
-            .params("{branch, save?: bool} (refused with unsaved changes unless save is true)")
-            .noundo(),
-        CommandSpec::new("archivebranch", "Archive Branch", typed::<ArchivebranchParams>).params("{branch}").noundo(),
-        CommandSpec::new("reopenbranch", "Reopen Branch", typed::<ReopenbranchParams>)
-            .params("{branch, name?} (name: reopen under that name, in one step, when another open branch has its name)")
-            .noundo(),
+        CommandSpec::new("history", "History", typed::<HistoryParams>).noundo(),
+        CommandSpec::new("steps", "History Steps", typed::<StepsParams>).noundo(),
+        CommandSpec::new("pointinfo", "Point Info", typed::<PointinfoParams>).noundo(),
+        CommandSpec::new("version", "New Version", typed::<VersionParams>).noundo(),
+        CommandSpec::new("showpoint", "Show Point", typed::<ShowpointParams>).noundo(),
+        CommandSpec::new("closepoint", "Back to Current", typed::<ClosepointParams>).noundo(),
+        CommandSpec::new("restore", "Restore", typed::<RestoreParams>).noundo(),
+        CommandSpec::new("branches", "Branches", typed::<BranchesParams>).noundo(),
+        CommandSpec::new("branch", "New Branch", typed::<BranchParams>).noundo(),
+        CommandSpec::new("renamebranch", "Rename Branch", typed::<RenamebranchParams>).noundo(),
+        CommandSpec::new("switchbranch", "Switch Branch", typed::<SwitchbranchParams>).noundo(),
+        CommandSpec::new("archivebranch", "Archive Branch", typed::<ArchivebranchParams>).noundo(),
+        CommandSpec::new("reopenbranch", "Reopen Branch", typed::<ReopenbranchParams>).noundo(),
     ]
 }
 
-/// `history {autos?, archived?, limit?}` (read only): the History graph, newest first, `limit`
-/// rows.
+/// The History graph, newest first, `limit` rows. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HistoryParams {
@@ -539,7 +520,7 @@ pub fn steps(p: &Project, branch: BranchId, before: Option<u64>, limit: u64) -> 
     Ok(v)
 }
 
-/// `steps {branch?, before?, limit?}` (read only): the steps of a branch newest first.
+/// The steps of a branch, newest first. Read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct StepsParams {

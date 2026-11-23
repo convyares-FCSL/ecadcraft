@@ -31,12 +31,7 @@ pub const TYPED: &[Typed] = &[Typed::of::<BridgeParams>("bridge")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
-    vec![
-        CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
-            .params("{from: terminal id, to: terminal id} (a wire between two terminals; of one strip it is a bridge)")
-            .interactive(crate::interact::bridge)
-            .noundo(),
-    ]
+    vec![CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>).interactive(crate::interact::bridge).noundo()]
 }
 
 // ---------------------------------------------------------------- landing on a wire
@@ -200,8 +195,7 @@ pub(crate) fn place_level(
 
 // ---------------------------------------------------------------- Draw Bridge
 
-/// `bridge {from, to}` (Draw Bridge): a wire between two terminals; of one strip it
-/// is a bridge.
+/// A wire between two terminals; between terminals of one strip it is a bridge.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BridgeParams {

@@ -101,15 +101,11 @@ pub const TYPED: &[crate::commands::input::Typed] = &[crate::commands::input::Ty
 
 /// The commands this module adds.
 pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
-    vec![
-        cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::typed::<CanvassheetParams>)
-            .params("{dark: bool} (display only: the sheet the page is drawn on)")
-            .noundo(),
-    ]
+    vec![cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::typed::<CanvassheetParams>).noundo()]
 }
 
-/// `canvassheet {dark}`: the sheet the app shows, for the colours ECAD draws in; the
-/// open page is redrawn when it changes. Display only, nothing recorded.
+/// The sheet the app shows, for the colours ECAD draws in; the open page is redrawn when it changes. Display
+/// only: nothing is recorded.
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CanvassheetParams {

@@ -21,6 +21,7 @@ fn every_command_is_typed_with_a_schema_or_still_listed() {
         let schema = schema_of(t.id).unwrap_or(Value::Null);
         assert_eq!(schema["type"], json!("object"), "{}: {schema}", t.id);
         assert!(schema["properties"].is_object(), "{}: {schema}", t.id);
+        assert_eq!(spec.params, ecad_engine::commands::help_of(t.id), "{}'s parameters text is made from its schema", t.id);
         assert!(!UNTYPED.contains(&t.id), "{} is typed now: remove it from UNTYPED", t.id);
     }
     let untyped: Vec<&str> = all.iter().map(|s| s.id).filter(|id| !typed.iter().any(|t| t.id == *id)).collect();
@@ -30,12 +31,12 @@ fn every_command_is_typed_with_a_schema_or_still_listed() {
     assert!(stale.is_empty(), "in UNTYPED but not an untyped registered command: {stale:?}");
 }
 
-/// A generic command's parameters text is made from its params struct's docs, so the struct and
-/// every field carry a description.
+/// A command's parameters text is made from its params struct's docs, so the struct and every
+/// field carry a description.
 #[test]
-fn every_generic_command_and_field_is_described() {
+fn every_command_and_field_is_described() {
     let mut missing = Vec::new();
-    for t in typed_commands().iter().filter(|t| t.access.is_some()) {
+    for t in typed_commands() {
         let schema = (t.schema)();
         if schema["description"].as_str().is_none_or(|d| d.trim().is_empty()) {
             missing.push(t.id.to_string());

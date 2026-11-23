@@ -68,20 +68,10 @@ pub const TYPED: &[Typed] = &[
 pub fn specs() -> Vec<CommandSpec> {
     use crate::commands::input::typed;
     vec![
-        CommandSpec::new("issuerevision", "Issue Revision", typed::<IssuerevisionParams>)
-            .params(
-                "{rev?, date?, description?, drawn?, checked?, approved?, provisional?: \"finalise\"|\"issue\"} (issues the \
-pending revision: needs Rev, Description and Drawn; names the log point \"Rev <rev>\"; with provisional tags or wire numbers \
-present, `provisional` says whether to finalise them first or issue them as they are)",
-            )
-            .noundo(),
-        CommandSpec::new("openrevision", "Reopen Revision", typed::<OpenrevisionParams>)
-            .params("{rev} (the project as issued, read only; records nothing)")
-            .noundo(),
-        CommandSpec::new("closerevision", "Back to Current", typed::<CloserevisionParams>).params("{}").noundo(),
-        CommandSpec::new("undoissue", "Undo Issue", typed::<UndoissueParams>)
-            .params("{} (undoes the last step when it issued a revision: removes its release mark)")
-            .noundo(),
+        CommandSpec::new("issuerevision", "Issue Revision", typed::<IssuerevisionParams>).noundo(),
+        CommandSpec::new("openrevision", "Reopen Revision", typed::<OpenrevisionParams>).noundo(),
+        CommandSpec::new("closerevision", "Back to Current", typed::<CloserevisionParams>).noundo(),
+        CommandSpec::new("undoissue", "Undo Issue", typed::<UndoissueParams>).noundo(),
     ]
 }
 
@@ -160,8 +150,9 @@ pub fn plan_issue(p: &Project, before: &[Op]) -> Result<IssuePlan, CmdError> {
     plan_issue_of(p, before, &revision_fields([None, None, None, None, None, None], None, None))
 }
 
-/// `issuerevision {rev?, date?, description?, drawn?, checked?, approved?, provisional?}`: issues
-/// the pending revision (needs Rev, Description and Drawn; names the log point "Rev <rev>").
+/// Issues the pending revision: it needs Rev, Description and Drawn, and names the history point "Rev <rev>".
+/// With provisional tags or wire numbers present, `provisional` says whether to finalise them first or issue them
+/// as they are.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IssuerevisionParams {
@@ -213,7 +204,7 @@ impl Command for IssuerevisionParams {
     }
 }
 
-/// `openrevision {rev}`: the project as issued, read only; records nothing.
+/// The project as issued at a revision. Read only; records nothing.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OpenrevisionParams {
@@ -248,7 +239,7 @@ impl Command for OpenrevisionParams {
     }
 }
 
-/// `closerevision {}`: back to the current project from an opened revision.
+/// Back to the current project from an opened revision.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]
@@ -263,7 +254,7 @@ impl Command for CloserevisionParams {
     }
 }
 
-/// `undoissue {}`: undoes the last step when it issued a revision (removes its release mark).
+/// Undoes the last step when it issued a revision, removing its release mark.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(extend("properties" = {}))]
