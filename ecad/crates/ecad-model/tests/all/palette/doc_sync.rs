@@ -1,12 +1,12 @@
-//! The design tokens document and the drawing style agree: every row of the
+//! The design tokens document and the canvas palette agree: every row of the
 //! "Drawing style" tables names a constant and shows its value, and every constant has a row.
 
 use std::collections::BTreeMap;
 
-use ecad_drawing_style::marker::{self, Shape};
-use ecad_drawing_style::sheet::{self, DARK, Meaning, PAPER, prints};
-use ecad_drawing_style::wire::{self, WireColors};
-use ecad_drawing_style::{line, sheet_type};
+use ecad_model::palette::line;
+use ecad_model::palette::marker::{self, Shape};
+use ecad_model::palette::sheet::{self, DARK, Meaning, PAPER, prints};
+use ecad_model::palette::wire::{self, WireColors};
 
 const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
 
@@ -91,9 +91,6 @@ fn constants() -> BTreeMap<String, Vec<String>> {
     }
     put("wire.dash_on".into(), vec![mm(wire::DASH_ON_MM)]);
     put("wire.dash_off".into(), vec![mm(wire::DASH_OFF_MM)]);
-    for (name, s) in sheet_type::ALL {
-        put(name.into(), vec![mm(s.cap_mm), format!("{:.2} mm", s.font_size_mm()), s.weight.to_string()]);
-    }
     for (name, v) in line::MM {
         put(name.into(), vec![mm(v)]);
     }
@@ -103,7 +100,7 @@ fn constants() -> BTreeMap<String, Vec<String>> {
 #[test]
 fn every_drawing_style_row_equals_its_constant() {
     let rows = doc_rows(checked_part(DOC));
-    assert!(rows.len() > 40, "the Drawing style tables were found ({} rows)", rows.len());
+    assert!(rows.len() >= 40, "the Drawing style tables were found ({} rows)", rows.len());
     let expected = constants();
     let mut seen = BTreeMap::new();
     let mut problems = Vec::new();
@@ -127,5 +124,5 @@ fn every_drawing_style_row_equals_its_constant() {
             problems.push(format!("{name}: a constant with no row"));
         }
     }
-    assert!(problems.is_empty(), "tokens.md and ecad-drawing-style differ:\n  {}", problems.join("\n  "));
+    assert!(problems.is_empty(), "tokens.md and the palette differ:\n  {}", problems.join("\n  "));
 }

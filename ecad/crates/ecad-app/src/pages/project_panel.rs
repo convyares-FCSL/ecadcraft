@@ -1053,8 +1053,8 @@ impl ProjectPanel {
             crate::shell::glyphs::thumbnail(
                 &p,
                 thumb,
-                ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER),
-                ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK),
+                ecad_widgets::color(ecad_model::palette::sheet::THUMBNAIL_PAPER),
+                ecad_widgets::color(ecad_model::palette::sheet::THUMBNAIL_INK),
                 outline,
             );
             x = thumb.right() + 8.0;

@@ -146,8 +146,8 @@ cargo xtask patches               # only when files outside ecad/ changed
   root workspace (in its own `target`), and the tester runs the affected
   CADCraft crates' tests.
 - **Layers (design 065, `docs/design/crates.md` §1 and §4).** **Core** (what a project is and
-  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
-  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-widgets`
+  means), in this order: `ecad-model` (definitions), `ecad-store`, `ecad-file`, `ecad-electrical`
+  (what things mean electrically), `ecad-drawing-style` (how they look). **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-widgets`
   (with its `tokens` module). **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
   `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` and `xtask` under `dev/`.
   A crate uses only layers above it; `cargo xtask layers` enforces the table.

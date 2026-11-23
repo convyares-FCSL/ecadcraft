@@ -26,11 +26,11 @@ pub fn shorten(text: &str, max: usize) -> String {
 /// paper and the dark sheet, in [`ConductorColour::ALL`]'s order (so a colour's index is
 /// `colour as usize`). Black draws in ink, so it shows on both sheets; white draws as a warm grey
 /// on paper. A colour's words come from [`ConductorColour::forms`], never from here.
-pub const CODE_COLOURS: [(ConductorColour, ecad_drawing_style::Color, ecad_drawing_style::Color); 14] = {
+pub const CODE_COLOURS: [(ConductorColour, ecad_model::palette::Color, ecad_model::palette::Color); 14] = {
     use ConductorColour as K;
-    use ecad_drawing_style::Color as C;
+    use ecad_model::palette::Color as C;
     [
-        (K::Black, ecad_drawing_style::sheet::PAPER.ink, ecad_drawing_style::sheet::DARK.ink),
+        (K::Black, ecad_model::palette::sheet::PAPER.ink, ecad_model::palette::sheet::DARK.ink),
         (K::Brown, C::hex(0x8A4B1F), C::hex(0xC9895A)),
         (K::Red, C::hex(0xC62828), C::hex(0xFF7A70)),
         (K::Orange, C::hex(0xD96800), C::hex(0xFFA34D)),
@@ -77,18 +77,18 @@ pub fn colour_code(code: &str) -> Option<(usize, Option<usize>)> {
 
 /// How a wire of colours `colours` is drawn on `sheet`: its solid colour, and the dashes' colour
 /// for two colours; `None` for three colours (drawn in ink).
-pub fn wire_colours(colours: &Colours, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+pub fn wire_colours(colours: &Colours, sheet: &ecad_model::palette::Sheet) -> Option<ecad_model::palette::wire::WireColors> {
     let (a, b) = match colours.list() {
         [a] => (*a, None),
         [a, b] => (*a, Some(*b)),
         _ => return None,
     };
-    Some(ecad_drawing_style::wire::WireColors { solid: drawn(a, sheet), dashes: b.map(|b| drawn(b, sheet)) })
+    Some(ecad_model::palette::wire::WireColors { solid: drawn(a, sheet), dashes: b.map(|b| drawn(b, sheet)) })
 }
 
 /// The colour `c` is drawn in on `sheet`.
-pub fn drawn(c: ConductorColour, sheet: &ecad_drawing_style::Sheet) -> ecad_drawing_style::Color {
-    let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
+pub fn drawn(c: ConductorColour, sheet: &ecad_model::palette::Sheet) -> ecad_model::palette::Color {
+    let dark = sheet.sheet == ecad_model::palette::sheet::DARK.sheet;
     let (_, paper, on_dark) = CODE_COLOURS[c as usize];
     if dark { on_dark } else { paper }
 }
@@ -109,7 +109,7 @@ pub fn conductor_colour_in(doc: &Document, draws: &crate::styles::wire::WireDraw
 pub const MAX_DASHES: usize = 4_000;
 
 /// The dashes of a two-colour wire along `points`: `on` long, `off` apart, starting with a dash
-/// at the first point (spec: 2 mm on, 2 mm off, `ecad_drawing_style::wire`). At most [`MAX_DASHES`];
+/// at the first point (spec: 2 mm on, 2 mm off, `ecad_model::palette::wire`). At most [`MAX_DASHES`];
 /// none when a length is not positive and finite.
 pub fn dash_segments(points: &[Pt], on: f64, off: f64) -> Vec<(Pt, Pt)> {
     let mut out = Vec::new();
@@ -180,7 +180,7 @@ pub struct DashBudget {
 
 /// The [`DashBudget`] of `page`.
 pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
-    let (on, off) = (f64::from(ecad_drawing_style::wire::DASH_ON_MM), f64::from(ecad_drawing_style::wire::DASH_OFF_MM));
+    let (on, off) = (f64::from(ecad_model::palette::wire::DASH_ON_MM), f64::from(ecad_model::palette::wire::DASH_OFF_MM));
     let mut out = DashBudget::default();
     let mut total: usize = 0;
     let draws = crate::styles::wire::WireDraws::new(doc);

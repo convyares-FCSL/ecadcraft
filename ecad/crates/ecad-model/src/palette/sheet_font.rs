@@ -7,7 +7,7 @@
 pub const FAMILY: &str = "Barlow Semi Condensed";
 
 /// Barlow Semi Condensed Regular.
-pub const REGULAR: &[u8] = include_bytes!("../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-Regular.ttf");
+pub const REGULAR: &[u8] = include_bytes!("../../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-Regular.ttf");
 
 /// Barlow Semi Condensed SemiBold.
-pub const SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-SemiBold.ttf");
+pub const SEMIBOLD: &[u8] = include_bytes!("../../../../assets/fonts/barlow-semi-condensed/BarlowSemiCondensed-SemiBold.ttf");

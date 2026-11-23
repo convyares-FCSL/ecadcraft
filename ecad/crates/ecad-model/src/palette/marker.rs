@@ -1,9 +1,9 @@
 //! Canvas markers: the shape of each meaning and, for the screen-size markers, their size. Markers
 //! are drawn at a fixed screen size and do not scale with zoom;
 //! the line-like marks (terminal link, selection outline, agent's last write) are in millimetres
-//! and scale with the sheet ([`crate::line`]).
+//! and scale with the sheet ([`crate::palette::line`]).
 
-use crate::sheet::Meaning;
+use crate::palette::sheet::Meaning;
 
 /// How a meaning is drawn.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -13,10 +13,10 @@
 
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
-use ecad_drawing_style::sheet::PAPER;
 use ecad_electrical::defaults::{self, Kind, Level, Scope, Source};
 use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::Word;
+use ecad_model::palette::sheet::PAPER;
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
 use {ecad_engine::Persistence, ecad_engine::export::printbook};
@@ -143,7 +143,7 @@ pub(crate) fn reproject(h: &mut H) {
     h.check();
 }
 
-pub(crate) fn rgb(c: ecad_drawing_style::Color) -> Rgb {
+pub(crate) fn rgb(c: ecad_model::palette::Color) -> Rgb {
     Rgb(c.r, c.g, c.b)
 }
 

@@ -38,7 +38,7 @@ pub static FONT: Entry = entry("text.font", "Font", Kind::Text { max_chars: 64 }
 /// The sheet font: Barlow Semi Condensed, Regular and SemiBold, which
 /// the app registers with CADCraft's font table at start (US3). A project with its own
 /// `text.font` keeps it.
-pub const SHEET_FONT: &str = ecad_drawing_style::sheet_font::FAMILY;
+pub const SHEET_FONT: &str = ecad_model::palette::sheet_font::FAMILY;
 /// The built-in font, now the first fallback where the sheet font is not registered (a build
 /// or a test without it): drawn with when found, else the stroke font.
 pub const FALLBACK_FONT: &str = "BIZ UDPGothic";

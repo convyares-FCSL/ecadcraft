@@ -1,5 +1,5 @@
 //! Screen line weights, in px. Canvas lines are in mm on paper: they are
-//! part of the drawing style (`ecad_drawing_style::line`), and are drawn no thinner than
+//! part of the drawing style (`ecad_model::palette::line`), and are drawn no thinner than
 //! [`SCREEN_FLOOR_PX`] on screen.
 
 /// UI hairline, px.

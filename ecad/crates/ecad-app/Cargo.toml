@@ -19,7 +19,6 @@ ecad-electrical = { workspace = true }
 # Brief 037: the style, fonts and primitives of ECAD's interface.
 ecad-widgets = { path = "../../crates/ecad-widgets" }
 # The sheet colours the canvas paints (design 065 §1.1).
-ecad-drawing-style = { workspace = true }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
 # remembers the window's size and position (brief 023).

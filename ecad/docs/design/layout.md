@@ -42,11 +42,11 @@ classification (`commands.md`). Source findings: end-gate review #25, #26, #35, 
 
 | Crate | Layer | Purpose |
 | --- | --- | --- |
-| ecad-model | Core | the typed document and how it changes |
+| ecad-model | Core | the typed document and how it changes; definitions (title blocks, text kinds, the registry mechanism) and the canvas palette |
 | ecad-file | Core | the `.ecad` format: records, chunks, history, verify |
 | ecad-store | Core | the only crate that touches disk for projects (redb) |
 | ecad-electrical | Core | the electrical rules, one folder per feature |
-| ecad-drawing-style | Core | drawing styles (stays separate) |
+| ecad-drawing-style | Core | the look of a page: built-in title blocks and frames, text styles, fonts, text fitting; last in Core |
 | ecad-engine | Engine | the adapter over CADCraft: session, drawing, interaction, the generic command runner, export |
 | **ecad-widgets** | UI kit | **new name: ecad-ui + ecad-tokens merged** (tokens become a module). Generic controls and screen tokens, no ECAD knowledge |
 | ecad-app | App | the ECAD user interface: screens, panels, lists, editors, UI state; turns user actions into commands and shows results. **No rules, no disk, no OS, no parsing of domain values** |

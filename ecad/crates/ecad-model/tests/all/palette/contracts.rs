@@ -1,7 +1,7 @@
-//! Contracts of the drawing style.
+//! Contracts of the canvas palette.
 
-use ecad_drawing_style::sheet::{self, DARK, Meaning, PAPER, prints};
-use ecad_drawing_style::{Color, sheet_type};
+use ecad_model::palette::Color;
+use ecad_model::palette::sheet::{self, DARK, Meaning, PAPER, prints};
 
 /// `prints` is true exactly for ink, ink 2, cable, provisional, terminal link and the
 /// missing-data warning.
@@ -12,26 +12,8 @@ fn only_ink_meanings_print() {
     assert!(!prints(Meaning::Warning), "only the missing-data warning prints");
 }
 
-/// The cap height of a sheet text style gives its font size through Barlow's 0.70 em cap height.
-#[test]
-fn cap_height_gives_the_font_size() {
-    let rows: &[(sheet_type::SheetText, f32)] = &[
-        (sheet_type::TAG, 3.57),
-        (sheet_type::LABEL, 2.29),
-        (sheet_type::CONNECTION_POINT_LABEL, 2.14),
-        (sheet_type::TITLE_BLOCK_LABEL, 2.0),
-        (sheet_type::ZONE_LABEL, 2.86),
-        (sheet_type::PAGE_TITLE, 5.0),
-        (sheet_type::PAGE_NUMBER, 6.0),
-    ];
-    for (style, size) in rows {
-        assert!((style.font_size_mm() - size).abs() < 0.005, "{style:?}: {} mm, expected {size}", style.font_size_mm());
-    }
-    assert!((sheet_type::TAG.cap_mm - 2.5).abs() < f32::EPSILON);
-}
-
 /// Both sheets give every meaning a colour, the missing-data marker shares the warning colour,
-/// and the connection point and the terminal link share one hue on purpose (owner answer 5).
+/// and the connection point and the terminal link share one hue on purpose.
 #[test]
 fn both_sheets_cover_every_meaning() {
     for s in [PAPER, DARK] {

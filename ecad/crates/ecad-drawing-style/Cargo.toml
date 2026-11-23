@@ -1,6 +1,6 @@
 [package]
 name = "ecad-drawing-style"
-description = "How an ECAD page is drawn and printed: sheet and canvas colours, the sheet font, sheet text sizes, wire colours and dashes, canvas markers and line weights in mm (design 065 §1.1)"
+description = "The look of an ECAD page, drawn on the definitions of ecad-model and the rules of ecad-electrical"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

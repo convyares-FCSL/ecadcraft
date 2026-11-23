@@ -27,6 +27,7 @@ pub mod geometry;
 pub mod merge;
 pub mod naming;
 pub mod objects;
+pub mod palette;
 
 pub use crate::connectivity::{Connectivity, NetData, NetKey, Node};
 pub use crate::document::book::PageNo;

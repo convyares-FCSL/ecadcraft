@@ -20,9 +20,9 @@ One folder per feature area under `src/` (the crate doc in `src/lib.rs` gives on
 
 ## Must not depend on
 Core rules: no `cadcraft-*` crate, no UI, no OS access (no files, clock, environment or process:
-callers pass the time in) and no font lookup. It uses only `ecad-model`, `ecad-drawing-style` and
-`ecad-file` (for `definition_hash`), the Core crates before it. It is the last crate in Core, so no
-other Core crate may use it.
+callers pass the time in) and no font lookup. It uses only `ecad-model`, `ecad-store` and
+`ecad-file` (for `definition_hash`), the Core crates before it. Only `ecad-drawing-style` comes
+after it in Core.
 
 ## Key types
 `checks::Check` and `checks::Fix` (a Checks row and its fix), `commands::run::Generic` (a

@@ -11,8 +11,8 @@ through `ecad-ui` (`cargo xtask layers` checks it).
 **These tables are checked.** A test in `ecad-tokens` (`tests/all/doc_sync.rs`) reads every table
 under "Tokens" below (the screen's look) and compares each row's name and value with the constant
 of the same name, both ways: a row without a constant, a constant without a row, or a different
-value fails. A test in `ecad-drawing-style` does the same for the tables under "Drawing style"
-(how a page is drawn; design 065 §1.1). Change the constant and the row together.
+value fails. A test in `ecad-model` (`tests/all/palette/doc_sync.rs`) does the same for the tables under
+"Drawing style" (the canvas palette; design 065 §1.1). Change the constant and the row together.
 
 Design specs refer to a token by its name here (`shell.text_2`, `sheet.connection_point`,
 `size.control`). CADCraft's own theme (`../crates/ui-egui/src/theme.rs`, `theme::Tokens`) is
@@ -248,14 +248,15 @@ Tool icons echo the schematic.
 
 # Drawing style
 
-How a page is drawn and printed (design 065 §1.1): sheet and canvas colours, wire colours, sheet
-text, and line weights on the page. The code is the crate `ecad-drawing-style` (Core), which the
-engine, `ecad-ui` and the app all read; a test in that crate (`tests/all/doc_sync.rs`) checks these
-tables the same way as the screen tokens above.
+How a page is drawn and printed (design 065 §1.1): sheet and canvas colours, wire colours, markers
+and line weights on the page. The code is the canvas palette, `ecad_model::palette` (Core), which the
+engine, `ecad-widgets` and the app all read; a test in `ecad-model` (`tests/all/palette/doc_sync.rs`)
+checks these tables the same way as the screen tokens above. Text heights and fonts are the text
+styles, not a table here.
 
 ## Sheet colours
 
-The paper sheet (`ecad_drawing_style::sheet::PAPER`, the default) and the dark sheet (`DARK`),
+The paper sheet (`ecad_model::palette::sheet::PAPER`, the default) and the dark sheet (`DARK`),
 the same meanings in a second set. Ink prints; overlay never does, except the missing-data warning
 (`sheet::prints`). Markers are drawn at a fixed screen size and do not scale with zoom. The
 canvas switches to these in U4a.
@@ -293,7 +294,7 @@ on either sheet (`sheet.thumbnail_paper`, `sheet.preview_paper`, `sheet.thumbnai
 
 ## Wire colours
 
-Default wire category colours (`ecad_drawing_style::wire`), changeable in Standards (U4c). A
+Default wire category colours (`ecad_model::palette::wire`), changeable in Standards (U4c). A
 two-colour wire or core is drawn in both colours: the first solid, the second laid over it as dashes.
 
 | Token | Paper | Dark |
@@ -307,27 +308,10 @@ two-colour wire or core is drawn in both colours: the first solid, the second la
 | `wire.dash_on` | `2 mm` |
 | `wire.dash_off` | `2 mm` |
 
-## Sheet text
-
-Barlow Semi Condensed, egui family `sheet` (`ecad_drawing_style::sheet_type`). Sizes are **cap
-heights** on paper (owner answer 9); the font size is the cap height divided by 0.70, Barlow Semi
-Condensed's cap height in em. Nothing is enlarged for the screen. The sheet switches to these in
-U4a. (The spec's table writes 2.15 mm for the terminal label; 1.5 / 0.70 is 2.14 mm.)
-
-| Token | Cap height | Font size | Weight | Use |
-| --- | --- | --- | --- | --- |
-| `sheet_type.tag` | `2.5 mm` | `3.57 mm` | `600` | Device tag |
-| `sheet_type.label` | `1.6 mm` | `2.29 mm` | `400` | Pin label, wire label, reference, continuation |
-| `sheet_type.connection_point_label` | `1.5 mm` | `2.14 mm` | `400` | Terminal label, description |
-| `sheet_type.title_block_label` | `1.4 mm` | `2.00 mm` | `400` | Title block label |
-| `sheet_type.zone_label` | `2 mm` | `2.86 mm` | `400` | Zone label |
-| `sheet_type.page_title` | `3.5 mm` | `5.00 mm` | `600` | Page title |
-| `sheet_type.page_number` | `4.2 mm` | `6.00 mm` | `600` | Page number |
-
 ## Line weights on the page
 
 Canvas lines in mm on paper, scaling with zoom with a floor of `line.screen_floor` on screen
-(`ecad_drawing_style::line`).
+(`ecad_model::palette::line`).
 
 | Token | Value | Use |
 | --- | --- | --- |
@@ -363,7 +347,7 @@ test. Where a row has a new token, U4a takes it:
 | `ecad.check-warning`, `ecad.flagged` | `sheet.warning` |
 | `ecad.provisional` | `sheet.provisional` |
 | `ecad.terminal-size`, `ecad.dot-size`, `ecad.loose-size` | `marker` sizes (8, 5, 7 px) |
-| `ecad.text-tag`, `ecad.text-label`, `ecad.text-point-label` | `sheet_type.tag`, `sheet_type.label`, `sheet_type.connection_point_label` (cap heights) |
+| `ecad.text-tag`, `ecad.text-label`, `ecad.text-point-label` | the `tag`, `label` and `point_label` text styles (cap heights) |
 | `ecad.tooltip-*`, `ecad.revision-bar`, `ecad.branch-bar`, `ecad.point-bar`, `ecad.history-*` | `shell.*` and the primitives, when U2 to U4 restyle their panels |
 
 ## Canvas colours

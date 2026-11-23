@@ -60,13 +60,13 @@ pub const FACES: [Face; 5] = [
         family: SHEET,
         file: "barlow-semi-condensed/BarlowSemiCondensed-Regular.ttf",
         // One copy for the shell and the page.
-        bytes: ecad_drawing_style::sheet_font::REGULAR,
+        bytes: ecad_model::palette::sheet_font::REGULAR,
     },
     Face {
         key: "ecad-barlow-semi-condensed-600",
         family: SHEET_SEMIBOLD,
         file: "barlow-semi-condensed/BarlowSemiCondensed-SemiBold.ttf",
-        bytes: ecad_drawing_style::sheet_font::SEMIBOLD,
+        bytes: ecad_model::palette::sheet_font::SEMIBOLD,
     },
 ];
 

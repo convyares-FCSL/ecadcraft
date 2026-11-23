@@ -9,7 +9,7 @@
 
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
-use ecad_drawing_style::sheet::PAPER;
+use ecad_model::palette::sheet::PAPER;
 use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
 use {ecad_engine::cables::draw, ecad_engine::export::printbook};

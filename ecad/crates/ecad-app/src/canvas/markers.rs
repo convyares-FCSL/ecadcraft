@@ -37,7 +37,7 @@ fn weight(xf: &Xf, mm: f32) -> f32 {
 }
 
 /// Paint the page's markers.
-pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, t: &App, page: &PageData) {
+pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_model::palette::Sheet, t: &App, page: &PageData) {
     for m in &page.painted {
         match *m {
             Painted::Error(at) => error_disc(p, screen(xf, at), ecad_widgets::color(sheet.error)),
@@ -56,7 +56,7 @@ pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_drawing_style::Sheet, t: &
         dotted(p, pos2(r.min.x, r.max.y + 1.5), pos2(r.max.x, r.max.y + 1.5), Stroke::new(1.0, provisional));
     }
     // Other placements of the selected device on this page: one dashed outline each.
-    let stroke = Stroke::new(weight(xf, ecad_drawing_style::line::SELECTION_MM).min(2.0), ecad_widgets::color(sheet.selection));
+    let stroke = Stroke::new(weight(xf, ecad_model::palette::line::SELECTION_MM).min(2.0), ecad_widgets::color(sheet.selection));
     for group in &page.related.here {
         let Some(r) = group.iter().filter_map(&bounds).reduce(|a, b| a.union(b)) else { continue };
         dashed_rect(p, r.expand(OUTLINE_PAD_PX), stroke);

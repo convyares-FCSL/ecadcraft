@@ -157,7 +157,7 @@ fn head(t: &mut App) -> Option<u64> {
 /// type takes the glyph of what it holds.
 pub(crate) fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
     let (paper, ink) =
-        (ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
+        (ecad_widgets::color(ecad_model::palette::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_model::palette::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);
     let st = egui::Stroke::new(1.0, ink);
     let i = r.shrink2(vec2(r.width() * 0.12, r.height() * 0.16));

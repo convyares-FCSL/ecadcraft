@@ -28,7 +28,7 @@ use serde_json::Value;
 const ENGINE_SRC: &str = "crates/ecad-engine/src";
 
 /// The Core crates whose `pub` types count as Core.
-const CORE_CRATES: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
+const CORE_CRATES: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-electrical", "ecad-drawing-style"];
 
 /// Standard and serde types that count as Core. Single capital letters (generic parameters) count
 /// too.

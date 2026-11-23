@@ -1,7 +1,7 @@
 //! Default wire category colours on each sheet, and the two-colour dash. All are
 //! defaults the user changes in Standards; these are the built-in values.
 
-use crate::Color;
+use crate::palette::Color;
 
 /// A wire's look: the solid colour, and for a two-colour wire the colour laid over it as dashes.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -17,9 +17,11 @@ pub struct Category {
     pub dark: WireColors,
 }
 
-/// Power: ink at 0.6 mm ([`crate::line::POWER_WIRE_MM`]).
-pub const POWER: Category =
-    Category { paper: WireColors { solid: crate::sheet::PAPER.ink, dashes: None }, dark: WireColors { solid: crate::sheet::DARK.ink, dashes: None } };
+/// Power: ink at 0.6 mm ([`crate::palette::line::POWER_WIRE_MM`]).
+pub const POWER: Category = Category {
+    paper: WireColors { solid: crate::palette::sheet::PAPER.ink, dashes: None },
+    dark: WireColors { solid: crate::palette::sheet::DARK.ink, dashes: None },
+};
 
 /// 24 V DC and 0 V.
 pub const DC_24V: Category =

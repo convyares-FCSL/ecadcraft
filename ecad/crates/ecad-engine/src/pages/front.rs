@@ -70,7 +70,7 @@ fn title(d: &mut Draw, r: R, text: &str, draw: TextDraw, s: f64) -> f64 {
 /// A filled swatch (the insulation colour) with a thin ink outline; two colours as halves.
 fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_model::objects::wire::Colours>) {
     let rgb = |c: ecad_model::geometry::colour::ConductorColour| {
-        let c = crate::cables::draw::rgb(ecad_electrical::cables::words::drawn(c, &ecad_drawing_style::sheet::PAPER));
+        let c = crate::cables::draw::rgb(ecad_electrical::cables::words::drawn(c, &ecad_model::palette::sheet::PAPER));
         Some(cadcraft_engine::doc::color::nearest_aci(c))
     };
     let fill = |d: &mut Draw, x0: f64, x1: f64, aci: Option<u8>| {

@@ -57,7 +57,7 @@ enum Class {
     /// kit, no App or Programs crate.
     Engine,
     /// ECAD's interface kit: may use egui, epaint and
-    /// egui_extras, the token crate and the drawing style, but no `cadcraft-*`
+    /// egui_extras and ecad-model (the canvas palette), but no `cadcraft-*`
     /// crate and no other ECAD crate, so the widgets stay swappable and test without wgpu.
     UiKit,
     /// The application (`ecad-app`): Core, Engine, UI kit and CADCraft's window crates, but never
@@ -78,11 +78,12 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-model", Class::Core),
     ("ecad-store", Class::Core),
     ("ecad-file", Class::Core),
-    ("ecad-drawing-style", Class::Core),
     ("ecad-engine", Class::Engine),
     // The electrical rules.
     ("ecad-electrical", Class::Core),
-    // The screen tokens; the drawing style is `ecad-drawing-style`.
+    // The look of a page, on top of the definitions and the electrical rules.
+    ("ecad-drawing-style", Class::Core),
+    // The screen tokens; the canvas palette is `ecad_model::palette`.
     ("ecad-widgets", Class::UiKit),
     ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Programs),
@@ -111,7 +112,7 @@ fn layer_name(class: Class) -> &'static str {
 
 /// The order inside Core: a Core crate depends only on Core
 /// crates before it, so no cycle (such as `ecad-file` → `ecad-electrical`) can be written.
-const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
+const CORE_ORDER: &[&str] = &["ecad-model", "ecad-store", "ecad-file", "ecad-electrical", "ecad-drawing-style"];
 
 /// Dependencies that break the layer rules for now, each with the change that removes it. An entry
 /// no longer needed fails `layers`.
@@ -311,7 +312,7 @@ const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not dep
 const README_ALLOWLIST: &[&str] = &[];
 
 /// What a UiKit crate may depend on, besides dev-dependencies.
-const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-drawing-style"];
+const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-model"];
 
 fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
@@ -1835,7 +1836,8 @@ mod tests {
                 "ecad-file",
                 "ecad-inspector",
                 "ecad-mcp",
-                "ecad-model"
+                "ecad-model",
+                "ecad-widgets"
             ]
         );
         assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
@@ -1875,21 +1877,21 @@ mod tests {
     }
 
     /// The UiKit crate may use egui, epaint, egui_extras and
-    /// ecad-drawing-style only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
+    /// ecad-model only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
     /// violation.
     #[test]
     fn the_ui_kit_uses_egui_and_the_tokens_only() {
         let kit = |deps: Value| serde_json::json!({"packages": [{"name": "ecad-widgets", "dependencies": deps}], "workspace_root": ""});
         let rows: &[(Value, usize, &str)] = &[
             (
-                serde_json::json!([{"name": "egui", "kind": null}, {"name": "ecad-drawing-style", "kind": null}, {"name": "egui_extras", "kind": null}]),
+                serde_json::json!([{"name": "egui", "kind": null}, {"name": "ecad-model", "kind": null}, {"name": "egui_extras", "kind": null}]),
                 0,
                 "allowed",
             ),
             (serde_json::json!([{"name": "egui_kittest", "kind": "dev"}]), 0, "a test-only dependency"),
             (serde_json::json!([{"name": "cadcraft-ui-egui", "kind": null}]), 1, "a CADCraft crate"),
             (serde_json::json!([{"name": "cadcraft-fonts", "kind": null}]), 1, "a CADCraft crate below the UI"),
-            (serde_json::json!([{"name": "ecad-model", "kind": null}]), 1, "another ECAD crate"),
+            (serde_json::json!([{"name": "ecad-file", "kind": null}]), 1, "another ECAD crate"),
             (serde_json::json!([{"name": "eframe", "kind": null}]), 1, "an app shell"),
         ];
         for (deps, n, what) in rows {

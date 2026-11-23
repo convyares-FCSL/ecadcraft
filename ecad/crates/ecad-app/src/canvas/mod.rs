@@ -68,8 +68,8 @@ impl Sheet {
     }
 
     /// The sheet's tokens in the interface theme in use.
-    pub fn tokens(self) -> &'static ecad_drawing_style::Sheet {
-        if self.is_dark() { &ecad_drawing_style::sheet::DARK } else { &ecad_drawing_style::sheet::PAPER }
+    pub fn tokens(self) -> &'static ecad_model::palette::Sheet {
+        if self.is_dark() { &ecad_model::palette::sheet::DARK } else { &ecad_model::palette::sheet::PAPER }
     }
 
     pub fn word(self) -> &'static str {
@@ -167,7 +167,7 @@ fn apply_preferences(t: &mut App) {
     t.cad.options.model_background = Some(ecad_widgets::color(tokens.sheet));
     t.cad.options.selection_color = Some(ecad_widgets::color(tokens.selection));
     // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
-    if (ecad_engine::cables::draw::sheet().sheet == ecad_drawing_style::sheet::DARK.sheet) != sheet.is_dark() {
+    if (ecad_engine::cables::draw::sheet().sheet == ecad_model::palette::sheet::DARK.sheet) != sheet.is_dark() {
         let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() }));
     }
     let chrome = t.shell.state.cad_chrome;

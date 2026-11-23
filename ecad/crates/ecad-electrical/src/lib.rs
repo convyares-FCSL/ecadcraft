@@ -1,6 +1,6 @@
 //! ecad-electrical: the electrical rules of an ECAD project, decided from the document alone.
 //!
-//! It reads [`ecad_model`]'s document and the drawing style ([`ecad_drawing_style`]) and returns plain data
+//! It reads [`ecad_model`]'s document and returns plain data
 //! (positions in mm, texts, styles, model ids) or ops; `ecad-engine` turns that into drawing entities and runs it
 //! inside commands. One folder per feature area:
 //!

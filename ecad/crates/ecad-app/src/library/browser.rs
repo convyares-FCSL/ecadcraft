@@ -420,7 +420,7 @@ pub fn tabs(ui: &mut egui::Ui, b: &mut Browser, list: &Listing) {
 }
 
 /// The browser in the main view.
-pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, sheet: &ecad_drawing_style::Sheet) -> Vec<Act> {
+pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, sheet: &ecad_model::palette::Sheet) -> Vec<Act> {
     let s = ecad_widgets::SHELL;
     let line = Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, c32(s.line));
     let mut acts = Vec::new();
@@ -614,7 +614,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, b: &mut Browser, list: &Listing, shee
 }
 
 /// One tile: the symbol on paper, its name and its source; hover names its points and slots.
-fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_style::Sheet, acts: &mut Vec<Act>) {
+fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_model::palette::Sheet, acts: &mut Vec<Act>) {
     let s = ecad_widgets::SHELL;
     let (r, resp) = ui.allocate_exact_size(vec2(TILE_W, TILE_H), Sense::click());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, b.selected == Some(e.tile), e.tile.name()));

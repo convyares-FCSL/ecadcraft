@@ -41,24 +41,24 @@ pub fn set_dark_sheet(dark: bool) {
     DARK_SHEET.store(dark, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// The sheet in use: [`ecad_drawing_style::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
-pub fn sheet() -> &'static ecad_drawing_style::Sheet {
-    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_drawing_style::sheet::DARK } else { &ecad_drawing_style::sheet::PAPER }
+/// The sheet in use: [`ecad_model::palette::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
+pub fn sheet() -> &'static ecad_model::palette::Sheet {
+    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_model::palette::sheet::DARK } else { &ecad_model::palette::sheet::PAPER }
 }
 
 thread_local! {
     /// A sheet the projection uses instead of the one in use ([`with_paper`]: printing).
-    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_drawing_style::Sheet>> = const { std::cell::Cell::new(None) };
+    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_model::palette::Sheet>> = const { std::cell::Cell::new(None) };
 }
 
 /// The sheet a page is projected for: [`sheet`], or paper while [`with_paper`] runs.
-pub(crate) fn projection_sheet() -> &'static ecad_drawing_style::Sheet {
+pub(crate) fn projection_sheet() -> &'static ecad_model::palette::Sheet {
     PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
 }
 
 /// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
 #[derive(Debug)]
-pub(crate) struct SheetPin(Option<&'static ecad_drawing_style::Sheet>);
+pub(crate) struct SheetPin(Option<&'static ecad_model::palette::Sheet>);
 
 impl Drop for SheetPin {
     fn drop(&mut self) {
@@ -78,7 +78,7 @@ pub(crate) fn pin_sheet() -> SheetPin {
 /// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
 /// the screen shows).
 pub(crate) fn with_paper<R>(f: impl FnOnce() -> R) -> R {
-    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_drawing_style::sheet::PAPER)));
+    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_model::palette::sheet::PAPER)));
     let r = f();
     PROJECTION_SHEET.with(|c| c.set(before));
     r
@@ -138,7 +138,7 @@ impl crate::commands::input::Command for CanvassheetParams {
 }
 
 /// A token colour as CADCraft's RGB.
-pub fn rgb(c: ecad_drawing_style::Color) -> cadcraft_engine::doc::color::Rgb {
+pub fn rgb(c: ecad_model::palette::Color) -> cadcraft_engine::doc::color::Rgb {
     cadcraft_engine::doc::color::Rgb(c.r, c.g, c.b)
 }
 
@@ -151,7 +151,7 @@ pub struct ColouredRoute {
     /// The handle the route is drawn with on the page (to leave a selected wire to CADCraft).
     pub handle: Option<cadcraft_engine::doc::Handle>,
     pub points: Vec<Pt>,
-    pub colours: ecad_drawing_style::wire::WireColors,
+    pub colours: ecad_model::palette::wire::WireColors,
 }
 
 /// Most routes [`coloured_routes`] returns for one page.
@@ -162,7 +162,7 @@ pub(crate) const MAX_COLOURED_ROUTES: usize = 20_000;
 /// out. `map`: the page's handles when it is projected (routes it does not draw are left out).
 /// Display and print only; nothing is stored.
 pub fn coloured_routes(
-    doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_drawing_style::Sheet,
+    doc: &Document, page: PageId, map: Option<&crate::project::HandleMap>, sheet: &ecad_model::palette::Sheet,
 ) -> Vec<ColouredRoute> {
     let mut out = Vec::new();
     let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
@@ -233,19 +233,19 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
 /// A text style's colour as drawn on `sheet`: its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
 pub(crate) fn text_colour_rgb(
-    c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_drawing_style::Sheet,
+    c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_model::palette::Sheet,
 ) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {
         ecad_electrical::styles::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
         ecad_electrical::styles::text_style::TextColour::Code(i) => {
-            let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
+            let dark = sheet.sheet == ecad_model::palette::sheet::DARK.sheet;
             ecad_electrical::cables::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
         }
     }
 }
 
 /// A colour field's value as drawn on `sheet`: `None` for `none` (ink) and anything unknown.
-pub(crate) fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+pub(crate) fn colour_rgb(value: &str, sheet: &ecad_model::palette::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     let t = value.trim();
     if t.eq_ignore_ascii_case("none") {
         return None;

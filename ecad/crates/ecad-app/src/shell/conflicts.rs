@@ -148,7 +148,7 @@ impl App {
             let r = (RING_MM * xf.scale as f32).max(6.0);
             for (c, a) in &anchors {
                 let colour =
-                    if Some(*c) == chosen { ecad_drawing_style::sheet::PAPER.warning } else { ecad_drawing_style::sheet::PAPER.wire_end_attached };
+                    if Some(*c) == chosen { ecad_model::palette::sheet::PAPER.warning } else { ecad_model::palette::sheet::PAPER.wire_end_attached };
                 let at = xf.to_screen(ecad_engine::cad::Vec2::new(a.x, a.y));
                 painter.circle_stroke(at, r, egui::Stroke::new(2.0, ecad_widgets::color(colour)));
             }

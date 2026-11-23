@@ -258,7 +258,7 @@ fn dashed_rect(p: &egui::Painter, r: Rect, stroke: Stroke) {
 
 /// Paint the block's items (and their editor marks) in `v`.
 #[allow(clippy::too_many_arguments)]
-fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sample_on: bool, sheet: &ecad_drawing_style::Sheet, marks: bool) {
+fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sample_on: bool, sheet: &ecad_model::palette::Sheet, marks: bool) {
     let p = ui.painter();
     let s = ecad_widgets::SHELL;
     let ink = c32(sheet.ink);
@@ -320,7 +320,7 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
     }
 }
 
-fn cut_mark(p: &egui::Painter, r: Rect, sheet: &ecad_drawing_style::Sheet) {
+fn cut_mark(p: &egui::Painter, r: Rect, sheet: &ecad_model::palette::Sheet) {
     let c = r.right_top();
     p.add(Shape::convex_polygon(vec![c, c + vec2(-8.0, 0.0), c + vec2(0.0, 8.0)], c32(sheet.warning), Stroke::NONE));
 }
@@ -427,7 +427,7 @@ fn tag_of(item: &BlockItem) -> String {
 }
 
 /// Draw the canvas and handle the tools; returns what the window must do.
-pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing_style::Sheet, writable: bool) -> Vec<Act> {
+pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_model::palette::Sheet, writable: bool) -> Vec<Act> {
     let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let body = Rect::from_min_max(pos2(main.left() + crate::title_blocks::list::LIST_W, main.top() + browser::TABS_H), main.max);

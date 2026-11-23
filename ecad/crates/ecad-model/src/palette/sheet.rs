@@ -2,10 +2,10 @@
 //! meanings. Whether a meaning prints is data ([`prints`]): ink
 //! prints, overlay never does.
 
-use crate::Color;
+use crate::palette::Color;
 
 /// What a mark on the sheet means. Each meaning has a colour on each sheet and a shape
-/// ([`crate::marker`]), so none relies on hue alone.
+/// ([`crate::palette::marker`]), so none relies on hue alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Meaning {
     /// The paper itself.
@@ -91,7 +91,7 @@ impl Meaning {
 ///
 /// # Example
 /// ```
-/// use ecad_drawing_style::sheet::{prints, Meaning};
+/// use ecad_model::palette::sheet::{prints, Meaning};
 /// assert!(prints(Meaning::Ink));
 /// assert!(!prints(Meaning::Selection));
 /// ```

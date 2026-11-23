@@ -25,7 +25,7 @@ pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) 
 /// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
 pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
     if part.index == ecad_electrical::continuations::REF_INDEX && ecad_electrical::continuations::arrow(doc, part.rep).is_some() {
-        let ink2 = crate::cables::draw::projection_sheet().color(ecad_drawing_style::Meaning::Ink2);
+        let ink2 = crate::cables::draw::projection_sheet().color(ecad_model::palette::Meaning::Ink2);
         e.common.color = cadcraft_engine::doc::color::Color::True(crate::cables::draw::rgb(ink2));
     }
 }

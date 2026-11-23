@@ -11,7 +11,6 @@ workspace = true
 
 [dependencies]
 ecad-model = { workspace = true }
-ecad-drawing-style = { workspace = true }
 # A starter symbol's definition carries its content hash (`ecad_file::definition_hash`; design 065
 # §1, owner 2026-11-15, option A).
 ecad-file = { workspace = true }

@@ -726,7 +726,7 @@ pub(crate) fn paper_rect(rect: Rect) -> Rect {
 /// The dark canvas round the paper square, px.
 pub(crate) const PAPER_MARGIN: f32 = 110.0;
 
-pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing_style::Sheet, writable: bool) -> Vec<Act> {
+pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_model::palette::Sheet, writable: bool) -> Vec<Act> {
     let _ = writable;
     let mut acts = Vec::new();
     if !b.fitted {

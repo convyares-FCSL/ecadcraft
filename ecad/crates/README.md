@@ -29,23 +29,25 @@ Programs   ecad-desktop   ecad-cli   ecad-mcp      (may also use each other)
 Engine  ecad-engine      UI kit: ecad-widgets             <- Engine and UI kit are siblings:
    |            |                       |                      neither uses the other
    v            v                       v
-Core   model -> drawing-style -> store -> file -> electrical
+Core   model -> store -> file -> electrical -> drawing-style
 Dev    ecad-bench, ecad-inspector, xtask   (may use anything; nothing uses them)
 ```
 
-Inside Core the order is fixed: `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
-`ecad-electrical`. A Core crate uses only Core crates before it in that list, so a
-cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and nothing else of ours.
+Inside Core the order is fixed: `ecad-model`, `ecad-store`, `ecad-file`, `ecad-electrical`,
+`ecad-drawing-style`. A Core crate uses only Core crates before it in that list, so a
+cycle cannot be written. The model defines what things are, electrical what they mean, and the
+drawing style how they look. The UI kit may use `ecad-model` (for the canvas palette) and nothing
+else of ours.
 
 ## Every crate
 
 | Crate | Layer | Purpose |
 |---|---|---|
-| [`ecad-model`](ecad-model/README.md) | Core | The document, ops, transactions, history, merge, numbering, nets. |
-| [`ecad-drawing-style`](ecad-drawing-style/README.md) | Core | How a page is drawn and printed: sheet colours, line weights, sheet font. |
+| [`ecad-model`](ecad-model/README.md) | Core | The document, ops, transactions, history, merge, numbering, nets, the canvas palette. |
 | [`ecad-store`](ecad-store/README.md) | Core | Bytes under the file: media, the writer lock, atomic replace. The only Core crate that touches the OS. |
 | [`ecad-file`](ecad-file/README.md) | Core | The `.ecad` file: records, integrity chain, read, save, recover. |
 | [`ecad-electrical`](ecad-electrical/README.md) | Core | The electrical rules, one folder per feature: devices, wires, cables, terminal strips, checks, reports. |
+| [`ecad-drawing-style`](ecad-drawing-style/README.md) | Core | The look of a page on the model's definitions and the electrical rules. |
 | [`ecad-engine`](ecad-engine/README.md) | Engine | The session: draws pages from the model, interaction, the generic command runner and the session commands, in feature folders. |
 | [`ecad-widgets`](ecad-widgets/README.md) | UI kit | Widgets (controls, primitives, panels, tables, dialogs) and the screen tokens (`tokens`). |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |

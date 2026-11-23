@@ -23,8 +23,17 @@ words.
 ## 2. Crates
 
 - No `ecad-inspect`: the event log lives in `ecad-engine` `history/`, the snapshot in `ecad-engine` `dev/`.
-- `ecad-widgets` is the UI kit (generic controls and screen tokens; tokens are a module). `ecad-drawing-style`
-  stays a separate Core crate.
+- `ecad-widgets` is the UI kit (generic controls and screen tokens; tokens are a module).
+- Core is ordered by what a crate knows (owner, 2026-11-23): `ecad-model` defines what things are (a project, a
+  page, a title block and its fields, the text kinds), `ecad-electrical` what they mean electrically (location,
+  function, revisions, what fills a field), and `ecad-drawing-style` how they look (built-in title blocks and frames,
+  text styles, fonts and text fitting). The order is model → store → file → electrical → drawing-style.
+- Electrical lays out its own content but owns no look: it asks through a `TextLook` trait that `ecad-model`
+  defines and `ecad-drawing-style` implements.
+- The defaults registry's mechanism (keys, levels, resolution) is `ecad-model`'s; each crate contributes its own
+  entries (electrical the electrical ones, drawing-style the look ones), and the engine assembles them.
+- The canvas palette (`Color`, sheet colours, markers, wire colours and dashes, line weights, the sheet font) is
+  `ecad_model::palette`, so the UI kit uses `ecad-model` and nothing else of ours.
 - App tests that need `ecad-mcp` or `ecad-desktop` live in those programs' own suites.
 - No layer depends on one above it, dev-dependencies included; `cargo xtask layers` checks both.
 - No `ecad-cli`: headless use goes through `ecad-mcp`.

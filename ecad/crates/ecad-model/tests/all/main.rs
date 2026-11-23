@@ -8,3 +8,4 @@ mod connectivity;
 mod document;
 mod naming;
 mod objects;
+mod palette;

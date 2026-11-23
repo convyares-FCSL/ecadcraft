@@ -47,14 +47,14 @@ fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_linewei
 /// The sheet font's faces as given to CADCraft's font table.
 static SHEET_FACES: [cadcraft_engine::fonts::ttf::EmbeddedFace; 2] = [
     cadcraft_engine::fonts::ttf::EmbeddedFace {
-        family: ecad_drawing_style::sheet_font::FAMILY,
+        family: ecad_model::palette::sheet_font::FAMILY,
         style: "Regular",
-        bytes: ecad_drawing_style::sheet_font::REGULAR,
+        bytes: ecad_model::palette::sheet_font::REGULAR,
     },
     cadcraft_engine::fonts::ttf::EmbeddedFace {
-        family: ecad_drawing_style::sheet_font::FAMILY,
+        family: ecad_model::palette::sheet_font::FAMILY,
         style: "SemiBold",
-        bytes: ecad_drawing_style::sheet_font::SEMIBOLD,
+        bytes: ecad_model::palette::sheet_font::SEMIBOLD,
     },
 ];
 

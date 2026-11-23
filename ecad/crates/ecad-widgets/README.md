@@ -6,8 +6,8 @@ Layer: UI kit
 ECAD's widgets and screen tokens: how a value, button, table, panel or dialog looks and behaves,
 and the shell colours, spacing, sizes, radii, shadows, icon names, UI type sizes and screen strokes
 they are built from. Panels and dialogs in the app build only from these, so every value looks the
-same everywhere. It knows nothing about projects, documents or commands. How a drawn page looks
-is not here; that is `ecad-drawing-style`.
+same everywhere. It knows nothing about projects, documents or commands. The canvas palette (sheet
+colours, markers, line weights, the sheet font) is `ecad_model::palette`.
 
 ## Contents
 - `tokens`: the screen tokens as `const` data: `shell` (the Graphite and light shell colours, with
@@ -22,7 +22,7 @@ is not here; that is `ecad-drawing-style`.
 - `showcase`: a gallery page of every component in every state, used for screenshots.
 
 ## Must not depend on
-UI kit rule: only `egui`, `egui_extras` and `ecad-drawing-style` (for the shared `Color`). No
+UI kit rule: only `egui`, `egui_extras` and `ecad-model` (for the canvas palette and its `Color`). No
 `cadcraft-*`, no Engine, no other Core crate. Colours, sizes and fonts come from here and never
 from local values (`cargo xtask layers` checks this, and refuses new raw `egui::TextEdit` or
 `ComboBox`).
