@@ -144,8 +144,8 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         Err(e) => return crate::symbols::commands::place_project_key(s, &params, &key)?.ok_or_else(|| err(e)),
     };
     let at = params.at.0;
-    if !(at.is_finite() && at.x.abs() <= ecad_electrical::cables::words::MAX_COORD && at.y.abs() <= ecad_electrical::cables::words::MAX_COORD) {
-        return Err(err(ecad_electrical::cables::words::OUT_OF_RANGE));
+    if !(at.is_finite() && at.x.abs() <= ecad_electrical::commands::input::MAX_COORD && at.y.abs() <= ecad_electrical::commands::input::MAX_COORD) {
+        return Err(err(ecad_electrical::commands::input::OUT_OF_RANGE));
     }
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);

@@ -13,7 +13,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use ecad_electrical::cables::words::Row;
+use ecad_electrical::properties::Row;
 use ecad_electrical::properties::{PropsView, Target};
 use ecad_model::SheetSpec;
 use ecad_widgets::control::{self, Decor, Select, TextEntry};

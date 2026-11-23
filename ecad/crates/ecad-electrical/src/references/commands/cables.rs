@@ -255,11 +255,11 @@ impl Generic for CableReferenceParams {
     const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        self.at.within(crate::cables::words::MAX_COORD, "at").map(|_| ())
+        self.at.within(crate::commands::input::MAX_COORD, "at").map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let at = self.at.within(crate::cables::words::MAX_COORD, "at")?;
+        let at = self.at.within(crate::commands::input::MAX_COORD, "at")?;
         let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
         let done = reference(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, at)?;
         let (rep, item) = (done.rep, done.item);
@@ -283,13 +283,13 @@ impl Generic for CablecontinueParams {
     const HELP: &'static str = "{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)";
 
     fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
-        self.at.within(crate::cables::words::MAX_COORD, "at")?;
-        self.toward.within(crate::cables::words::MAX_COORD, "toward").map(|_| ())
+        self.at.within(crate::commands::input::MAX_COORD, "at")?;
+        self.toward.within(crate::commands::input::MAX_COORD, "toward").map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let at = self.at.within(crate::cables::words::MAX_COORD, "at")?;
-        let toward = self.toward.within(crate::cables::words::MAX_COORD, "toward")?;
+        let at = self.at.within(crate::commands::input::MAX_COORD, "at")?;
+        let toward = self.toward.within(crate::commands::input::MAX_COORD, "toward")?;
         let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
         let done = continue_cable(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, self.members.as_deref(), at, toward, cx.tolerance, cx.look)?;
         let rep = done.reference.rep;

@@ -10,8 +10,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::terminal_strips::{TerminalBlocksInput, block_type, connection_points_message, plan_terminal_blocks};
-use crate::cables::words::{MAX_COORD, OUT_OF_RANGE};
 use crate::commands::input::Point;
+use crate::commands::input::{MAX_COORD, OUT_OF_RANGE};
 use crate::commands::run::{Cx, Generic, LastPlaced, Outcome, Slot, State};
 use crate::error::CmdError;
 

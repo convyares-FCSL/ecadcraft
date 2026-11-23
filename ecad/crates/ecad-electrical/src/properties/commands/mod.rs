@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cables::words::MAX_HANDLES;
+use crate::commands::input::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, State};
 use crate::devices::tags::{Holder, TagHigh};

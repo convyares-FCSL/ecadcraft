@@ -15,7 +15,7 @@ use crate::interact::{
 };
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::terminal_strips::commands::{self};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
 use ecad_electrical::terminal_strips::commands::terminal_strips::MAX_FENCE;
 use ecad_electrical::terminal_strips::commands::terminal_strips::staple;

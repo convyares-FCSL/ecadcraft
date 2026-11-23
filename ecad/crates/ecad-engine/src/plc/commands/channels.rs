@@ -160,7 +160,7 @@ impl Command for PlcchannelsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let rest = self.rest.unwrap_or(false);
         let first = self.first.map(|t| rules::channel_number(&t.text())).transpose().map_err(|e| err(e.to_string()))?;
-        let bad = |q: Pt| !(q.x.abs() <= ecad_electrical::cables::words::MAX_COORD && q.y.abs() <= ecad_electrical::cables::words::MAX_COORD);
+        let bad = |q: Pt| !(q.x.abs() <= ecad_electrical::commands::input::MAX_COORD && q.y.abs() <= ecad_electrical::commands::input::MAX_COORD);
         let v = on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let doc = p.ledger.document();
@@ -179,7 +179,7 @@ impl Command for PlcchannelsParams {
                 let from = self.from.ok_or(CmdError::input("`from` [x,y] is required"))?.0;
                 let to = self.to.ok_or(CmdError::input("`to` [x,y] is required"))?.0;
                 if bad(from) || bad(to) {
-                    return Err(CmdError::refused(ecad_electrical::cables::words::OUT_OF_RANGE));
+                    return Err(CmdError::refused(ecad_electrical::commands::input::OUT_OF_RANGE));
                 }
                 if from.near(to, p.tolerance) {
                     return Err(CmdError::input("`from` and `to` must differ"));

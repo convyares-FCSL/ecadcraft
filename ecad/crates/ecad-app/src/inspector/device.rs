@@ -3,7 +3,7 @@
 //! one-line summary. With anything other than one device selected (nothing: the page; a wire, a
 //! cable…) it shows that object's properties in the same folding sections.
 
-use ecad_electrical::cables::words::Row;
+use ecad_electrical::properties::Row;
 use ecad_electrical::properties::{Button, Section, SectionKind};
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
@@ -46,7 +46,7 @@ pub(crate) fn on_layout_tab(row: &Row) -> bool {
 
 /// A row that is the visibility of one kind of text.
 pub(crate) fn is_text(row: &Row) -> bool {
-    matches!(row.kind, ecad_electrical::cables::words::RowKind::Text(_))
+    matches!(row.kind, ecad_electrical::properties::RowKind::Text(_))
 }
 
 /// The device's own checks: about it or one of its connection points.
@@ -104,8 +104,8 @@ fn kind_title(kind: SectionKind) -> &'static str {
 /// A text row's name (`Pin labels`, `Tag`…).
 pub(crate) fn text_label(row: &Row) -> String {
     match row.kind {
-        ecad_electrical::cables::words::RowKind::Text(k) => k.shown_name(),
-        ecad_electrical::cables::words::RowKind::Value => row.label.clone(),
+        ecad_electrical::properties::RowKind::Text(k) => k.shown_name(),
+        ecad_electrical::properties::RowKind::Value => row.label.clone(),
     }
 }
 

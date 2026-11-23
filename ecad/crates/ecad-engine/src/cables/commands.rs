@@ -57,8 +57,8 @@ pub(crate) struct CableslashParams {
 
 impl Command for CableslashParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let from = self.from.within(ecad_electrical::cables::words::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
-        let to = self.to.within(ecad_electrical::cables::words::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
+        let from = self.from.within(ecad_electrical::commands::input::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
+        let to = self.to.within(ecad_electrical::commands::input::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
         on_project(s, |p, pg, page| {
             let doc = p.ledger.document();
             let found = rules::crossed(doc, page, from, to, p.tolerance)?;

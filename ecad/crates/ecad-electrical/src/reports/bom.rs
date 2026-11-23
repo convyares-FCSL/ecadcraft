@@ -57,7 +57,7 @@ pub(crate) const MAX_KIT_CHARS: usize = 64;
 /// Most characters of one sub-item name in `for` (a strip label or a fuse number).
 pub(crate) const MAX_SUB_CHARS: usize = 12;
 /// Most components `partline {components}` and `article` touch in one call.
-pub(crate) const MAX_COMPONENTS: usize = crate::cables::words::MAX_HANDLES;
+pub(crate) const MAX_COMPONENTS: usize = crate::commands::input::MAX_HANDLES;
 
 /// Refusals, in words.
 pub const ITEM_NEEDS_DESCRIPTION: &str = "An item needs a description.";

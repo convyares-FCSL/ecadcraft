@@ -36,7 +36,8 @@ use crate::access::{owner_of_active, try_lock};
 use crate::cables::views::{FanOnPage, View, fan_on_page};
 use crate::project::{Mapped, Project};
 use crate::translate::connection_point_at;
-use ecad_electrical::cables::words::{MAX_COORD, MAX_HOVER_LINES};
+use ecad_electrical::commands::input::MAX_COORD;
+use ecad_electrical::references::cables::MAX_HOVER_LINES;
 use ecad_electrical::terminal_strips::terminal_blocks::connection_point_name;
 use ecad_electrical::terminal_strips::terminal_blocks::short;
 

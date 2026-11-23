@@ -3,7 +3,7 @@
 //! its grey placeholder, with where it comes from at the right), or grey text when it cannot be
 //! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
 
-use ecad_electrical::cables::words::Row;
+use ecad_electrical::properties::Row;
 use ecad_electrical::properties::{Button, Target};
 use ecad_widgets::tokens::ui_type;
 use eframe::egui::{self, RichText};

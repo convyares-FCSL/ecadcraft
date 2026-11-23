@@ -668,7 +668,7 @@ pub fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
     })
 }
 
-/// Whether a point may not be used: not finite, or beyond [`crate::cables::words::MAX_COORD`].
+/// Whether a point may not be used: not finite, or beyond [`crate::commands::input::MAX_COORD`].
 pub fn out_of_range(p: Pt) -> bool {
-    !(p.is_finite() && p.x.abs() <= crate::cables::words::MAX_COORD && p.y.abs() <= crate::cables::words::MAX_COORD)
+    !(p.is_finite() && p.x.abs() <= crate::commands::input::MAX_COORD && p.y.abs() <= crate::commands::input::MAX_COORD)
 }

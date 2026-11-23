@@ -12,7 +12,7 @@ use crate::interact::{
     ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::connectors::{self as cn, FamilyRules};
 use ecad_electrical::defaults::{self};
 use ecad_electrical::symbols::Side;

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::interact::{can_start, in_range, line_kind, pick, pt, read};
 use crate::project::{Mapped, Project};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 
 const NOT_A_TABLE: &str = "That is not a contact table or a coil. Click a coil or its table.";
 const NOTHING_THERE: &str = "Nothing there. Click a coil or its contact table.";

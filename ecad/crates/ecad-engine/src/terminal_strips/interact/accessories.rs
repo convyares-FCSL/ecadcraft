@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::interact::{can_start, connection_point_for, in_range, line_kind, pt, read, v2};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
 use ecad_electrical::terminal_strips::connection_point_words;
 

@@ -18,7 +18,7 @@ use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_engine::interact::{self, NOT_OWNED};
 use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, RouteEnd, RouteId, Transaction, WireId};
 use serde_json::{Value, json};

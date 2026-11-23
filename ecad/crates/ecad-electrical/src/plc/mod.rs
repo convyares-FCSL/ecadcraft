@@ -322,12 +322,12 @@ pub fn caption_text(
 /// Properties ▸ Card and ▸ Rack rows of device `c`: a card's Rack (its tag,
 /// never the ID), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
-pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::words::Row>) {
+pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::properties::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
     let props = doc.devices().get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
-    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::cables::words::Row {
-        kind: crate::cables::words::RowKind::Value,
+    let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::properties::Row {
+        kind: crate::properties::RowKind::Value,
         key: key.into(),
         label: label.into(),
         value,
@@ -543,7 +543,7 @@ pub(crate) fn setprop_rule(_doc: &Document, _c: DeviceId, key: &str, value: Opti
 /// Properties ▸ Channel rows of a channel symbol: the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
 pub(crate) fn channel_rows(
-    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
+    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::properties::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations().get(&s)) else { return };
     if crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
@@ -552,8 +552,8 @@ pub(crate) fn channel_rows(
     let shown = crate::devices::merge::shown_connection_points(doc, c, r);
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
-    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::cables::words::Row {
-        kind: crate::cables::words::RowKind::Value,
+    let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::properties::Row {
+        kind: crate::properties::RowKind::Value,
         key,
         label: label.into(),
         value,

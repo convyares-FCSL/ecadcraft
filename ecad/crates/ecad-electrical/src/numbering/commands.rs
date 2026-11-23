@@ -676,7 +676,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     let finalise = input.is_none();
     let req = match input {
         None => finalise_request(),
-        Some(i) => request(cx.doc, i, crate::cables::words::MAX_HANDLES)?,
+        Some(i) => request(cx.doc, i, crate::commands::input::MAX_HANDLES)?,
     };
     let plan = plan_for(cx.ledger, cx.tag_high, &req)?;
     let doc = cx.doc;

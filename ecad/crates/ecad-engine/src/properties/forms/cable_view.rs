@@ -7,7 +7,7 @@ use crate::interact::{can_start, in_range, pick, read};
 use crate::project::Mapped;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_electrical::cables::slash;
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_model::{CableId, Subject, WireId};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;

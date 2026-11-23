@@ -160,8 +160,8 @@ pub(crate) fn place_project_key(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str,
 ) -> cadcraft_engine::Result<Option<Value>> {
     let at = params.at.0;
-    if !(at.x.abs() <= ecad_electrical::cables::words::MAX_COORD && at.y.abs() <= ecad_electrical::cables::words::MAX_COORD) {
-        return Err(err(ecad_electrical::cables::words::OUT_OF_RANGE));
+    if !(at.x.abs() <= ecad_electrical::commands::input::MAX_COORD && at.y.abs() <= ecad_electrical::commands::input::MAX_COORD) {
+        return Err(err(ecad_electrical::commands::input::OUT_OF_RANGE));
     }
     let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);

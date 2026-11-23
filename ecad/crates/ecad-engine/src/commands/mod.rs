@@ -319,7 +319,7 @@ pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn
 /// Most points one WIRE accepts: a route's own bound.
 pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::objects::route::MAX_POINTS;
 
-pub(crate) use ecad_electrical::cables::words::MAX_HANDLES;
+pub(crate) use ecad_electrical::commands::input::MAX_HANDLES;
 
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }

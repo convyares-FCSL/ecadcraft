@@ -123,7 +123,7 @@ impl Command for ConnectorParams {
         });
         for p in at.iter().chain(line.iter().flat_map(|(a, b)| [a, b])) {
             if rules::out_of_range(*p) {
-                return Err(err(ecad_electrical::cables::words::OUT_OF_RANGE));
+                return Err(err(ecad_electrical::commands::input::OUT_OF_RANGE));
             }
         }
         let names = self.names.map(|n| match n {

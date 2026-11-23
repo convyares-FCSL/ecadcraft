@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::wires::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
-use crate::cables::words::MAX_HANDLES;
+use crate::commands::input::MAX_HANDLES;
 use crate::commands::input::{Bounded, nullable};
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;

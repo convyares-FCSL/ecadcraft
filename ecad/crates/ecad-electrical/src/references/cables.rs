@@ -33,6 +33,9 @@ use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 
 use ecad_model::look::Look;
 
+/// Most lines a hover description shows (the cable reference hover here and the engine's).
+pub const MAX_HOVER_LINES: usize = 12;
+
 /// `ecad.reference`: ACI 6, magenta (the colour of `ECAD-CABLES`, so a linked text is ByLayer).
 pub const REFERENCE_ACI: u8 = 6;
 /// `ecad.orphan`: ACI 1, red.
@@ -359,7 +362,7 @@ pub struct Plan {
 }
 
 fn in_range(p: Pt) -> bool {
-    p.is_finite() && p.x.abs() <= crate::cables::words::MAX_COORD && p.y.abs() <= crate::cables::words::MAX_COORD
+    p.is_finite() && p.x.abs() <= crate::commands::input::MAX_COORD && p.y.abs() <= crate::commands::input::MAX_COORD
 }
 
 /// Plan the continuation of `cable` on `page` from `at` toward `toward`: which
@@ -373,7 +376,7 @@ pub fn plan_continue(
 ) -> Result<Plan, CmdError> {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     if !(in_range(at) && in_range(toward)) {
-        return Err(CmdError::refused(crate::cables::words::OUT_OF_RANGE));
+        return Err(CmdError::refused(crate::commands::input::OUT_OF_RANGE));
     }
     if at.near(toward, tol) {
         return Err(CmdError::refused(TOWARD_EQUAL));
@@ -463,7 +466,7 @@ pub fn plan_continue(
         let s0 = Pt::new(at.x + n.x * off, at.y + n.y * off);
         let o = Pt::new(s0.x + d.x * l, s0.y + d.y * l);
         if !(in_range(s0) && in_range(o)) {
-            return Err(CmdError::refused(crate::cables::words::OUT_OF_RANGE));
+            return Err(CmdError::refused(crate::commands::input::OUT_OF_RANGE));
         }
         stubs.push(Stub { core: *core, line: *line, line_end: *line_end, line_at: *line_at, a: s0, b: o, free_end: End::B });
     }
@@ -472,7 +475,7 @@ pub fn plan_continue(
     let half = spacing / 2.0;
     let slash = (Pt::new(m.x - n.x * h - d.x * half, m.y - n.y * h - d.y * half), Pt::new(m.x + n.x * h + d.x * half, m.y + n.y * h + d.y * half));
     if !(in_range(slash.0) && in_range(slash.1)) {
-        return Err(CmdError::refused(crate::cables::words::OUT_OF_RANGE));
+        return Err(CmdError::refused(crate::commands::input::OUT_OF_RANGE));
     }
     Ok(Plan { source, source_page: s.page, stubs, skipped, slash })
 }
@@ -820,7 +823,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
                 ecad_model::connectivity::derive::connection_point_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
             let members = doc.cables().get(&r.cable).map(|c| c.cores.as_slice()).unwrap_or_default();
             for m in members.iter().filter(|m| crate::cables::member_pages(doc, m).contains(&o.page)) {
-                if lines.len() > crate::cables::words::MAX_HOVER_LINES {
+                if lines.len() > MAX_HOVER_LINES {
                     break;
                 }
                 let connection_point = m.wire().and_then(|w| doc.wires().get(&w)).and_then(|c| connection_point_on(doc, &shown, c));

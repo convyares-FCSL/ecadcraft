@@ -21,6 +21,15 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Map;
 use serde_json::Value;
 
+/// Typed coordinates beyond this (or not finite) are refused.
+pub const MAX_COORD: f64 = 1e12;
+
+/// Refusal of a point that is not finite or out of range.
+pub const OUT_OF_RANGE: &str = "Point out of range.";
+
+/// Most handles (or objects) one call may name.
+pub const MAX_HANDLES: usize = 100_000;
+
 /// The refusal of parameters that are not an object (strict input: parse or fail).
 pub const NOT_AN_OBJECT: &str = "The parameters must be an object: {name: value, …}.";
 

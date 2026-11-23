@@ -22,8 +22,6 @@ use ecad_model::Word;
 use ecad_model::document::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, PageId, Subject, WireId};
 
-use crate::cables::words::Row;
-
 /// What a row edits, as the command that writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
@@ -117,6 +115,62 @@ pub struct PropsView {
     pub sections: Vec<Section>,
     /// The objects its rows read: a change touching none of them leaves it as it is.
     pub deps: BTreeSet<ObjectRef>,
+}
+
+/// One Properties row: a label and a value box.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    /// The property key it edits (`number`, `title`, `description`…).
+    pub key: String,
+    pub label: String,
+    /// The value shown.
+    pub value: String,
+    pub editable: bool,
+    /// The value comes from the project (a page's Function or Location): shown faint.
+    pub inherited: bool,
+    /// Several selected objects differ: `*varies*`.
+    pub varies: bool,
+    /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
+    pub choices: Vec<String>,
+    /// An unset function or location's proposal from the selected
+    /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
+    /// **Use +CP1** link that sets it.
+    pub proposal: Option<(String, String)>,
+    /// A tag row's state: what its tag is, `None` without a tag or on other rows. Not a
+    /// setprop key: the tag is one value, set through the `tag` key.
+    pub tag_state: Option<ecad_model::naming::tag::TagState>,
+    /// What the row is: a plain value, or the visibility of one kind of text.
+    pub kind: RowKind,
+}
+
+/// What a Properties row is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Value,
+    /// The visibility of one kind of text (the Texts group), shown on the Layout tab.
+    Text(ecad_model::look::TextKind),
+}
+
+impl Row {
+    /// A read-only row.
+    pub fn ro(key: &str, label: &str, value: String) -> Row {
+        Row {
+            key: key.into(),
+            label: label.into(),
+            value,
+            editable: false,
+            inherited: false,
+            varies: false,
+            choices: Vec::new(),
+            proposal: None,
+            tag_state: None,
+            kind: RowKind::Value,
+        }
+    }
+    /// An editable row.
+    pub fn rw(key: &str, label: &str, value: String) -> Row {
+        Row { editable: true, ..Row::ro(key, label, value) }
+    }
 }
 
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.
@@ -811,7 +865,7 @@ fn text_rows(doc: &Document, registry: &ecad_model::registry::data::Registry, at
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
         let label = format!("{group}: {}", kind.words());
         let mut r = Row::rw(&key, &label, value);
-        r.kind = crate::cables::words::RowKind::Text(*kind);
+        r.kind = RowKind::Text(*kind);
         r.inherited = own.is_none();
         r.choices = vec![default, "Shown".into(), "Hidden".into()];
         if *kind == TextKind::Tag {

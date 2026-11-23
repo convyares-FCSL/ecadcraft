@@ -16,7 +16,7 @@ use crate::interact::{can_start, in_range, line_kind, pick, pick_radius, pixel, 
 use crate::project::{Mapped, Project};
 use crate::properties::forms::cable_view::{NOTHING_THERE, cable_named};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 use {ecad_electrical::references::cables::ORPHAN_ACI, ecad_electrical::references::cables::REFERENCE_ACI};
 
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).

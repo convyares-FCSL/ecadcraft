@@ -287,15 +287,6 @@ pub fn flag_shape(at: Pt, w: f64, side: FlagSide, h: f64) -> FlagShape {
     FlagShape { lo, hi, text_at, outline, attach }
 }
 
-/// Typed coordinates beyond this (or not finite) are refused.
-pub const MAX_COORD: f64 = 1e12;
-
-/// Refusal of a point that is not finite or out of range.
-pub const OUT_OF_RANGE: &str = "Point out of range.";
-
-/// Most lines a hover description shows.
-pub const MAX_HOVER_LINES: usize = 12;
-
 /// The box a reference end's flag `w` wide covers at `at` on `side`, its point included: what a
 /// pick of the marker hits (the pick-first rule; `draw::marker_box`).
 pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
@@ -303,63 +294,4 @@ pub fn flag_box(at: Pt, w: f64, side: FlagSide, h: f64) -> (Pt, Pt) {
     let lo = f.outline.iter().fold(f.lo, |a, p| Pt::new(a.x.min(p.x), a.y.min(p.y)));
     let hi = f.outline.iter().fold(f.hi, |a, p| Pt::new(a.x.max(p.x), a.y.max(p.y)));
     (lo, hi)
-}
-
-/// Most handles (or objects) one call may name.
-pub const MAX_HANDLES: usize = 100_000;
-
-/// One Properties row (`crate::properties`): a label and a value box.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row {
-    /// The property key it edits (`number`, `title`, `description`…).
-    pub key: String,
-    pub label: String,
-    /// The value shown.
-    pub value: String,
-    pub editable: bool,
-    /// The value comes from the project (a page's Function or Location): shown faint.
-    pub inherited: bool,
-    /// Several selected objects differ: `*varies*`.
-    pub varies: bool,
-    /// Suggestions (a combo): Status, Sheet; a function's or location's codes from the list.
-    pub choices: Vec<String>,
-    /// An unset function or location's proposal from the selected
-    /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
-    /// **Use +CP1** link that sets it.
-    pub proposal: Option<(String, String)>,
-    /// A tag row's state (S6, #3): what its tag is, `None` without a tag or on other rows. Not a
-    /// setprop key: the tag is one value, set through the `tag` key.
-    pub tag_state: Option<ecad_model::naming::tag::TagState>,
-    /// What the row is: a plain value, or the visibility of one kind of text.
-    pub kind: RowKind,
-}
-
-/// What a Properties row is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RowKind {
-    Value,
-    /// The visibility of one kind of text (the Texts group), shown on the Layout tab.
-    Text(ecad_model::look::TextKind),
-}
-
-impl Row {
-    /// A read-only row.
-    pub fn ro(key: &str, label: &str, value: String) -> Row {
-        Row {
-            key: key.into(),
-            label: label.into(),
-            value,
-            editable: false,
-            inherited: false,
-            varies: false,
-            choices: Vec::new(),
-            proposal: None,
-            tag_state: None,
-            kind: RowKind::Value,
-        }
-    }
-    /// An editable row.
-    pub fn rw(key: &str, label: &str, value: String) -> Row {
-        Row { editable: true, ..Row::ro(key, label, value) }
-    }
 }

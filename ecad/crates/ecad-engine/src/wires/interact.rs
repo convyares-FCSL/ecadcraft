@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::interact::{ATTACHED_ACI, can_start, in_range, pick_radius, preview_entity, pt, read};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use ecad_electrical::cables::words::OUT_OF_RANGE;
+use ecad_electrical::commands::input::OUT_OF_RANGE;
 
 /// The wire under a click (within the pick radius), and its number.
 fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
