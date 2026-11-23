@@ -318,43 +318,27 @@ pub(crate) fn move_page_ops(doc: &Document, page: PageId, folder: Option<FolderI
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewPageKind {
     pub generated: Option<GenKind>,
-    /// The terminal plan's style word (`table` or `graphic`).
-    pub style: Option<String>,
+    /// The terminal plan's style.
+    pub style: Option<strip_pages::StripPageForm>,
     /// The one strip a terminal plan shows.
     pub strip: Option<DeviceId>,
 }
 
-/// `newpage`'s `generated`, `style` and `strip` read together.
+/// `newpage`'s `generated`, `style` and `strip` read together. A terminal plan page's style is
+/// stored as its page-level `terminal_block.plan.style` in the AddPage, so the page is one
+/// transaction.
 ///
 /// # Errors
-/// A kind or style word that does not read; a style or strip for a page that is not a terminal
-/// plan.
-pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<DeviceId>) -> Result<NewPageKind, CmdError> {
-    // A generated page's kind, set only here.
-    let generated = match generated {
-        Some(t) => Some(
-            <GenKind as ecad_model::Word>::parse(t)
-                .ok_or(CmdError::input("`generated` is \"cover\", \"contents\", \"revisions\", \"bom-location\", \"terminals\" or \"cables\""))?,
-        ),
-        None => None,
-    };
-    // A terminal plan page's style, stored as its page-level
-    // `terminal_block.plan.style` in the AddPage, so the page is one transaction.
-    let style = match style {
-        Some(t) => Some(
-            strip_pages::STYLE
-                .parse(t)
-                .and_then(|v| if let ecad_model::registry::Value::Choice(w) = v { Some(w.to_string()) } else { None })
-                .ok_or(CmdError::input("`style` is \"table\" or \"graphic\""))?,
-        ),
-        None => None,
-    };
+/// A style or strip for a page that is not a terminal plan.
+pub fn new_page_kind(
+    generated: Option<GenKind>, style: Option<strip_pages::StripPageForm>, strip: Option<DeviceId>,
+) -> Result<NewPageKind, CmdError> {
     if style.is_some() && generated != Some(GenKind::TerminalBlocks) {
-        return Err(CmdError::input("`style` is for a terminal plan page (`generated: \"terminals\"`)"));
+        return Err(CmdError::input("`style` is for a terminal plan page (`generated: \"terminal_blocks\"`)"));
     }
     // A terminal plan page may show one strip.
     if strip.is_some() && generated != Some(GenKind::TerminalBlocks) {
-        return Err(CmdError::input("`strip` is for a terminal plan page (`generated: \"terminals\"`)"));
+        return Err(CmdError::input("`strip` is for a terminal plan page (`generated: \"terminal_blocks\"`)"));
     }
     Ok(NewPageKind { generated, style, strip })
 }
@@ -398,8 +382,8 @@ pub fn stamp_new_page(ops: &mut [Op], kind: &NewPageKind, page_type: Option<&Sty
                     Some(strip) => PageKind::TerminalStrip { strip },
                     None => PageKind::Generated(what),
                 };
-                if let Some(v) = &kind.style {
-                    page.display.insert(strip_pages::STYLE.key.into(), v.clone());
+                if let Some(v) = kind.style {
+                    page.display.insert(strip_pages::STYLE.key.into(), ecad_model::Word::word(v).to_string());
                 }
             }
         }
@@ -646,10 +630,10 @@ pub struct ProjectChange {
     pub contact_mirror: Option<ecad_model::ContactMirror>,
     pub tag_padding: Option<u64>,
     pub tag_prefixes: Vec<(String, Option<String>)>,
-    pub colour_style: Option<String>,
+    pub colour_style: Option<ecad_model::geometry::colour::ColourWords>,
     pub label_height: Option<f64>,
     pub revision_columns: Option<Option<String>>,
-    pub revision_pending: Option<String>,
+    pub revision_pending: Option<revisions::PendingStyle>,
     /// The revision scheme (refused once anything is issued).
     pub rev_scheme: Option<ecad_model::RevScheme>,
     pub tag_dash: Option<bool>,
@@ -722,14 +706,6 @@ pub(crate) fn tag_settings(
         crate::devices::set_symbol_prefix(settings, ecad_model::naming::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
     Ok(())
-}
-
-/// `projectprops`' `tag_case` word: `upper` or `typed`.
-///
-/// # Errors
-/// Any other word.
-pub fn tag_case(word: &str) -> Result<Case, CmdError> {
-    <Case as ecad_model::Word>::parse(word).ok_or(CmdError::refused("`tag_case` must be \"upper\" or \"typed\""))
 }
 
 /// The ops of `tag_dash` and `tag_case` in `projectprops`: the settings, and
@@ -885,11 +861,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Fix round: how label colours are written, and the label height.
-    if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style =
-            Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(w).ok_or(CmdError::refused(
-                "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
-            ))?);
+    if let Some(w) = change.colour_style {
+        settings.wiring.colour_style = Some(w);
     }
     if let Some(h) = change.label_height {
         settings.wiring.label_height = Some(
@@ -913,10 +886,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         };
         ops.extend(set(ObjectRef::Project, Some(doc.display()), revisions::COLUMNS_KEY, t));
     }
-    if let Some(w) = &change.revision_pending {
-        let w = Some(w.trim()).filter(|w| ["star", "draft", "off"].contains(w));
-        let w = w.ok_or(CmdError::refused("`revision_pending` must be \"star\", \"draft\" or \"off\""))?;
-        ops.extend(set(ObjectRef::Project, Some(doc.display()), revisions::PENDING_KEY, Some(w.to_string())));
+    if let Some(w) = change.revision_pending {
+        ops.extend(set(ObjectRef::Project, Some(doc.display()), revisions::PENDING_KEY, Some(ecad_model::Word::word(w).to_string())));
     }
     if let Some(scheme) = &change.rev_scheme {
         let op = rev_scheme_op(doc, &mut ops, scheme)?;

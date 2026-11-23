@@ -48,23 +48,22 @@ pub(crate) struct NewpageParams {
     /// The page type's ID or name, such as "schematic".
     #[serde(default, rename = "type")]
     ty: Option<String>,
-    /// A generated page's kind: "cover", "contents", "revisions", "bom-location", "terminals" or
-    /// "cables".
+    /// A generated page's kind.
     #[serde(default)]
-    generated: Option<String>,
+    generated: Option<ecad_model::GenKind>,
     /// The one terminal strip a terminal plan shows.
     #[serde(default)]
     strip: Option<DeviceId>,
-    /// A terminal plan's style: "table" or "graphic".
+    /// A terminal plan's style.
     #[serde(default)]
-    style: Option<String>,
+    style: Option<ecad_electrical::defaults::strip_pages::StripPageForm>,
 }
 
 impl Command for NewpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let kind = rules::new_page_kind(self.generated.as_deref(), self.style.as_deref(), self.strip).map_err(|e| err(e.to_string()))?;
-        let default_title = match (kind.generated, kind.style.as_deref()) {
-            (Some(ecad_model::GenKind::TerminalBlocks), Some(ecad_electrical::defaults::strip_pages::GRAPHIC)) => {
+        let kind = rules::new_page_kind(self.generated, self.style, self.strip).map_err(|e| err(e.to_string()))?;
+        let default_title = match (kind.generated, kind.style) {
+            (Some(ecad_model::GenKind::TerminalBlocks), Some(ecad_electrical::defaults::strip_pages::StripPageForm::Graphic)) => {
                 ecad_electrical::terminal_strips::pages::TITLE
             }
             (g, _) => g.map_or("new", |g| g.title()),

@@ -295,9 +295,9 @@ fn style_is_only_for_a_terminal_block_plan_page() {
     let mut g = fixture(0x46_07);
     let head = g.h.head();
     let e = g.h.run("newpage", json!({"generated": "cover", "style": "graphic"})).unwrap_err();
-    assert!(e.contains("`style` is for a terminal plan page (`generated: \"terminals\"`)"), "{e}");
+    assert!(e.contains("`style` is for a terminal plan page (`generated: \"terminal_blocks\"`)"), "{e}");
     let e = g.h.run("newpage", json!({"generated": "terminal_blocks", "style": "wavy"})).unwrap_err();
-    assert!(e.contains("`style` is \"table\" or \"graphic\""), "{e}");
+    assert!(e.contains(r#"`style` must be one of "table", "graphic", or null"#), "{e}");
     assert_eq!(g.h.head(), head, "nothing recorded");
 }
 

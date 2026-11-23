@@ -95,6 +95,11 @@ fn closed_word_sets_are_listed() {
         ("movetext", r#"kind?: "tag"|"point_label""#),
         ("mirrormove", r#"placement?: "auto"|"below"|"right"|"off""#),
         ("projectprops", r#"contact_mirror?: "auto"|"below"|"right"|"off""#),
+        ("projectprops", r#"colour_style?: "code2"|"code3"|"name""#),
+        ("projectprops", r#"tag_case?: "upper"|"typed""#),
+        ("projectprops", r#"revision_pending?: "star"|"draft"|"off""#),
+        ("newpage", r#"generated?: "cover"|"contents"|"revisions"|"bom-location"|"terminal_blocks"|"cables"|"plcrack"|"iolist""#),
+        ("newpage", r#"style?: "table"|"graphic""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
@@ -247,7 +252,7 @@ fn the_sheet_commands_keep_their_rule_words() {
         ("pageprops", json!({"number": "a b"}), "A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`)."),
         ("pageprops", json!({"function": "=F1", "proposal": "x"}), r#"`proposal` must be one of "propose", "move", "keep", or null"#),
         ("projectprops", json!({"page_number_step": 0}), "`page_number_step` must be a whole number from 1 to 1000"),
-        ("projectprops", json!({"tag_case": "x"}), "`tag_case` must be \"upper\" or \"typed\""),
+        ("projectprops", json!({"tag_case": "x"}), r#"`tag_case` must be one of "upper", "typed", or null"#),
         ("projectprops", json!({"props": {"Bad Key": "x"}}), "A property name is 1 to 40 characters a-z, 0-9 or _."),
         ("projectprops", json!({"tag_padding": 9}), "`tag_padding` must be a whole number from 1 to 6"),
         ("revision", json!({"n": 99}), "There is no pending revision row 99."),

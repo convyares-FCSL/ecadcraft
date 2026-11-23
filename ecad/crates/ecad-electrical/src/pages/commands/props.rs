@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use super::sheets::{
     PROJECT_KEYS, PageChange, ProjectChange, PropsPlan, RevisionFields, page_json, page_props, page_title, project_json, project_props,
-    proposal_mode, release_line_refusal, revision_fields, revision_ops, tag_case,
+    proposal_mode, release_line_refusal, revision_fields, revision_ops,
 };
 use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
@@ -112,25 +112,26 @@ pub struct ProjectpropsParams {
     /// Tag prefixes by symbol: a prefix, or null for the built-in one.
     #[serde(default, deserialize_with = "nullable")]
     tag_prefixes: Option<Option<BTreeMap<String, Option<String>>>>,
-    /// How label colours are written: "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name".
+    /// How label colours are written: code2 (BN, BU, GN/YE), code3 (BRN, BLU, GRN/YEL) or name
+    /// (Brown, Blue, Green/Yellow).
     #[serde(default, deserialize_with = "nullable")]
-    colour_style: Option<Option<String>>,
+    colour_style: Option<Option<ecad_model::geometry::colour::ColourWords>>,
     /// Wire label height in mm, 0.5 to 10.
     #[serde(default, deserialize_with = "nullable")]
     label_height: Option<Option<f64>>,
     /// Whether tags have a leading `-`.
     #[serde(default, deserialize_with = "nullable")]
     tag_dash: Option<Option<bool>>,
-    /// "upper" or "typed": whether tags keep the case they are typed in.
+    /// Upper or typed: whether tags keep the case they are typed in.
     #[serde(default, deserialize_with = "nullable")]
-    tag_case: Option<Option<String>>,
+    tag_case: Option<Option<ecad_model::naming::tag::Case>>,
     /// The revision table's columns ("rev, date, ecr:ECR@20, description"), or null for the
     /// built-in ones.
     #[serde(default, deserialize_with = "nullable")]
     revision_columns: Option<Option<String>>,
-    /// How the pending revision shows: "star", "draft" or "off".
+    /// How the pending revision shows: star (`D*`), draft (`E (draft)`) or off.
     #[serde(default, deserialize_with = "nullable")]
-    revision_pending: Option<Option<String>>,
+    revision_pending: Option<Option<revisions::PendingStyle>>,
     /// The revision scheme: `{kind: "letters"}` (A, B … the default), `{kind: "letters_dash"}` (–, A, B …) or
     /// `{kind: "numbered", prefix?: "P", width?: 2, start?: 1}` (P01, P02 …). Refused once a
     /// revision is issued.
@@ -361,11 +362,10 @@ impl Generic for ProjectpropsParams {
             revision_pending: self.revision_pending.flatten(),
             rev_scheme: self.rev_scheme.map(RevSchemeParam::scheme).transpose()?,
             tag_dash: self.tag_dash.flatten(),
-            tag_case: None,
+            tag_case: self.tag_case.flatten(),
             mode: Default::default(),
         };
         change.mode = proposal_mode(self.proposal.flatten());
-        change.tag_case = self.tag_case.flatten().as_deref().map(tag_case).transpose()?;
         let plan = project_props(doc, cx.ids, &change)?;
         if plan.ops.is_empty() {
             let mut v = project_json(doc, registry);
