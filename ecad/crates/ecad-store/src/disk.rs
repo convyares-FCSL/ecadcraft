@@ -1,4 +1,4 @@
-//! Files on disk (native only): the file medium, the writer lock and the steps of an atomic
+//! Files on disk (native only): opening a database file, the writer lock and the steps of an atomic
 //! replacement. What is written, and in which order, is decided by `ecad-file`;
 //! this module only performs each step and reports its result.
 //!
@@ -22,135 +22,6 @@
 use std::fs::{File, OpenOptions, TryLockError};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-
-use crate::Medium;
-
-/// The largest file read whole into memory. Larger files are refused rather than read
-/// (hostile-input cap; a project of this size is far beyond anything expected).
-pub const MAX_FILE: u64 = 1 << 30;
-
-/// Faults injected into a [`FileMedium`] (tests). Each is used once.
-#[derive(Debug, Default, Clone)]
-pub struct MediumFaults {
-    /// The next append writes this many bytes (at most) and then fails.
-    pub partial_append: Option<usize>,
-    /// The next flush fails (nothing is flushed).
-    pub fail_next_flush: bool,
-    /// The next truncate fails and changes nothing.
-    pub fail_next_truncate: bool,
-}
-
-/// A file on disk as a [`Medium`]. Appends go to the end of the file; `flush` is `sync_data`.
-#[derive(Debug)]
-pub struct FileMedium {
-    file: File,
-    path: PathBuf,
-    writable: bool,
-    /// Faults to inject (tests).
-    pub faults: MediumFaults,
-}
-
-impl FileMedium {
-    /// Open an existing file, for reading and appending when `writable`, else read-only.
-    ///
-    /// # Errors
-    /// The file does not exist or cannot be opened.
-    pub fn open(path: &Path, writable: bool) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(writable).open(path)?;
-        Ok(Self { file, path: path.to_path_buf(), writable, faults: MediumFaults::default() })
-    }
-
-    /// Create a new, empty file; fails if `path` exists.
-    ///
-    /// # Errors
-    /// The file exists or cannot be created.
-    pub fn create_new(path: &Path) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(true).create_new(true).open(path)?;
-        Ok(Self { file, path: path.to_path_buf(), writable: true, faults: MediumFaults::default() })
-    }
-
-    /// The path the file was opened at (it may have been renamed since).
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Record that the file now lives at `path` (after this process renamed it).
-    pub fn renamed_to(&mut self, path: &Path) {
-        self.path = path.to_path_buf();
-    }
-
-    /// Whether appends are allowed.
-    pub fn writable(&self) -> bool {
-        self.writable
-    }
-
-    /// The identity of the open file (not of whatever is at its path now).
-    ///
-    /// # Errors
-    /// The handle cannot be duplicated or its identity cannot be read.
-    pub fn identity(&self) -> io::Result<FileIdentity> {
-        Ok(FileIdentity(same_file::Handle::from_file(self.file.try_clone()?)?))
-    }
-
-    fn read_only() -> io::Error {
-        io::Error::new(io::ErrorKind::PermissionDenied, "the file is open read-only")
-    }
-}
-
-impl Medium for FileMedium {
-    fn len(&self) -> u64 {
-        // An unreadable length reads as 0, which the writer treats as an external change.
-        self.file.metadata().map_or(0, |m| m.len())
-    }
-
-    fn append(&mut self, bytes: &[u8]) -> io::Result<()> {
-        if !self.writable {
-            return Err(Self::read_only());
-        }
-        self.file.seek(SeekFrom::End(0))?;
-        if let Some(n) = self.faults.partial_append.take() {
-            self.file.write_all(bytes.get(..n.min(bytes.len())).unwrap_or_default())?;
-            return Err(io::Error::other("injected write failure"));
-        }
-        self.file.write_all(bytes)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        if std::mem::take(&mut self.faults.fail_next_flush) {
-            return Err(io::Error::other("injected flush failure"));
-        }
-        self.file.sync_data()
-    }
-
-    fn truncate(&mut self, len: u64) -> io::Result<()> {
-        if !self.writable {
-            return Err(Self::read_only());
-        }
-        if std::mem::take(&mut self.faults.fail_next_truncate) {
-            return Err(io::Error::other("injected truncate failure"));
-        }
-        self.file.set_len(len)
-    }
-
-    fn read_all(&self) -> io::Result<Vec<u8>> {
-        let len = self.len();
-        if len > MAX_FILE {
-            return Err(io::Error::other(format!("the file is larger than {MAX_FILE} bytes")));
-        }
-        self.read_range(0, len)
-    }
-
-    fn read_range(&self, offset: u64, len: u64) -> io::Result<Vec<u8>> {
-        if len > MAX_FILE {
-            return Err(io::Error::other(format!("a read larger than {MAX_FILE} bytes")));
-        }
-        let mut f = &self.file;
-        f.seek(SeekFrom::Start(offset))?;
-        let mut out = Vec::with_capacity(usize::try_from(len.min(1 << 20)).unwrap_or(0));
-        f.take(len).read_to_end(&mut out)?;
-        Ok(out)
-    }
-}
 
 /// Which file a path or handle refers to, to notice a file replaced behind the writer's back:
 /// device and inode on Unix, volume serial number and file index on Windows (through
@@ -407,12 +278,21 @@ pub fn write_new_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     r
 }
 
-impl FileMedium {
-    /// The open file, giving up the medium (for a caller that hands the handle to another
-    /// storage engine, such as redb's `FileBackend`).
-    pub fn into_file(self) -> File {
-        self.file
-    }
+/// An existing file opened for reading, for redb's `FileBackend`.
+///
+/// # Errors
+/// The file does not exist or cannot be opened.
+pub(crate) fn open_read_only(path: &Path) -> io::Result<File> {
+    OpenOptions::new().read(true).open(path)
+}
+
+/// A new, empty file opened for reading and writing, for redb's `FileBackend`; fails if `path`
+/// exists.
+///
+/// # Errors
+/// The file exists or cannot be created.
+pub(crate) fn create_new(path: &Path) -> io::Result<File> {
+    OpenOptions::new().read(true).write(true).create_new(true).open(path)
 }
 
 /// Seconds since 1970 by this computer's clock (0 if the clock is before 1970). The one clock

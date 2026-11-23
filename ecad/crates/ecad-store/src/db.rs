@@ -84,7 +84,7 @@ fn builder(flag: &Arc<AtomicBool>) -> Builder {
 /// redb's read-only open (`Builder::open_read_only`, which opens the file for reading and hands it
 /// to a `FileBackend`), on a file this crate opened.
 fn open_read_only(b: &Builder, path: &std::path::Path) -> Result<ReadOnlyDatabase, redb::DatabaseError> {
-    let file = crate::disk::FileMedium::open(path, false)?.into_file();
+    let file = crate::disk::open_read_only(path)?;
     b.open_read_only_with_backend(redb::backends::FileBackend::new(file)?)
 }
 
@@ -114,8 +114,7 @@ impl Database {
     /// # Errors
     /// [`DbError::Exists`] when `path` exists; the file could not be created.
     pub fn create(path: &std::path::Path) -> Result<Self, DbError> {
-        let file = crate::disk::FileMedium::create_new(path)
-            .map(crate::disk::FileMedium::into_file)
+        let file = crate::disk::create_new(path)
             .map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists { DbError::Exists(path.display().to_string()) } else { engine(e) })?;
         let made = (|| {
             let flag = Arc::new(AtomicBool::new(false));
