@@ -1,4 +1,4 @@
-//! Lane 072 C (design 072 §3, acceptance A15): the inspector shows a PLC station's and module's
+//! The inspector shows a PLC station's and module's
 //! fields, and a `ModifyDevice` changing them, in its Readable and Raw views.
 
 use std::time::Duration;

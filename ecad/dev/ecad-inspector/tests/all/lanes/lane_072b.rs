@@ -1,4 +1,4 @@
-//! Lane 072 B (design 072 §2, acceptance A15): the inspector shows a device's type and the
+//! The inspector shows a device's type and the
 //! `ModifyDevice` op in its Readable and Raw views.
 
 use std::time::Duration;

@@ -1,4 +1,4 @@
-//! Strict `meta` names (owner, 0.2.3): a file whose `meta` table holds a name this build does not
+//! Strict `meta` names: a file whose `meta` table holds a name this build does not
 //! read opens read-only in the app, and the inspector still shows it: the summary names the meta
 //! value, the model views answer, and the row is shown Readable and Raw.
 

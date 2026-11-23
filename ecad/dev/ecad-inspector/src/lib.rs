@@ -1,6 +1,6 @@
 //! ecad-inspector
 //!
-//! ECAD's developer inspector (brief 029). A developer and test tool: it never ships, and no
+//! ECAD's developer inspector. A developer and test tool: it never ships, and no
 //! product crate depends on it (`cargo xtask layers`).
 //!
 //! - [`protocol`]: a versioned JSON protocol (`{"v":1,"id":…,"op":…}`) over a [`source::Source`],

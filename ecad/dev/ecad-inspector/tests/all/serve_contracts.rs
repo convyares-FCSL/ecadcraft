@@ -1,4 +1,4 @@
-//! `ecadinspect serve` (brief 029, design 029 §5): the token, `Host` and `Origin` refusals, one
+//! `ecadinspect serve`: the token, `Host` and `Origin` refusals, one
 //! client at a time, size limits, malformed HTTP and frames, `open` by binary frame,
 //! 127.0.0.1 only, replies matched by `id`.
 

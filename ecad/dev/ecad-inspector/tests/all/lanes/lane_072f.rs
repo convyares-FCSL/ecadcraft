@@ -1,4 +1,4 @@
-//! Lane 072 F (design 072 §6.2, acceptance A15): drawing aids and the ops that change them are
+//! Drawing aids and the ops that change them are
 //! shown in the Readable view of their transactions, and the Raw view is the stored bytes.
 
 use std::time::Duration;

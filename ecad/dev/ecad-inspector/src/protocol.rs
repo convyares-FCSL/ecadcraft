@@ -1,4 +1,4 @@
-//! The inspector protocol, version 1 (design 029 §2).
+//! The inspector protocol, version 1.
 //!
 //! # Semantics
 //! - A request is one JSON object: `{"v": 1, "id": "7", "op": "devices", …}`. The reply is
@@ -61,7 +61,7 @@ pub const PAGE: u64 = 200;
 pub const MAX_PAGE: u64 = 1_000;
 /// The most bytes of a stored row `row` returns raw.
 pub const MAX_RAW: usize = 64 * 1024;
-/// The largest reply (design 029 §5.1).
+/// The largest reply.
 pub const MAX_REPLY: usize = 256 * 1024 * 1024;
 /// The longest `id` and `q`.
 const MAX_ID: usize = 64;
@@ -466,9 +466,9 @@ fn project(d: &Document) -> Value {
     for (k, v) in d.display() {
         props.insert(k.clone(), json!(v));
     }
-    // Design 072 §5.3 (A15): the revision rows, numbered from 1.
+    // The revision rows, numbered from 1.
     let revisions: BTreeMap<String, Value> = d.project().revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
-    // Design 072 §5.3 (A15): the location and function lists and the project's defaults.
+    // The location and function lists and the project's defaults.
     let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
         l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()
     };
@@ -480,7 +480,7 @@ fn project(d: &Document) -> Value {
     json!({
         "display": props,
         "info": d.project().info,
-        // Design 072 §5.2 (A15): each folder with its place and start number.
+        // Each folder with its place and start number.
         "folders": d.folder_order().iter().filter_map(|id| d.folders().get(id).map(|f| json!({
             "id": id.to_string(),
             "name": f.name,
@@ -493,7 +493,7 @@ fn project(d: &Document) -> Value {
         "function": d.project().function.map(|f| function_code(d, f)),
         "revisions": revisions,
         "reference_style": format!("{:?}", d.settings().reference_style()),
-        // Design 072 F40 (A15): what one wire number counts.
+        // What one wire number counts.
         "number_by": ecad_model::Word::word(d.settings().wiring.number_by),
         "versions": d.versions().iter().map(|(p, at)| json!({"kind": match p.kind() { ecad_model::PointKind::Version => "Version", ecad_model::PointKind::Revision => "Revision" }, "name": p.key(), "shown": point_text(d, p), "at": at})).collect::<Vec<_>>(),
         "counts": {
@@ -596,7 +596,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 .map(|(t, term)| {
                     let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
-                    // Design 072 F38 (A15): how many conductors it accepts.
+                    // How many conductors it accepts.
                     json!({"name": name, "wires": wires, "accepts": term.accepts.get()})
                 })
                 .collect();
@@ -616,7 +616,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 "points": points,
             });
             if detail {
-                // Design 072 §2.1: the device's text fields, then what is left in its bag.
+                // The device's text fields, then what is left in its bag.
                 for f in ecad_model::TextField::ALL {
                     row[f.key()] = json!(c.text(f));
                 }
@@ -694,8 +694,7 @@ fn protected_name(d: &Document, p: ecad_model::objects::wire::ProtectedBy) -> St
     p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
 }
 
-/// Where a cable core is, in words: its wire, or the line it waits on with its landed end
-/// (owner ruling, 2026-11-18), or unplaced.
+/// Where a cable core is, in words: its wire, or the line it waits on with its landed end, or unplaced.
 fn core_place(d: &Document, p: ecad_model::CorePosition) -> String {
     match p {
         ecad_model::CorePosition::Wire(w) => wire_name(d, w),
@@ -721,7 +720,7 @@ fn cables(d: &Document) -> Vec<Value> {
                         "purpose": if m.is_spare() { "spare" } else { "in use" },
                         "colours": m.colours.as_ref().map(ToString::to_string),
                     });
-                    // Its named points on the cable's references (design 072 §4.4, F4).
+                    // Its named points on the cable's references.
                     if !m.through.is_empty() {
                         v["through"] = json!(m.through.iter().map(ToString::to_string).collect::<Vec<_>>());
                     }

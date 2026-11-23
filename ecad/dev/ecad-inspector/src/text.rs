@@ -1,5 +1,4 @@
-//! Text views of a version 2 file (brief 021 scope 7; moved here from `ecad_file::inspect`
-//! by brief 029): its tables, branches, log, versions and chunks. Reads only; never changes the
+//! Text views of a version 2 file: its tables, branches, log, versions and chunks. Reads only; never changes the
 //! file.
 
 use ecad_file::chain;

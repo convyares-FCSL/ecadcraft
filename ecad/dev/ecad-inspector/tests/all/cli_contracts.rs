@@ -1,4 +1,4 @@
-//! `ecadinspect`'s text views (brief 021; moved from `ecad-cli` by brief 029): the views show the
+//! `ecadinspect`'s text views: the views show the
 //! tables, branches, log, versions and chunks; a file that is not a project and a damaged history
 //! are refused in words.
 

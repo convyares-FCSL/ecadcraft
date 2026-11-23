@@ -1,4 +1,4 @@
-//! Where the protocol reads from (design 029 §3.1, §4, §6): a [`Source`]. Today a
+//! Where the protocol reads from: a [`Source`]. Today a
 //! [`FileSource`], a `.ecad` file opened read-only by path or from dropped bytes. A live app
 //! session can be another source later.
 
@@ -12,7 +12,7 @@ use ecad_file::{Project, Report, Store};
 use ecad_model::Document;
 use serde_json::{Value, json};
 
-/// A refusal in words (design 029 §2.1): a stable `what`, a sentence `why` and a `way_out`.
+/// A refusal in words: a stable `what`, a sentence `why` and a `way_out`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
     pub what: &'static str,
@@ -48,7 +48,7 @@ pub struct Opened {
     pub branch: String,
 }
 
-/// The Verify started on load (design 029 §3.4).
+/// The Verify started on load.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VerifyState {
     /// Not run: the file has no store this build reads.
@@ -65,7 +65,7 @@ pub enum VerifyState {
 /// A source of everything the protocol shows.
 pub trait Source: Send + Sync {
     fn describe(&self) -> SourceInfo;
-    /// The file's own problem (design 029 §6 rows 1–8), if any: what still works is decided by
+    /// The file's own problem, if any: what still works is decided by
     /// [`Source::store`] and [`Source::opened`].
     fn problem(&self) -> Option<&Problem>;
     /// Raw views, history, chain and Verify; `None` when the bytes are not a database this build
@@ -140,7 +140,7 @@ pub fn size_text(n: u64) -> String {
     }
 }
 
-/// What the first bytes say, before any database is opened (design 029 §6 rows 1–4).
+/// What the first bytes say, before any database is opened.
 fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
     if size == 0 || name.to_ascii_lowercase().ends_with(".lock") {
         let open = name.strip_suffix(".lock").unwrap_or(name);
@@ -163,7 +163,7 @@ fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
     ))
 }
 
-/// What the meta rows say (design 029 §6 rows 5–7).
+/// What the meta rows say.
 fn classify_meta(store: &Store) -> Option<Problem> {
     let writer = meta(store, "writer").and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "unknown".into());
     let format = meta(store, "format");
@@ -286,7 +286,7 @@ impl FileSource {
             }
         };
         self.store = Some(store.clone());
-        // Verify on its own thread (design 029 §3.4): nothing waits for it. A replaced source drops
+        // Verify on its own thread: nothing waits for it. A replaced source drops
         // its result with it.
         let slot = self.verify.clone();
         let stop = self.stop.clone();

@@ -1,4 +1,4 @@
-//! Lane 072 E (design 072 §5.3, acceptance A15): the inspector shows the project's location and
+//! The inspector shows the project's location and
 //! function lists, a page's location, and the `ModifyProject` op in its Readable and Raw views.
 
 use std::time::Duration;

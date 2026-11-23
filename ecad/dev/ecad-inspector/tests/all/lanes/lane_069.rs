@@ -1,5 +1,4 @@
-//! Brief 069 (one file format; owner, 2026-11-15): with the version 1 export gone, the inspector's
-//! **Raw** and **Readable** views are what keep a `.ecad` file from being a black box. On a project
+//! The inspector's **Raw** and **Readable** views are what keep a `.ecad` file from being a black box. On a project
 //! holding every op kind (the list is read from `Op` itself, so a new op without a rendering fails
 //! here), every transaction renders in both forms through the protocol: the Tables view's row
 //! expand (`row`, raw and readable) and the History log's record (`log` with `detail`).

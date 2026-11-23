@@ -1,4 +1,4 @@
-//! Lane 072 G (design 072 §8, acceptance A15): a typed wire-type record and its `SetStyle` op are
+//! A typed wire-type record and its `SetStyle` op are
 //! shown in the inspector's Readable and Raw views.
 
 use std::time::Duration;

@@ -1,6 +1,6 @@
-//! Lane 072 D, parts c2 and c3 (design 072 §4.5): a `ModifyCable` (the cable before and after,
-//! its shield, cores, rating inputs and design current) is shown in the Readable view of its transaction, the Raw view is the stored bytes,
-//! and the cables table shows the shield.
+//! A `ModifyCable` (the cable before and after,
+//! its shield, cores, rating inputs and design current) is shown in the Readable view of its transaction,
+//! the Raw view is the stored bytes, and the cables table shows the shield.
 
 use std::time::Duration;
 

@@ -1,4 +1,4 @@
-//! `ecadinspect serve` (design 029 §5): the page at `GET /` and the protocol over a WebSocket at
+//! `ecadinspect serve`: the page at `GET /` and the protocol over a WebSocket at
 //! `/ws`, on one port bound to `127.0.0.1` only.
 //!
 //! # Semantics
@@ -35,7 +35,7 @@ pub const PAGE: &str = include_str!("../page/index.html");
 pub const MAX_HEAD: usize = 16 * 1024;
 /// The largest text message in (one request).
 pub const MAX_TEXT: usize = 1024 * 1024;
-/// The largest file dropped on the page (design 029 §6 row 12).
+/// The largest file dropped on the page.
 pub const MAX_DROP: u64 = 1 << 30;
 /// The most connections served at once (one page and its requests; more get 503).
 pub const MAX_CONNECTIONS: usize = 4;
@@ -72,7 +72,7 @@ pub struct Server {
     shared: Arc<Shared>,
 }
 
-/// A random-enough per-run token (design 029 §5.2): 96 bits of SHA-256 over the time, the process
+/// A random-enough per-run token: 96 bits of SHA-256 over the time, the process
 /// id, the port, a stack address and std's randomly keyed hasher. Not cryptographically strong; a
 /// local developer tool does not need it to be.
 fn token(port: u16) -> String {
@@ -459,7 +459,7 @@ fn session(shared: &Shared, stream: Prefixed) {
     }
 }
 
-/// `open`'s name and size, checked before the bytes arrive (design 029 §6 row 12).
+/// `open`'s name and size, checked before the bytes arrive.
 fn open_request(req: &Request) -> Result<(Value, String, u64), Problem> {
     let name = req.body.get("name").and_then(Value::as_str).filter(|n| !n.is_empty() && n.chars().count() <= 255);
     let size = req.body.get("size").and_then(Value::as_u64);

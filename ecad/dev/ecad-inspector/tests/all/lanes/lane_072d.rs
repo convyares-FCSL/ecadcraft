@@ -1,4 +1,4 @@
-//! Lane 072 D (design 072 §4.2, acceptance A15): a wire's typed values, its net, conductor and
+//! A wire's typed values, its net, conductor and
 //! place in the net's order, and the `CreateWire` and `ModifyWire` ops that record them are shown in
 //! the Readable view of their transaction, and the Raw view is the stored bytes.
 

@@ -1,4 +1,4 @@
-//! Lane 072 A1 (design 072 §9.5, acceptance A15): the inspector still shows a project that ECAD
+//! The inspector still shows a project that ECAD
 //! opens read-only for an unknown word, with the offending record readable.
 
 use ecad_model::{Author, ObjectRef, Op};

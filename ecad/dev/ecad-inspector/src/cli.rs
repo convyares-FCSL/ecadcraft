@@ -1,4 +1,4 @@
-//! `ecadinspect`: the text views (moved from `ecad-cli` by brief 029) and `serve`.
+//! `ecadinspect`: the text views and `serve`.
 
 use std::io::Write;
 use std::path::Path;

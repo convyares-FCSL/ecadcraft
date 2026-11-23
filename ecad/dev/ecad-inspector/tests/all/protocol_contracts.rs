@@ -1,4 +1,4 @@
-//! The inspector protocol (brief 029, design 029 §2, §6, §8): every op's reply shape, counts and
+//! The inspector protocol: every op's reply shape, counts and
 //! paging on the rich fixture; every mismatch row gives its `what` and `way_out`; no input
 //! panics; serving never writes the file.
 

@@ -1,5 +1,4 @@
-//! Tester contracts for `ecadinspect serve` (brief 029 criteria 7, 8, 10, 11; design §2.1, §5,
-//! §6), written from the brief and the design: the address, loopback only, every refusal variant
+//! Hostile and boundary contracts for `ecadinspect serve`: the address, loopback only, every refusal variant
 //! of the token, `Host` and `Origin`, one client at a time, a dropped file replacing the source,
 //! the envelope (`v`, `id`), hostile HTTP and frames that must never stop the server, and hostile
 //! text returned as plain JSON.
