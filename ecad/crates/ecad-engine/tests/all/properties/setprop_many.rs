@@ -27,7 +27,7 @@ fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
 fn setprop_on_several_components_walks_the_single_component_rules() {
     let mut h = H::new(6001);
     let (conns, strip) = fixture(&mut h);
-    let label_key = "term_label.1.1";
+    let label_key = "block_label.1.1";
     let long_label = "L".repeat(30);
     // Design 072 §3: a pinned start is a PLC module's field.
     h.run("place", json!({"symbol": "plccpu", "at": [400, 40]})).unwrap();

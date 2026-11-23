@@ -9,7 +9,7 @@
 //!   this brief ([`ecad_model::connectivity::jumper_bars::level_of_key`]).
 //! - A position's **type** is read from the starter of the symbols that draw it; the first drawn
 //!   level (lowest terminal ID) decides when they differ (`position-mixed`).
-//! - The **shown label** of level n of position p is the strip property `term_label.<p>.<n>`, else
+//! - The **shown label** of level n of position p is the strip property `block_label.<p>.<n>`, else
 //!   `p` for a one-level type, else `p` + separator + level name (`1.L`). Separator and level names
 //!   are registry entries ([`crate::defaults::connection_points`]), resolved strip → project → built-in.
 //! - Types, codes, level counts, bridges and geometry are what a part *is*: catalogue code here,
@@ -25,15 +25,15 @@ use ecad_model::{ConnectionPointDef, ConnectionPointId, DeviceId, Document, Leve
 use crate::CmdError;
 use crate::symbols::StarterKey;
 
-/// The strip property prefix of a level's own label: `term_label.<p>.<n>`.
-pub const LABEL_PREFIX: &str = "term_label.";
+/// The strip property prefix of a level's own label: `block_label.<p>.<n>`.
+pub const LABEL_PREFIX: &str = "block_label.";
 /// The `setprop` key prefix of a fuse position's rating: `rating.<p>`. The rating is the
 /// strip's typed field ([`ecad_model::objects::devices::TerminalStrip::fuses`]), not a
 /// property.
 pub(crate) const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
 /// Every strip property keyed by a position label: what renumbering and `terminalblocklabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
-/// and `acc.on.` are accessory placements, `term_label.` is a level label; `jumper_bar.` values name
+/// and `acc.on.` are accessory placements, `block_label.` is a level label; `jumper_bar.` values name
 /// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
 /// position's rating is the strip's field and moves with [`moved_fuses`].
 pub const POSITION_KEYED: &[&str] =
@@ -397,7 +397,7 @@ pub fn shown_label(doc: &Document, t: ConnectionPointId) -> Option<String> {
 }
 
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
-/// a terminal (no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
+/// a terminal (no silent data loss): `block_label.<p>.<n>` when level `n` of `p` has no
 /// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
 /// a note for each.
 pub(crate) fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[ConnectionPointId]) -> (Vec<ecad_model::Op>, Vec<String>) {

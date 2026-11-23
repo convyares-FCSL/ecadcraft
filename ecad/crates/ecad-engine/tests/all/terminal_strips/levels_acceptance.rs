@@ -702,7 +702,7 @@ fn j_terminalblocklabel_position_and_level_text() {
     let t2s = pos["2"][".1"];
     m.h.run("setprop", json!({"component": x2.hex(), "key": "jumper_bar.1", "value": "1.2-4.2"})).unwrap();
     m.h.run("accessory", json!({"strip": x2.hex(), "at": "2", "items": ["partition"]})).unwrap();
-    m.h.run("setprop", json!({"component": x2.hex(), "key": "term_label.2.3", "value": "MINUS2"})).unwrap();
+    m.h.run("setprop", json!({"component": x2.hex(), "key": "block_label.2.3", "value": "MINUS2"})).unwrap();
     let plus_net = net(&mut m.h, pos["1"][".2"]);
     let v = step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "position": "2.1"}), true);
     let d = m.h.doc();
@@ -712,8 +712,8 @@ fn j_terminalblocklabel_position_and_level_text() {
     }
     assert_eq!(prop(&mut m.h, x2, "acc.after.2.1").as_deref(), Some("partition"), "acc key moved");
     assert_eq!(prop(&mut m.h, x2, "acc.after.2"), None);
-    assert_eq!(prop(&mut m.h, x2, "term_label.2.1.3").as_deref(), Some("MINUS2"), "term_label moved");
-    assert_eq!(prop(&mut m.h, x2, "term_label.2.3"), None);
+    assert_eq!(prop(&mut m.h, x2, "block_label.2.1.3").as_deref(), Some("MINUS2"), "block_label moved");
+    assert_eq!(prop(&mut m.h, x2, "block_label.2.3"), None);
     let jumper_bar = squash(prop(&mut m.h, x2, "jumper_bar.1")).unwrap_or_default();
     assert!(!jumper_bar.is_empty(), "jumper bar kept");
     let pos_now = positions(&m.h.doc(), x2);
@@ -728,12 +728,12 @@ fn j_terminalblocklabel_position_and_level_text() {
     assert_eq!(labels[0], "2.1.S", "{labels:?}");
     // One level's text.
     step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "text": "2.1S"}), true);
-    assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1").as_deref(), Some("2.1S"));
+    assert_eq!(prop(&mut m.h, x2, "block_label.2.1.1").as_deref(), Some("2.1S"));
     let r = level_rows(&plan(&mut m.h, x2)).into_iter().find(|r| s(&r["position"]) == "2.1" && r["level"].as_u64() == Some(1)).unwrap();
     assert_eq!(s(&r["label"]), "2.1S");
     assert_eq!(r["label_overridden"], true);
     step_with(&mut m.h, "terminalblocklabel", json!({"connection_point": t2s.hex(), "text": null}), true);
-    assert_eq!(prop(&mut m.h, x2, "term_label.2.1.1"), None);
+    assert_eq!(prop(&mut m.h, x2, "block_label.2.1.1"), None);
     // A single one-level terminal reads `1.L` by an override.
     let (xf, tf) = {
         let v = m.h.run("terminalblocks", json!({"from": [495, 200], "to": [505, 200]})).unwrap();
@@ -758,7 +758,7 @@ fn j_terminalblocklabel_position_and_level_text() {
 }
 
 /// K: moving position 3's L symbol left of position 1 and renumbering numbers positions by their
-/// earliest symbol; all levels move together; `term_label`, `rating`, `acc.*` and `jumper_bar.*` follow;
+/// earliest symbol; all levels move together; `block_label`, `rating`, `acc.*` and `jumper_bar.*` follow;
 /// the preview lists them and writes nothing.
 #[test]
 fn k_renumber_moves_positions_and_their_keys() {
@@ -766,7 +766,7 @@ fn k_renumber_moves_positions_and_their_keys() {
     let d = m.h.doc();
     let pos = positions(&d, x1);
     let p3: Vec<ConnectionPointId> = pos["3"].values().copied().collect();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "term_label.3.2", "value": "N3"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "block_label.3.2", "value": "N3"})).unwrap();
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "3", "on": true, "items": ["marker"]})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "2.2-3.2"})).unwrap();
     let (_, item, page) = symbol_of(&d, pos["3"][".1"]).expect("L symbol of 3");
@@ -776,13 +776,13 @@ fn k_renumber_moves_positions_and_their_keys() {
     let pv = m.h.run("renumber", json!({"kind": "terminal_blocks", "preview": true})).unwrap();
     assert_eq!(m.h.head(), head, "preview writes nothing");
     let text = pv.to_string();
-    assert!(text.contains("term_label") || text.contains("N3") || text.contains("label"), "preview lists the label move: {text}");
+    assert!(text.contains("block_label") || text.contains("N3") || text.contains("label"), "preview lists the label move: {text}");
     step(&mut m.h, "renumber", json!({"kind": "terminal_blocks"}));
     let d = m.h.doc();
     let labels: std::collections::BTreeSet<String> = p3.iter().map(|t| label(&d, *t)).collect();
     assert_eq!(labels.len(), 1, "levels move together: {labels:?}");
     assert_eq!(labels.iter().next().map(String::as_str), Some("1"), "earliest symbol first");
-    assert_eq!(prop(&mut m.h, x1, "term_label.1.2").as_deref(), Some("N3"));
+    assert_eq!(prop(&mut m.h, x1, "block_label.1.2").as_deref(), Some("N3"));
     assert_eq!(prop(&mut m.h, x1, "acc.on.1").as_deref(), Some("marker"));
     // Old 2 → 3, old 3 → 1: `2.2-3.2` covered the N levels of old 2 and 3, now 3 and 1.
     let n_old2 = net(&mut m.h, pos["2"][".2"]);
@@ -798,7 +798,7 @@ fn k_renumber_moves_positions_and_their_keys() {
 fn k_deleting_a_level_loses_nothing_silently() {
     let (mut m, x1) = with_lnpe(0x7036_0010);
     let pos = positions(&m.h.doc(), x1);
-    for (k, v) in [("term_label.2.1", "L2"), ("term_label.2.2", "N2"), ("jumper_bar.1", "1.1-3.1"), ("jumper_bar.2", "2.1-2.3")] {
+    for (k, v) in [("block_label.2.1", "L2"), ("block_label.2.2", "N2"), ("jumper_bar.1", "1.1-3.1"), ("jumper_bar.2", "2.1-2.3")] {
         m.h.run("setprop", json!({"component": x1.hex(), "key": k, "value": v})).unwrap();
     }
     m.h.run("accessory", json!({"strip": x1.hex(), "at": "2", "items": ["partition"]})).unwrap();
@@ -811,12 +811,12 @@ fn k_deleting_a_level_loses_nothing_silently() {
     let d = m.h.doc();
     assert_eq!(label(&d, pos["2"][".1"]), "2", "position keeps its label");
     let props_after: BTreeMap<String, String> = d.devices()[&x1].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    for k in ["term_label.2.1", "jumper_bar.1", "acc.after.2"] {
+    for k in ["block_label.2.1", "jumper_bar.1", "acc.after.2"] {
         assert_eq!(props_after.get(k), props_before.get(k), "{k} kept");
     }
-    // `term_label.2.2` may stay (free level) but must not silently vanish without a row.
+    // `block_label.2.2` may stay (free level) but must not silently vanish without a row.
     // Ruling (overseer, phase 2): erasing a level removes its label, with a note.
-    assert!(!props_after.contains_key("term_label.2.2"), "the erased level's label goes with it");
+    assert!(!props_after.contains_key("block_label.2.2"), "the erased level's label goes with it");
     let echo = m.h.s.log.iter().rev().take(4).cloned().collect::<Vec<_>>().join(
         "
 ",
@@ -971,7 +971,7 @@ fn p_save_and_reopen_keep_everything() {
     let x2 = with_sensor(&mut m);
     m.h.run("jumper", json!({"strip": x2.hex(), "positions": "1.2-4.2"})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.1", "value": "1.1-1.3"})).unwrap();
-    m.h.run("setprop", json!({"component": x1.hex(), "key": "term_label.2.1", "value": "L-zwei"})).unwrap();
+    m.h.run("setprop", json!({"component": x1.hex(), "key": "block_label.2.1", "value": "L-zwei"})).unwrap();
     m.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "3LNPE+2x3"})).unwrap();
     m.h.run("terminalblocks", json!({"strip": x2.hex(), "type": "FUSE", "level": "All", "from": [490, 200], "to": [510, 200]})).unwrap();
     m.h.run("setprop", json!({"component": x2.hex(), "key": "rating.5", "value": "2A"})).unwrap();
@@ -1011,12 +1011,12 @@ fn q_hostile_input_never_panics() {
     read_everything(&mut m.h);
     // Per-level keys for levels and positions that do not exist.
     for k in [
-        "term_label.1.99",
-        "term_label.1.0",
-        "term_label.99.1",
-        "term_label.1",
-        "term_label..",
-        "term_label.1.1.1.1",
+        "block_label.1.99",
+        "block_label.1.0",
+        "block_label.99.1",
+        "block_label.1",
+        "block_label..",
+        "block_label.1.1.1.1",
         "rating.1",
         "rating.99",
         "rating.",
@@ -1025,7 +1025,7 @@ fn q_hostile_input_never_panics() {
     ] {
         survives(&mut m.h, "setprop", json!({"component": s1, "key": k, "value": "x"}));
     }
-    survives(&mut m.h, "setprop", json!({"component": s1, "key": "term_label.1.1", "value": "x".repeat(10_000)}));
+    survives(&mut m.h, "setprop", json!({"component": s1, "key": "block_label.1.1", "value": "x".repeat(10_000)}));
     read_everything(&mut m.h);
     // Jumper bar values.
     refused(
@@ -1086,7 +1086,7 @@ fn o_kept_strips_equal_a_rebuild_through_level_edits() {
         p.reports();
     });
     let edits: Vec<(&str, Value)> = vec![
-        ("setprop", json!({"component": x1.hex(), "key": "term_label.1.1", "value": "A"})),
+        ("setprop", json!({"component": x1.hex(), "key": "block_label.1.1", "value": "A"})),
         ("setprop", json!({"component": x2.hex(), "key": "jumper_bar.1", "value": "1.2-4.2"})),
         ("setprop", json!({"component": x2.hex(), "key": "terminal_blocks", "value": "4SEN+2x2B"})),
         ("setprop", json!({"component": x1.hex(), "key": "part_number.lnpe", "value": "LN-1"})),

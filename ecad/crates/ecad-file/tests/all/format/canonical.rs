@@ -143,7 +143,10 @@ fn record_and_definition_hashes_are_pinned() {
 /// form): the head hash of this fixture then changes, and this table gets a new row with the new
 /// number. A changed head under an unchanged number is the forgotten bump.
 // Version 2 covers S4 and S6 (nothing was released between them).
-const SCHEMA_PINS: &[(u64, &str)] = &[(2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274")];
+const SCHEMA_PINS: &[(u64, &str)] = &[
+    (2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
+    (3, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
+];
 
 #[test]
 fn the_schema_version_is_bumped_with_every_format_change() {

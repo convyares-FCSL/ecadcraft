@@ -966,7 +966,7 @@ fn renumber_strip(
     for prefix in crate::terminal_strips::terminal_blocks::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
         for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
             let Some(rest) = k.strip_prefix(prefix) else { continue };
-            // `term_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.
+            // `block_label.<p>.<n>`: the position is all but the last part; `rating.<p>`: all of it.
             let (pos, tail) = if prefix == crate::terminal_strips::terminal_blocks::LABEL_PREFIX {
                 match rest.rsplit_once('.') {
                     Some((pos, n)) => (pos, format!(".{n}")),

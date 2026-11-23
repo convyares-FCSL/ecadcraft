@@ -32,7 +32,7 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
-//! | a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`): a device in scope | that strip |
+//! | a strip's `block_label.*`, `terminal_block.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`): a device in scope | that strip |
 //! | project `terminal_block.level.separator` or `terminal_block.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
 //! | project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
 //! | a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |

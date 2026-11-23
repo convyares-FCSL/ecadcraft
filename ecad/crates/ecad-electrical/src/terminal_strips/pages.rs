@@ -14,7 +14,7 @@
 //! strips of a cable changed in place (`by_cable`, box texts) and of a far device changed
 //! (`by_far`). The project's `terminal_block.plan.style` sets `style_changed`.
 //!
-//! A page's own style (`SetProperty(Page P, terminal.plan.style)`) is P's own property, which
+//! A page's own style (`SetProperty(Page P, terminal_block.plan.style)`) is P's own property, which
 //! [`crate::pages::frames::touches`] already redraws; its sheet count reads the kept counts.
 
 use std::collections::{BTreeMap, BTreeSet};

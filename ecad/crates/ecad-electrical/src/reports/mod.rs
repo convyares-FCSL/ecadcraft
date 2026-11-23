@@ -601,7 +601,7 @@ impl Scope {
                 if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
                     self.all_wires = true;
                 }
-                // The registry's `terminal.*` defaults reach strips the same way.
+                // The registry's `terminal_block.*` defaults reach strips the same way.
                 if area == ecad_model::naming::keys::Area::TerminalBlock {
                     self.strip_keys.insert(key.to_string());
                 }
@@ -709,7 +709,7 @@ impl Scope {
     /// Note what one effect names that only the state after reads (`doc`; call it there, after
     /// [`Scope::note`]). A level's label, or a separator or level
     /// names a strip reads, set on a strip changes the wire rows ending on its terminals (only the
-    /// position named by a `term_label.<p>.<n>` key). A connector naming key set on a
+    /// position named by a `block_label.<p>.<n>` key). A connector naming key set on a
     /// mating connector changes its pins' wire rows.
     pub fn note_after(&mut self, doc: &Document, effect: &Effect<'_>) {
         let Effect::Prop { object: ObjectRef::Device(c), key, .. } = effect else { return };

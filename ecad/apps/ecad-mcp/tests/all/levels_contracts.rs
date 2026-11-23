@@ -1,6 +1,6 @@
 //! MCP contract: `connection_points` with a
 //! type and level, `place` of a level starter, `terminalblocklabel`, `toposition`, `jumper` with levels,
-//! `setprop` of `term_label.*`, `rating.*`, `part_number.lnpe`, `connection_points` with type codes, and
+//! `setprop` of `block_label.*`, `rating.*`, `part_number.lnpe`, `connection_points` with type codes, and
 //! `projectprops strip_lnpe_part_number` through `execute` record the agent's transaction and are
 //! refused with writes off; `stripplan`, `bom`, `checks` and `defaults {group: "Terminals"}` work
 //! with writes off and record nothing.
@@ -61,13 +61,13 @@ fn multi_level_terminal_block_commands_through_execute() {
     // Labels.
     let t = hex(&l["connection_points"][0], "connection_point");
     c.exec("terminalblocklabel", json!({"connection_point": t, "text": "1L"}));
-    assert_eq!(set(&last_by_agent(&mut c).1, "term_label.1.1").as_deref(), Some("1L"));
+    assert_eq!(set(&last_by_agent(&mut c).1, "block_label.1.1").as_deref(), Some("1L"));
     c.exec("terminalblocklabel", json!({"connection_point": t, "position": "10"}));
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Relabel position");
-    assert_eq!(set(&ops, "term_label.10.1").as_deref(), Some("1L"), "the level's label moves with its position");
-    c.exec("setprop", json!({"component": strip, "key": "term_label.2.2", "value": "2N"}));
-    assert_eq!(set(&last_by_agent(&mut c).1, "term_label.2.2").as_deref(), Some("2N"));
+    assert_eq!(set(&ops, "block_label.10.1").as_deref(), Some("1L"), "the level's label moves with its position");
+    c.exec("setprop", json!({"component": strip, "key": "block_label.2.2", "value": "2N"}));
+    assert_eq!(set(&last_by_agent(&mut c).1, "block_label.2.2").as_deref(), Some("2N"));
     // Links per level, by the Jumper and by setprop.
     let n2 = hex(&c.exec("stripplan", json!({"strip": strip}))["strips"][0]["rows"][1], "connection_point");
     let n3 = c.exec("stripplan", json!({"strip": strip}))["strips"][0]["rows"]
@@ -125,7 +125,7 @@ fn with_writes_off_the_level_writes_are_refused_and_the_reads_work() {
         ("terminalblocklabel", json!({"connection_point": "1", "text": "1L"})),
         ("toposition", json!({"device": "1"})),
         ("jumper", json!({"connection_points": ["1", "2"]})),
-        ("setprop", json!({"component": "1", "key": "term_label.1.1", "value": "x"})),
+        ("setprop", json!({"component": "1", "key": "block_label.1.1", "value": "x"})),
         ("setprop", json!({"component": "1", "key": "rating.1", "value": "2A"})),
         ("setprop", json!({"component": "1", "key": "part_number.lnpe", "value": "P"})),
         ("setprop", json!({"component": "1", "key": "terminal_blocks", "value": "12+4x3"})),

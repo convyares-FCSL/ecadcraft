@@ -304,9 +304,9 @@ fn nothing_is_lost_silently() {
     let item = h.doc().representations()[&rep].items[0];
     let handle = h.handle_of(page, item);
     h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
-    assert_eq!(h.doc().devices()[&x1].properties.get("term_label.2.1"), None, "removed with its level");
+    assert_eq!(h.doc().devices()[&x1].properties.get("block_label.2.1"), None, "removed with its level");
     h.run("undo", json!({})).unwrap();
-    assert_eq!(h.doc().devices()[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
+    assert_eq!(h.doc().devices()[&x1].properties.get("block_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
     same_as_built(&mut h);
     // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
     let w: WireId = id(&h.wire_pp(&[(100.0, 0.0), (100.0, 80.0)]).unwrap(), "conductor");

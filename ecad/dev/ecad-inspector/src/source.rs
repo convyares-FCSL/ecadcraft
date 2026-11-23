@@ -1,4 +1,4 @@
-//! Where the protocol reads from: a [`Source`]. Today a
+﻿//! Where the protocol reads from: a [`Source`]. Today a
 //! [`FileSource`], a `.ecad` file opened read-only by path or from dropped bytes. A live app
 //! session can be another source later.
 
@@ -90,8 +90,8 @@ const HEAD: usize = 4_096;
 
 /// The meta names this build reads, and what it reads (`summary`).
 const CONTAINER_VERSION: u64 = 2;
-/// The format number of `ecad_file::SCHEMA_VERSION` this reads (raw rows are shown for any other).
-const SCHEMA_VERSION: u64 = 2;
+/// The format number this reads (raw rows are shown for any other).
+const SCHEMA_VERSION: u64 = ecad_file::SCHEMA_VERSION;
 const CODEC: &str = "json/1";
 
 /// A `.ecad` file, read-only.

@@ -20,7 +20,8 @@ use crate::records;
 ///
 /// - 1: the first format.
 /// - 2: typed revisions, point names.
-pub const SCHEMA_VERSION: u64 = 2;
+/// - 3: a strip level's own label is the property `block_label.<p>.<n>` (was `term_label.`).
+pub const SCHEMA_VERSION: u64 = 3;
 
 /// Longest string in a record (1 MiB).
 pub const MAX_STRING: usize = 1 << 20;

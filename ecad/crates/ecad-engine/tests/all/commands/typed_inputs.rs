@@ -1707,7 +1707,7 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
         ("connector fields (072 B)", [&socket, &socket2], "pins", "99"),
         ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal_block.level.separator", "abcd"),
-        ("level label (brief 036)", [&strip, &strip2], "term_label.1", &long),
+        ("level label (brief 036)", [&strip, &strip2], "block_label.1", &long),
         ("PLC module fields (072 C)", [&card, &card2], "plc.addr.start", "x"),
         ("rating (brief 034)", [&coil, &coil2], "rating.1", "10A"),
         ("parts and items (brief 047)", [&coil, &coil2], "part.1.qty", "lots"),

@@ -315,7 +315,14 @@ fn every_mismatch_row_gives_its_what_and_a_way_out() {
         ("4 not ecad", "z.ecad", b"PK\x03\x04 a zip".to_vec(), "not-ecad", None, "tables"),
         ("5 not a project", "lib.ecad", with_meta("format", json!("ecad-library")), "not-project", Some("tables"), "devices"),
         ("6 container version", "c3.ecad", with_meta("container_version", json!(3)), "container-version", Some("tables"), "devices"),
-        ("7 schema version", "s3.ecad", with_meta("schema_version", json!(3)), "schema-version", Some("rows"), "devices"),
+        (
+            "7 schema version",
+            "snext.ecad",
+            with_meta("schema_version", json!(ecad_file::SCHEMA_VERSION + 1)),
+            "schema-version",
+            Some("rows"),
+            "devices",
+        ),
         ("7b older schema version", "s1.ecad", with_meta("schema_version", json!(1)), "schema-version", Some("rows"), "devices"),
         ("8 unreadable", "r.ecad", redb_junk, "unreadable", None, "tables"),
     ];

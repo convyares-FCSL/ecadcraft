@@ -1,7 +1,7 @@
 //! Terminal block levels through MCP: on a project saved
 //! at a path with spaces and non-ASCII letters, every new or changed write (`connection_points` with type
 //! and level, `place` of a level starter, `terminalblocklabel`, `toposition`, `jumper` with levels,
-//! `setprop` of `term_label.*`, `rating.*`, `part_number.<code>`, offers with codes, `link.*`
+//! `setprop` of `block_label.*`, `rating.*`, `part_number.<code>`, offers with codes, `link.*`
 //! with levels, `projectprops strip_<code>_part_number` and the registry keys) records one
 //! transaction by `Author::Agent(<client>)`; hostile input is refused and records nothing;
 //! `stripplan`, `bom`, `checks` and `defaults {group: "Terminals"}` read and record nothing;
@@ -78,7 +78,7 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
             ("terminalblocks", json!({"strip": x1, "type": "LNPE", "level": "N", "from": [190, 200], "to": [230, 200]}), &[]),
             ("place", json!({"symbol": "termlnpe.3", "at": [300, 200], "device": x1}), &[]),
             ("terminalblocks", json!({"strip": x1, "type": "LNPE", "level": "PE", "position": "2", "from": [305, 200], "to": [315, 200]}), &[]),
-            ("setprop", json!({"component": x1, "key": "term_label.1.1", "value": "L1"}), &["term_label.1.1"]),
+            ("setprop", json!({"component": x1, "key": "block_label.1.1", "value": "L1"}), &["block_label.1.1"]),
             ("setprop", json!({"component": x1, "key": "part_number.lnpe", "value": "LNPE-1"}), &["part_number.lnpe"]),
             ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "3LNPE+2x3"}), &["terminal_blocks"]),
             ("setprop", json!({"component": x1, "key": "jumper_bar.1", "value": "1.2-3.2"}), &["jumper_bar.1"]),
@@ -166,7 +166,7 @@ fn level_writes_by_the_agent_then_refused_with_writes_off() {
         ("terminalblocklabel", json!({"connection_point": t, "text": "X"})),
         ("toposition", json!({"device": fuse, "strip": x2})),
         ("jumper", json!({"strip": x1, "positions": "1.3-2.3"})),
-        ("setprop", json!({"component": x1, "key": "term_label.1.2", "value": "N"})),
+        ("setprop", json!({"component": x1, "key": "block_label.1.2", "value": "N"})),
         ("setprop", json!({"component": x2, "key": "rating.3", "value": "6A"})),
         ("setprop", json!({"component": x1, "key": "part_number.lnpe", "value": "X"})),
         ("setprop", json!({"component": x1, "key": "terminal_blocks", "value": "4LNPE"})),
