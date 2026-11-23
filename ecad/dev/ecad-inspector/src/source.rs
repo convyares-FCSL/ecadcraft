@@ -1,4 +1,4 @@
-﻿//! Where the protocol reads from: a [`Source`]. Today a
+//! Where the protocol reads from: a [`Source`]. Today a
 //! [`FileSource`], a `.ecad` file opened read-only by path or from dropped bytes. A live app
 //! session can be another source later.
 
