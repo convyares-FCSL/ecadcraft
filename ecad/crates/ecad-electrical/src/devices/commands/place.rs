@@ -22,7 +22,7 @@ use crate::symbols::{Side, Starter};
 pub fn device_id(device: Option<&str>) -> Result<Option<DeviceId>, CmdError> {
     match device {
         None => Ok(None),
-        Some(t) => u128::from_str_radix(t.trim(), 16).map(|n| Some(DeviceId::from(n))).map_err(|_| CmdError::input("`device` (hex id) is required")),
+        Some(t) => DeviceId::parse(t).map(Some).ok_or_else(|| CmdError::input("`device` must be a device ID (32 hex digits)")),
     }
 }
 

@@ -7,6 +7,23 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// The value of an ID written as text: exactly 32 hex digits (either case), nothing else. No sign, no
+/// surrounding space, no shorter form: `"+A1"`, `" 0a…"` and `"a1"` are not IDs. Every reader of an ID
+/// from text (JSON, command parameters, stored keys, block names) goes through this.
+///
+/// # Example
+/// ```rust
+/// assert_eq!(ecad_model::hex_id("0000000000000000000000000000002a"), Some(42));
+/// assert_eq!(ecad_model::hex_id("2a"), None);
+/// assert_eq!(ecad_model::hex_id("+000000000000000000000000000002a"), None);
+/// ```
+pub fn hex_id(text: &str) -> Option<u128> {
+    if text.len() != 32 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    u128::from_str_radix(text, 16).ok()
+}
+
 macro_rules! typed_id {
     ($(#[$doc:meta])* $name:ident, $prefix:literal) => {
         $(#[$doc])*
@@ -25,7 +42,7 @@ macro_rules! typed_id {
         impl<'de> Deserialize<'de> for $name {
             fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let text = String::deserialize(d)?;
-                u128::from_str_radix(&text, 16).map(Self).map_err(serde::de::Error::custom)
+                hex_id(&text).map(Self).ok_or_else(|| serde::de::Error::custom(format!("{text:?} is not an ID (32 hex digits)")))
             }
         }
 
@@ -40,14 +57,14 @@ macro_rules! typed_id {
             }
 
             fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-                schemars::json_schema!({"type": "string", "format": "hex-id", "pattern": "^[0-9a-fA-F]{1,32}$"})
+                schemars::json_schema!({"type": "string", "format": "hex-id", "pattern": "^[0-9a-fA-F]{32}$"})
             }
         }
 
         impl $name {
-            /// Parse the 32-hex-digit form.
+            /// Parse the 32-hex-digit form ([`hex_id`]).
             pub fn parse(text: &str) -> Option<Self> {
-                u128::from_str_radix(text.trim(), 16).ok().map(Self)
+                hex_id(text).map(Self)
             }
 
             /// The full 32-hex-digit form.
@@ -91,13 +108,13 @@ typed_id!(/// A layer.
     LayerId, "lyr");
 typed_id!(/// A drawn item: a primitive or a symbol instance.
     ItemId, "itm");
-typed_id!(/// A component.
+typed_id!(/// A device.
     DeviceId, "cmp");
-typed_id!(/// A terminal of a component.
+typed_id!(/// A connection point of a device.
     ConnectionPointId, "trm");
-typed_id!(/// A representation (depiction) of a component, conductor or cable.
+typed_id!(/// A representation (depiction) of a device, wire or cable.
     RepresentationId, "rep");
-typed_id!(/// A conductor.
+typed_id!(/// A wire.
     WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");

@@ -25,7 +25,7 @@ pub(crate) fn block_name(def: DefinitionId) -> String {
 
 /// Definition for a block name, if it is one of ours.
 pub(crate) fn definition_of_block(name: &str) -> Option<DefinitionId> {
-    name.strip_prefix(ECAD_PREFIX).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DefinitionId)
+    name.strip_prefix(ECAD_PREFIX).and_then(DefinitionId::parse)
 }
 
 fn v3(p: Pt) -> Vec3 {

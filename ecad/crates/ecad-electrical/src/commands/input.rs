@@ -320,13 +320,16 @@ mod tests {
             (json!(5), NOT_AN_OBJECT),
             (json!({"conductor": 5}), "`conductor` must be a hex id"),
             (json!({"conductor": "zz"}), "`conductor` must be a hex id"),
-            (json!({"conductor": "1", "at": "here"}), "`at` must be a point [x, y], or null"),
-            (json!({"conductor": "1", "on": 1}), "`on` must be true or false, or null"),
-            (json!({"conductor": "1", "value": 1}), "`value` must be text, or null"),
-            (json!({"conductor": "1", "many": ["1", "2", "3"]}), "`many` takes at most 2 entries"),
-            (json!({"conductor": "1", "many": ["x"]}), "`many` must be a list of hex ids, or null"),
+            (json!({"conductor": "00000000000000000000000000000001", "at": "here"}), "`at` must be a point [x, y], or null"),
+            (json!({"conductor": "00000000000000000000000000000001", "on": 1}), "`on` must be true or false, or null"),
+            (json!({"conductor": "00000000000000000000000000000001", "value": 1}), "`value` must be text, or null"),
             (
-                json!({"conductor": "1", "colour": 1}),
+                json!({"conductor": "00000000000000000000000000000001", "many": ["00000000000000000000000000000001", "00000000000000000000000000000002", "00000000000000000000000000000003"]}),
+                "`many` takes at most 2 entries",
+            ),
+            (json!({"conductor": "00000000000000000000000000000001", "many": ["x"]}), "`many` must be a list of hex ids, or null"),
+            (
+                json!({"conductor": "00000000000000000000000000000001", "colour": 1}),
                 "`colour` is not a parameter of this command; it takes `at`, `conductor`, `many`, `on`, `value`",
             ),
         ];
@@ -338,7 +341,7 @@ mod tests {
     #[test]
     fn a_long_unknown_name_is_cut() {
         let mut o = Map::new();
-        o.insert("conductor".into(), json!("1"));
+        o.insert("conductor".into(), json!("00000000000000000000000000000001"));
         o.insert("y".repeat(10_000), json!(1));
         let e = says(Value::Object(o)).unwrap_or_default();
         assert!(e.starts_with(&format!("`{}\u{2026}` is not a parameter", "y".repeat(MAX_NAME_SHOWN))), "{e}");
@@ -363,9 +366,9 @@ mod tests {
 
     #[test]
     fn null_and_absent_differ() {
-        let p = parse::<P>(&json!({"conductor": "1", "value": null})).ok().map(|p| p.value);
+        let p = parse::<P>(&json!({"conductor": "00000000000000000000000000000001", "value": null})).ok().map(|p| p.value);
         assert_eq!(p, Some(Some(None)));
-        let p = parse::<P>(&json!({"conductor": "1"})).ok().map(|p| p.value);
+        let p = parse::<P>(&json!({"conductor": "00000000000000000000000000000001"})).ok().map(|p| p.value);
         assert_eq!(p, Some(None));
     }
 }

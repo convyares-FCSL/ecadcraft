@@ -83,7 +83,7 @@ impl Wire {
             Ok(attached
                 .iter()
                 .map(|(end, t)| {
-                    let name = u128::from_str_radix(t, 16).map_or_else(|_| t.clone(), |t| connection_point_name(doc, t.into()));
+                    let name = ecad_model::hex_id(t).map_or_else(|| t.clone(), |t| connection_point_name(doc, t.into()));
                     (end.clone(), name)
                 })
                 .collect::<Vec<_>>())

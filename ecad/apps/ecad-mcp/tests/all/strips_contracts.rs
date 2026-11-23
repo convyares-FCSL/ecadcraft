@@ -94,9 +94,9 @@ fn with_writes_off_the_strip_writes_are_refused_and_the_reads_work() {
     for (cmd, params) in [
         ("place", json!({"symbol": "terminal_block", "at": [0, 0]})),
         ("terminalblocks", json!({"from": [0, 0], "to": [10, 0]})),
-        ("bridge", json!({"from": "1", "to": "2"})),
-        ("setprop", json!({"component": "1", "key": "terminal_blocks", "value": "12"})),
-        ("setprop", json!({"cable": "1", "key": "cores", "value": "7G"})),
+        ("bridge", json!({"from": "00000000000000000000000000000001", "to": "00000000000000000000000000000002"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "terminal_blocks", "value": "12"})),
+        ("setprop", json!({"cable": "00000000000000000000000000000001", "key": "cores", "value": "7G"})),
         ("newpage", json!({"generated": "terminal_blocks"})),
         ("renumber", json!({"kind": "terminal_blocks"})),
     ] {
@@ -105,7 +105,7 @@ fn with_writes_off_the_strip_writes_are_refused_and_the_reads_work() {
     }
     let plan = c.exec("stripplan", json!({}));
     assert_eq!(plan["strips"], json!([]));
-    let m = c.refused("execute", json!({"command": "cablecores", "params": {"cable": "1"}}));
+    let m = c.refused("execute", json!({"command": "cablecores", "params": {"cable": "00000000000000000000000000000001"}}));
     assert!(m.contains("no such cable"), "{m}");
     c.exec("cablelist", json!({}));
     c.exec("checks", json!({}));

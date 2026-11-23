@@ -204,7 +204,7 @@ pub(crate) fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> 
     let mut keyed: Vec<((u8, u128), NetKey)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
     keyed.sort();
     if let Some(a) = &q.after {
-        let cursor = u128::from_str_radix(a.trim(), 16).map_err(|_| CmdError::input("`after` must be a cursor from `next`"))?;
+        let cursor = ecad_model::hex_id(a).ok_or_else(|| CmdError::input("`after` must be a cursor from `next`"))?;
         keyed.retain(|((_, k), _)| *k > cursor);
     }
     let more = keyed.len() > q.limit;

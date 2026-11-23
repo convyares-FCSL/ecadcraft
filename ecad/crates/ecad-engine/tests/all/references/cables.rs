@@ -574,7 +574,7 @@ fn json_forms_of_the_reference_and_page_commands() {
         (r.supply, "cablegoto", json!({"reference": "<Supply's reference>"}), Err("this reference has no other end"), 0),
         (r.field, "cablecontinue", json!({"cable": c1, "at": [20, 5], "toward": [40, 5]}), Ok(r#""text":"1/F2""#), 1),
         (r.field, "cablereferences", json!({}), Ok(r#""text":"2/F1""#), 0),
-        (r.field, "cablegoto", json!({"reference": "0"}), Err("no such reference"), 0),
+        (r.field, "cablegoto", json!({"reference": "00000000000000000000000000000000"}), Err("no such reference"), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "  Supply  "}), Ok(r#""changed":false"#), 0),
         (r.field, "renamepage", json!({"page": supply, "title": "Source"}), Ok(r#""changed":true"#), 1),
         (r.field, "movepage", json!({"page": field, "index": 2}), Ok(r#""changed":false"#), 0),
@@ -615,11 +615,11 @@ fn hostile_input_is_refused_in_words() {
     let c1 = r.c1.hex();
     let page = r.supply.hex();
     let w0 = r.w[0].hex();
-    let many: Vec<String> = (0..10_001).map(|i| format!("{i:x}")).collect();
+    let many: Vec<String> = (0..10_001).map(|i| format!("{i:032x}")).collect();
     let rows: Vec<(&str, Value, &str)> = vec![
         ("cablereference", json!({"at": [0, 0]}), "`cable` (hex id) is required"),
         ("cablereference", json!({"cable": "zz", "at": [0, 0]}), "`cable` must be a hex id"),
-        ("cablereference", json!({"cable": "1", "at": [0, 0]}), "no such cable"),
+        ("cablereference", json!({"cable": "00000000000000000000000000000001", "at": [0, 0]}), "no such cable"),
         ("cablereference", json!({"cable": c1}), "`at` (point [x, y]) is required"),
         ("cablereference", json!({"cable": c1, "at": [f64::NAN, 0]}), "`at` must be a point [x, y]"),
         ("cablereference", json!({"cable": c1, "at": [1e13, 0]}), "is not a finite [x,y] point"),
@@ -632,13 +632,13 @@ fn hostile_input_is_refused_in_words() {
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": w0}), "no such reference"),
         ("cablereferences", json!({"cable": "nope"}), "`cable` must be a hex id, or null"),
-        ("cablereferences", json!({"cable": "1"}), "no such cable"),
+        ("cablereferences", json!({"cable": "00000000000000000000000000000001"}), "no such cable"),
         ("renamepage", json!({"page": page, "title": ""}), "`title` must be a non-empty string of at most 200 characters"),
         ("renamepage", json!({"page": page, "title": "   "}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": "x".repeat(10_000)}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": "a\u{7}b"}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": page, "title": 5}), "`title` must be text"),
-        ("renamepage", json!({"page": "1", "title": "x"}), "no such page"),
+        ("renamepage", json!({"page": "00000000000000000000000000000001", "title": "x"}), "no such page"),
         ("renamepage", json!({"title": "x"}), "`page` (hex id) is required"),
         ("movepage", json!({"page": page, "index": 0}), "`index` must be a whole number from 1 to 2"),
         ("movepage", json!({"page": page, "index": -1}), "`index` must be a whole number, or null"),
@@ -646,7 +646,7 @@ fn hostile_input_is_refused_in_words() {
         ("movepage", json!({"page": page, "index": "x"}), "`index` must be a whole number, or null"),
         ("movepage", json!({"page": page, "index": 1.5}), "`index` must be a whole number, or null"),
         ("movepage", json!({"page": page}), "`index` must be a whole number from 1 to 2"),
-        ("movepage", json!({"page": "1", "index": 1}), "no such page"),
+        ("movepage", json!({"page": "00000000000000000000000000000001", "index": 1}), "no such page"),
     ];
     for (cmd, params, want) in rows {
         let head = r.h.head();

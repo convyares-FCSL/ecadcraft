@@ -694,7 +694,7 @@ pub(super) fn merge_style_layer(
 
 /// The object with ID `hex` in any of `docs`.
 pub(super) fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
-    let id = u128::from_str_radix(hex, 16).ok()?;
+    let id = crate::naming::id::hex_id(hex)?;
     docs.iter().find_map(|d| {
         use crate::naming::id::*;
         [

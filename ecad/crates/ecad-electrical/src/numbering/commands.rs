@@ -67,7 +67,7 @@ const MAX_PAGES: usize = 100_000;
 
 /// The ID hex `t` writes, else the refusal naming it in `list`.
 fn hex(t: &str, list: &str) -> Result<u128, CmdError> {
-    u128::from_str_radix(t.trim(), 16).map_err(|_| CmdError::input(format!("`{t:?}` in `{list}` is not a valid hex id")))
+    ecad_model::hex_id(t).ok_or_else(|| CmdError::input(format!("`{t:?}` in `{list}` is not an ID (32 hex digits)")))
 }
 
 /// The scope of a renumber.

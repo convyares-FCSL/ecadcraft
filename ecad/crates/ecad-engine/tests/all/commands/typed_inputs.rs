@@ -56,15 +56,15 @@ fn the_wire_commands_refuse_input_uniformly() {
         ("wire", json!({"points": [[0, 0], [9, 0]], "join": 1}), "`join` must be true or false, or null"),
         ("nets", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
         ("net", json!({"conductor": "zz"}), "`conductor` must be a hex id, or null"),
-        ("wirenumber", json!({"conductor": "1"}), "`value` (text, or null) is required"),
-        ("wirenumber", json!({"conductor": "1", "value": 3}), "`value` must be text, or null"),
+        ("wirenumber", json!({"conductor": "00000000000000000000000000000001"}), "`value` (text, or null) is required"),
+        ("wirenumber", json!({"conductor": "00000000000000000000000000000001", "value": 3}), "`value` must be text, or null"),
         (
             "wirenumber",
-            json!({"conductor": "1", "value": "7", "conflict": "x"}),
+            json!({"conductor": "00000000000000000000000000000001", "value": "7", "conflict": "x"}),
             "`conflict` must be one of \"swap\", \"another\", \"merge\", or null",
         ),
         ("potential", json!({}), "`conductor` (hex id) is required"),
-        ("potential", json!({"conductor": "1"}), "`value` (text, or null) is required"),
+        ("potential", json!({"conductor": "00000000000000000000000000000001"}), "`value` (text, or null) is required"),
         ("category", json!({"conductors": "1", "value": null}), "`conductors` must be a list of hex ids, or null"),
         ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
         ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
@@ -89,11 +89,15 @@ fn the_wire_commands_keep_their_rule_words() {
         ),
         ("nets", json!({"after": "zz"}), "`after` must be a cursor from `next`"),
         ("net", json!({}), "one of `conductor`, `connection_point` or `number` is required"),
-        ("net", json!({"conductor": "1"}), "No such wire."),
-        ("net", json!({"connection_point": "1"}), "No such connection point."),
+        ("net", json!({"conductor": "00000000000000000000000000000001"}), "No such wire."),
+        ("net", json!({"connection_point": "00000000000000000000000000000001"}), "No such connection point."),
         ("net", json!({"number": "999"}), "no net has number 999"),
-        ("wirenumber", json!({"conductor": "1", "value": "a b"}), "A wire number has no spaces or control characters."),
-        ("potential", json!({"conductor": "1", "value": "24V"}), "No such wire."),
+        (
+            "wirenumber",
+            json!({"conductor": "00000000000000000000000000000001", "value": "a b"}),
+            "A wire number has no spaces or control characters.",
+        ),
+        ("potential", json!({"conductor": "00000000000000000000000000000001", "value": "24V"}), "No such wire."),
         ("category", json!({"value": null}), "Give one of `conductor`, `net` or `conductors`."),
         ("wiresettings", json!({"digits": 9}), "`digits` must be 1 to 6"),
         ("wiresettings", json!({"potentials": [{"name": "24V", "colour": "RD"}]}), ecad_electrical::msg::CATEGORY_COLOURS),
@@ -140,7 +144,7 @@ fn the_sheet_commands_refuse_input_uniformly() {
         ("newfolder", json!({}), "`name` (text) is required"),
         ("newfolder", json!({"name": 5}), "`name` must be text"),
         ("renamefolder", json!({"name": "x"}), "`folder` (hex id) is required"),
-        ("movefolder", json!({"folder": "1"}), "`parent` (hex id, or null) is required"),
+        ("movefolder", json!({"folder": "00000000000000000000000000000001"}), "`parent` (hex id, or null) is required"),
         ("deletefolder", json!({"folder": "zz"}), "`folder` must be a hex id"),
         ("pageprops", json!({"number": 5}), "`number` must be text, or null"),
         ("projectprops", json!({"tag_dash": "yes"}), "`tag_dash` must be true or false, or null"),
@@ -164,8 +168,8 @@ fn the_sheet_commands_refuse_input_uniformly() {
 fn the_sheet_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("newfolder", json!({"name": " "}), ecad_electrical::msg::FOLDER_NAME),
-        ("newfolder", json!({"name": "A", "parent": "1"}), "no such folder"),
-        ("movefolder", json!({"folder": "1", "parent": null}), "no such folder"),
+        ("newfolder", json!({"name": "A", "parent": "00000000000000000000000000000001"}), "no such folder"),
+        ("movefolder", json!({"folder": "00000000000000000000000000000001", "parent": null}), "no such folder"),
         ("pageprops", json!({"title": null}), ecad_electrical::msg::PAGE_TITLE),
         ("pageprops", json!({"generated": "bom"}), ecad_electrical::pages::generated::KIND_FIXED),
         ("pageprops", json!({"number": "a b"}), "A page number is 1 to 12 letters, digits or _ (no spaces, `.`, `-` or `/`)."),
@@ -291,7 +295,7 @@ fn the_text_commands_refuse_input_uniformly() {
         ("showtext", json!({"show": "on"}), "`kind` (text) is required"),
         ("showtext", json!({"kind": "tag"}), "`show` (text, or null) is required"),
         ("movetext", json!({"to": [1, 2]}), "`representation` (hex id) is required"),
-        ("movetext", json!({"representation": "1", "to": [1]}), "`to` must be a point [x, y], or null"),
+        ("movetext", json!({"representation": "00000000000000000000000000000001", "to": [1]}), "`to` must be a point [x, y], or null"),
         ("hiddentext", json!({"on": "yes"}), "`on` must be true or false, or null"),
         ("pagetexts", json!({"page": "zz"}), "`page` must be a hex id, or null"),
         ("defaults", json!({"group": 1}), "`group` must be text, or null"),
@@ -313,14 +317,22 @@ fn the_text_commands_keep_their_rule_words() {
         ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_electrical::styles::commands::text::BAD_SHOW),
         (
             "showtext",
-            json!({"kind": "tag", "show": "on", "page": "1", "component": "2"}),
+            json!({"kind": "tag", "show": "on", "page": "00000000000000000000000000000001", "component": "00000000000000000000000000000002"}),
             "Name at most one of representation, component, conductor and page.",
         ),
-        ("showtext", json!({"kind": "tag", "show": "on", "page": "1"}), "No page 00000000000000000000000000000001."),
-        ("movetext", json!({"representation": "1"}), ecad_electrical::styles::commands::text::BAD_POINT),
-        ("movetext", json!({"representation": "1", "to": [1, 2], "justify": "XX"}), ecad_electrical::styles::commands::text::BAD_JUSTIFY),
-        ("movetext", json!({"representation": "1", "to": [1, 2]}), "No representation 00000000000000000000000000000001."),
-        ("pagetexts", json!({"page": "1"}), "No page 00000000000000000000000000000001."),
+        ("showtext", json!({"kind": "tag", "show": "on", "page": "00000000000000000000000000000001"}), "No page 00000000000000000000000000000001."),
+        ("movetext", json!({"representation": "00000000000000000000000000000001"}), ecad_electrical::styles::commands::text::BAD_POINT),
+        (
+            "movetext",
+            json!({"representation": "00000000000000000000000000000001", "to": [1, 2], "justify": "XX"}),
+            ecad_electrical::styles::commands::text::BAD_JUSTIFY,
+        ),
+        (
+            "movetext",
+            json!({"representation": "00000000000000000000000000000001", "to": [1, 2]}),
+            "No representation 00000000000000000000000000000001.",
+        ),
+        ("pagetexts", json!({"page": "00000000000000000000000000000001"}), "No page 00000000000000000000000000000001."),
         ("defaults", json!({"key": "no.such"}), "No default \"no.such\"."),
     ];
     let mut h = H::new(7012);
@@ -517,8 +529,8 @@ fn the_symbol_commands_refuse_input_uniformly() {
         ("symbolnew", json!({"defaults": {"prefix": 5}}), "`defaults` must be an object, or null"),
         ("symbolnew", json!({"from": "zz"}), "`from` must be a hex id, or null"),
         ("symbolimpact", json!({}), "`definition` (hex id) is required"),
-        ("symboledit", json!({"definition": "1", "copies": "x"}), "`copies` must be a list of hex ids, or null"),
-        ("symboledit", json!({"definition": "1", "update": 5}), "`update` must be text, or null"),
+        ("symboledit", json!({"definition": "00000000000000000000000000000001", "copies": "x"}), "`copies` must be a list of hex ids, or null"),
+        ("symboledit", json!({"definition": "00000000000000000000000000000001", "update": 5}), "`update` must be text, or null"),
         ("symbolupdate", json!({"lineage": "zz"}), "`lineage` must be a hex id, or null"),
         ("makesymbol", json!({"at": [1]}), "`at` must be a point [x, y], or null"),
         ("symbolupdate", json!({"colour": 1}), "`colour` is not a parameter of this command; it takes `copies`, `lineage`, `to`"),
@@ -540,13 +552,13 @@ fn the_symbol_commands_keep_their_rule_words() {
         ("symbolnew", json!({"slots": [{"text": "tag"}]}), "The tag slot needs `at` [x, y]."),
         ("symbolnew", json!({"graphics": [{"kind": "nope"}]}), "A shape could not be read: "),
         ("symbolnew", float_switch(json!({"key": "coil"})), "The key coil is a built-in symbol's; choose another."),
-        ("symboledit", json!({"definition": "1", "update": "x"}), "`update` is all, selected, none or new."),
-        ("symboledit", json!({"definition": "1"}), "No such symbol."),
+        ("symboledit", json!({"definition": "00000000000000000000000000000001", "update": "x"}), "`update` is all, selected, none or new."),
+        ("symboledit", json!({"definition": "00000000000000000000000000000001"}), "No such symbol."),
         ("symbolupdate", json!({}), "Name the `copies` or the `lineage` to update."),
         ("symbolupdate", json!({"copies": []}), "Name a placed copy or a lineage."),
         ("makesymbol", json!({"handles": []}), "Select the lines, arcs and texts to make a symbol of."),
         ("makesymbol", json!({"handles": ["zz"]}), "`\"zz\"` is not a valid handle"),
-        ("makesymbol", json!({"component": "1"}), "No such device."),
+        ("makesymbol", json!({"component": "00000000000000000000000000000001"}), "No such device."),
     ];
     let mut h = H::new(7021);
     for (cmd, params, says) in rows {
@@ -584,12 +596,12 @@ fn the_reference_commands_refuse_input_uniformly() {
         ("references", json!({"after": -1}), "`after` must be a whole number, or null"),
         ("references", json!({"cable": "zz"}), "`cable` must be a hex id, or null"),
         ("contacts", json!({}), "`component` (hex id) is required"),
-        ("refgoto", json!({"target": "1"}), "`source` (hex id) is required"),
-        ("mirrormove", json!({"component": "1", "at": [1]}), "`at` must be a point [x, y], or null"),
-        ("mirrormove", json!({"component": "1", "placement": 5}), "`placement` must be text, or null"),
+        ("refgoto", json!({"target": "00000000000000000000000000000001"}), "`source` (hex id) is required"),
+        ("mirrormove", json!({"component": "00000000000000000000000000000001", "at": [1]}), "`at` must be a point [x, y], or null"),
+        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": 5}), "`placement` must be text, or null"),
         (
             "mirrormove",
-            json!({"component": "1", "side": "left"}),
+            json!({"component": "00000000000000000000000000000001", "side": "left"}),
             "`side` is not a parameter of this command; it takes `at`, `component`, `placement`",
         ),
     ];
@@ -606,8 +618,8 @@ fn the_reference_commands_keep_their_rule_words() {
     let k = h.run("place", json!({"symbol": "coil", "at": [50, 50]})).unwrap_or(Value::Null);
     let c = k["component"].as_str().unwrap_or_default().to_string();
     let rows: &[(&str, Value, &str)] = &[
-        ("refgoto", json!({"source": "1"}), "no such reference"),
-        ("mirrormove", json!({"component": "1", "placement": "below"}), "no such component"),
+        ("refgoto", json!({"source": "00000000000000000000000000000001"}), "no such reference"),
+        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": "below"}), "no such component"),
         ("mirrormove", json!({"component": c, "at": [1, 1], "placement": "below"}), "give `at` or `placement`, not both"),
         ("mirrormove", json!({"component": c}), "`at` ([x, y]) or `placement` (auto, below, right, off) is required"),
         ("mirrormove", json!({"component": c, "at": [99999, 0]}), "Put the table within 2000 mm of its coil."),
@@ -642,11 +654,11 @@ fn the_terminal_block_commands_refuse_input_uniformly() {
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "pe": "yes"}), "`pe` must be true or false, or null"),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "type": 2}), "`type` must be text, or null"),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "strip": "zz"}), "`strip` must be a hex id, or null"),
-        ("bridge", json!({"from": "1"}), "`to` (hex id) is required"),
+        ("bridge", json!({"from": "00000000000000000000000000000001"}), "`to` (hex id) is required"),
         ("stripplan", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
         ("stripplan", json!({"accessories": 1}), "`accessories` must be true or false, or null"),
         ("cablecores", json!({}), "`cable` (hex id) is required"),
-        ("cablecores", json!({"cable": "1", "x": 1}), "`x` is not a parameter of this command; it takes `cable`"),
+        ("cablecores", json!({"cable": "00000000000000000000000000000001", "x": 1}), "`x` is not a parameter of this command; it takes `cable`"),
     ];
     let mut h = H::new(7026);
     for (cmd, params, says) in rows {
@@ -670,9 +682,9 @@ fn the_terminal_block_commands_keep_their_rule_words() {
             json!({"from": [0, 0], "to": [9, 9], "type": "x2", "level": "Q"}),
             "A two-level terminal has levels 1, 2. Type one of them, or All for the whole terminal.",
         ),
-        ("bridge", json!({"from": "1", "to": "2"}), "No such terminal block."),
-        ("stripplan", json!({"strip": "1"}), "No such terminal strip."),
-        ("cablecores", json!({"cable": "1"}), "no such cable"),
+        ("bridge", json!({"from": "00000000000000000000000000000001", "to": "00000000000000000000000000000002"}), "No such terminal block."),
+        ("stripplan", json!({"strip": "00000000000000000000000000000001"}), "No such terminal strip."),
+        ("cablecores", json!({"cable": "00000000000000000000000000000001"}), "no such cable"),
     ];
     let mut h = H::new(7027);
     for (cmd, params, says) in rows {
@@ -830,18 +842,22 @@ fn the_numbering_commands_keep_their_rule_words() {
             "`scope` must be \"all\", \"selection\", \"provisional\", {prefix}, {folder} or {pages}, not \"some\"",
         ),
         ("renumber", json!({"scope": "selection"}), "`objects` (array of hex ids) is required with scope \"selection\""),
-        ("renumber", json!({"scope": "selection", "objects": ["zz"]}), "`\"zz\"` in `objects` is not a valid hex id"),
-        ("renumber", json!({"scope": "selection", "objects": ["ab"]}), "ab in `objects` is not a device, cable or wire."),
+        ("renumber", json!({"scope": "selection", "objects": ["zz"]}), "`\"zz\"` in `objects` is not an ID (32 hex digits)"),
+        (
+            "renumber",
+            json!({"scope": "selection", "objects": ["000000000000000000000000000000ab"]}),
+            "000000000000000000000000000000ab in `objects` is not a device, cable or wire.",
+        ),
         ("renumber", json!({"scope": {"prefix": " "}}), "`prefix` must be letters, such as \"-K\", or a potential"),
-        ("renumber", json!({"scope": {"folder": "1"}}), "No such folder."),
-        ("renumber", json!({"scope": {"pages": ["1"]}}), "No page 00000000000000000000000000000001."),
+        ("renumber", json!({"scope": {"folder": "00000000000000000000000000000001"}}), "No such folder."),
+        ("renumber", json!({"scope": {"pages": ["00000000000000000000000000000001"]}}), "No page 00000000000000000000000000000001."),
         ("renumber", json!({"scope": {}}), "`scope` as an object is {prefix}, {folder: id} or {pages: [id]}"),
         ("renumber", json!({"digits": 300}), "Digits is a whole number from 1 to 6."),
         ("renumber", json!({"start": 0}), "Start is a whole number from 1."),
         (
             "renumber",
-            json!({"kind": "terminal_blocks", "scope": "selection", "strips": ["ab"]}),
-            "ab in `strips` is not a terminal strip or one of its terminal blocks.",
+            json!({"kind": "terminal_blocks", "scope": "selection", "strips": ["000000000000000000000000000000ab"]}),
+            "000000000000000000000000000000ab in `strips` is not a terminal strip or one of its terminal blocks.",
         ),
         ("finalise", json!({"based_on": 999}), "The project changed since the preview; check the new list and Apply again."),
     ];
@@ -957,7 +973,11 @@ fn the_rating_commands_refuse_input_uniformly() {
 fn the_rating_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("rating", json!({}), "Give `wire` (a wire number or conductor ID) or `cable` (a tag or ID)."),
-        ("rating", json!({"wire": "1", "cable": "2"}), "Give `wire` or `cable`, not both."),
+        (
+            "rating",
+            json!({"wire": "00000000000000000000000000000001", "cable": "00000000000000000000000000000002"}),
+            "Give `wire` or `cable`, not both.",
+        ),
         ("rating", json!({"wire": "W99"}), "No panel wire \"W99\" (give a wire number or a conductor ID;"),
         ("rating", json!({"cable": "-W9"}), "No cable \"-W9\"."),
         ("rating", json!({"many": [{"wire": "W99"}]}), "No panel wire \"W99\""),
@@ -967,7 +987,11 @@ fn the_rating_commands_keep_their_rule_words() {
         ("rating", json!({"location": "+CAB1"}), "Give `temperature` (\u{b0}C), or null to clear it."),
         ("rating", json!({"location": "+CAB1", "temperature": 200}), "temperature is \u{2212}40 to 90 \u{b0}C."),
         ("rating", json!({"location": "+CAB1", "temperature": 30}), "No location box is +CAB1; draw one with Location Box first."),
-        ("ratings", json!({"wire": "1", "cable": "2"}), "Give `wire` or `cable`, not both."),
+        (
+            "ratings",
+            json!({"wire": "00000000000000000000000000000001", "cable": "00000000000000000000000000000002"}),
+            "Give `wire` or `cable`, not both.",
+        ),
         ("ratingtable", json!({}), "Give `csv` (the rows), `import` (a CSV file) or `export` (a CSV file)."),
         ("ratingtable", json!({"csv": "", "import": "x.csv"}), "Give `csv` or `import`, not both."),
         ("ratingtable", json!({"export": "never-written.csv"}), "No rating table chosen; give `name`."),
@@ -1005,9 +1029,9 @@ fn the_typed_rating_commands_still_work() {
 fn the_bom_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("partline", json!({"component": "zz"}), "`component` must be a hex id, or null"),
-        ("partline", json!({"component": "1", "add": 5}), "`add` must be a list of objects, or null"),
-        ("partline", json!({"component": "1", "line": "x"}), "`line` must be a whole number, or null"),
-        ("partline", json!({"component": "1", "remove": "yes"}), "`remove` must be true or false, or null"),
+        ("partline", json!({"component": "00000000000000000000000000000001", "add": 5}), "`add` must be a list of objects, or null"),
+        ("partline", json!({"component": "00000000000000000000000000000001", "line": "x"}), "`line` must be a whole number, or null"),
+        ("partline", json!({"component": "00000000000000000000000000000001", "remove": "yes"}), "`remove` must be true or false, or null"),
         ("bomitem", json!({"description": true}), "`description` must be text, or null"),
         ("bomitem", json!({"colour": "red"}), "`colour` is not a parameter of this command; it takes "),
         ("article", json!({"article_number": "A1"}), "`part_number` (text) is required"),
@@ -1029,7 +1053,11 @@ fn the_bom_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("partline", json!({"add": {"maker": "M"}}), "`component` or `devices` (hex id) is required"),
         ("partline", json!({"devices": [], "add": {"maker": "M"}}), "`devices` is empty"),
-        ("partline", json!({"component": "ab", "add": {"maker": "M"}}), "No component 000000000000000000000000000000ab."),
+        (
+            "partline",
+            json!({"component": "000000000000000000000000000000ab", "add": {"maker": "M"}}),
+            "No component 000000000000000000000000000000ab.",
+        ),
         ("partline", json!({"component": k, "add": []}), "`add` names no line"),
         ("partline", json!({"component": k, "add": {"kit": "K"}}), "`kit` is not a part line field. Use part_number,"),
         (
@@ -1080,11 +1108,15 @@ fn the_typed_bom_commands_still_work() {
 #[test]
 fn the_location_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("setlocation", json!({"component": "1"}), "`value` (text, or null) is required"),
-        ("setlocation", json!({"component": "1", "value": 5}), "`value` must be text, or null"),
+        ("setlocation", json!({"component": "00000000000000000000000000000001"}), "`value` (text, or null) is required"),
+        ("setlocation", json!({"component": "00000000000000000000000000000001", "value": 5}), "`value` must be text, or null"),
         ("setlocation", json!({"devices": "1", "value": null}), "`devices` must be a list of hex ids, or null"),
-        ("setlocation", json!({"component": "1", "value": null, "type": 3}), "`type` must be text, or null"),
-        ("setfunction", json!({"component": "1", "value": "=F1", "aspect": "location"}), "`aspect` is not a parameter of this command; it takes "),
+        ("setlocation", json!({"component": "00000000000000000000000000000001", "value": null, "type": 3}), "`type` must be text, or null"),
+        (
+            "setfunction",
+            json!({"component": "00000000000000000000000000000001", "value": "=F1", "aspect": "location"}),
+            "`aspect` is not a parameter of this command; it takes ",
+        ),
         ("conflicts", json!({"answer": 1}), "`answer` must be text, or null"),
         ("conflicts", json!({"devices": ["zz"]}), "`devices` must be a list of hex ids, or null"),
     ];
@@ -1105,7 +1137,7 @@ fn the_location_commands_keep_their_rule_words() {
         ("setlocation", json!({"component": k, "value": "+CP1", "aspect": "place"}), "`aspect` is \"location\" or \"function\""),
         ("setlocation", json!({"component": k, "value": "=F1", "aspect": "function", "type": "plug"}), "A function has no overrides"),
         ("setlocation", json!({"component": k, "value": "+CP1", "type": "head"}), "The head is the device; set the device's location."),
-        ("setlocation", json!({"component": "ab", "value": "+CP1"}), "no such device"),
+        ("setlocation", json!({"component": "000000000000000000000000000000ab", "value": "+CP1"}), "no such device"),
         ("setfunction", json!({"component": k, "value": "=F1", "type": "plug"}), "A function has no overrides: a device's parts share its function."),
         ("conflicts", json!({"answer": "maybe"}), "`answer` is \"move\", \"half\" or \"leave\""),
         ("conflicts", json!({"aspect": "x"}), "`aspect` is \"location\" or \"function\""),
@@ -1206,10 +1238,14 @@ fn the_typed_title_block_commands_still_work() {
 fn the_page_type_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("folderprops", json!({}), "`folder` (hex id) is required"),
-        ("folderprops", json!({"folder": "1", "start": 100}), "`start` must be text, or null"),
+        ("folderprops", json!({"folder": "00000000000000000000000000000001", "start": 100}), "`start` must be text, or null"),
         ("renumberpages", json!({"folder": "zz"}), "`folder` must be a hex id, or null"),
         ("deletepage", json!({"pages": "1"}), "`pages` must be a list of hex ids, or null"),
-        ("deletepage", json!({"page": "1", "all": true}), "`all` is not a parameter of this command; it takes `page`, `pages`"),
+        (
+            "deletepage",
+            json!({"page": "00000000000000000000000000000001", "all": true}),
+            "`all` is not a parameter of this command; it takes `page`, `pages`",
+        ),
     ];
     let mut h = H::new(7051);
     for (cmd, params, says) in rows {
@@ -1226,11 +1262,11 @@ fn the_page_type_commands_keep_their_rule_words() {
     let first = h.first_page().hex();
     let rows: &[(&str, Value, &str)] = &[
         ("folderprops", json!({"folder": f, "start": "1234567"}), "A start number is 1 to 6 digits."),
-        ("folderprops", json!({"folder": "ab"}), "no such folder"),
-        ("renumberpages", json!({"folder": "ab"}), "no such folder"),
+        ("folderprops", json!({"folder": "000000000000000000000000000000ab"}), "no such folder"),
+        ("renumberpages", json!({"folder": "000000000000000000000000000000ab"}), "no such folder"),
         ("deletepage", json!({}), "`page` (hex id) is required"),
         ("deletepage", json!({"pages": []}), "Give the page to delete."),
-        ("deletepage", json!({"page": "ab"}), "no such page"),
+        ("deletepage", json!({"page": "000000000000000000000000000000ab"}), "no such page"),
         ("deletepage", json!({"page": first}), "Deleting a drawn page comes later; move its content first."),
     ];
     for (cmd, params, says) in rows {
@@ -1289,9 +1325,13 @@ fn the_connector_commands_keep_their_rule_words() {
         ("connector", json!({"at": [0, 0], "pins": 99}), "`pins` is a whole number from 1 to 64."),
         ("connector", json!({"at": [0, 0], "layout": "x"}), "`layout` is row or pins"),
         ("connector", json!({"layout": "row", "family": "plain"}), "connector needs at for a row, or line or wire for pins."),
-        ("connector", json!({"at": [0, 0], "page": "ab"}), "No such page."),
-        ("pinlabel", json!({"to": "2"}), "`device` and `pin`, or `connection_point`, is required"),
-        ("pinlabel", json!({"connection_point": "1", "to": "2"}), "No such connection point."),
+        ("connector", json!({"at": [0, 0], "page": "000000000000000000000000000000ab"}), "No such page."),
+        ("pinlabel", json!({"to": "00000000000000000000000000000002"}), "`device` and `pin`, or `connection_point`, is required"),
+        (
+            "pinlabel",
+            json!({"connection_point": "00000000000000000000000000000001", "to": "00000000000000000000000000000002"}),
+            "No such connection point.",
+        ),
     ];
     let mut h = H::new(7055);
     for (cmd, params, says) in rows {
@@ -1322,10 +1362,10 @@ fn the_typed_connector_commands_still_work() {
 fn the_accessory_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("accessory", json!({"strip": "zz"}), "`strip` must be a hex id, or null"),
-        ("accessory", json!({"strip": "1", "on": "yes"}), "`on` must be true or false, or null"),
-        ("accessory", json!({"strip": "1", "clear": "acc.start"}), "`clear` must be a list of texts, or null"),
+        ("accessory", json!({"strip": "00000000000000000000000000000001", "on": "yes"}), "`on` must be true or false, or null"),
+        ("accessory", json!({"strip": "00000000000000000000000000000001", "clear": "acc.start"}), "`clear` must be a list of texts, or null"),
         ("jumper", json!({"connection_points": "1"}), "`connection_points` must be a list of hex ids, or null"),
-        ("jumper", json!({"strip": "1", "skip": 1}), "`skip` must be true or false, or null"),
+        ("jumper", json!({"strip": "00000000000000000000000000000001", "skip": 1}), "`skip` must be true or false, or null"),
         ("jumper", json!({"jumper_bar": 5}), "`jumper_bar` must be an object, or null"),
     ];
     let mut h = H::new(7057);
@@ -1339,11 +1379,11 @@ fn the_accessory_commands_refuse_input_uniformly() {
 fn the_accessory_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("accessory", json!({"at": "start"}), "`strip` or `connection_point` (hex id) is required"),
-        ("accessory", json!({"strip": "1", "at": "start", "add": ["end_stop"]}), "No such strip."),
-        ("accessory", json!({"connection_point": "1", "at": "start", "add": ["end_stop"]}), "No such terminal block."),
+        ("accessory", json!({"strip": "00000000000000000000000000000001", "at": "start", "add": ["end_stop"]}), "No such strip."),
+        ("accessory", json!({"connection_point": "00000000000000000000000000000001", "at": "start", "add": ["end_stop"]}), "No such terminal block."),
         ("jumper", json!({}), "`strip` with `positions`, or `connection_points`, is required"),
         ("jumper", json!({"jumper_bar": {"n": 1}}), "`strip` (hex id) is required"),
-        ("jumper", json!({"strip": "1", "positions": "1-2"}), "No such strip."),
+        ("jumper", json!({"strip": "00000000000000000000000000000001", "positions": "1-2"}), "No such strip."),
     ];
     let mut h = H::new(7058);
     for (cmd, params, says) in rows {
@@ -1426,11 +1466,15 @@ fn the_typed_release_commands_still_work() {
 #[test]
 fn the_level_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
-        ("terminalblocklabel", json!({"strip": "1", "level": "x"}), "`level` must be a whole number, or null"),
-        ("terminalblocklabel", json!({"strip": "1", "text": 5}), "`text` must be text, or null"),
-        ("terminalblocklabel", json!({"connection_point": "1", "move_to": "far"}), "`move_to` must be one of \"next\", \"new\", or null"),
+        ("terminalblocklabel", json!({"strip": "00000000000000000000000000000001", "level": "x"}), "`level` must be a whole number, or null"),
+        ("terminalblocklabel", json!({"strip": "00000000000000000000000000000001", "text": 5}), "`text` must be text, or null"),
+        (
+            "terminalblocklabel",
+            json!({"connection_point": "00000000000000000000000000000001", "move_to": "far"}),
+            "`move_to` must be one of \"next\", \"new\", or null",
+        ),
         ("toposition", json!({}), "`device` (hex id) is required"),
-        ("toposition", json!({"device": "1", "position": 3}), "`position` must be text, or null"),
+        ("toposition", json!({"device": "00000000000000000000000000000001", "position": 3}), "`position` must be text, or null"),
     ];
     let mut h = H::new(7063);
     for (cmd, params, says) in rows {
@@ -1443,10 +1487,14 @@ fn the_level_commands_refuse_input_uniformly() {
 fn the_level_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("terminalblocklabel", json!({}), "`connection_point` or `strip` (hex id) is required"),
-        ("terminalblocklabel", json!({"connection_point": "1"}), "No such terminal block."),
-        ("terminalblocklabel", json!({"strip": "1"}), "Name the position to relabel with `at` (its current label), or give `connection_point`."),
-        ("terminalblocklabel", json!({"strip": "1", "at": "1"}), "That device is not a terminal strip."),
-        ("toposition", json!({"device": "1"}), "No such device."),
+        ("terminalblocklabel", json!({"connection_point": "00000000000000000000000000000001"}), "No such terminal block."),
+        (
+            "terminalblocklabel",
+            json!({"strip": "00000000000000000000000000000001"}),
+            "Name the position to relabel with `at` (its current label), or give `connection_point`.",
+        ),
+        ("terminalblocklabel", json!({"strip": "00000000000000000000000000000001", "at": "1"}), "That device is not a terminal strip."),
+        ("toposition", json!({"device": "00000000000000000000000000000001"}), "No such device."),
     ];
     let mut h = H::new(7064);
     for (cmd, params, says) in rows {
@@ -1480,9 +1528,9 @@ fn the_typed_level_commands_still_work() {
 fn contcaption_refuses_input_uniformly_and_keeps_its_rule_words() {
     let input: &[(Value, &str)] = &[
         (json!({"caption": "X"}), "`continuations` (list of hex ids) is required"),
-        (json!({"continuations": ["1"]}), "`caption` (text, or null) is required"),
-        (json!({"continuations": ["1"], "caption": 5}), "`caption` must be text, or null"),
-        (json!({"continuations": "1", "caption": "X"}), "`continuations` must be a list of hex ids"),
+        (json!({"continuations": ["00000000000000000000000000000001"]}), "`caption` (text, or null) is required"),
+        (json!({"continuations": ["00000000000000000000000000000001"], "caption": 5}), "`caption` must be text, or null"),
+        (json!({"continuations": "00000000000000000000000000000001", "caption": "X"}), "`continuations` must be a list of hex ids"),
     ];
     let mut h = H::new(7066);
     for (params, says) in input {
@@ -1490,7 +1538,7 @@ fn contcaption_refuses_input_uniformly_and_keeps_its_rule_words() {
     }
     let rules: &[(Value, &str)] = &[
         (json!({"continuations": [], "caption": "X"}), "Name at least one continuation arrow in `continuations`."),
-        (json!({"continuations": ["1"], "caption": "A\nB"}), ecad_electrical::continuations::CAPTION_RULE),
+        (json!({"continuations": ["00000000000000000000000000000001"], "caption": "A\nB"}), ecad_electrical::continuations::CAPTION_RULE),
     ];
     for (params, says) in rules {
         let e = h.run("contcaption", params.clone()).err().unwrap_or_default();
@@ -1567,13 +1615,16 @@ fn titleblockimport_refuses_input_uniformly_and_keeps_its_rule_words() {
 #[test]
 fn setprop_refuses_input_uniformly() {
     let rows: &[(Value, &str)] = &[
-        (json!({"component": "1", "value": "x"}), "`key` (text) is required"),
-        (json!({"component": "1", "key": "description"}), "`value` (text, or null) is required"),
-        (json!({"component": "1", "key": "description", "value": 3}), "`value` must be text, or null"),
+        (json!({"component": "00000000000000000000000000000001", "value": "x"}), "`key` (text) is required"),
+        (json!({"component": "00000000000000000000000000000001", "key": "description"}), "`value` (text, or null) is required"),
+        (json!({"component": "00000000000000000000000000000001", "key": "description", "value": 3}), "`value` must be text, or null"),
         (json!({"component": "zz", "key": "description", "value": "x"}), "`component` must be a hex id, or null"),
         (json!({"devices": ["zz"], "key": "description", "value": "x"}), "`devices` must be a list of hex ids, or null"),
-        (json!({"component": "1", "key": "tag", "value": "-K1", "merge": "yes"}), "`merge` must be true or false, or null"),
-        (json!({"component": "1", "key": "tag", "value": "-K1", "conflict": 1}), "`conflict` must be text, or null"),
+        (
+            json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "-K1", "merge": "yes"}),
+            "`merge` must be true or false, or null",
+        ),
+        (json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "-K1", "conflict": 1}), "`conflict` must be text, or null"),
         (json!({"key": "description", "value": "x"}), "`component`, `conductor` or `cable` (hex id) is required"),
     ];
     let mut h = H::new(7071);
@@ -1598,7 +1649,7 @@ fn setprop_keeps_its_rule_words() {
             "`conflict` must be \"swap\", \"merge\" or \"next\", not \"sideways\"",
         ),
         (json!({"component": a, "key": "tag", "value": tag_b}), "is used by"),
-        (json!({"component": "ab", "key": "description", "value": "x"}), "no such object"),
+        (json!({"component": "000000000000000000000000000000ab", "key": "description", "value": "x"}), "no such object"),
     ];
     for (params, says) in rows {
         let e = h.run("setprop", params.clone()).err().unwrap_or_default();
@@ -1703,13 +1754,16 @@ fn place_keeps_its_rule_words() {
     let mut h = H::new(7076);
     let coil = crate::common::place(&mut h, "coil", (100.0, 100.0))["component"].clone();
     let rows: &[(Value, &str)] = &[
-        (json!({"symbol": "coil", "definition": "1", "at": [0, 0]}), "`symbol` and `definition` are mutually exclusive"),
+        (
+            json!({"symbol": "coil", "definition": "00000000000000000000000000000001", "at": [0, 0]}),
+            "`symbol` and `definition` are mutually exclusive",
+        ),
         (json!({"tag": "-K9", "at": [0, 0]}), "`symbol` (a starter symbol key, see `symbols`) is required with `device` or `tag`"),
         (json!({"symbol": "nope", "at": [0, 0]}), "No symbol \"nope\". Type List to see them."),
         (json!({"symbol": "coil", "at": [1e15, 0]}), ecad_engine::interact::OUT_OF_RANGE),
-        (json!({"symbol": "coil", "at": [0, 0], "device": "zz"}), "`device` (hex id) is required"),
+        (json!({"symbol": "coil", "at": [0, 0], "device": "zz"}), "`device` must be a device ID (32 hex digits)"),
         (json!({"symbol": "coil", "at": [0, 0], "device": coil, "tag": "-K9"}), "`tag` is for a new device; `device` joins an existing one"),
-        (json!({"symbol": "coil", "at": [0, 0], "device": "ab"}), "No such device."),
+        (json!({"symbol": "coil", "at": [0, 0], "device": "000000000000000000000000000000ab"}), "No such device."),
         (json!({"symbol": "coil", "at": [0, 0], "location": " "}), "`location` is \"propose\", \"move\", \"keep\" or a code"),
         (json!({"symbol": "continuation", "at": [0, 0], "name": "24V", "tag": "-K9"}), "A continuation has no tag and is not part of a device."),
         (json!({"symbol": "continuation", "at": [0, 0]}), "`name` is required for a continuation"),
@@ -1721,7 +1775,7 @@ fn place_keeps_its_rule_words() {
         (json!({"symbol": "di", "at": [0, 0], "device": coil, "tag": "-A9"}), "`tag` is for a new card; `device` joins an existing one"),
         (json!({"symbol": "plcdi", "at": [0, 0], "rack": "-K99"}), "No device -K99."),
         (json!({"symbol": "socket4", "at": [0, 0], "device": coil}), "is not a connector"),
-        (json!({"at": [0, 0], "definition": "ab"}), "no such definition"),
+        (json!({"at": [0, 0], "definition": "000000000000000000000000000000ab"}), "no such definition"),
     ];
     for (params, says) in rows {
         let e = h.run("place", params.clone()).err().unwrap_or_default();
@@ -1775,11 +1829,11 @@ fn the_device_commands_refuse_input_uniformly() {
 #[test]
 fn the_device_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("deviceprops", json!({"component": "ab"}), "No such device."),
-        ("devicedelete", json!({"component": "ab"}), "no such component"),
+        ("deviceprops", json!({"component": "000000000000000000000000000000ab"}), "No such device."),
+        ("devicedelete", json!({"component": "000000000000000000000000000000ab"}), "no such component"),
         ("ecaddelete", json!({}), "`conductor`, `component` or `cable` (hex id) is required"),
-        ("ecaddelete", json!({"conductor": "ab"}), "no such conductor"),
-        ("ecaddelete", json!({"cable": "ab"}), "no such cable"),
+        ("ecaddelete", json!({"conductor": "000000000000000000000000000000ab"}), "no such conductor"),
+        ("ecaddelete", json!({"cable": "000000000000000000000000000000ab"}), "no such cable"),
         ("tagsettings", json!({"padding": 7}), "`padding` must be a whole number from 1 to 6"),
         ("tagsettings", json!({"prefixes": {"coil": "K1"}}), "A prefix is 1 to 10 letters, for example K or SR."),
         ("tagsettings", json!({"prefixes": {"xyz": "K"}}), "No symbol \"xyz\". Type List to see them."),

@@ -54,7 +54,7 @@ pub use crate::geometry::geom::{Placement, Pt};
 pub use crate::geometry::point::{ChannelRole, LevelIo, PointKey};
 pub use crate::naming::id::{
     AidId, CableId, ConductorId, ConnectionPointId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId,
-    LocationId, LoosePartId, NetId, PageId, ProjectId, RepresentationId, RouteId, StandardId, TxId, UserFieldId, WireId,
+    LocationId, LoosePartId, NetId, PageId, ProjectId, RepresentationId, RouteId, StandardId, TxId, UserFieldId, WireId, hex_id,
 };
 pub use crate::naming::words::{Side, Word};
 pub use crate::objects::aid::{Aid, AidKind, LocationBox};

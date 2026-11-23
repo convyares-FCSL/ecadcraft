@@ -261,9 +261,9 @@ impl PlaceConnector {
         // The tool repeats on the connector it made (one transaction per line).
         if self.device.is_none()
             && let (Some(c), Some(t)) = (v.get("component").and_then(Value::as_str), v.get("tag").and_then(Value::as_str))
-            && let Ok(n) = u128::from_str_radix(c, 16)
+            && let Some(c) = DeviceId::parse(c)
         {
-            self.device = Some((DeviceId::from(n), t.to_string()));
+            self.device = Some((c, t.to_string()));
         }
         self.drawn += 1;
         self.first = None;

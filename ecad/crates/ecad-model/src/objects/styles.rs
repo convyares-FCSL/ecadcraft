@@ -136,8 +136,7 @@ impl StyleRef {
     pub fn parse(text: &str) -> Option<StyleRef> {
         let t = text.trim();
         match t.strip_prefix('#') {
-            Some(hex) if hex.len() == 32 && hex.bytes().all(|b| b.is_ascii_hexdigit()) => u128::from_str_radix(hex, 16).ok().map(StyleRef::Own),
-            Some(_) => None,
+            Some(hex) => crate::naming::id::hex_id(hex).map(StyleRef::Own),
             None => StyleRef::builtin(t),
         }
     }

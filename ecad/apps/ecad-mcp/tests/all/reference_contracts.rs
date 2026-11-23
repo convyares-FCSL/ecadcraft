@@ -66,19 +66,19 @@ fn with_writes_off_the_writes_are_refused_and_the_reads_work() {
     let mut c = reader();
     let before = c.log();
     for (cmd, params) in [
-        ("setprop", json!({"component": "1", "key": "contacts", "value": "3P"})),
-        ("setprop", json!({"component": "1", "key": "mirror", "value": "off"})),
-        ("mirrormove", json!({"component": "1", "placement": "off"})),
-        ("place", json!({"symbol": "no", "at": [0, 0], "device": "1"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "contacts", "value": "3P"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "mirror", "value": "off"})),
+        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": "off"})),
+        ("place", json!({"symbol": "no", "at": [0, 0], "device": "00000000000000000000000000000001"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
     }
     let x = c.exec("references", json!({}));
     assert_eq!(x["references"], json!([]));
-    let m = c.refused("execute", json!({"command": "contacts", "params": {"component": "1"}}));
+    let m = c.refused("execute", json!({"command": "contacts", "params": {"component": "00000000000000000000000000000001"}}));
     assert!(m.contains("no such component"), "{m}");
-    let m = c.refused("execute", json!({"command": "refgoto", "params": {"source": "1"}}));
+    let m = c.refused("execute", json!({"command": "refgoto", "params": {"source": "00000000000000000000000000000001"}}));
     assert!(m.contains("no such reference"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
 }

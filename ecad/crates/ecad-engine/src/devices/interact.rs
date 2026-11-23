@@ -330,7 +330,7 @@ impl Place {
             .flatten()
             .filter_map(|t| t.get("label").and_then(Value::as_str))
             .collect();
-        let component = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()).map(DeviceId::from);
+        let component = r.get("component").and_then(Value::as_str).and_then(DeviceId::parse);
         // A terminal landed on a wire; the JSON form has said so.
         let landed = r.get("split").is_some();
         if landed {
@@ -796,8 +796,8 @@ impl Props {
         if let Some(m) = r.get("message").and_then(Value::as_str) {
             s.echo(m.to_string());
         }
-        if let Some(into) = r.get("component").and_then(Value::as_str).and_then(|h| u128::from_str_radix(h, 16).ok()) {
-            self.device = Some(DeviceId::from(into));
+        if let Some(into) = r.get("component").and_then(Value::as_str).and_then(DeviceId::parse) {
+            self.device = Some(into);
         }
         let device = self.device.unwrap_or(c);
         let words = read(s, |p, _| {

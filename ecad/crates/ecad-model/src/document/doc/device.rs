@@ -204,7 +204,7 @@ impl Device {
     /// As [`Device::set_text`].
     pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::naming::text::TextError> {
         // A location or function given as an entry's id (32 hex): set by hand, so manual.
-        let id = || value.and_then(|v| u128::from_str_radix(v.trim(), 16).ok().filter(|_| v.trim().len() == 32));
+        let id = || value.and_then(crate::naming::id::hex_id);
         match key {
             crate::document::book::LOCATION_KEY => {
                 self.location = crate::document::book::Place::manual(id().map(crate::naming::id::LocationId));

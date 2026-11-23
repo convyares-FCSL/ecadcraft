@@ -29,10 +29,10 @@ pub(crate) const NEEDS_AT: &str = "connector needs at for a row, or line or wire
 pub fn device(doc: &Document, device: Option<&str>) -> Result<Option<DeviceId>, CmdError> {
     let Some(t) = device else { return Ok(None) };
     let t = t.trim();
-    if let Ok(n) = u128::from_str_radix(t, 16)
-        && doc.devices().contains_key(&DeviceId::from(n))
+    if let Some(c) = DeviceId::parse(t)
+        && doc.devices().contains_key(&c)
     {
-        return Ok(Some(DeviceId::from(n)));
+        return Ok(Some(c));
     }
     let ecad_model::naming::tag::Entry::Tag(tag) = ecad_model::naming::tag::enter(t, crate::defaults::print::tag_style(doc))? else {
         return Err(CmdError::refused(format!("No device {t}.")));

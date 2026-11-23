@@ -474,12 +474,12 @@ fn h_refusals_say_why_and_write_nothing() {
     let cases: Vec<(Value, &str)> = vec![
         (json!({"symbol": "coil", "at": [0, 0], "device": f.k1.hex()}), "-K01 already has a coil."),
         (json!({"symbol": "xyz", "at": [0, 0]}), "No symbol \"xyz\". Type List to see them."),
-        (json!({"symbol": "no", "at": [0, 0], "device": "123456"}), "No such device."),
+        (json!({"symbol": "no", "at": [0, 0], "device": "00000000000000000000000000123456"}), "No such device."),
         (json!({"symbol": "no", "at": [0, 0], "device": f.k1.hex(), "tag": "-K9"}), "`tag` is for a new device"),
         (json!({"symbol": "no", "at": [f64::MAX, 0]}), "Point out of range."),
         (json!({"symbol": "no", "at": [0, 0], "tag": "a\u{7}"}), "A tag is 1 to 40"),
         (json!({"symbol": "no", "at": [0, 0], "tag": "K".repeat(10_000)}), "A tag is 1 to 40"),
-        (json!({"symbol": "no", "definition": "1", "at": [0, 0]}), "mutually exclusive"),
+        (json!({"symbol": "no", "definition": "00000000000000000000000000000001", "at": [0, 0]}), "mutually exclusive"),
     ];
     for (params, want) in cases {
         let e = f.h.run("place", params.clone()).unwrap_err();

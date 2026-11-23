@@ -112,16 +112,11 @@ impl CableSlash {
         }
         let r = commit(s, "cableslash", &params)?;
         let ids = |key: &str| -> Vec<u128> {
-            r.get(key)
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|v| v.as_str().and_then(|t| u128::from_str_radix(t, 16).ok()))
-                .collect()
+            r.get(key).and_then(Value::as_array).into_iter().flatten().filter_map(|v| v.as_str().and_then(ecad_model::hex_id)).collect()
         };
         let (members, loose) = (ids("conductors"), ids("lines"));
         let (ignored, touched) = (ids("ignored").len(), ids("touched").len());
-        let cable = u128::from_str_radix(&hex_of(&r, "cable"), 16).unwrap_or_default();
+        let cable = ecad_model::hex_id(&hex_of(&r, "cable")).unwrap_or_default();
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
             let members: Vec<ecad_model::CorePosition> = members

@@ -127,8 +127,7 @@ fn listed(project: &Project, a: Aspect) -> Vec<Entry> {
 
 /// The raw id a stored key names, if it is a key.
 pub(crate) fn raw(key: &str) -> Option<u128> {
-    let t = key.trim();
-    (t.len() == 32).then(|| u128::from_str_radix(t, 16).ok()).flatten()
+    ecad_model::hex_id(key)
 }
 
 /// The entry of `project` with raw id `id`.
