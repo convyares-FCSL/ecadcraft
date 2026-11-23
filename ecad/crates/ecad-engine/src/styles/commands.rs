@@ -14,10 +14,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::err;
 use crate::commands::input::{Command, Typed};
 use crate::commands::{on_any_page, on_project};
-use ecad_electrical::commands::input::nullable;
+use ecad_electrical::commands::input::{Said, nullable};
+use ecad_model::look::{Shown, TextKind};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<ShowtextParams>("showtext"), Typed::of::<HiddentextParams>("hiddentext")];
@@ -39,12 +39,12 @@ pub fn specs() -> Vec<CommandSpec> {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ShowtextParams {
-    /// The kind: tag, point_label, …
-    kind: String,
-    /// "on", "off" or "first" (tag only), or null to inherit.
+    /// The kind.
+    kind: TextKind,
+    /// Shown (yes), hidden (no) or once per run (first, tag only), or null to inherit.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<String>")]
-    show: Option<Option<String>>,
+    #[schemars(required, with = "ecad_electrical::commands::input::OrNull<Said<Shown>>")]
+    show: Option<Option<Said<Shown>>>,
     /// A symbol of a device.
     #[serde(default)]
     representation: Option<RepresentationId>,
@@ -61,8 +61,8 @@ pub(crate) struct ShowtextParams {
 
 impl Command for ShowtextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let kind = ecad_electrical::styles::commands::text::kind(&self.kind).map_err(|e| err(e.to_string()))?;
-        let show = rules::show_word(self.show.flatten().as_deref()).map_err(|e| err(e.to_string()))?;
+        let kind = self.kind;
+        let show = self.show.flatten().map(|s| s.0.word().to_string());
         let target = ShowTarget { representation: self.representation, component: self.component, conductor: self.conductor, page: self.page };
         on_project(s, |p, pg, _| {
             let doc = p.ledger.document();

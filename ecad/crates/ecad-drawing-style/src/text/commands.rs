@@ -13,16 +13,17 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use ecad_electrical::CmdError;
+use ecad_electrical::commands::input::Said;
 use ecad_electrical::commands::input::{Bounded, nullable};
 use ecad_electrical::commands::run::{Cx, Generic, Outcome, Pages};
-use ecad_electrical::styles::commands::text::{BAD_HEIGHT, NOT_A_SYMBOL, opt_kind};
+use ecad_electrical::styles::commands::text::{BAD_HEIGHT, NOT_A_SYMBOL};
+use ecad_model::objects::styles::text::Weight;
 
 use crate::defaults;
 use crate::text::fonts::Fonts;
 
 /// Refusals.
-pub(crate) const BAD_WEIGHT: &str = "Weight is regular or bold.";
-pub const BAD_SHOW: &str = "Shown is yes, no or first (first: tag only).";
+pub(crate) const BAD_SHOW: &str = "Shown is yes, no or first (first: tag only).";
 pub const BAD_FONT: &str = "A font name is 1 to 64 characters with no control characters.";
 pub const NEEDS_KIND: &str = "height, weight and show need a kind.";
 
@@ -39,15 +40,15 @@ pub type Change<T> = Option<Option<T>>;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct KindRow {
     /// The kind (needed when the row changes anything).
-    pub kind: Option<String>,
+    pub kind: Option<TextKind>,
     /// The kind's own font.
     pub font: Change<String>,
     /// The cap height, mm.
     pub height: Change<f64>,
-    /// "regular" or "bold".
-    pub weight: Change<String>,
-    /// "on", "off" or "first".
-    pub show: Change<String>,
+    /// Regular or bold.
+    pub weight: Change<Weight>,
+    /// Shown, hidden or once per run.
+    pub show: Change<Shown>,
 }
 
 /// A `textstyle` call that writes, as given.
@@ -69,8 +70,8 @@ pub(crate) struct KindChange {
     /// The kind's own font; `null` goes back to the project font.
     font: Change<String>,
     height: Change<f64>,
-    weight: Change<String>,
-    show: Change<String>,
+    weight: Change<Weight>,
+    show: Change<Shown>,
 }
 
 /// The changes of a `textstyle` call, checked: what [`textstyle_ops`] writes.
@@ -89,18 +90,11 @@ fn check<T, U>(v: Change<T>, ok: impl FnOnce(T) -> Option<U>, bad: &'static str)
     }
 }
 
-/// A word of `allowed`, trimmed and in lower case.
-fn word_in(w: String, allowed: &[&str]) -> Option<String> {
-    let w = w.trim().to_ascii_lowercase();
-    allowed.contains(&w.as_str()).then_some(w)
-}
-
 /// The kind changes of `row`; `None` when it names no kind and changes nothing.
 fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
-    let kind = opt_kind(row.kind.as_deref())?;
+    let kind = row.kind;
     let height = check(row.height, |h| (h.is_finite() && (0.5..=10.0).contains(&h)).then_some(h), BAD_HEIGHT)?;
-    let weight = check(row.weight, |w| word_in(w, &["regular", "bold"]), BAD_WEIGHT)?;
-    let show = check(row.show, |w| Shown::from_input(&w).map(|s| s.word().to_string()), BAD_SHOW)?;
+    let (weight, show) = (row.weight, row.show);
     let changes = height.is_some() || weight.is_some() || show.is_some();
     let Some(kind) = kind else {
         return if changes { Err(CmdError::refused(NEEDS_KIND)) } else { Ok(None) };
@@ -114,7 +108,7 @@ fn kind_change(row: KindRow) -> Result<Option<KindChange>, CmdError> {
     }
     if let Some(Some(w)) = &show {
         let entry = crate::text::show_entry(kind).ok_or_else(|| CmdError::refused(format!("{} has no Shown setting.", kind.word())))?;
-        if entry.parse(w).is_none() {
+        if entry.parse(w.word()).is_none() {
             return Err(CmdError::refused(BAD_SHOW));
         }
     }
@@ -187,11 +181,11 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
     if let Some(f) = &c.font {
         put("font", f.clone());
     }
-    if let Some(w) = &c.weight {
-        put("weight", w.clone());
+    if let Some(w) = c.weight {
+        put("weight", w.map(|w| w.word().to_string()));
     }
-    if let (Some(entry), Some(w)) = (crate::text::show_entry(k), &c.show) {
-        set_project(doc, entry.key, w.clone(), ops);
+    if let (Some(entry), Some(w)) = (crate::text::show_entry(k), c.show) {
+        set_project(doc, entry.key, w.map(|w| w.word().to_string()), ops);
     }
 }
 
@@ -288,15 +282,6 @@ pub(crate) fn show_key(level: ShowLevel, kind: TextKind) -> Option<(ObjectRef, S
         ShowLevel::Page(p) => (ObjectRef::Page(p), entry.key.to_string()),
         ShowLevel::Project => (ObjectRef::Project, entry.key.to_string()),
     })
-}
-
-/// The `show` of a `showtext` call as stored (`yes`, `no` or `first`): any word
-/// [`Shown::from_input`] reads, or `None` to inherit.
-///
-/// # Errors
-/// Any other word.
-pub fn show_word(show: Option<&str>) -> Result<Option<String>, CmdError> {
-    show.map(|w| Shown::from_input(w).map(|s| s.word().to_string()).ok_or(CmdError::refused(BAD_SHOW))).transpose()
 }
 
 /// The level a `showtext` call names, checked against `doc`.
@@ -416,26 +401,31 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::text::fonts::Fonts, changed
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct KindRowParams {
-    /// The kind: tag, point_label, …
+    /// The kind.
     #[serde(default)]
-    kind: Option<String>,
+    kind: Option<TextKind>,
     /// The kind's own font, or null for the project font.
     #[serde(default, deserialize_with = "nullable")]
     font: Change<String>,
     /// The cap height, mm (0.5 to 10), or null for the default.
     #[serde(default, deserialize_with = "nullable")]
     height: Change<f64>,
-    /// "regular" or "bold", or null for the default.
+    /// Regular or bold, or null for the default.
     #[serde(default, deserialize_with = "nullable")]
-    weight: Change<String>,
-    /// "on", "off" or "first", or null for the default.
+    weight: Change<Weight>,
+    /// Shown (yes), hidden (no) or once per run (first), or null for the default.
     #[serde(default, deserialize_with = "nullable")]
-    show: Change<String>,
+    show: Change<Said<Shown>>,
+}
+
+/// A change of a [`Said`] value: the value.
+fn said<T>(c: Change<Said<T>>) -> Change<T> {
+    c.map(|v| v.map(|s| s.0))
 }
 
 impl From<KindRowParams> for KindRow {
     fn from(r: KindRowParams) -> KindRow {
-        KindRow { kind: r.kind, font: r.font, height: r.height, weight: r.weight, show: r.show }
+        KindRow { kind: r.kind, font: r.font, height: r.height, weight: r.weight, show: said(r.show) }
     }
 }
 
@@ -448,18 +438,18 @@ pub struct TextstyleParams {
     /// The project font (with `kind`: that kind's own font), or null for the default.
     #[serde(default, deserialize_with = "nullable")]
     font: Change<String>,
-    /// The kind `height`, `weight` and `show` change: tag, point_label, …
+    /// The kind `height`, `weight` and `show` change.
     #[serde(default, deserialize_with = "nullable")]
-    kind: Change<String>,
+    kind: Change<TextKind>,
     /// The kind's cap height, mm (0.5 to 10), or null for the default.
     #[serde(default, deserialize_with = "nullable")]
     height: Change<f64>,
-    /// "regular" or "bold", or null for the default.
+    /// Regular or bold, or null for the default.
     #[serde(default, deserialize_with = "nullable")]
-    weight: Change<String>,
-    /// "on", "off" or "first" (tag only), or null for the default.
+    weight: Change<Weight>,
+    /// Shown (yes), hidden (no) or once per run (first, tag only), or null for the default.
     #[serde(default, deserialize_with = "nullable")]
-    show: Change<String>,
+    show: Change<Said<Shown>>,
     /// More kinds' rows, in the same transaction.
     #[serde(default, deserialize_with = "nullable")]
     kinds: Option<Option<Bounded<KindRowParams, 0, { MAX_KINDS }>>>,
@@ -480,7 +470,7 @@ impl Generic for TextstyleParams {
         }
         let input = TextStyleInput {
             font: self.font,
-            row: KindRow { kind: self.kind.flatten(), font: None, height: self.height, weight: self.weight, show: self.show },
+            row: KindRow { kind: self.kind.flatten(), font: None, height: self.height, weight: self.weight, show: said(self.show) },
             kinds: self.kinds.flatten().map(|b| b.0).unwrap_or_default().into_iter().map(KindRow::from).collect(),
         };
         let changes = textstyle_changes(input)?;

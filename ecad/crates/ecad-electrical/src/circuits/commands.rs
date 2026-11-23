@@ -345,18 +345,6 @@ pub(crate) fn too_big() -> CmdError {
     CmdError::refused(format!("The table is over {} KiB. Nothing was written.", crate::devices::ratings::dataset::MAX_BYTES / 1024))
 }
 
-/// The layer `ratingtable` writes to: `project` (the default) or `standard`.
-///
-/// # Errors
-/// Another word.
-pub(crate) fn table_layer(word: Option<&str>) -> Result<StyleLayer, CmdError> {
-    match word.map(str::trim) {
-        None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") => Ok(StyleLayer::Standard),
-        Some(_) => Err(CmdError::refused("layer is project or standard.")),
-    }
-}
-
 /// A `ratingtable` write: the rows (CSV), the table's name and source, and its layer.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TableWrite {
@@ -613,9 +601,9 @@ pub struct RatingtableParams {
     /// The rows, as CSV.
     #[serde(default)]
     csv: Option<String>,
-    /// project (the default) or standard.
+    /// Project (the default) or standard.
     #[serde(default)]
-    layer: Option<String>,
+    layer: Option<crate::commands::input::Said<StyleLayer>>,
     /// Read the rows from this CSV file.
     #[serde(default)]
     import: Option<String>,
@@ -775,7 +763,7 @@ impl Generic for RatingtableParams {
         let w = TableWrite { csv, name: name.unwrap_or(default_name), source: trim(&self.source), layer: StyleLayer::Project };
         // The rows, name and source are checked before the layer (as before).
         check_table(&w)?;
-        let w = TableWrite { layer: table_layer(self.layer.as_deref())?, ..w };
+        let w = TableWrite { layer: self.layer.map_or(StyleLayer::Project, |l| l.0), ..w };
         let plan = plan_table(cx.doc, cx.ids, &w)?;
         let changed = !plan.ops.is_empty();
         let answer = json!({"id": plan.id.text(), "name": w.name, "rows": plan.rows, "changed": changed, "odd": plan.odd});

@@ -48,7 +48,7 @@ fn value(doc: &Document, key: &str, v: Option<&str>) -> Result<Option<String>, C
 }
 
 /// What a page's or the project's new function or location does (`proposal`; none proposes).
-pub fn proposal_mode(word: Option<proposals::ProposalWord>) -> Mode {
+pub(crate) fn proposal_mode(word: Option<proposals::ProposalWord>) -> Mode {
     word.map_or(Mode::Propose, Mode::from)
 }
 
@@ -643,7 +643,7 @@ pub struct ProjectChange {
     pub sheet: Option<String>,
     pub page_number_step: Option<u64>,
     pub reference_style: Option<ReferenceStyle>,
-    pub contact_mirror: Option<String>,
+    pub contact_mirror: Option<ecad_model::ContactMirror>,
     pub tag_padding: Option<u64>,
     pub tag_prefixes: Vec<(String, Option<String>)>,
     pub colour_style: Option<String>,
@@ -880,9 +880,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     if let Some(s) = change.reference_style {
         settings.reference_style = Some(s);
     }
-    if let Some(w) = &change.contact_mirror {
-        settings.contact_mirror =
-            ecad_model::ContactMirror::parse(w).ok_or(CmdError::refused("`contact_mirror` must be \"auto\", \"below\", \"right\" or \"off\""))?;
+    if let Some(m) = change.contact_mirror {
+        settings.contact_mirror = m;
     }
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Fix round: how label colours are written, and the label height.
@@ -1293,7 +1292,7 @@ pub(crate) fn project_json(doc: &Document, registry: &ecad_model::registry::data
     v["page_number_step"] = json!(doc.settings().page_number_step());
     v["reference_style"] = json!(style_word(doc.settings().reference_style()));
     // Where contact tables go by default.
-    v["contact_mirror"] = json!(doc.settings().contact_mirror.word());
+    v["contact_mirror"] = json!(ecad_model::Word::word(doc.settings().contact_mirror));
     v["tag_padding"] = json!(crate::devices::padding(doc));
     // The tag style, the revision columns and the pending marker.
     let style = crate::defaults::print::tag_style(doc);

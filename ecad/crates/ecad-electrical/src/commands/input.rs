@@ -2,7 +2,8 @@
 //!
 //! Each command has a `#[derive(Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]` struct;
 //! [`parse`] reads it. Fields are ordinary types: typed IDs read their hex form themselves,
-//! [`Point`] reads `[x, y]`, [`Bounded`] a list of bounded length, and [`nullable`] tells `null`
+//! [`Point`] reads `[x, y]`, [`Bounded`] a list of bounded length, a closed set of words is an
+//! enum (or [`Said`], when the set also takes other spellings), and [`nullable`] tells `null`
 //! from absent. Input is strict: a value of the wrong kind is refused, never ignored.
 //!
 //! A parameter that does not read is refused in one uniform wording, built from its name and the
@@ -371,6 +372,42 @@ impl TextOrNumber {
             TextOrNumber::Text(t) => t.clone(),
             TextOrNumber::Number(n) => n.to_string(),
         }
+    }
+}
+
+/// A closed set of words a command reads that also takes other spellings (a short form, a
+/// panel's label): [`Said`] reads one, and its schema lists [`Words::WORDS`].
+pub trait Words: Sized {
+    /// The words the help lists.
+    const WORDS: &'static [&'static str];
+
+    /// The value `text` names (surrounding space and case ignored), if any.
+    fn read(text: &str) -> Option<Self>;
+}
+
+/// A value of a [`Words`] set, as a parameter gives it: one of its words, or another spelling it
+/// reads. Anything else is refused, naming the words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Said<T>(pub T);
+
+impl<'de, T: Words> Deserialize<'de> for Said<T> {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        T::read(&text).map(Said).ok_or_else(|| D::Error::custom(format!("unknown word (allowed: {})", T::WORDS.join(", "))))
+    }
+}
+
+impl<T: Words> JsonSchema for Said<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("Said_{}", std::any::type_name::<T>()).into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type": "string", "enum": T::WORDS})
     }
 }
 

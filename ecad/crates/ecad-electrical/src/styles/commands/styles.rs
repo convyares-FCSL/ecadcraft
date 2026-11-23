@@ -10,7 +10,9 @@ use serde_json::{Map, Number, Value, json};
 use std::collections::BTreeMap;
 
 use ecad_model::objects::styles::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
-use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
+use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleCatalogue, StyleLayer, StyleRef, Word};
+
+use crate::commands::input::{Said, Words};
 
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
@@ -38,22 +40,34 @@ fn no_catalogue(registry: &Registry, w: &str) -> CmdError {
     CmdError::refused(format!("No catalogue {w:?}; the catalogues are {}.", styles::words(registry)))
 }
 
-/// The catalogue `word` names (spaces around ignored).
+/// The registry's catalogue `c`.
 ///
 /// # Errors
-/// No catalogue has that word.
-pub fn catalogue(registry: &Registry, word: &str) -> Result<&'static Catalogue, CmdError> {
-    let w = word.trim();
-    <ecad_model::StyleCatalogue as ecad_model::Word>::parse(w).and_then(|c| registry.catalogue(c)).ok_or_else(|| no_catalogue(registry, w))
+/// A catalogue this registry does not have.
+pub fn catalogue(registry: &Registry, c: StyleCatalogue) -> Result<&'static Catalogue, CmdError> {
+    registry.catalogue(c).ok_or_else(|| no_catalogue(registry, c.word()))
 }
 
 /// The catalogue a call that may name none names (`promote {key}` names none).
 ///
 /// # Errors
-/// None named, or no catalogue has that word.
-pub(crate) fn required_catalogue(registry: &Registry, word: Option<&str>) -> Result<&'static Catalogue, CmdError> {
-    let w = word.ok_or_else(|| CmdError::input(format!("`catalogue` is required: {}.", styles::words(registry))))?;
-    catalogue(registry, w)
+/// None named, or one the registry does not have.
+pub(crate) fn required_catalogue(registry: &Registry, c: Option<StyleCatalogue>) -> Result<&'static Catalogue, CmdError> {
+    let c = c.ok_or_else(|| CmdError::input(format!("`catalogue` is required: {}.", styles::words(registry))))?;
+    catalogue(registry, c)
+}
+
+/// A style layer as a call names it: project or standard.
+impl Words for StyleLayer {
+    const WORDS: &'static [&'static str] = &["project", "standard"];
+
+    fn read(text: &str) -> Option<StyleLayer> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "project" => Some(StyleLayer::Project),
+            "standard" => Some(StyleLayer::Standard),
+            _ => None,
+        }
+    }
 }
 
 /// The style a call names: `id`, else `name` (each trimmed).
@@ -65,16 +79,15 @@ pub fn target(doc: &Document, cat: &Catalogue, id: Option<&str>, name: Option<&s
     styles::find(doc, cat, t)
 }
 
-/// The layer a `setstyle` call writes: "project" (the default) or "standard".
+/// The layer a call writes: the project (the default) or its standard.
 ///
 /// # Errors
-/// The standard layer of a project without one, or another word.
-pub fn layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
-    match word.map(str::trim) {
-        None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") if doc.standard().is_some() => Ok(StyleLayer::Standard),
-        Some("standard") => Err(CmdError::refused(STANDARD_FIRST)),
-        Some(other) => Err(CmdError::refused(format!("Unknown layer {other:?}: project or standard."))),
+/// The standard layer of a project without one.
+pub fn layer(doc: &Document, layer: Option<StyleLayer>) -> Result<StyleLayer, CmdError> {
+    match layer {
+        None | Some(StyleLayer::Project) => Ok(StyleLayer::Project),
+        Some(StyleLayer::Standard) if doc.standard().is_some() => Ok(StyleLayer::Standard),
+        Some(StyleLayer::Standard) => Err(CmdError::refused(STANDARD_FIRST)),
     }
 }
 
@@ -465,8 +478,8 @@ pub(crate) struct StyleEdit {
     pub rename: Option<String>,
     /// The fields to set.
     pub fields: Vec<(String, FieldInput)>,
-    /// "project" (default) or "standard".
-    pub layer: Option<String>,
+    /// The project (default) or its standard.
+    pub layer: Option<StyleLayer>,
 }
 
 /// What a `setstyle` call records.
@@ -488,7 +501,7 @@ pub(crate) struct StylePlan {
 pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: StyleEdit) -> Result<StylePlan, CmdError> {
     let trim = |t: &Option<String>| t.as_deref().map(str::trim).map(str::to_string);
     let (name, rename, copy_of) = (trim(&edit.name), trim(&edit.rename), trim(&edit.copy_of));
-    let layer = layer(doc, edit.layer.as_deref())?;
+    let layer = layer(doc, edit.layer)?;
     let fields = fields(doc, cat, edit.fields)?;
     if edit.new {
         let name = name.filter(|n| is_name(n)).ok_or(CmdError::refused(STYLE_NEEDS_NAME))?;
@@ -764,9 +777,9 @@ pub(crate) fn value_json(r: &ecad_model::registry::Resolved<'_>) -> Value {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StylesParams {
-    /// Only this catalogue: text, location, frame, wire, …
+    /// Only this catalogue.
     #[serde(default)]
-    catalogue: Option<String>,
+    catalogue: Option<StyleCatalogue>,
     /// Also count each style's users.
     #[serde(default)]
     users: Option<bool>,
@@ -800,8 +813,8 @@ pub struct StandardParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetstyleParams {
-    /// The catalogue: text, location, frame, wire, …
-    catalogue: String,
+    /// The catalogue.
+    catalogue: StyleCatalogue,
     /// The style's ID (a built-in word or `#<32 hex>`).
     #[serde(default)]
     id: Option<String>,
@@ -820,17 +833,17 @@ pub struct SetstyleParams {
     /// The fields to set: {key: value | null} (null: back to the inherited value).
     #[serde(default)]
     fields: Option<BTreeMap<String, Option<FieldParam>>>,
-    /// "project" (default) or "standard".
+    /// Project (default) or standard.
     #[serde(default)]
-    layer: Option<String>,
+    layer: Option<Said<StyleLayer>>,
 }
 
 /// Deletes an own style, by `id` or `name`; its users move to `replace_with`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeletestyleParams {
-    /// The catalogue: text, location, frame, wire, …
-    catalogue: String,
+    /// The catalogue.
+    catalogue: StyleCatalogue,
     /// The style's ID.
     #[serde(default)]
     id: Option<String>,
@@ -850,9 +863,9 @@ pub struct PromoteParams {
     /// A default's key: its project value moves to the standard.
     #[serde(default)]
     key: Option<String>,
-    /// The style's catalogue: text, location, frame, wire, …
+    /// The style's catalogue.
     #[serde(default)]
-    catalogue: Option<String>,
+    catalogue: Option<StyleCatalogue>,
     /// The style's ID.
     #[serde(default)]
     id: Option<String>,
@@ -886,11 +899,11 @@ impl Generic for StylesParams {
     const ACCESS: Access = Access::Reads;
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
-        self.catalogue.as_deref().map(|w| catalogue(registry, w)).transpose().map(|_| ())
+        self.catalogue.map(|c| catalogue(registry, c)).transpose().map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let only = self.catalogue.as_deref().map(|w| catalogue(cx.registry, w)).transpose()?;
+        let only = self.catalogue.map(|c| catalogue(cx.registry, c)).transpose()?;
         let users = self.users.unwrap_or(false);
         let doc = cx.doc;
         let mut out = Vec::new();
@@ -941,11 +954,11 @@ impl Generic for SetstyleParams {
     const TITLE: &'static str = "Set Style";
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
-        catalogue(registry, &self.catalogue).map(|_| ())
+        catalogue(registry, self.catalogue).map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let cat = catalogue(cx.registry, &self.catalogue)?;
+        let cat = catalogue(cx.registry, self.catalogue)?;
         let edit = StyleEdit {
             new: self.new == Some(true),
             id: self.id,
@@ -953,7 +966,7 @@ impl Generic for SetstyleParams {
             copy_of: self.copy_of,
             rename: self.rename,
             fields: field_inputs(self.fields),
-            layer: self.layer,
+            layer: self.layer.map(|l| l.0),
         };
         let plan = plan_style(cx.doc, cx.ids, cat, edit)?;
         let changed = !plan.ops.is_empty();
@@ -978,11 +991,11 @@ impl Generic for DeletestyleParams {
     const TITLE: &'static str = "Delete Style";
 
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
-        catalogue(registry, &self.catalogue).map(|_| ())
+        catalogue(registry, self.catalogue).map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let cat = catalogue(cx.registry, &self.catalogue)?;
+        let cat = catalogue(cx.registry, self.catalogue)?;
         let doc = cx.doc;
         let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
         let plan = plan_delete(doc, cat, id, self.replace_with.as_deref())?;
@@ -999,7 +1012,7 @@ impl Generic for PromoteParams {
     fn check(&self, registry: &Registry) -> Result<(), CmdError> {
         match self.key.as_deref().map(str::trim) {
             Some(key) => promote_entry(registry, key).map(|_| ()),
-            None => required_catalogue(registry, self.catalogue.as_deref()).map(|_| ()),
+            None => required_catalogue(registry, self.catalogue).map(|_| ()),
         }
     }
 
@@ -1021,7 +1034,7 @@ impl Generic for PromoteParams {
             )?);
             return Ok(Outcome::edit(format!("Promote {}", entry.label), ops, json!({"changed": true, "key": entry.key, "value": text})));
         }
-        let cat = required_catalogue(cx.registry, self.catalogue.as_deref())?;
+        let cat = required_catalogue(cx.registry, self.catalogue)?;
         needs_standard(doc)?;
         let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
         let (ops, name) = plan_promote_style(doc, cat, &id)?;

@@ -30,27 +30,13 @@ pub const BAD_JUSTIFY: &str = "Justify is two letters: L, C or R, then T, M or B
 pub(crate) const NEEDS_CONNECTION_POINT: &str = "point_label needs the connection point's key.";
 pub const NOT_A_SYMBOL: &str = "That representation is not a symbol.";
 
-/// `Unknown text kind "x". Kinds: tag, point_label, …`
-fn unknown_kind(word: &str) -> CmdError {
-    let all: Vec<&str> = TextKind::ALL.iter().map(|k| k.word()).collect();
-    CmdError::refused(format!("Unknown text kind \"{word}\". Kinds: {}.", all.join(", ")))
-}
+/// Whether a text is shown, as a call says it: its word, a yes/no word, or its panel label.
+impl crate::commands::input::Words for ecad_model::look::Shown {
+    const WORDS: &'static [&'static str] = <ecad_model::look::Shown as ecad_model::Word>::WORDS;
 
-/// The kind a call names (any case, spaces around ignored).
-///
-/// # Errors
-/// A word that is no kind.
-pub fn kind(word: &str) -> Result<TextKind, CmdError> {
-    let w = word.trim().to_ascii_lowercase();
-    <TextKind as ecad_model::Word>::parse(&w).ok_or_else(|| unknown_kind(&w))
-}
-
-/// The kind a call may name: `None` when it names none.
-///
-/// # Errors
-/// A word that is no kind.
-pub fn opt_kind(word: Option<&str>) -> Result<Option<TextKind>, CmdError> {
-    word.map(kind).transpose()
+    fn read(text: &str) -> Option<Self> {
+        ecad_model::look::Shown::from_input(text)
+    }
 }
 
 // ---------------------------------------------------------------- defaults
@@ -324,9 +310,9 @@ pub(crate) fn pagetexts_json(doc: &Document, page: PageId, look: &dyn Look) -> V
 pub struct MovetextParams {
     /// The symbol.
     representation: RepresentationId,
-    /// "tag" (default) or "point_label".
+    /// Tag (default) or point_label.
     #[serde(default)]
-    kind: Option<String>,
+    kind: Option<TextKind>,
     /// The connection point whose label moves (point_label).
     #[serde(default)]
     connection_point: Option<ConnectionPointId>,
@@ -347,7 +333,7 @@ impl Generic for MovetextParams {
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let rep = self.representation;
-        let kind = opt_kind(self.kind.as_deref())?.unwrap_or(TextKind::Tag);
+        let kind = self.kind.unwrap_or(TextKind::Tag);
         let connection_point = self.connection_point;
         let to = match self.to {
             _ if self.reset == Some(true) => None,

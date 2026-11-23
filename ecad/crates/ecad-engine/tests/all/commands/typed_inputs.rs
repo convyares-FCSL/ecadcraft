@@ -82,6 +82,19 @@ fn closed_word_sets_are_listed() {
         ("locationbox", r#"proposal?: "propose"|"move"|"keep""#),
         ("pageprops", r#"proposal?: "propose"|"move"|"keep""#),
         ("projectprops", r#"proposal?: "propose"|"move"|"keep""#),
+        ("setdefault", r#"level?: "standard"|"project"|"page"|"object""#),
+        ("setstyle", r#"catalogue: "cable"|"frame"|"location"|"page"|"ratingtable"|"text"|"wire""#),
+        ("setstyle", r#"layer?: "project"|"standard""#),
+        ("styles", r#"catalogue?: "cable"|"frame""#),
+        ("ratingtable", r#"layer?: "project"|"standard""#),
+        ("textstyle", r#"weight?: "regular"|"bold""#),
+        ("textstyle", r#"show?: "yes"|"no"|"first""#),
+        ("textstyle", r#"kind?: "tag"|"point_label""#),
+        ("showtext", r#"kind: "tag"|"point_label""#),
+        ("showtext", r#"show: "yes"|"no"|"first" | null"#),
+        ("movetext", r#"kind?: "tag"|"point_label""#),
+        ("mirrormove", r#"placement?: "auto"|"below"|"right"|"off""#),
+        ("projectprops", r#"contact_mirror?: "auto"|"below"|"right"|"off""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
@@ -355,8 +368,12 @@ fn the_text_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("textstyle", json!({"kind": "tag", "height": "x"}), "`height` must be a number, or null"),
         ("textstyle", json!({"kinds": 1}), "`kinds` must be a list of objects, or null"),
-        ("showtext", json!({"show": "on"}), "`kind` (text) is required"),
-        ("showtext", json!({"kind": "tag"}), "`show` (text, or null) is required"),
+        (
+            "showtext",
+            json!({"show": "on"}),
+            r#"`kind` (one of "tag", "point_label", "description", "part_number", "continuation_name", "reference", "continuation_caption", "wire_label", "cable_text", "location", "title_value", "title_caption", "title_main", "grid", "table", "table_header", "free", "title_page", "title_rev", "table_heading", "cover", "channel_text", "address") is required"#,
+        ),
+        ("showtext", json!({"kind": "tag"}), r#"`show` (one of "yes", "no", "first", or null) is required"#),
         ("movetext", json!({"to": [1, 2]}), "`representation` (hex id) is required"),
         ("movetext", json!({"representation": "00000000000000000000000000000001", "to": [1]}), "`to` must be a point [x, y], or null"),
         ("hiddentext", json!({"on": "yes"}), "`on` must be true or false, or null"),
@@ -377,7 +394,7 @@ fn the_text_commands_keep_their_rule_words() {
         ("textstyle", json!({"height": 3}), ecad_drawing_style::text::commands::NEEDS_KIND),
         ("textstyle", json!({"kinds": [{"height": 3}]}), ecad_drawing_style::text::commands::NEEDS_KIND),
         ("textstyle", json!({"font": ""}), ecad_drawing_style::text::commands::BAD_FONT),
-        ("showtext", json!({"kind": "tag", "show": "maybe"}), ecad_drawing_style::text::commands::BAD_SHOW),
+        ("showtext", json!({"kind": "tag", "show": "maybe"}), "`show` must be one of \"yes\", \"no\", \"first\", or null"),
         (
             "showtext",
             json!({"kind": "tag", "show": "on", "page": "00000000000000000000000000000001", "component": "00000000000000000000000000000002"}),
@@ -403,7 +420,7 @@ fn the_text_commands_keep_their_rule_words() {
         assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
     }
     let e = h.run("showtext", json!({"kind": "nope", "show": "on"})).err().unwrap_or_default();
-    assert!(e.starts_with("Unknown text kind \"nope\". Kinds: tag, point_label"), "{e}");
+    assert!(e.starts_with("`kind` must be one of \"tag\", \"point_label\""), "{e}");
 }
 
 /// The typed text commands still work, and answer as before.
@@ -434,7 +451,7 @@ fn the_style_commands_refuse_input_uniformly() {
     let rows: &[(&str, Value, &str)] = &[
         ("standard", json!({"new": 5}), "`new` must be text, or null"),
         ("standard", json!({"remove": true, "replace_with": "x"}), "`replace_with` must be an object, or null"),
-        ("setstyle", json!({"id": "tag"}), "`catalogue` (text) is required"),
+        ("setstyle", json!({"id": "tag"}), r#"`catalogue` (one of "cable", "frame", "location", "page", "ratingtable", "text", "wire") is required"#),
         ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": 1}), "`fields` must be an object, or null"),
         ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": true}}), "`fields` must be an object, or null"),
         (
@@ -442,9 +459,17 @@ fn the_style_commands_refuse_input_uniformly() {
             json!({"catalogue": "text", "id": "tag", "colour": "RD"}),
             "`colour` is not a parameter of this command; it takes `catalogue`, `copy_of`, `fields`, `id`, `layer`, `name`, `new`, `rename`",
         ),
-        ("deletestyle", json!({"id": "x"}), "`catalogue` (text) is required"),
+        (
+            "deletestyle",
+            json!({"id": "x"}),
+            r#"`catalogue` (one of "cable", "frame", "location", "page", "ratingtable", "text", "wire") is required"#,
+        ),
         ("promote", json!({"key": 5}), "`key` must be text, or null"),
-        ("styles", json!({"catalogue": 5}), "`catalogue` must be text, or null"),
+        (
+            "styles",
+            json!({"catalogue": 5}),
+            r#"`catalogue` must be one of "cable", "frame", "location", "page", "ratingtable", "text", "wire", or null"#,
+        ),
     ];
     let mut h = H::new(7014);
     for (cmd, params, says) in rows {
@@ -460,11 +485,15 @@ fn the_style_commands_keep_their_rule_words() {
         ("standard", json!({"name": "S"}), STANDARD_FIRST),
         ("standard", json!({"remove": true}), STANDARD_FIRST),
         ("standard", json!({"new": " "}), NEEDS_NAME),
-        ("setstyle", json!({"catalogue": "nope", "id": "tag"}), "No catalogue \"nope\"; the catalogues are"),
+        ("setstyle", json!({"catalogue": "nope", "id": "tag"}), "`catalogue` must be one of \"cable\", \"frame\""),
         ("setstyle", json!({"catalogue": "text"}), "Name the style: `id` or `name`."),
         ("setstyle", json!({"catalogue": "text", "id": "tag"}), "Give `fields` to set, `rename`, or `new: true`."),
         ("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "standard", "fields": {"height": 3}}), STANDARD_FIRST),
-        ("setstyle", json!({"catalogue": "text", "id": "tag", "layer": "x", "fields": {"height": 3}}), "Unknown layer \"x\": project or standard."),
+        (
+            "setstyle",
+            json!({"catalogue": "text", "id": "tag", "layer": "x", "fields": {"height": 3}}),
+            "`layer` must be one of \"project\", \"standard\", or null",
+        ),
         ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"nope": 1}}), "No field \"nope\"; Text styles have"),
         ("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 99}}), "height is"),
         ("setstyle", json!({"catalogue": "text", "new": true}), STYLE_NEEDS_NAME),
@@ -472,7 +501,7 @@ fn the_style_commands_keep_their_rule_words() {
         ("promote", json!({"key": "no.such"}), "No default \"no.such\"."),
         ("promote", json!({"id": "tag"}), "`catalogue` is required:"),
         ("promote", json!({"catalogue": "text", "id": "tag"}), STANDARD_FIRST),
-        ("styles", json!({"catalogue": "nope"}), "No catalogue \"nope\""),
+        ("styles", json!({"catalogue": "nope"}), "`catalogue` must be one of \"cable\", \"frame\""),
     ];
     let mut h = H::new(7015);
     for (cmd, params, says) in rows {
@@ -661,7 +690,11 @@ fn the_reference_commands_refuse_input_uniformly() {
         ("contacts", json!({}), "`component` (hex id) is required"),
         ("refgoto", json!({"target": "00000000000000000000000000000001"}), "`source` (hex id) is required"),
         ("mirrormove", json!({"component": "00000000000000000000000000000001", "at": [1]}), "`at` must be a point [x, y], or null"),
-        ("mirrormove", json!({"component": "00000000000000000000000000000001", "placement": 5}), "`placement` must be text, or null"),
+        (
+            "mirrormove",
+            json!({"component": "00000000000000000000000000000001", "placement": 5}),
+            r#"`placement` must be one of "auto", "below", "right", "off", or null"#,
+        ),
         (
             "mirrormove",
             json!({"component": "00000000000000000000000000000001", "side": "left"}),
@@ -1059,7 +1092,11 @@ fn the_rating_commands_keep_their_rule_words() {
         ("ratingtable", json!({"csv": "", "import": "x.csv"}), "Give `csv` or `import`, not both."),
         ("ratingtable", json!({"export": "never-written.csv"}), "No rating table chosen; give `name`."),
         ("ratingtable", json!({"name": "", "csv": "kind,a,b,c,d,value\n"}), "A rating table needs a name"),
-        ("ratingtable", json!({"name": "T", "csv": "kind,a,b,c,d,value\n", "layer": "x"}), "layer is project or standard."),
+        (
+            "ratingtable",
+            json!({"name": "T", "csv": "kind,a,b,c,d,value\n", "layer": "x"}),
+            "`layer` must be one of \"project\", \"standard\", or null",
+        ),
         ("ratingtable", json!({"name": "T", "csv": "kind,a,b,c,d,value\n", "layer": "standard"}), "This project uses IEC (built in)."),
     ];
     let mut h = H::new(7040);
@@ -1264,7 +1301,7 @@ fn the_title_block_commands_keep_their_rule_words() {
         ("titleblock", json!({"id": id, "sheet": "Q9"}), ""),
         ("titleblock", json!({"id": id, "body": {"nonsense": 1}}), "The body does not read as a title block: "),
         ("titleblock", json!({"new": {"sheet": "A3", "name": "mine"}}), "A frame style is already called \"mine\"; choose another name."),
-        ("titleblock", json!({"new": {"sheet": "A3", "layer": "x"}}), "Unknown layer \"x\": project or standard."),
+        ("titleblock", json!({"new": {"sheet": "A3", "layer": "x"}}), "`new` must be an object, or null"),
         ("titleblock", json!({"new": {"sheet": "A3", "layer": "standard"}}), "This project uses IEC (built in)."),
         ("titleblock", json!({"new": {"sheet": "A3", "name": ""}}), "A style needs a name (1 to 64 characters, no control characters)."),
     ];
@@ -1618,8 +1655,12 @@ fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
         (json!({"value": 3}), "`key` (text) is required"),
         (json!({"key": "text.run.gap", "value": true}), "`value` must be text, or null"),
         (json!({"key": "text.run.gap", "value": 3, "reset": "yes"}), "`reset` must be true or false, or null"),
-        (json!({"key": "text.run.gap", "level": 2, "value": 3}), "`level` must be text, or null"),
+        (json!({"key": "text.run.gap", "level": 2, "value": 3}), r#"`level` must be one of "standard", "project", "page", "object", or null"#),
         (json!({"key": "text.tag.show", "level": "object", "component": "zz", "value": "off"}), "`component` must be a hex id, or null"),
+        (
+            json!({"key": "text.run.gap", "level": "sideways", "value": 3}),
+            "`level` must be one of \"standard\", \"project\", \"page\", \"object\", or null",
+        ),
     ];
     let mut h = H::new(7067);
     for (params, says) in input {
@@ -1627,7 +1668,6 @@ fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
     }
     let rules: &[(Value, &str)] = &[
         (json!({"key": "text.nope", "value": 3}), "No default \"text.nope\"."),
-        (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level \"sideways\". Levels: standard, project, page, object."),
         (json!({"key": "text.run.gap"}), ecad_electrical::styles::commands::defaults::NEEDS_VALUE),
         (json!({"key": "text.run.gap", "value": 3, "reset": true}), "Give either `value` or `reset: true`, not both."),
         (json!({"key": "text.run.gap", "value": 101}), "`text.run.gap` is a length from 0 to 100 mm."),

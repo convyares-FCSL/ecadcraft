@@ -26,7 +26,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::commands::input::TextOrNumber;
+use crate::commands::input::{Said, TextOrNumber, Words};
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 use ecad_model::registry::Scope;
@@ -48,17 +48,18 @@ pub fn level_word(l: Level) -> &'static str {
     }
 }
 
-/// The level a word names (`object`, `symbol` and `device` are the object level).
-///
-/// # Errors
-/// A word that names no level, with the levels.
-pub fn level_of(word: &str) -> Result<Level, CmdError> {
-    match word.trim().to_ascii_lowercase().as_str() {
-        "standard" => Ok(Level::Standard),
-        "project" => Ok(Level::Project),
-        "page" => Ok(Level::Page),
-        "object" | "symbol" | "device" => Ok(Level::Object),
-        _ => Err(CmdError::refused(format!("Unknown level \"{word}\". Levels: standard, project, page, object."))),
+/// A level as a call names it (`symbol` and `device` are the object level too).
+impl Words for Level {
+    const WORDS: &'static [&'static str] = &["standard", "project", "page", "object"];
+
+    fn read(text: &str) -> Option<Level> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "standard" => Some(Level::Standard),
+            "project" => Some(Level::Project),
+            "page" => Some(Level::Page),
+            "object" | "symbol" | "device" => Some(Level::Object),
+            _ => None,
+        }
     }
 }
 
@@ -342,7 +343,7 @@ pub(crate) struct FamilySet {
 /// # Errors
 /// Neither or both of a text value and `reset`; another level; a field the symbol keeps as its
 /// own; a value the field does not take.
-pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option<Given>, reset: bool) -> Result<Option<FamilySet>, CmdError> {
+pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<Level>, value: Option<Given>, reset: bool) -> Result<Option<FamilySet>, CmdError> {
     use crate::defaults::symbols::{self as family, Field};
     // Only `symbol.<key>.<field>` keys: any other key is "No default" for the caller to say.
     if !ecad_model::naming::keys::in_area(key.trim(), ecad_model::naming::keys::Area::Symbol) {
@@ -355,7 +356,7 @@ pub(crate) fn plan_family(doc: &Document, key: &str, level: Option<&str>, value:
         (Some(_), true) => return Err(CmdError::refused(NOT_BOTH)),
         _ => return Err(CmdError::refused(NEEDS_VALUE)),
     };
-    if !level.unwrap_or("project").trim().eq_ignore_ascii_case("project") {
+    if level.is_some_and(|l| l != Level::Project) {
         return Err(CmdError::refused(format!("{key} is set for the project; a symbol's own value is edited in the symbol.")));
     }
     if !field.overridable() {
@@ -424,9 +425,9 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
 pub struct SetdefaultParams {
     /// A default's key (see `defaults`).
     key: String,
-    /// standard, project (the default), page or object.
+    /// Standard, project (the default), page or object (`symbol` and `device` are the object level too).
     #[serde(default)]
-    level: Option<String>,
+    level: Option<Said<Level>>,
     /// The page level: the page (default the page shown).
     #[serde(default)]
     page: Option<PageId>,
@@ -454,9 +455,6 @@ impl Generic for SetdefaultParams {
     fn check(&self, registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         // A registry entry's level and value are refused before the project is taken (as before).
         if let Some(entry) = registry.find(self.key.trim()) {
-            if let Some(w) = self.level.as_deref() {
-                level_of(w)?;
-            }
             chosen(entry, self.given(), self.reset.unwrap_or(false))?;
         }
         Ok(())
@@ -468,7 +466,7 @@ impl Generic for SetdefaultParams {
         let given = self.given();
         let Some(entry) = cx.registry.find(&key) else {
             // A symbol's family entry, `symbol.<key>.<field>`.
-            let Some(done) = plan_family(cx.doc, &key, self.level.as_deref(), given, reset)? else {
+            let Some(done) = plan_family(cx.doc, &key, self.level.map(|l| l.0), given, reset)? else {
                 return Err(CmdError::refused(format!("No default \"{key}\".")));
             };
             let label = format!("Default {}: {}", done.field.label(), done.symbol);
@@ -480,10 +478,7 @@ impl Generic for SetdefaultParams {
                 v
             }));
         };
-        let level = match self.level.as_deref() {
-            Some(w) => level_of(w)?,
-            None => Level::Project,
-        };
+        let level = self.level.map_or(Level::Project, |l| l.0);
         let chosen = chosen(entry, given, reset)?;
         let objects = Objects { representation: self.representation, component: self.component, conductor: self.conductor };
         let shown = cx.page.ok_or(CmdError::refused("page view not found"))?;

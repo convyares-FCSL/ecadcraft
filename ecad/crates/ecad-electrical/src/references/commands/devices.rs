@@ -2,7 +2,7 @@
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`references`,
 //! `contacts`) are [`crate::references::devices`]'s own; the engine crate's shims open pages and answer in JSON.
 
-use ecad_model::{CableId, DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{CableId, ContactMirror, DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -82,17 +82,19 @@ pub fn goto(
 }
 
 /// The `mirror` value `mirrormove` writes on device `c`: a point `at` (page coordinates) for the
-/// contact table, or a `placement` word (auto, below, right, off). `None`: the project default.
+/// contact table, or a `placement`. `None`: the project default.
 ///
 /// # Errors
-/// Neither `at` nor `placement`, both, an unreadable word, or a point too far from the coil.
-pub(crate) fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Option<String>, CmdError> {
+/// Neither `at` nor `placement`, both, or a point too far from the coil.
+pub(crate) fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<ContactMirror>) -> Result<Option<String>, CmdError> {
     let placement = match (at, placement) {
         (Some(_), Some(_)) => return Err(CmdError::input("give `at` or `placement`, not both")),
         (None, None) => return Err(CmdError::input("`at` ([x, y]) or `placement` (auto, below, right, off) is required")),
-        (None, Some(w)) => match devices::parse::parse_mirror(w)? {
-            Placement::At(_) => return Err(CmdError::refused("`placement` must be auto, below, right or off; use `at` for a point")),
-            p => p,
+        (None, Some(m)) => match m {
+            ContactMirror::Auto => Placement::Auto,
+            ContactMirror::Below => Placement::Below,
+            ContactMirror::Right => Placement::Right,
+            ContactMirror::Off => Placement::Off,
         },
         (Some(p), None) => {
             let dev = devices::classify::device(doc, c);
@@ -120,7 +122,7 @@ pub(crate) fn mirror_for(doc: &Document, c: DeviceId, at: Option<Pt>, placement:
     Ok(match placement {
         // The project default is `auto` unless the project says otherwise: `auto` writes `auto`
         // only when the project's default differs.
-        Placement::Auto if doc.settings().contact_mirror == ecad_model::ContactMirror::Auto => None,
+        Placement::Auto if doc.settings().contact_mirror == ContactMirror::Auto => None,
         p => Some(p.word()),
     })
 }
@@ -141,7 +143,7 @@ pub struct Mirrored {
 ///
 /// # Errors
 /// No such component, or [`mirror_for`]'s refusals.
-pub(crate) fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
+pub(crate) fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<ContactMirror>) -> Result<Mirrored, CmdError> {
     let comp = doc.devices().get(&c).ok_or(CmdError::NotFound(ecad_model::Noun::Device))?;
     let after = mirror_for(doc, c, at, placement)?;
     let before = comp.device_type.as_contacts().and_then(|x| x.contact_table()).map(|t| Placement::of_table(t).word());
@@ -211,9 +213,9 @@ pub struct MirrormoveParams {
     /// A page point for the table.
     #[serde(default)]
     at: Option<Point>,
-    /// Or a placement: auto, below, right or off.
+    /// Or a placement.
     #[serde(default)]
-    placement: Option<String>,
+    placement: Option<ContactMirror>,
 }
 
 impl Generic for DeviceReferencesParams {
@@ -252,7 +254,7 @@ impl Generic for MirrormoveParams {
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let at = self.at.map(|a| a.0);
-        let m = plan_mirrormove(cx.doc, self.component, at, self.placement.as_deref())?;
+        let m = plan_mirrormove(cx.doc, self.component, at, self.placement)?;
         if m.ops.is_empty() {
             return Ok(Outcome::answer(json!({"changed": false, "mirror": m.mirror})));
         }

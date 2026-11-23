@@ -560,10 +560,10 @@ fn t4_textstyle_refusals_write_nothing() {
     }
     // Brief 070: a value of the wrong kind is an input refusal, in the uniform wording.
     refused(&mut h, "textstyle", json!({"kind": "tag", "height": "abc"}), "`height` must be a number, or null");
-    refused(&mut h, "textstyle", json!({"kind": "x", "height": 3}), "Unknown text kind \"x\". Kinds: tag, point_label");
-    refused(&mut h, "textstyle", json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold.");
+    refused(&mut h, "textstyle", json!({"kind": "x", "height": 3}), "`kind` must be one of \"tag\", \"point_label\"");
+    refused(&mut h, "textstyle", json!({"kind": "tag", "weight": "heavy"}), "`weight` must be one of \"regular\", \"bold\", or null");
     refused(&mut h, "textstyle", json!({"kind": "point_label", "show": "first"}), "Shown is yes, no or first (first: tag only).");
-    refused(&mut h, "textstyle", json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first (first: tag only).");
+    refused(&mut h, "textstyle", json!({"kind": "tag", "show": "maybe"}), "`show` must be one of \"yes\", \"no\", \"first\", or null");
     let font = "A font name is 1 to 64 characters with no control characters.";
     refused(&mut h, "textstyle", json!({"font": ""}), font);
     refused(&mut h, "textstyle", json!({"font": "F".repeat(65)}), font);
@@ -682,7 +682,7 @@ fn t5_showtext_refusals() {
     let mut f = fixture_c(0x7031_0503);
     refused(&mut f.h, "showtext", json!({"kind": "x", "show": "off"}), "tag");
     refused(&mut f.h, "showtext", json!({"kind": "point_label", "show": "first"}), "first");
-    refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first");
+    refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "maybe"}), "`show` must be one of \"yes\", \"no\", \"first\", or null");
     // `reference` and `location` are page and project kinds only (§5.1).
     refused(&mut f.h, "showtext", json!({"kind": "reference", "show": "off", "component": f.k1.hex()}), "tag");
     refused(&mut f.h, "showtext", json!({"kind": "location", "show": "off", "representation": f.r1[0].hex()}), "tag");

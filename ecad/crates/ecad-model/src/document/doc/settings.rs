@@ -105,43 +105,27 @@ pub struct ProjectSettings {
     pub contact_mirror: ContactMirror,
 }
 
-/// Where the contact mirror table under a coil goes by default. A device's own
-/// `mirror` property overrides it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContactMirror {
-    /// Under the rail the coil's lower wire meets, else under the coil.
-    #[default]
-    Auto,
-    /// Under the coil.
-    Below,
-    /// Right of the coil.
-    Right,
-    /// No tables (texts under contacts remain).
-    Off,
+crate::word_enum! {
+    /// Where the contact mirror table under a coil goes by default. A device's own
+    /// `mirror` property overrides it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum ContactMirror {
+        /// Under the rail the coil's lower wire meets, else under the coil.
+        #[default]
+        Auto,
+        /// Under the coil.
+        Below,
+        /// Right of the coil.
+        Right,
+        /// No tables (texts under contacts remain).
+        Off,
+    }
 }
 
 impl ContactMirror {
     /// Whether it is the default (`auto`), which files leave out.
     pub fn is_auto(&self) -> bool {
         *self == ContactMirror::Auto
-    }
-
-    /// Its word: `auto`, `below`, `right` or `off`.
-    pub fn word(self) -> &'static str {
-        match self {
-            ContactMirror::Auto => "auto",
-            ContactMirror::Below => "below",
-            ContactMirror::Right => "right",
-            ContactMirror::Off => "off",
-        }
-    }
-
-    /// The placement a word names (case-insensitive), if any.
-    pub fn parse(word: &str) -> Option<ContactMirror> {
-        [ContactMirror::Auto, ContactMirror::Below, ContactMirror::Right, ContactMirror::Off]
-            .into_iter()
-            .find(|m| m.word().eq_ignore_ascii_case(word.trim()))
     }
 }
 

@@ -103,9 +103,9 @@ pub struct ProjectpropsParams {
     /// How cross-references are written.
     #[serde(default, deserialize_with = "nullable")]
     reference_style: Option<Option<ReferenceStyleParam>>,
-    /// Where contact tables go by default: "auto", "below", "right" or "off".
+    /// Where contact tables go by default.
     #[serde(default, deserialize_with = "nullable")]
-    contact_mirror: Option<Option<String>>,
+    contact_mirror: Option<Option<ecad_model::ContactMirror>>,
     /// Digits of a tag's number, 1 to 6.
     #[serde(default, deserialize_with = "nullable")]
     tag_padding: Option<Option<u64>>,

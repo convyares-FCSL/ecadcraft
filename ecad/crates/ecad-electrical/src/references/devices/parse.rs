@@ -229,7 +229,7 @@ pub(crate) fn not_a_placement(text: &str) -> String {
 /// Not one of the words, or an offset that is not two finite numbers within [`MAX_OFFSET_MM`].
 pub fn parse_mirror(text: &str) -> Result<Placement, CmdError> {
     let t = text.trim();
-    if let Some(m) = ContactMirror::parse(t) {
+    if let Some(m) = <ContactMirror as ecad_model::Word>::parse(t) {
         return Ok(Placement::of_default(m));
     }
     let lower = t.to_ascii_lowercase();

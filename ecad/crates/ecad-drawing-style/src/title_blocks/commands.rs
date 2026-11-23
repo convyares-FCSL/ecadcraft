@@ -18,7 +18,7 @@ use crate::title_blocks::house;
 use ecad_electrical::CmdError;
 use ecad_electrical::commands::run::{Access, Cx, Generic, Outcome};
 use ecad_electrical::styles;
-use ecad_electrical::styles::commands::styles::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
+use ecad_electrical::styles::commands::styles::{FieldInput, FieldParam, STYLE_NEEDS_NAME, field_inputs, fields};
 use ecad_electrical::title_blocks::bind;
 use ecad_model::look::FrameText;
 
@@ -124,20 +124,6 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
         vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }]
     };
     Ok(EditPlan { ops, label: format!("Title block {name}") })
-}
-
-/// The layer a new frame goes in: `project` (the default) or `standard` (when the project has
-/// one).
-///
-/// # Errors
-/// A standard layer without a standard, or another word.
-pub(crate) fn new_layer(doc: &Document, word: Option<&str>) -> Result<StyleLayer, CmdError> {
-    match word.map(str::trim) {
-        None | Some("project") => Ok(StyleLayer::Project),
-        Some("standard") if doc.standard().is_some() => Ok(StyleLayer::Standard),
-        Some("standard") => Err(CmdError::refused(STANDARD_FIRST)),
-        Some(other) => Err(CmdError::refused(format!("Unknown layer {other:?}: project or standard."))),
-    }
 }
 
 /// The frame a new one starts from: `None` for `blank` (any case), else the frame `from` names
@@ -324,9 +310,9 @@ pub struct NewParams {
     /// Its name (default from the sheet's size: "A3 title block").
     #[serde(default)]
     name: Option<String>,
-    /// project (the default) or standard.
+    /// Project (the default) or standard (when the project has one).
     #[serde(default)]
-    layer: Option<String>,
+    layer: Option<ecad_electrical::commands::input::Said<StyleLayer>>,
 }
 
 /// Reads a frame (`{id | name, sheet?}`), writes one (`{id | name, name? | rename?, fields?, body?}`), or makes a
@@ -422,7 +408,7 @@ impl Generic for TitleblockParams {
 fn new_frame(cx: &mut Cx<'_>, new: NewParams) -> Result<Outcome, CmdError> {
     let doc = cx.doc;
     let spec = sheet(doc, new.sheet.as_deref())?;
-    let layer = new_layer(doc, new.layer.as_deref())?;
+    let layer = ecad_electrical::styles::commands::styles::layer(doc, new.layer.map(|l| l.0))?;
     let source = new_source(doc, new.from.as_deref())?;
     // Own frames keep their block as made: items stay at their place from the bottom-right
     // corner; built-ins are computed for the chosen sheet.

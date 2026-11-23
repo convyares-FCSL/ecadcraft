@@ -184,7 +184,7 @@ fn refusals_say_why_and_name_the_allowed_levels() {
         (json!({"key": "text.run.gap"}), "reset: true"),
         (json!({"key": "text.run.gap", "value": 3, "reset": true}), "not both"),
         (json!({"key": "text.nope", "value": 3}), "No default"),
-        (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level"),
+        (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "`level` must be one of"),
         (json!({"key": "text.tag.show", "level": "object", "value": "off"}), "needs a `component`"),
         (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
         (json!({"key": "symbol.coil.prefix", "value": &"x".repeat(10_000)}), "letters"),
