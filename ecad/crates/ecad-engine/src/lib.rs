@@ -12,7 +12,8 @@
 //! - [`commands`]: the command registry and the shared helpers of session commands.
 //! - [`interact`]: click-based forms of the commands, the marks drawn over pages and the hover text.
 //! - [`pointer`]: what is under the cursor and the running tool's intent.
-//! - [`draw`], [`convert`]: building CADCraft entities, text styles and fonts from what the rules decide.
+//! - [`convert`] and each feature's `draw` module: building CADCraft entities, text styles and fonts from
+//!   what the rules decide.
 //! - [`file`]: the project's `.ecad` file on disk, the home folder and path rules.
 //! - [`history`]: the History tab: versions, points, restore, branches and merging.
 //! - [`agent`]: what an agent may run, its caps, its author name and its read tools.
@@ -41,7 +42,6 @@ pub mod continuations;
 pub mod convert;
 pub mod dev;
 pub mod devices;
-pub mod draw;
 pub mod export;
 pub mod file;
 pub(crate) mod generic;
