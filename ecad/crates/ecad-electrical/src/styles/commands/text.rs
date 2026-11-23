@@ -23,8 +23,9 @@ use crate::defaults::{self};
 use crate::devices::texts::TextOf;
 use crate::devices::{self};
 use crate::error::CmdError;
+use crate::styles::text_style;
 use crate::styles::text_style::fonts::{Fonts, TextMetrics};
-use crate::styles::text_style::{self, Shown, kind_words};
+use ecad_model::look::Shown;
 use ecad_model::look::TextKind;
 use ecad_model::registry::Scope;
 
@@ -440,7 +441,7 @@ pub fn show_label(doc: &Document, level: ShowLevel, kind: TextKind, show: Option
         ShowLevel::Symbol(_, c) | ShowLevel::Device(c) => format!(" {}", devices::tags::tag_words(doc, c)),
         _ => String::new(),
     };
-    format!("{verb} {}{of}", kind_words(kind))
+    format!("{verb} {}{of}", kind.words())
 }
 
 // ---------------------------------------------------------------- pagetexts
@@ -750,7 +751,7 @@ pub(crate) fn pagetexts_json(doc: &Document, page: PageId, metrics: &dyn TextMet
     use ecad_model::look::TextStyle;
     use ecad_model::objects::styles::text::Weight;
     let draw = DrawStyles::with(doc, metrics);
-    let all = crate::devices::texts::all_texts_measured(doc, page, None, &crate::styles::text_style::fonts::Look(metrics));
+    let all = crate::devices::texts::all_texts_measured(doc, page, None, &crate::styles::text_style::fonts::FontLook(metrics));
     let more = all.len().saturating_sub(MAX_TEXT_ROWS);
     let rows: Vec<Value> = all
         .iter()
@@ -859,7 +860,7 @@ impl Generic for MovetextParams {
 
 /// The text `t` names as drawn now.
 fn current_text(doc: &Document, rep: RepresentationId, t: &MoveTarget, metrics: &dyn TextMetrics) -> Option<crate::devices::texts::PageText> {
-    crate::devices::texts::all_texts_measured(doc, t.page, None, &crate::styles::text_style::fonts::Look(metrics))
+    crate::devices::texts::all_texts_measured(doc, t.page, None, &crate::styles::text_style::fonts::FontLook(metrics))
         .into_iter()
         .find(|x| x.text.rep == rep && x.text.of == t.of)
 }

@@ -23,10 +23,9 @@ use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
 
 use crate::plc::rack::{self, CardType};
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
-use crate::styles::text_style::text_style;
 use crate::symbols::cells::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
+use ecad_model::look::Look;
 use ecad_model::look::TextKind;
-use ecad_model::look::TextLook;
 
 /// Frame parts are indexed from here among their representation's parts (a cell or body has no
 /// cross-reference parts of its own; the base keeps them apart regardless).
@@ -202,9 +201,9 @@ fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
 fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = ecad_model::registry::Scope { component: Some(c), ..ecad_model::registry::Scope::project() };
-    if <crate::styles::text_style::Shown as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+    if <ecad_model::look::Shown as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
         .unwrap_or_default()
-        != crate::styles::text_style::Shown::Off
+        != ecad_model::look::Shown::Off
     {
         out.push((crate::devices::tags::tag_words(doc, c), TextKind::Tag));
     }
@@ -233,15 +232,15 @@ pub fn type_text(doc: &Document, c: DeviceId) -> String {
 }
 
 /// The name band's depth for a name block of these lines.
-pub(crate) fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
-    let h: f64 = lines.iter().map(|(_, k)| text_style(doc, *k).height).sum::<f64>() + LINE_GAP * lines.len().saturating_sub(1) as f64;
+pub(crate) fn name_band(doc: &Document, lines: &[(String, TextKind)], m: &dyn Look) -> f64 {
+    let h: f64 = lines.iter().map(|(_, k)| m.text_style(doc, *k).height).sum::<f64>() + LINE_GAP * lines.len().saturating_sub(1) as f64;
     let band = (h + 2.0 * INSET_Y).max(NAME_BAND);
     (band / BAND_STEP).ceil() * BAND_STEP
 }
 
 /// Every frame part on `page`, its texts measured with `m` (ecad-engine's
 /// `parts_on_page` passes CADCraft's fonts).
-pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn Look) -> Vec<Part> {
     let mut out = Vec::new();
     for run in runs_on_page(doc, page) {
         frame_parts(doc, &run, m, &mut out);
@@ -249,7 +248,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) ->
     out
 }
 
-fn frame_parts(doc: &Document, run: &Run, m: &dyn TextLook, out: &mut Vec<Part>) {
+fn frame_parts(doc: &Document, run: &Run, m: &dyn Look, out: &mut Vec<Part>) {
     let c = run.card;
     let Some(ty) = crate::plc::card_type_of(doc, c) else { return };
     let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
@@ -258,7 +257,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextLook, out: &mut Vec<Part>)
         .any(|(_, r)| crate::devices::tags::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
     let lines = name_block(doc, c);
     let ttext = type_text(doc, c);
-    let band = name_band(doc, &lines);
+    let band = name_band(doc, &lines, m);
     let depth = HEADER_BAND + MARK_BAND + band;
     let bottom = run.top + run.dir * depth;
     // Wide enough for the name block and the type text.
@@ -292,14 +291,14 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextLook, out: &mut Vec<Part>)
     if run.dir < 0.0 {
         let mut y = bottom + INSET_Y;
         for (t, kind) in lines.iter().rev() {
-            let h = text_style(doc, *kind).height;
+            let h = m.text_style(doc, *kind).height;
             push(
                 Shape::Text { kind: *kind, at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Bottom, rotation: 0.0 },
                 out,
             );
             y += h + LINE_GAP;
         }
-        let h = text_style(doc, TextKind::PartNumber).height;
+        let h = m.text_style(doc, TextKind::PartNumber).height;
         push(
             Shape::Text {
                 kind: TextKind::PartNumber,
@@ -315,14 +314,14 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextLook, out: &mut Vec<Part>)
     } else {
         let mut y = bottom - INSET_Y;
         for (t, kind) in &lines {
-            let h = text_style(doc, *kind).height;
+            let h = m.text_style(doc, *kind).height;
             push(
                 Shape::Text { kind: *kind, at: p(x, y), value: t.clone(), height: h, halign: HAlign::Left, valign: VAlign::Top, rotation: 0.0 },
                 out,
             );
             y -= h + LINE_GAP;
         }
-        let h = text_style(doc, TextKind::PartNumber).height;
+        let h = m.text_style(doc, TextKind::PartNumber).height;
         push(
             Shape::Text {
                 kind: TextKind::PartNumber,
@@ -398,8 +397,8 @@ pub fn runs_of_card(doc: &Document, c: DeviceId, page: PageId) -> Vec<Run> {
 }
 
 /// The frame's rectangle of `run` (x from, x to, y low, y high), at the project's text styles.
-fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
-    let depth = HEADER_BAND + MARK_BAND + name_band(doc, &name_block(doc, run.card));
+fn frame_rect(doc: &Document, run: &Run, m: &dyn Look) -> (f64, f64, f64, f64) {
+    let depth = HEADER_BAND + MARK_BAND + name_band(doc, &name_block(doc, run.card), m);
     let bottom = run.top + run.dir * depth;
     (run.left, run.right, run.top.min(bottom), run.top.max(bottom))
 }
@@ -407,14 +406,14 @@ fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
 /// `wire-through-card` rows of card `c`: a wire attached to one of the card's
 /// points whose route goes on into the card's frame and is attached at both ends (kept by the
 /// fence because it reaches something; connectivity is never changed silently).
-pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
+pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, m: &dyn Look, out: &mut Vec<crate::checks::Check>) {
     let pages = crate::plc::overview::pages_of(doc, c);
     for page in pages {
         let runs = runs_of_card(doc, c, page);
         if runs.is_empty() {
             continue;
         }
-        let rects: Vec<(f64, f64, f64, f64)> = runs.iter().map(|r| frame_rect(doc, r)).collect();
+        let rects: Vec<(f64, f64, f64, f64)> = runs.iter().map(|r| frame_rect(doc, r, m)).collect();
         let mut seen = std::collections::BTreeSet::new();
         for (t, _) in doc.connection_points_of(c) {
             let Some((i, _)) = crate::plc::channels::point_of(doc, t) else { continue };
@@ -482,10 +481,10 @@ pub(crate) fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut V
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
 pub(crate) fn wide_checks(
-    doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextLook, out: &mut Vec<crate::checks::Check>,
+    doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn Look, out: &mut Vec<crate::checks::Check>,
 ) {
-    let pin = text_style(doc, TextKind::PointLabel).height;
-    let addr_h = text_style(doc, TextKind::Address).height;
+    let pin = m.text_style(doc, TextKind::PointLabel).height;
+    let addr_h = m.text_style(doc, TextKind::Address).height;
     let deep = 1.0 + pin + 1.0 + pin > HEADER_BAND || 1.0 + addr_h + 2.0 + 3.0 > MARK_BAND;
     for page in crate::plc::overview::pages_of(doc, c) {
         for run in runs_of_card(doc, c, page) {

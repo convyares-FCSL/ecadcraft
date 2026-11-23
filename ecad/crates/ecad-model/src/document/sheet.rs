@@ -435,6 +435,11 @@ pub fn margins_of(doc: &Document, page: PageId) -> Margins {
     frame_margins(doc, &id).unwrap_or_default()
 }
 
+/// The width of the frame of `spec` with `margins`, in millimetres.
+pub fn frame_width(spec: &SheetSpec, margins: &Margins) -> f64 {
+    (f64::from(spec.width) - margins.left - margins.right).max(1.0)
+}
+
 /// The keep-out strip at the bottom of `page`'s frame, in millimetres: its own
 /// block's height, else the built-in's [`TITLE_BLOCK_MM`]; never more than the frame's height.
 pub fn keep_out(doc: &Document, page: PageId) -> f64 {

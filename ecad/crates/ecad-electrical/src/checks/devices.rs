@@ -11,14 +11,14 @@ impl CheckSource for DesignationRows {
     fn touched(&self, scope: &Scope) -> bool {
         scope.designations
     }
-    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
+    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry, _look: &dyn ecad_model::look::Look) -> Vec<Check> {
         designation_rows(doc)
     }
 }
 
 /// The checks of component `c`, reading the book and grids through `places`, shared across a Checks
 /// pass so the book is built at most once.
-pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextLook) -> Vec<Check> {
+pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn Look) -> Vec<Check> {
     let doc = places.doc();
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);

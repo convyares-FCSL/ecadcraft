@@ -28,7 +28,10 @@ fn last_ops(h: &mut H) -> (String, Vec<Op>) {
 
 fn text_on(h: &mut H, page: PageId) -> String {
     let doc = h.doc();
-    ecad_electrical::references::cables::markers_on_page(&doc, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    ecad_electrical::references::cables::markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK)
+        .first()
+        .map(|m| m.text.clone())
+        .unwrap_or_default()
 }
 
 /// Two pages, Supply and Field, and cable C1 slashed on Supply with its reference there at (120,5)

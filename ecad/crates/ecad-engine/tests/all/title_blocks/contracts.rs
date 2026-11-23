@@ -78,7 +78,7 @@ fn the_house_block_fits_every_preset() {
     let mut last = 0.0;
     for (name, ..) in sheet::PRESETS {
         let spec = SheetSpec::preset(name).unwrap();
-        let w = ecad_electrical::title_blocks::frame_width(&spec, &sheet::Margins::default());
+        let w = sheet::frame_width(&spec, &sheet::Margins::default());
         let l = house::house(w, &text);
         l.check().unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(l.size, (w, 40.0), "{name}");
@@ -494,7 +494,7 @@ fn an_out_of_bounds_block_size_is_reported() {
     doc.edit_parts(|parts| {
         parts.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
     });
-    let rows = ecad_electrical::title_blocks::checks::rows(&doc);
+    let rows = ecad_electrical::title_blocks::checks::rows(&doc, &ecad_engine::styles::draw::LOOK);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }
 

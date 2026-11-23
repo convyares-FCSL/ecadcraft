@@ -13,7 +13,7 @@ pub use ecad_electrical::cables::words::{
     CODE_COLOURS, DashBudget, MAX_CODE_CHARS, MAX_CORE_CHARS, MAX_DASHES, MAX_PAGE_DASHES, colour_code, conductor_colour, conductor_colour_in,
     dash_budget, dash_count, dash_segments, shorten, wire_colours,
 };
-pub use ecad_electrical::cables::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
+pub use ecad_electrical::cables::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape};
 /// The representation role of a cable's reference end.
 pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 /// The width of `text` per unit of text height in the drafting font CADCraft draws text with (0
@@ -210,8 +210,11 @@ pub fn painted_marks(p: &crate::Project, uid: u64) -> Vec<Painted> {
     let Some(page) = p.page_of(uid) else { return Vec::new() };
     let Some(view) = p.pages.get(&page).filter(|v| !v.unavailable) else { return Vec::new() };
     let doc = p.ledger.document();
-    let mut out: Vec<Painted> =
-        ecad_electrical::references::cables::markers_on_page(doc, page).into_iter().filter(|m| m.orphan).map(|m| Painted::Error(m.at)).collect();
+    let mut out: Vec<Painted> = ecad_electrical::references::cables::markers_on_page(doc, page, &crate::styles::draw::LOOK)
+        .into_iter()
+        .filter(|m| m.orphan)
+        .map(|m| Painted::Error(m.at))
+        .collect();
     out.extend(view.map.looks_connected().iter().map(|at| Painted::Warning(*at)));
     out
 }

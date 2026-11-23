@@ -456,7 +456,10 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert!(matches!(ops.as_slice(), [Op::RemovePage { id, index: 2, .. }, Op::AddPage { index: 0, .. }] if *id == spare), "{ops:?}");
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
-    let texts: Vec<String> = ecad_electrical::references::cables::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
+    let texts: Vec<String> = ecad_electrical::references::cables::markers_on_page(&doc(&mut h), supply, &ecad_engine::styles::draw::LOOK)
+        .into_iter()
+        .map(|m| m.text)
+        .collect();
     assert_eq!(texts, ["2/F1"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");

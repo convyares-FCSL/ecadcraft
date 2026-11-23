@@ -669,13 +669,13 @@ fn m_hostile_geometry_never_panics() {
             },
         );
     });
-    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
+    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
     assert!(d.is_fan());
     let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
     doc.edit_parts(|parts| {
         parts.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
     });
-    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
+    let d = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
@@ -683,7 +683,7 @@ fn m_hostile_geometry_never_panics() {
     doc.edit_parts(|parts| {
         parts.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
     });
-    let _ = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width);
+    let _ = layout::cable_on_page(&doc, page, k, true, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
 }
 
 // --------------------------------------------------------------------------- review S2
@@ -868,5 +868,5 @@ fn cablefan_interactive_equals_json_and_reference_ends_have_no_spine() {
 /// The cable look's text height in a project with the built-in styles (brief 066d: the
 /// `CableText` text style's).
 fn hh() -> f64 {
-    ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
+    ecad_electrical::cables::words::label_height(&ecad_model::Document::default(), &ecad_engine::styles::draw::LOOK)
 }

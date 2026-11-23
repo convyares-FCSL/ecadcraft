@@ -309,7 +309,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // Rings at the reference ends; loose-end squares are left out where a cable stops
     // at a reference or a wire leaves for another page
     // (the `quiet` ends).
-    let markers = ecad_electrical::references::cables::markers_on_page(doc, page);
+    let markers = ecad_electrical::references::cables::markers_on_page(doc, page, &crate::styles::draw::LOOK);
     let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
     for (r, a, b) in route_ends(doc, page) {
         let Some(route) = doc.routes().get(&r) else { continue };
@@ -450,7 +450,15 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             let fan = view.map.is_fan(k);
             let mut lines = with_view(cable_lines(doc, page, k), if fan { "View: fan" } else { "View: traditional" });
             if fan {
-                let d = ecad_electrical::cables::layout::cable_on_page(doc, page, k, true, p.tolerance, &crate::cables::draw::font_width);
+                let d = ecad_electrical::cables::layout::cable_on_page(
+                    doc,
+                    page,
+                    k,
+                    true,
+                    p.tolerance,
+                    &crate::cables::draw::font_width,
+                    &crate::styles::draw::LOOK,
+                );
                 lines.extend(
                     d.at_reference
                         .iter()

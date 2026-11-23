@@ -19,10 +19,11 @@ use ecad_model::document::sheet::unit_scale;
 use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
+use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::terminal_strips::accessories::Acc;
 use ecad_electrical::terminal_strips::strip_model::{SideCell, StripData};
+use ecad_model::look::TextDraw;
 use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
@@ -189,7 +190,7 @@ pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f
     let (l, b, r, t) = ecad_electrical::pages::generated::area(input);
     let mut pen = Pen { k: unit_scale(input.unit), x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
+    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
     let g = o.strip_pages.geometry;
     let heading = draw(TextKind::TableHeading);
     let lk = Draws {

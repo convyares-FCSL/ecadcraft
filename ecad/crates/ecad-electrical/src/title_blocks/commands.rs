@@ -16,10 +16,10 @@ use serde_json::{Value, json};
 
 use crate::commands::run::{Access, Cx, Generic, Outcome};
 use crate::error::CmdError;
-use crate::pages::frames::FrameText;
 use crate::styles;
 use crate::styles::commands::styles::{FieldInput, FieldParam, STANDARD_FIRST, STYLE_NEEDS_NAME, field_inputs, fields};
 use crate::title_blocks::{bind, house};
+use ecad_model::look::FrameText;
 
 /// Refusals, in words.
 pub const BUILTIN_READ_ONLY: &str = "Built-in. Duplicate it to make your own (`titleblock {new: {from: \"sheet\", sheet}}`).";
@@ -234,7 +234,7 @@ fn margins(doc: &Document, id: &StyleRef) -> Margins {
 pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> TitleBlockLayout {
     match sheet::frame_block(doc, id) {
         Some(l) => l.clone(),
-        None => house::house(crate::title_blocks::frame_width(spec, &margins(doc, id)), text),
+        None => house::house(ecad_model::document::sheet::frame_width(spec, &margins(doc, id)), text),
     }
 }
 
@@ -373,7 +373,7 @@ impl Generic for TitleblocksParams {
     const ACCESS: Access = Access::Reads;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        Ok(Outcome::answer(titleblocks_json(cx.doc, &FrameText::with(cx.doc, cx.metrics))))
+        Ok(Outcome::answer(titleblocks_json(cx.doc, &cx.look.frame_text(cx.doc))))
     }
 }
 
@@ -395,12 +395,12 @@ impl Generic for TitleblockParams {
         let body = self.body.filter(|b| !b.is_null());
         let writes = body.is_some() || self.fields.is_some() || rename.is_some();
         let doc = cx.doc;
-        let metrics = cx.metrics;
+        let look = cx.look;
         let id = frame(doc, self.id.as_deref(), frame_name.as_deref())?;
         let sheet_text = self.sheet;
         if !writes {
             let spec = sheet(doc, sheet_text.as_deref())?;
-            return Ok(Outcome::answer(block_json(doc, &id, &spec, &FrameText::with(doc, metrics))?));
+            return Ok(Outcome::answer(block_json(doc, &id, &spec, &look.frame_text(doc))?));
         }
         // The body is read when the frame is known to be an own one, as before.
         let body = match body {
@@ -412,7 +412,7 @@ impl Generic for TitleblockParams {
         let changed = !plan.ops.is_empty();
         Ok(Outcome::edit_then_try(plan.label, plan.ops, move |doc| {
             let spec = sheet(doc, sheet_text.as_deref())?;
-            let mut v = block_json(doc, &id, &spec, &FrameText::with(doc, metrics))?;
+            let mut v = block_json(doc, &id, &spec, &look.frame_text(doc))?;
             v["changed"] = json!(changed);
             Ok(v)
         }))
@@ -428,7 +428,7 @@ fn new_frame(cx: &mut Cx<'_>, new: NewParams) -> Result<Outcome, CmdError> {
     // Own frames keep their block as made: items stay at their place from the bottom-right
     // corner; built-ins are computed for the chosen sheet.
     let layout = match &source {
-        Some(src) => layout_of(doc, src, &spec, &FrameText::with(doc, cx.metrics)),
+        Some(src) => layout_of(doc, src, &spec, &cx.look.frame_text(doc)),
         None => TitleBlockLayout::blank(BLANK_SIZE.0, BLANK_SIZE.1),
     };
     let name = new_name(doc, new.name.as_deref(), &spec)?;

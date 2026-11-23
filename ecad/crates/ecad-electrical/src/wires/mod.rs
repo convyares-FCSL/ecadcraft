@@ -51,7 +51,7 @@ use ecad_model::{
 
 use crate::devices::texts::{DerivedText, TextOf};
 use crate::symbols::{self, Starter};
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// The reserved layer of conductor labels (derived, plotted), like `ECAD-CABLES`.
 pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";

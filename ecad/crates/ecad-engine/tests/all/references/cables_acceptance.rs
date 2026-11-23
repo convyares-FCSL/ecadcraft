@@ -401,7 +401,7 @@ fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_ow
             assert_eq!(listed_text(&mut r.h, page), want, "{step}: cablereferences");
             assert_eq!(drawn_text(&mut r.h, page).as_deref(), Some(want), "{step}: the drawing shows it");
             let doc = r.h.doc();
-            assert_eq!(markers_on_page(&doc, page)[0].text, want, "{step}: derived");
+            assert_eq!(markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK)[0].text, want, "{step}: derived");
         }
         assert_eq!(r.h.head(), head, "{step}: the texts recorded nothing");
     }
@@ -958,7 +958,7 @@ fn ac6_hostile_documents_never_panic() {
             let references = cable_references(&doc);
             let pages: Vec<PageId> = doc.pages().keys().copied().collect();
             for p in &pages {
-                let _ = markers_on_page(&doc, *p);
+                let _ = markers_on_page(&doc, *p, &ecad_engine::styles::draw::LOOK);
                 // Combined trial of 009 and 010: 010's leaving ends are folded into 009's drawing.
                 let _ = ecad_engine::cables::views::drawings_on_page(&doc, *p, &Default::default(), 1e-6);
                 let _ = project_page(
@@ -968,7 +968,7 @@ fn ac6_hostile_documents_never_panic() {
                     &HandleMap::default(),
                     ecad_engine::project::engine_views().report_models(&doc).as_ref(),
                 );
-                let _ = plan_continue(&doc, *p, cable, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6);
+                let _ = plan_continue(&doc, *p, cable, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6, &ecad_engine::styles::draw::LOOK);
                 let _ = ecad_electrical::references::cables::check_reference(&doc, *p, cable);
             }
             let _ = diagnostics(&doc);

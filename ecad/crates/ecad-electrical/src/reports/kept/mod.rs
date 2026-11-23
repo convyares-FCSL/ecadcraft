@@ -1,6 +1,6 @@
 //! The kept report models (see [`super`]'s update map). The kept PLC model's rules measure text
 //! (an address wider than its cell), so building and updating take the text look,
-//! [`TextLook`]; the project keeps them in its `derived::ReportsView`, which passes the
+//! [`Look`]; the project keeps them in its `derived::ReportsView`, which passes the
 //! engine's look.
 //!
 //! Split by job: this file holds the models' state and what an effect notes; `update` re-computes rows,
@@ -17,7 +17,7 @@ mod tables;
 mod update;
 
 use crate::reports::*;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// A column every cable report has, before the optional [`CableColumn`]s: by what it shows, so nothing reads a header back from text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -371,7 +371,7 @@ struct Rows {
 
 impl ReportModels {
     /// Every model, from scratch (open, reload, first show), with text measured in `m`.
-    pub fn build_with(doc: &Document, m: &dyn TextLook) -> ReportModels {
+    pub fn build_with(doc: &Document, m: &dyn Look) -> ReportModels {
         let mut o = ReportModels {
             style: doc.settings().reference_style(),
             colour_style: doc.settings().wiring.colour_style(),

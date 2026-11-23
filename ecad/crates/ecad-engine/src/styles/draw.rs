@@ -7,7 +7,7 @@ use ecad_model::Document;
 
 use ecad_electrical::styles::text_style::fonts::{self, TextMetrics};
 use ecad_electrical::styles::text_style::*;
-use ecad_model::look::{TextKind, TextStyle};
+use ecad_model::look::{OwnStyle, TextKind, TextStyle};
 use ecad_model::objects::styles::text::Weight;
 
 /// Write the two CADCraft text styles of `family` into `d` (an object's own text style's font).
@@ -89,7 +89,7 @@ impl TextMetrics for EngineMetrics {
 }
 
 /// The rules' text look on this machine: their text styles, measured with CADCraft's fonts.
-pub static LOOK: fonts::Look<EngineMetrics> = fonts::Look(EngineMetrics);
+pub static LOOK: fonts::FontLook<EngineMetrics> = fonts::FontLook(EngineMetrics);
 
 /// [`fonts::Fonts`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]); it reads
 /// as the rules' type ([`std::ops::Deref`]).
@@ -203,7 +203,7 @@ impl DrawApply for fonts::DrawStyles {
 
 /// The width of `value` at `kind`'s height in the font it is drawn with on this machine.
 pub fn text_width(doc: &Document, kind: TextKind, value: &str) -> f64 {
-    ecad_model::look::TextLook::text_width(&LOOK, doc, kind, value)
+    ecad_model::look::Look::text_width(&LOOK, doc, kind, value)
 }
 
 /// [`text_width`] with the style and fonts already resolved (from a [`DrawStyles`] the caller holds).

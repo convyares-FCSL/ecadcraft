@@ -695,7 +695,9 @@ impl Interactive for Place {
             let at: Vec<(TextOf, String, ecad_model::Pt)> =
                 def.connection_points.iter().zip(labels).map(|(t, l)| (TextOf::Tag, l, pl.apply(t.at))).collect();
             // The project's sizes, as the page will draw them.
-            let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::texts::TagSizes::of(p.ledger.document()))) else { return out };
+            let Ok(sizes) = read(s, |p, _| Ok(ecad_electrical::devices::texts::TagSizes::of(p.ledger.document(), &crate::styles::draw::LOOK))) else {
+                return out;
+            };
             for (_, value, p, h, ha, va) in ecad_electrical::devices::texts::texts_for(def, &pl, Some(&tag), &at, sizes) {
                 let (ha, va) = (crate::convert::engine_halign(ha), crate::convert::engine_valign(va));
                 let e = crate::devices::draw::text_entity_with(&value, p, h, ha, va, cadcraft_engine::doc::Handle(0), "0");

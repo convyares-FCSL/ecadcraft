@@ -214,8 +214,8 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
 /// The height the cable look is laid out for (label spacing, box pitch and padding, flags, and the
 /// width measured in the stroke font): the `CableText` text style's, in drawing units
 /// (the cable look never has a text size of its own).
-pub fn label_height(doc: &ecad_model::Document) -> f64 {
-    crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::CableText).height
+pub fn label_height(doc: &ecad_model::Document, look: &dyn ecad_model::look::Look) -> f64 {
+    look.text_style(doc, ecad_model::look::TextKind::CableText).height
 }
 
 /// `ecad.wire-weight`: bends, tails, label box frame, reference flag (wire section).

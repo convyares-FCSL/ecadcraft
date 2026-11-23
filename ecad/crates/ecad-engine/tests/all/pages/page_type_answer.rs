@@ -34,7 +34,8 @@ fn a_pages_type_is_the_same_through_the_registry_and_page_type_of() {
 /// codes; renaming the entry renames what the block shows.
 #[test]
 fn a_pages_location_and_the_projects_function_show_in_the_title_block() {
-    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::pages::frames::FrameInput;
+    use ecad_model::look::Look as _;
     let mut h = H::new(0x72e2);
     let page = h.first_page();
     h.run("pageprops", json!({"page": page.hex(), "location": "+CP7", "proposal": "keep"})).unwrap();
@@ -42,7 +43,7 @@ fn a_pages_location_and_the_projects_function_show_in_the_title_block() {
     let frame = |h: &mut H| {
         let doc = h.doc();
         let book = ecad_model::document::book::Book::of(&doc);
-        let inp = FrameInput::with(&doc, page, &book, FrameText::sizes(&doc));
+        let inp = FrameInput::with(&doc, page, &book, &ecad_engine::styles::draw::LOOK, ecad_engine::styles::draw::LOOK.frame_text(&doc).sizes());
         (inp.location, inp.function)
     };
     assert_eq!(frame(&mut h), ("+CP7".to_string(), "=F1".to_string()));

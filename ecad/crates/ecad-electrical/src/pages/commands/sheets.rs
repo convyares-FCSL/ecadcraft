@@ -578,8 +578,8 @@ pub(crate) fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> 
         ));
     }
     // `text.` keys are written by the text commands only.
-    if crate::styles::text_style::is_reserved_key(key) {
-        return Err(CmdError::refused(crate::styles::text_style::RESERVED_KEY));
+    if ecad_model::look::is_reserved_key(key) {
+        return Err(CmdError::refused(ecad_model::look::RESERVED_KEY));
     }
     if let Some(rest) = key.strip_prefix(revisions::PREFIX) {
         let n = rest.split('.').next().and_then(|n| n.parse::<u32>().ok());

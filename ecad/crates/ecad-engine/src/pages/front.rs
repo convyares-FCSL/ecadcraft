@@ -6,8 +6,9 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::{DefinitionId, Document, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, LABEL_ACI, Part, TextDraw};
+use crate::pages::frame::{FrameInput, LABEL_ACI, Part};
 use ecad_electrical::pages::front::*;
+use ecad_model::look::TextDraw;
 use {crate::pages::generated::Draw, ecad_electrical::pages::generated::LAYER};
 use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 
@@ -171,7 +172,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
     let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
+    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
     let cover_draw = draw(TextKind::Cover);
     let Layout {
         area: (l, _, r, _),

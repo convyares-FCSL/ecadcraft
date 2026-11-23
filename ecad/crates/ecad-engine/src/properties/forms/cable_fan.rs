@@ -35,7 +35,14 @@ impl CableFan {
                 Some(Mapped::Fan(k)) if map.is_fan(k) => k,
                 _ => return Err(JOIN_NOT_FAN.into()),
             };
-            let ends = ecad_electrical::cables::layout::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::cables::draw::font_width);
+            let ends = ecad_electrical::cables::layout::fan_ends(
+                p.ledger.document(),
+                page,
+                k,
+                p.tolerance,
+                &crate::cables::draw::font_width,
+                &crate::styles::draw::LOOK,
+            );
             let d = |f: &ecad_electrical::cables::layout::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
             let fe = ends.iter().min_by(|a, b| d(a).total_cmp(&d(b))).ok_or(JOIN_NOT_FAN)?;
             Ok((k, if fe.end == ecad_electrical::cables::layout::MarkerEnd::A { "A" } else { "B" }, fe.spine))

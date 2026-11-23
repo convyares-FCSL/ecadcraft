@@ -2,7 +2,7 @@
 
 use crate::CmdError;
 use crate::devices::traits::DeviceKind;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 use ecad_model::objects::devices::ContactTable;
 use ecad_model::{CableId, Device as StoredDevice, DeviceId, DeviceType, Document, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
@@ -197,7 +197,7 @@ pub fn device_references_json(
 ///
 /// # Errors
 /// Unknown component.
-pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextLook) -> Result<Value, CmdError> {
+pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn Look) -> Result<Value, CmdError> {
     if !doc.devices().contains_key(&c) {
         return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
     }
@@ -227,7 +227,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextLook) -> 
 }
 
 /// The `contacts` reply's `table`: `{top, bottom, placement, shown}`, or null.
-fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextLook) -> Value {
+fn table_json(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Look) -> Value {
     let Some(t) = drawn_table(doc, places, dev, m) else { return Value::Null };
     let k = unit(doc);
     json!({
@@ -337,7 +337,7 @@ pub fn head_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<Str
 }
 
 /// Hover lines for row `i` of head `head`'s table.
-pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextLook) -> Option<Vec<String>> {
+pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn Look) -> Option<Vec<String>> {
     let dev = device(doc, c);
     let mut places = Places::new(doc);
     let t = table_measured(doc, &mut places, &dev, m)?;
@@ -383,8 +383,7 @@ pub(crate) fn count_checks(doc: &Document, c: DeviceId) -> Vec<(String, Option<P
 /// reference update map's wide case): the table text's style choice (its height
 /// and weight are the style's) and the font.
 pub fn table_text_key(key: &str) -> bool {
-    use crate::defaults::text::FONT;
-    [crate::defaults::styles::TABLE.key, FONT.key].contains(&key)
+    key == ecad_model::look::TextKind::Table.style_key() || key == ecad_model::look::FONT_KEY
 }
 
 /// Whether a `ModifyDevice` from `before` to `after` changes what the device offers or where its
@@ -406,7 +405,7 @@ pub(crate) fn placed_tables(doc: &Document) -> Vec<DeviceId> {
 
 /// The Checks row of a table the user placed over the title block: its words,
 /// page and the table's top; `None` for an automatic placement (never moved onto it) or no table.
-pub(crate) fn title_check(doc: &Document, c: DeviceId, m: &dyn TextLook) -> Option<(String, PageId, Pt)> {
+pub(crate) fn title_check(doc: &Document, c: DeviceId, m: &dyn Look) -> Option<(String, PageId, Pt)> {
     let (placement, _) = placement_of(doc, c);
     if !matches!(placement, Placement::At(_)) {
         return None;

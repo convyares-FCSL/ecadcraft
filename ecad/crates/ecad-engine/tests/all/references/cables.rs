@@ -133,7 +133,7 @@ fn reference_on(h: &mut H, page: PageId) -> RepresentationId {
 
 fn text_of(h: &mut H, page: PageId) -> String {
     let doc = h.doc();
-    markers_on_page(&doc, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK).first().map(|m| m.text.clone()).unwrap_or_default()
 }
 
 fn last_ops(h: &mut H) -> Vec<Op> {
@@ -282,9 +282,9 @@ fn a_cable_on_two_pages_gives_the_nets_of_one_page() {
 fn each_reference_shows_the_other_end_away_from_its_wires() {
     let mut r = connected();
     let doc = r.h.doc();
-    let s = &markers_on_page(&doc, r.supply)[0];
+    let s = &markers_on_page(&doc, r.supply, &ecad_engine::styles::draw::LOOK)[0];
     assert_eq!((s.text.as_str(), s.text_at, s.right_aligned, s.orphan), ("2/F1", Pt::new(70.0, 5.0), false, false));
-    let f = &markers_on_page(&doc, r.field)[0];
+    let f = &markers_on_page(&doc, r.field, &ecad_engine::styles::draw::LOOK)[0];
     assert_eq!((f.text.as_str(), f.text_at, f.right_aligned), ("1/F2", Pt::new(15.0, 5.0), true));
     // The drawn text: one Text on ECAD-CABLES, mapped to its reference.
     for page in [r.supply, r.field] {
@@ -375,7 +375,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     assert_eq!(r.h.head(), head + 1, "one transaction");
     assert_eq!(text_of(&mut r.h, r.supply), "?");
     let doc = r.h.doc();
-    assert!(markers_on_page(&doc, r.supply)[0].orphan);
+    assert!(markers_on_page(&doc, r.supply, &ecad_engine::styles::draw::LOOK)[0].orphan);
     // Red: the painted error disc (brief 040; was a red ring) and the text (ACI 1).
     // Only the active page is drawn (brief 016): Supply shows the new text once it is active.
     r.h.activate(r.supply);
@@ -706,7 +706,7 @@ fn hostile_documents_derive_without_panicking() {
     assert_eq!(references[0].text, "1/F1 1/F2 1/F3 +1");
     let lost = references.iter().find(|r| r.at.is_none()).unwrap();
     assert_eq!(lost.locator(), "?");
-    assert!(markers_on_page(&doc, page).len() == 4, "an end that cannot be located is not drawn");
+    assert!(markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK).len() == 4, "an end that cannot be located is not drawn");
     let lines = ecad_electrical::references::cables::diagnostics(&doc);
     assert!(lines.iter().any(|l| l.contains("has 5 references; only two are supported.")), "{lines:?}");
     let snap_references = ecad_electrical::references::cables::over_referenced(&references);
@@ -754,7 +754,7 @@ fn hostile_documents_derive_without_panicking() {
     let on_page = references.iter().find(|r| r.page == page).unwrap();
     assert_eq!(on_page.text, "?", "a partner that cannot be located reads ?");
     assert!(!on_page.orphan, "it still has another end");
-    assert_eq!(markers_on_page(&two, lost_page).len(), 1);
+    assert_eq!(markers_on_page(&two, lost_page, &ecad_engine::styles::draw::LOOK).len(), 1);
     let _ = ecad_electrical::references::cables::diagnostics(&two);
     let _ = ecad_electrical::references::cables::hover_lines(&two, on_lost.reference);
 }
@@ -976,7 +976,7 @@ fn drawn_flag(h: &mut H, page: PageId, cable: CableId) -> (Vec<Pt>, Pt) {
 /// nothing).
 fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let doc = h.doc();
-    let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
+    let m = markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK).into_iter().find(|m| m.cable == cable).expect("a marker");
     let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
     // The wires leave the point the other way.
     // Each core's line on the page: its wire's, its loose line, or the line from its named point
@@ -1191,7 +1191,7 @@ fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
 /// The cable look's text height in a project with the built-in styles (brief 066d: the
 /// `CableText` text style's).
 fn hh() -> f64 {
-    ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
+    ecad_electrical::cables::words::label_height(&ecad_model::Document::default(), &ecad_engine::styles::draw::LOOK)
 }
 
 // ---------------------------------------------------------------- D2: which cables an effect reaches

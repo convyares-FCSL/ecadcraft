@@ -268,7 +268,8 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut App, page: ecad_model::PageId| {
         let d = doc(t);
-        let mut v: Vec<String> = ecad_electrical::references::cables::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
+        let mut v: Vec<String> =
+            ecad_electrical::references::cables::markers_on_page(&d, page, &ecad_engine::styles::draw::LOOK).into_iter().map(|m| m.text).collect();
         v.sort();
         v
     };

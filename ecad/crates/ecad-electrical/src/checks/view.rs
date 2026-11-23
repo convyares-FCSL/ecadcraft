@@ -18,7 +18,7 @@ use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 use crate::checks::Scope;
 use crate::checks::kept::Checks;
 use crate::views::Inputs;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// The kept Checks list, with the tolerance it was built with.
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub struct ChecksView {
 
 impl ChecksView {
     /// The whole list, from scratch (first show), with tolerance `tol` and text measured in `m`.
-    pub fn build(doc: &Document, tol: f64, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry) -> Self {
+    pub fn build(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) -> Self {
         ChecksView { model: Checks::build_with(doc, tol, m, registry), tol }
     }
 
@@ -39,8 +39,8 @@ impl ChecksView {
     }
 
     /// The cover's rows again: the cover changed, or a cover page came or went.
-    pub fn set_cover(&mut self, doc: &Document) {
-        self.model.set_cover(doc);
+    pub fn set_cover(&mut self, doc: &Document, m: &dyn Look) {
+        self.model.set_cover(doc, m);
     }
 
     /// The end of the Before phase: the view was kept then.

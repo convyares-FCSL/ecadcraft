@@ -24,7 +24,7 @@ pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
 /// What `ops`, taking `before` to `after`, could change in the Devices list: the Devices feed's
 /// touch through the views' pipeline (design 064 §4.1).
 pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::devices::device_list::DeviceTouch {
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
     let mut views =
         ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
     let pending = views.begin(before, ops);
@@ -50,7 +50,7 @@ pub fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::col
 pub fn props_touched(
     before: &Document, after: &Document, before_ops: &[ecad_model::Op], tx_ops: &[ecad_model::Op],
 ) -> Option<std::collections::BTreeSet<ecad_model::ObjectRef>> {
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
     let mut views =
         ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
     let pending = views.begin(before, before_ops);

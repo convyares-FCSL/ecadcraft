@@ -13,7 +13,7 @@ use ecad_model::{Author, Document, PageId};
 
 /// What the references show on each page of `doc`, worked out over the whole document: the device
 /// and connector parts, the continuation arrows, and the cable reference texts.
-fn every_reference(doc: &Document, m: &dyn ecad_model::look::TextLook) -> std::collections::BTreeMap<PageId, String> {
+fn every_reference(doc: &Document, m: &dyn ecad_model::look::Look) -> std::collections::BTreeMap<PageId, String> {
     use {ecad_electrical::continuations, ecad_electrical::references::devices};
     let mut out: std::collections::BTreeMap<PageId, String> = std::collections::BTreeMap::new();
     for p in doc.page_order() {
@@ -45,7 +45,7 @@ fn references_view_agrees(tier: Tier) -> usize {
         r.unwrap();
     }
     assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
     let engine = EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY };
     let inputs = Inputs { engine: &engine, frame_page: None };
     let mut view = ReferencesView::build(&Document::default());

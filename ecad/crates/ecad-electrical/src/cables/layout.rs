@@ -411,7 +411,7 @@ impl Marker {
 
 /// The reference ends of `cable` on `page`, in ID order: each with the point of its first Point
 /// (or Text) item. Ends whose point is not finite are left out.
-fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn Fn(&str) -> f64) -> Vec<Marker> {
+fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look) -> Vec<Marker> {
     idx.cable_reps(cable)
         .iter()
         .filter(|(_, r)| r.role == ecad_model::Role::Reference)
@@ -422,7 +422,7 @@ fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn
             })?;
             let (text, orphan, side) = reference_marker_side(doc, *id);
             let text = shorten(&text, 64);
-            let h = label_height(doc);
+            let h = label_height(doc, look);
             let width = measure(&text) * h;
             (at.is_finite() && width.is_finite()).then_some(Marker { id: *id, at, text, width, orphan, side, h })
         })
@@ -500,9 +500,12 @@ struct Frame {
 
 /// The frame of one fanned end. `ends`: each member's end on this side.
 #[allow(clippy::too_many_arguments)]
-fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Option<Frame> {
+fn frame(
+    doc: &Document, members: &[Member], reference: usize, side: usize, ends: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64,
+    look: &dyn ecad_model::look::Look,
+) -> Option<Frame> {
     let g = LABEL_GAP;
-    let h = label_height(doc);
+    let h = label_height(doc, look);
     let o = *ends.get(reference)?;
     let rpath = &members.get(reference)?.path;
     let u = if side == 0 { leaving(rpath.iter().copied(), tol)? } else { leaving(rpath.iter().rev().copied(), tol)? };
@@ -650,13 +653,13 @@ fn trunk_to_marker(a: &FannedEnd, m: Pt, tol: f64) -> Vec<Pt> {
 }
 
 /// The label box on the trunk: its parts and the trunk clipped by it.
-fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<Part> {
+fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look) -> Vec<Part> {
     let cab = doc.cables().get(&cable);
     let get = |k: &str| cab.and_then(|c| c.get(k)).filter(|v| !v.is_empty()).map(|v| shorten(v, MAX_SHOWN_CHARS));
     let mut lines = vec![get("tag").unwrap_or_else(|| "?".to_string())];
     lines.extend(get("designation"));
     lines.extend(get("type"));
-    let h = label_height(doc);
+    let h = label_height(doc, look);
     let widths: Vec<f64> = lines.iter().map(|l| measure(l) * h).collect();
     let width = widths.iter().copied().fold(0.0, f64::max) + 2.0 * box_pad(h);
     let height = (lines.len().saturating_sub(1)) as f64 * box_line_pitch(h) + h + 2.0 * box_pad(h);
@@ -685,7 +688,7 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
 }
 
 /// Core labels just past the slash crossings.
-fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
+fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64, look: &dyn ecad_model::look::Look) -> Vec<Part> {
     let Some(c) = doc.cables().get(&cable) else { return Vec::new() };
     let core_of: BTreeMap<CorePosition, String> = c
         .cores
@@ -695,7 +698,7 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
     if core_of.is_empty() {
         return Vec::new();
     }
-    let h = label_height(doc);
+    let h = label_height(doc, look);
     let mut out = Vec::new();
     let slashes: Vec<(Pt, Pt)> = idx
         .cable_reps(cable)
@@ -726,20 +729,26 @@ fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -
 
 /// `cable` on `page`: its fan when `fan` is asked for and can be drawn, else its traditional
 /// computed parts (core labels at the slashes), with its reference ends in both views.
-pub fn cable_on_page(doc: &Document, page: PageId, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
-    cable_in(doc, &PageIndex::new(doc, page), cable, fan, tol, measure)
+pub fn cable_on_page(
+    doc: &Document, page: PageId, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
+) -> CableDrawing {
+    cable_in(doc, &PageIndex::new(doc, page), cable, fan, tol, measure, look)
 }
 
 /// [`cable_on_page`] with the page's [`PageIndex`] built once by the caller. Any part that is not
 /// finite (a point near ±f64::MAX) is left out, in both views.
-fn cable_in(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
-    let mut out = cable_unfiltered(doc, idx, cable, fan, tol, measure);
+fn cable_in(
+    doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
+) -> CableDrawing {
+    let mut out = cable_unfiltered(doc, idx, cable, fan, tol, measure, look);
     out.parts.retain(|p| shape_finite(&p.shape));
     out.quiet.retain(|p| p.is_finite());
     out
 }
 
-fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64) -> CableDrawing {
+fn cable_unfiltered(
+    doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bool, tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
+) -> CableDrawing {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     let Some(c) = doc.cables().get(&cable) else { return CableDrawing::default() };
     let mut seen = BTreeSet::new();
@@ -752,7 +761,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
             members.push(Member { position: m.position, route: idx.route_id(m.position), core: m.label_str().map(str::to_string), path });
         }
     }
-    let markers = markers_of(doc, idx, cable, measure);
+    let markers = markers_of(doc, idx, cable, measure, look);
     let sides = sides(&members);
     // Ends of each side and their centroids.
     let side_ends: [Vec<Pt>; 2] = match &sides {
@@ -792,7 +801,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         if let Some((reference, _)) = &sides
             && members.len() >= 2
         {
-            fanned = fan_parts(doc, idx, cable, &members, *reference, &side_ends, &stopped, &flags, tol, measure);
+            fanned = fan_parts(doc, idx, cable, &members, *reference, &side_ends, &stopped, &flags, tol, measure, look);
         }
     }
     match fanned {
@@ -825,7 +834,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
                 }
             }
         }
-        None => out.parts = slash_labels(doc, idx, cable, tol),
+        None => out.parts = slash_labels(doc, idx, cable, tol, look),
     }
     // Stored fan joins are not drawn: the trunk shows where the cable joins.
     out.hidden.extend(idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ecad_model::Role::FanAnchor).flat_map(|(_, r)| r.items.iter().copied()));
@@ -859,7 +868,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
 #[allow(clippy::too_many_arguments)]
 fn fan_parts(
     doc: &Document, idx: &PageIndex<'_>, cable: CableId, members: &[Member], reference: usize, side_ends: &[Vec<Pt>; 2],
-    stopped: &[Option<usize>; 2], flags: &[(Vec<Pt>, Pt)], tol: f64, measure: &dyn Fn(&str) -> f64,
+    stopped: &[Option<usize>; 2], flags: &[(Vec<Pt>, Pt)], tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
 ) -> Option<(Vec<Part>, Vec<ItemId>, [Option<Pt>; 2])> {
     let attach = |s: usize| stopped.get(s).copied().flatten().and_then(|i| flags.get(i)).map(|(_, m)| *m);
     let m = [attach(0), attach(1)];
@@ -867,7 +876,7 @@ fn fan_parts(
     let mut frames: [Option<Frame>; 2] = [None, None];
     for (s, slot) in frames.iter_mut().enumerate() {
         if m.get(s).copied().flatten().is_none() {
-            *slot = Some(frame(doc, members, reference, s, side_ends.get(s)?, tol, measure)?);
+            *slot = Some(frame(doc, members, reference, s, side_ends.get(s)?, tol, measure, look)?);
         }
     }
     let spines = [frames[0].as_ref().map(|f| f.spine), frames[1].as_ref().map(|f| f.spine)];
@@ -889,7 +898,7 @@ fn fan_parts(
     if trunk.iter().any(|p| !p.is_finite()) {
         return None;
     }
-    let mut parts = label_box(doc, cable, &trunk, tol, measure);
+    let mut parts = label_box(doc, cable, &trunk, tol, measure, look);
     for f in fanned.iter_mut().flatten() {
         parts.append(&mut f.parts);
     }
@@ -962,10 +971,12 @@ pub struct FanEnd {
 
 /// The fanned ends of `cable` on `page` as its fan would draw them (whatever its view): none when
 /// the fan cannot be drawn there; an end that stops at a reference end has no spine.
-pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure: &dyn Fn(&str) -> f64) -> Vec<FanEnd> {
+pub fn fan_ends(
+    doc: &Document, page: PageId, cable: CableId, tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
+) -> Vec<FanEnd> {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     let idx = PageIndex::new(doc, page);
-    let drawing = cable_in(doc, &idx, cable, true, tol, measure);
+    let drawing = cable_in(doc, &idx, cable, true, tol, measure, look);
     if drawing.state != FanState::Drawn {
         return Vec::new();
     }
@@ -998,7 +1009,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
     let mut spines: [Option<Spine>; 2] = [None, None];
     for (side, slot) in spines.iter_mut().enumerate() {
         if !stopped.contains(&side)
-            && let Some(f) = ends.get(side).and_then(|e| frame(doc, &members, reference, side, e, tol, measure))
+            && let Some(f) = ends.get(side).and_then(|e| frame(doc, &members, reference, side, e, tol, measure, look))
         {
             *slot = Some(f.spine);
         }
@@ -1016,7 +1027,7 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
 /// Every cable's computed drawing on `page` (cables in `fan` drawn as fans where they can be),
 /// leaving out cables with nothing computed there.
 pub fn cables_on_page(
-    doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64, measure: &dyn Fn(&str) -> f64,
+    doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64, measure: &dyn Fn(&str) -> f64, look: &dyn ecad_model::look::Look,
 ) -> BTreeMap<CableId, CableDrawing> {
     let idx = PageIndex::new(doc, page);
     // Only cables shown on the page: with a representation there, or a member routed there.
@@ -1030,7 +1041,7 @@ pub fn cables_on_page(
     }
     shown
         .into_iter()
-        .map(|k| (k, cable_in(doc, &idx, k, fan.contains(&k), tol, measure)))
+        .map(|k| (k, cable_in(doc, &idx, k, fan.contains(&k), tol, measure, look)))
         .filter(|(_, d)| !d.parts.is_empty() || !d.hidden.is_empty())
         .collect()
 }

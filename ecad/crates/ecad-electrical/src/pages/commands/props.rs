@@ -19,7 +19,7 @@ use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
 use crate::error::{CmdError, msg};
 use crate::pages::generated;
 use crate::releases::revisions;
-use crate::styles::text_style;
+
 use crate::symbols::proposals;
 use crate::views::Views;
 
@@ -292,8 +292,8 @@ clears; no fields: the current values, read only)";
         }
         // A page's `text.` keys are written by `showtext` only, also when asked
         // for as `props`.
-        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| text_style::is_reserved_key(k))) {
-            return Err(CmdError::refused(text_style::RESERVED_KEY));
+        if self.props.as_ref().is_some_and(|o| o.keys().any(|k| ecad_model::look::is_reserved_key(k))) {
+            return Err(CmdError::refused(ecad_model::look::RESERVED_KEY));
         }
         match &self.title {
             None => Ok(()),

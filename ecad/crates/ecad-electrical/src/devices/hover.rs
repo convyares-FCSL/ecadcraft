@@ -23,7 +23,7 @@ pub(crate) const MAX_ALSO: usize = 4;
 /// The lens of device `c` hovered through its representation `here`.
 ///
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
-pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextLook) -> Vec<String> {
+pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn Look) -> Vec<String> {
     let device = doc.devices().get(&c).cloned().unwrap_or_default();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
     let head = match device.tag_shown() {

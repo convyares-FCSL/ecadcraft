@@ -160,7 +160,7 @@ impl Interactive for MirrorMove {
             let mut places = ecad_electrical::references::devices::places::Places::new(doc);
             let offer = ecad_electrical::references::devices::parse::offer_of(doc, c);
             let rows = ecad_electrical::references::devices::table::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
-            let parts = ecad_electrical::references::devices::table::table_parts(doc, head, pt(cursor), &rows);
+            let parts = ecad_electrical::references::devices::table::table_parts(doc, head, pt(cursor), &rows, &crate::styles::draw::LOOK);
             Ok(parts
                 .iter()
                 .filter_map(|part| match &part.shape {

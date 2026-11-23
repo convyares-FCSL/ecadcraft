@@ -19,7 +19,7 @@ const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Ob
 /// (a text height is drawn as its cap height).
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
 const SHOW: Kind = Kind::Flag;
-const SHOW_RUN: Kind = Kind::Choice(<crate::styles::text_style::Shown as ecad_model::Word>::WORDS);
+const SHOW_RUN: Kind = Kind::Choice(<ecad_model::look::Shown as ecad_model::Word>::WORDS);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, levels: &'static [Level]) -> Entry {
     Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels, project: ProjectSource::Property }

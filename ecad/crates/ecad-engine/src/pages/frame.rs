@@ -17,11 +17,12 @@ use ecad_model::document::book::Book;
 use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, PageId};
 
-use crate::styles::draw::EngineMetrics;
+use crate::styles::draw::LOOK;
 use ecad_electrical::pages::frames;
 pub use ecad_electrical::pages::frames::{
-    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, TextDraw, fit, touches,
+    CUSTOMER, DERIVED, DRAWING_NUMBER, FRAME_ACI, FRAME_WEIGHT, LABEL_ACI, LAYER, STATUS, TABLE_ROWS, THIN_WEIGHT, TITLE, fit, touches,
 };
+use ecad_model::look::Look as _;
 
 /// The layer as the projection adds it.
 pub fn layer() -> cadcraft_engine::doc::Layer {
@@ -126,22 +127,22 @@ pub fn drawn(input: &frames::FrameInput) -> (Vec<Part>, crate::title_blocks::lay
     layout::border(&mut pen, input);
     let l = &input.block.layout;
     let origin = match input.draw.block {
-        ecad_electrical::styles::frame::BlockAt::BottomFull => (input.draw.margins.left, input.draw.margins.bottom),
-        ecad_electrical::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
+        ecad_model::objects::styles::frame::BlockAt::BottomFull => (input.draw.margins.left, input.draw.margins.bottom),
+        ecad_model::objects::styles::frame::BlockAt::BottomRight => layout::block_origin(input, l),
     };
     let d = layout::block(&mut pen, input, l, origin);
     (pen.out, d)
 }
 
-/// [`frames::FrameText`] with this machine's fonts ([`EngineMetrics`]); it reads as the rules'
+/// [`ecad_model::look::FrameText`] with this machine's fonts ([`LOOK`]); it reads as the rules'
 /// type ([`std::ops::Deref`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FrameText(pub frames::FrameText);
+pub struct FrameText(pub ecad_model::look::FrameText);
 
 impl std::ops::Deref for FrameText {
-    type Target = frames::FrameText;
+    type Target = ecad_model::look::FrameText;
 
-    fn deref(&self) -> &frames::FrameText {
+    fn deref(&self) -> &ecad_model::look::FrameText {
         &self.0
     }
 }
@@ -149,11 +150,11 @@ impl std::ops::Deref for FrameText {
 impl FrameText {
     /// The text styles of `doc`'s frame.
     pub fn of(doc: &Document) -> FrameText {
-        FrameText(frames::FrameText::with(doc, &EngineMetrics))
+        FrameText(LOOK.frame_text(doc))
     }
 }
 
-/// [`frames::FrameInput`] with this machine's fonts ([`EngineMetrics`]); it reads and writes as the
+/// [`frames::FrameInput`] with this machine's fonts ([`LOOK`]); it reads and writes as the
 /// rules' type ([`std::ops::Deref`], [`std::ops::DerefMut`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameInput(pub frames::FrameInput);
@@ -175,7 +176,7 @@ impl std::ops::DerefMut for FrameInput {
 impl FrameInput {
     /// What `page`'s frame shows in `doc` (`book`: its book order), with this machine's fonts.
     pub fn of(doc: &Document, page: PageId, book: &Book) -> FrameInput {
-        FrameInput(frames::FrameInput::with(doc, page, book, frames::FrameText::with(doc, &EngineMetrics)))
+        FrameInput(frames::FrameInput::with(doc, page, book, &LOOK, LOOK.frame_text(doc)))
     }
 
     /// [`frames::FrameInput::with_pending`].

@@ -7,8 +7,9 @@
 //! its margins: `ecad_model::document::sheet` reads those, so every page, reference and zone agrees.
 //! The title block's texts keep their own text-style choices.
 
-use ecad_model::document::sheet::{Margins, parse_frame_sheet, parse_margins};
+use ecad_model::document::sheet::{parse_frame_sheet, parse_margins};
 use ecad_model::geometry::units::Mm;
+use ecad_model::look::FrameDraw;
 use ecad_model::objects::styles::FrameStyle;
 use ecad_model::objects::styles::frame::{FrameMargins, FrameSheet};
 use ecad_model::objects::styles::text::StyleColour;
@@ -112,41 +113,6 @@ fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::Sty
 }
 
 pub use ecad_model::objects::styles::frame::BlockAt;
-
-/// A page frame's resolved look.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FrameDraw {
-    /// Hundredths of a millimetre.
-    pub border: u16,
-    pub inner: u16,
-    /// `none` (ink), an IEC code or `#rrggbb`.
-    pub colour: String,
-    pub grid_labels: bool,
-    /// A short mark at the middle of each side.
-    pub centre_marks: bool,
-    /// Where the block sits.
-    pub block: BlockAt,
-    /// The frame's distance from the paper edge (as `ecad_model::document::sheet::margins_of`).
-    pub margins: Margins,
-    /// Zone ticks and labels drawn; off when the page type turns
-    /// zones off, whatever the frame says.
-    pub zones: bool,
-}
-
-impl Default for FrameDraw {
-    fn default() -> Self {
-        FrameDraw {
-            border: 50,
-            inner: 25,
-            colour: "none".into(),
-            grid_labels: true,
-            centre_marks: true,
-            block: BlockAt::BottomFull,
-            margins: Margins::default(),
-            zones: true,
-        }
-    }
-}
 
 fn weight(mm: f64) -> u16 {
     (mm * 100.0).round().clamp(0.0, 211.0) as u16

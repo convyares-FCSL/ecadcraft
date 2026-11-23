@@ -31,7 +31,7 @@ use crate::plc::sheets::RackPlaces;
 use crate::reports::kept::{Noted, ReportModels};
 use crate::views::Inputs;
 use ecad_model::GenKind;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// The kept report models.
 #[derive(Debug)]
@@ -41,7 +41,7 @@ pub struct ReportsView {
 
 impl ReportsView {
     /// Every model, from scratch (first show), with text measured in `m`.
-    pub fn build(doc: &Document, m: &dyn TextLook) -> Self {
+    pub fn build(doc: &Document, m: &dyn Look) -> Self {
         ReportsView { model: ReportModels::build_with(doc, m) }
     }
 

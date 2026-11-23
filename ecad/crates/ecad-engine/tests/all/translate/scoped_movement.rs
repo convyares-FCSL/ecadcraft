@@ -240,7 +240,7 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
             }
         }
         for p in [r.supply, r.field] {
-            for m in markers_on_page(&doc, p) {
+            for m in markers_on_page(&doc, p, &ecad_engine::styles::draw::LOOK) {
                 assert!(well_formed(&m.text), "step {step} ({kind}): reference text {:?}", m.text);
                 texts_seen.insert(m.text.clone());
             }

@@ -151,7 +151,7 @@ pub fn label_entity(draw: &crate::styles::draw::DrawStyles, l: &WireLabel, handl
 /// as fans (`fan`), never from what is on screen. Only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub fn quiet_ends_of(doc: &Document, page: PageId, fan: &std::collections::BTreeSet<ecad_model::CableId>, tol: f64) -> Vec<Pt> {
-    if ecad_electrical::references::cables::markers_on_page(doc, page).is_empty() {
+    if ecad_electrical::references::cables::markers_on_page(doc, page, &crate::styles::draw::LOOK).is_empty() {
         return Vec::new();
     }
     crate::cables::views::drawings_on_page(doc, page, fan, tol).into_values().flat_map(|d| d.quiet).collect()

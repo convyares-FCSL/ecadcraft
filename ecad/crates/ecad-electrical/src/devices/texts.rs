@@ -43,7 +43,7 @@ pub struct DerivedText {
     pub aci: Option<u8>,
     /// The object's own text style (its `text.<kind>.style`), drawn instead of the
     /// kind's project style; `None` for the kind's.
-    pub own: Option<crate::styles::text_style::OwnStyle>,
+    pub own: Option<ecad_model::look::OwnStyle>,
 }
 
 /// The page box of a placed definition.
@@ -76,12 +76,11 @@ pub struct TagSizes {
 
 impl TagSizes {
     /// The sizes of `doc`.
-    pub fn of(doc: &Document) -> TagSizes {
-        use crate::styles::text_style::text_style;
+    pub fn of(doc: &Document, m: &dyn Look) -> TagSizes {
         use ecad_model::look::TextKind;
-        let tag = text_style(doc, TextKind::Tag).height;
+        let tag = m.text_style(doc, TextKind::Tag).height;
         let factor = ecad_model::registry::resolve(doc, &crate::defaults::text::TAG_GAP, ecad_model::registry::Scope::project()).number();
-        TagSizes { tag, label: text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
+        TagSizes { tag, label: m.text_style(doc, TextKind::PointLabel).height, gap: factor * tag }
     }
 }
 
@@ -142,7 +141,7 @@ pub fn texts_for(
 /// shown ones.
 ///
 /// `m` measures the texts (the C wrapper `texts_on_page` passes CADCraft's fonts).
-pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<DerivedText> {
+pub fn texts_on_page_measured(doc: &Document, page: PageId, m: &dyn Look) -> Vec<DerivedText> {
     all_texts_measured(doc, page, None, m).into_iter().filter(|t| t.shown).map(|t| t.text).collect()
 }
 
@@ -170,8 +169,8 @@ pub fn text_passes(page: PageId) -> u64 {
 }
 
 /// The run rule of a symbol, from its starter kind.
-pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::text_style::RunRule {
-    use crate::styles::text_style::RunRule;
+pub(crate) fn run_rule(doc: &Document, r: &Representation) -> ecad_model::look::RunRule {
+    use ecad_model::look::RunRule;
     // A connector's pins show their half's tag once per run.
     if crate::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Pin {
         return RunRule::Strip;
@@ -191,10 +190,11 @@ pub(crate) fn run_rule(doc: &Document, r: &Representation) -> crate::styles::tex
 /// for that representation. PLC addresses are read from the kept model `plc` when there is one,
 /// and `m` measures the texts (the C wrappers
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
-pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn TextLook) -> Vec<PageText> {
+pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn Look) -> Vec<PageText> {
     TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
-    use crate::styles::text_style::{Block, Shown, TextTarget, text_shown, text_style};
+    use crate::styles::text_style::Block;
     use ecad_model::look::TextKind;
+    use ecad_model::look::{Shown, TextTarget};
     let mut by_rep: BTreeMap<RepresentationId, Vec<(TextOf, String, Pt)>> = BTreeMap::new();
     for (t, rid, at) in connection_point_positions(doc, page) {
         // A pin pair shows its pin name once, beside the socket point.
@@ -215,7 +215,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         }
     }
     let mut out = Vec::new();
-    let sizes = TagSizes::of(doc);
+    let sizes = TagSizes::of(doc, m);
     let pitch = ecad_model::registry::resolve(doc, &crate::defaults::text::LINE_PITCH, ecad_model::registry::Scope::project()).number();
     let firsts = crate::styles::text_style::run_firsts(doc, page);
     // Location prefixes read this page's boxes once.
@@ -231,9 +231,9 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     let mut fixed: Vec<crate::styles::text_style::TextBox> = Vec::new();
     // A device's own text style for a kind (its
     // `text.<kind>.style`), else `None` (the kind's project style).
-    let own = |c: DeviceId, kind: TextKind| -> Option<crate::styles::text_style::OwnStyle> {
+    let own = |c: DeviceId, kind: TextKind| -> Option<ecad_model::look::OwnStyle> {
         let props = &doc.devices().get(&c)?.properties;
-        crate::styles::text_style::own_style(doc, kind, ecad_model::registry::Scope::component(c), props)
+        m.own_style(doc, kind, ecad_model::registry::Scope::component(c), props)
     };
     let height_of = |c: DeviceId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
@@ -248,10 +248,10 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // instead, in the project's styles for those kinds.
         if let Subject::Aid(a) = r.subject {
             let target = TextTarget { page: Some(page), component: None, representation: Some(rid), conductor: None, run: run_rule(doc, r) };
-            for mut t in crate::wires::labels::continuation_texts(doc, a, rid, &pl).unwrap_or_default() {
+            for mut t in crate::wires::labels::continuation_texts(doc, a, rid, &pl, m).unwrap_or_default() {
                 let kind = kind_of(t.of);
-                t.height = text_style(doc, kind).height;
-                let shown = match text_shown(doc, target, kind) {
+                t.height = m.text_style(doc, kind).height;
+                let shown = match m.shown(doc, target, kind) {
                     Shown::On => true,
                     Shown::Off => false,
                     Shown::First => firsts.contains(&rid),
@@ -263,14 +263,14 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let Subject::Device(c) = r.subject else { continue };
         let labels = by_rep.remove(&rid).unwrap_or_default();
         let target = TextTarget { page: Some(page), component: Some(c), representation: Some(rid), conductor: None, run: run_rule(doc, r) };
-        let shown = |kind: TextKind| match text_shown(doc, target, kind) {
+        let shown = |kind: TextKind| match m.shown(doc, target, kind) {
             Shown::On => true,
             Shown::Off => false,
             Shown::First => firsts.contains(&rid),
         };
         // Connection point labels keep their fixed rule (or a stored place) and are obstacles.
         let labels_shown = shown(TextKind::PointLabel);
-        let label_style = text_style(doc, TextKind::PointLabel);
+        let label_style = m.text_style(doc, TextKind::PointLabel);
         let props = doc.devices().get(&c).map(|x| &x.properties);
         for (of, value, at, height, halign, valign) in texts_for(def, &pl, None, &labels, sizes) {
             let height = height_of(c, kind_of(of), height);
@@ -299,11 +299,11 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         // frame's name block, not beside it.
         let framed = crate::plc::draw::framed(doc, c, rid, r);
         // A card body's caption at its anchor, under the body.
-        if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl) {
+        if !framed && let Some(text) = crate::plc::caption_text(doc, c, rid, r, &pl, m) {
             out.push(text);
         }
         // A channel cell's number, address and description.
-        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks));
+        out.extend(crate::plc::channel_texts(doc, c, rid, r, &pl, plc, &mut plc_blocks, m));
         if framed {
             continue;
         }
@@ -336,7 +336,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
                 None => doc.devices().get(&c).and_then(|d| d.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
-                lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
+                lines.push((of, v, height_of(c, kind, m.text_style(doc, kind).height), shown(kind), None));
             }
         }
         if lines.is_empty() {
@@ -349,7 +349,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| m.width(doc, kind_of(l.0), ecad_model::look::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1))
+            .map(|l| m.width(doc, kind_of(l.0), ecad_model::look::TextStyle { height: l.2, ..m.text_style(doc, kind_of(l.0)) }, &l.1))
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
@@ -360,6 +360,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         page,
         &pending.iter().filter(|p| p.lines.iter().any(|l| l.3)).map(|p| p.block.clone()).collect::<Vec<_>>(),
         &fixed,
+        m,
     );
     for p in pending {
         let place = placed.get(&p.block.rep).copied().unwrap_or_else(|| {
@@ -398,9 +399,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
-    shown: &dyn Fn(ecad_model::look::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, m: &dyn TextLook, fixed: &mut Vec<(Pt, Pt)>,
+    shown: &dyn Fn(ecad_model::look::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, m: &dyn Look, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
-    use crate::styles::text_style::text_style;
     use ecad_model::SlotText;
     use ecad_model::look::TextKind;
     let device = doc.devices().get(&c);
@@ -424,12 +424,9 @@ fn slot_texts(
             | SlotText::PointRating(_)) => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(&other.word()), None),
         };
         let Some(value) = value else { continue };
-        let style = text_style(doc, kind);
+        let style = m.text_style(doc, kind);
         // The device's own text style of this kind, font included.
-        let own = doc
-            .devices()
-            .get(&c)
-            .and_then(|x| crate::styles::text_style::own_style(doc, kind, ecad_model::registry::Scope::component(c), &x.properties));
+        let own = doc.devices().get(&c).and_then(|x| m.own_style(doc, kind, ecad_model::registry::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,

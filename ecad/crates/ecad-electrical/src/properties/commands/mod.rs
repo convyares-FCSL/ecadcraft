@@ -272,10 +272,10 @@ fn accessory_value(
 /// Refuse a key `setprop` never writes: `text.` keys are written by the text commands only.
 ///
 /// # Errors
-/// [`crate::styles::text_style::RESERVED_KEY`].
+/// [`ecad_model::look::RESERVED_KEY`].
 pub fn reserved(key: &str) -> Result<(), CmdError> {
-    match crate::styles::text_style::is_reserved_key(key) {
-        true => Err(CmdError::refused(crate::styles::text_style::RESERVED_KEY)),
+    match ecad_model::look::is_reserved_key(key) {
+        true => Err(CmdError::refused(ecad_model::look::RESERVED_KEY)),
         false => Ok(()),
     }
 }

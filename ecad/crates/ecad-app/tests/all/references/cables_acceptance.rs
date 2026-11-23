@@ -238,7 +238,10 @@ fn said(h: &Harness<'static, App>) -> String {
 fn shown_text(h: &mut Harness<'static, App>) -> String {
     let page = current_page(h);
     let d = doc(h);
-    ecad_electrical::references::cables::markers_on_page(&d, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    ecad_electrical::references::cables::markers_on_page(&d, page, &ecad_engine::styles::draw::LOOK)
+        .first()
+        .map(|m| m.text.clone())
+        .unwrap_or_default()
 }
 
 /// Park the pointer on empty canvas (no hover) and let the frame settle.

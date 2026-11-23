@@ -99,11 +99,12 @@ pub struct Continued {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn continue_cable(
     doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
+    look: &dyn ecad_model::look::Look,
 ) -> Result<Continued, CmdError> {
     if members.is_some_and(|m| m.len() > crate::cables::slash::MAX_CABLE_MEMBERS) {
         return Err(CmdError::refused(cables::too_many_members()));
     }
-    let plan = cables::plan_continue(doc, page, cable, members, at, toward, tol)?;
+    let plan = cables::plan_continue(doc, page, cable, members, at, toward, tol, look)?;
     let source = doc.representations().get(&plan.source).ok_or(CmdError::refused(cables::no_reference(doc, cable)))?;
     let c = doc.cables().get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let mut reference = reference_ops(ids, page, style.clone(), cable, at);
@@ -290,7 +291,7 @@ impl Generic for CablecontinueParams {
         let at = self.at.within(crate::cables::words::MAX_COORD, "at")?;
         let toward = self.toward.within(crate::cables::words::MAX_COORD, "toward")?;
         let page = cx.page.ok_or(CmdError::refused("page view not found"))?;
-        let done = continue_cable(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, self.members.as_deref(), at, toward, cx.tolerance)?;
+        let done = continue_cable(cx.doc, cx.ids, page, cx.plain.clone(), self.cable, self.members.as_deref(), at, toward, cx.tolerance, cx.look)?;
         let rep = done.reference.rep;
         let item = done.reference.item;
         let (slash, slash_item) = (done.slash_rep, done.slash_item);

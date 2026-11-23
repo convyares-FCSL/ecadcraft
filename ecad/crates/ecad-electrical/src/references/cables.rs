@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 
 pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// `ecad.reference`: ACI 6, magenta (the colour of `ECAD-CABLES`, so a linked text is ByLayer).
 pub const REFERENCE_ACI: u8 = 6;
@@ -56,13 +56,13 @@ pub struct Sizes {
 }
 
 /// The sizes for `doc`'s length unit (millimetre tokens divided by 25.4 in an inch project).
-pub fn sizes(doc: &Document) -> Sizes {
+pub fn sizes(doc: &Document, look: &dyn Look) -> Sizes {
     let k = match doc.settings().length_unit {
         LengthUnit::Millimetre => 1.0,
         LengthUnit::Inch => 1.0 / 25.4,
     };
     // Reference text is the `Reference` text style, already in drawing units.
-    Sizes { text_height: crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Reference).height, spacing: STUB_SPACING_MM * k }
+    Sizes { text_height: look.text_style(doc, ecad_model::look::TextKind::Reference).height, spacing: STUB_SPACING_MM * k }
 }
 
 /// Whether `r` is a cable reference end.
@@ -143,14 +143,14 @@ pub struct Marker {
 /// this and the styled marker take their text from: one derivation, always live.
 /// Ends that cannot be located (a missing or non-finite point, only from a hostile file) are left
 /// out; `cablereferences` and the hover still list them with `/?`.
-pub fn markers_on_page(doc: &Document, page: PageId) -> Vec<Marker> {
-    markers_from(doc, page_cable_references(doc, page), page)
+pub fn markers_on_page(doc: &Document, page: PageId, look: &dyn Look) -> Vec<Marker> {
+    markers_from(doc, page_cable_references(doc, page), page, look)
 }
 
 /// [`markers_on_page`] from references already derived (`references`, as [`all`] returns them), so one
 /// draw derives them once.
-pub fn markers_from(doc: &Document, references: Vec<CableReference>, page: PageId) -> Vec<Marker> {
-    let z = sizes(doc);
+pub fn markers_from(doc: &Document, references: Vec<CableReference>, page: PageId, look: &dyn Look) -> Vec<Marker> {
+    let z = sizes(doc, look);
     references
         .into_iter()
         .filter(|r| r.page == page)
@@ -201,22 +201,22 @@ pub(crate) fn marker_text_dir(doc: &Document, reference: RepresentationId) -> Op
 /// starts exactly on its reference point and would otherwise win the pick.
 ///
 /// `m` measures the flag's text (the C wrapper `reference_at` passes CADCraft's fonts).
-pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m: &dyn TextLook) -> Option<RepresentationId> {
+pub fn reference_at_measured(doc: &Document, page: PageId, p: Pt, radius: f64, m: &dyn Look) -> Option<RepresentationId> {
     if !(p.is_finite() && radius.is_finite() && radius >= 0.0) {
         return None;
     }
-    let markers = markers_on_page(doc, page);
+    let markers = markers_on_page(doc, page, m);
     let near =
         markers.iter().map(|m| (m.at.dist(p), m.reference)).filter(|(d, _)| *d <= radius).min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
     if let Some((_, r)) = near {
         return Some(r);
     }
-    let h = crate::cables::words::label_height(doc);
+    let h = crate::cables::words::label_height(doc, m);
     markers.iter().find(|x| text_box_holds(x, p, radius, h, m)).map(|x| x.reference)
 }
 
 /// Whether `p` lies in a marker's box (the flag) grown by `pad`.
-fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, look: &dyn TextLook) -> bool {
+fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, look: &dyn Look) -> bool {
     // Draws the marker: its flag around the text, at the reference point, on the side
     // away from the wires.
     let w = look.stroke_width(&crate::cables::words::shorten(&m.text, 64), h);
@@ -369,7 +369,7 @@ fn in_range(p: Pt) -> bool {
 /// # Errors
 /// The refusals in words.
 pub fn plan_continue(
-    doc: &Document, page: PageId, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
+    doc: &Document, page: PageId, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64, look: &dyn Look,
 ) -> Result<Plan, CmdError> {
     let tol = if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 };
     if !(in_range(at) && in_range(toward)) {
@@ -448,7 +448,7 @@ pub fn plan_continue(
     if going.is_empty() {
         return Err(CmdError::refused(none_can_continue(doc, cable)));
     }
-    let spacing = sizes(doc).spacing;
+    let spacing = sizes(doc, look).spacing;
     let (dx, dy) = (toward.x - at.x, toward.y - at.y);
     let l = dx.hypot(dy);
     if !(l.is_finite() && l > tol) {

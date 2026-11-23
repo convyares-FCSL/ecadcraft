@@ -16,7 +16,8 @@ use ecad_model::objects::title_block::{
     TextDraw, TitleBlockLayout,
 };
 
-use crate::pages::frames::{FrameText, TABLE_ROWS};
+use crate::pages::frames::TABLE_ROWS;
+use ecad_model::look::FrameText;
 
 /// Widths of the fixed columns, right to left (mm).
 pub(crate) const COUNTERS_MM: f64 = 30.0;

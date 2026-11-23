@@ -24,30 +24,17 @@ use ecad_model::document::sheet::{self, Margins, SheetSpec};
 use ecad_model::objects::title_block::TitleBlockLayout;
 use ecad_model::{Document, PageId, StyleRef};
 
-use crate::pages::frames::FrameText;
+use ecad_model::look::{FrameBlock, FrameText};
 
 /// Inset of a caption and of a value from its box's edge, mm.
 pub const INSET_MM: f64 = 1.0;
 
-/// A page's block as drawn: the layout, whether it is the built-in's, and the frame style.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Block {
-    pub frame: StyleRef,
-    pub layout: Arc<TitleBlockLayout>,
-    pub builtin: bool,
-}
-
-/// The width of the frame of `spec` with `margins`, in millimetres.
-pub fn frame_width(spec: &SheetSpec, margins: &Margins) -> f64 {
-    (f64::from(spec.width) - margins.left - margins.right).max(1.0)
-}
-
 /// The block of frame style `id` on `spec` with `margins`: its own when it has one, else the
 /// house block computed for the frame's width (built-ins, and own frames without a body).
-pub(crate) fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> Block {
+pub(crate) fn block_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> FrameBlock {
     match sheet::frame_block(doc, id) {
-        Some(l) => Block { frame: id.clone(), layout: Arc::new(l.clone()), builtin: false },
-        None => Block { frame: id.clone(), layout: Arc::new(house::house(frame_width(spec, margins), text)), builtin: true },
+        Some(l) => FrameBlock { frame: id.clone(), layout: Arc::new(l.clone()), builtin: false },
+        None => FrameBlock { frame: id.clone(), layout: Arc::new(house::house(sheet::frame_width(spec, margins), text)), builtin: true },
     }
 }
 
@@ -136,7 +123,7 @@ pub fn sheet_name(spec: &SheetSpec) -> String {
 
 /// The block area of a frame on `spec`: the frame's width and half its height (mm).
 pub fn block_area(spec: &SheetSpec, margins: &ecad_model::document::sheet::Margins) -> (f64, f64) {
-    let w = frame_width(spec, margins);
+    let w = sheet::frame_width(spec, margins);
     let h = ((f64::from(spec.height) - margins.top - margins.bottom) / 2.0).min(ecad_model::objects::title_block::MAX_BLOCK_HEIGHT_MM);
     (w, h)
 }

@@ -760,7 +760,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    <crate::styles::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
+    <ecad_model::look::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of text, `Default (…)` when the
@@ -798,7 +798,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let own = own.filter(|v| entry.parse(v).is_some());
         let default = format!("Default ({})", shown_words(inherited).to_ascii_lowercase());
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
-        let label = format!("{group}: {}", crate::styles::text_style::kind_words(*kind));
+        let label = format!("{group}: {}", kind.words());
         let mut r = Row::rw(&key, &label, value);
         r.kind = crate::cables::words::RowKind::Text(*kind);
         r.inherited = own.is_none();
@@ -818,7 +818,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         _ => (None, rest),
     };
     <ecad_model::look::TextKind as ecad_model::Word>::parse(kind)?;
-    let show = value.and_then(crate::styles::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
+    let show = value.and_then(ecad_model::look::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {
         (Some(r), _) => j["representation"] = r.hex().into(),

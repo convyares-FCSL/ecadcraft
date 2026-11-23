@@ -131,7 +131,7 @@ impl ShowText {
 
 /// The echo after a change: `Tag -X01 hidden on this symbol.`…
 fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
-    let what = ecad_electrical::styles::text_style::kind_words(kind);
+    let what = kind.words();
     let mut what = what.to_string();
     if let Some(first) = what.get(..1) {
         what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
@@ -141,9 +141,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
     };
-    let done = if <ecad_electrical::styles::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default()
-        == ecad_electrical::styles::text_style::Shown::Off
-    {
+    let done = if <ecad_model::look::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == ecad_model::look::Shown::Off {
         "hidden"
     } else {
         "shown"

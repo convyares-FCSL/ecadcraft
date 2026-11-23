@@ -2,8 +2,8 @@
 //!
 //! Which fonts a machine has and how wide a text is drawn are the drawing engine's knowledge. It
 //! reaches this module through one trait, [`TextMetrics`]: is a font found, and how wide is a text
-//! in it. ecad-engine implements it over CADCraft's fonts. [`Look`] answers the rules'
-//! [`ecad_model::look::TextLook`] with it. [`FixedWidth`] is a fixed-width implementation for
+//! in it. ecad-engine implements it over CADCraft's fonts. [`FontLook`] answers the rules'
+//! [`ecad_model::look::Look`] with it. [`FixedWidth`] is a fixed-width implementation for
 //! tests.
 //!
 //! This module looks nothing up itself and makes no OS call.
@@ -11,10 +11,12 @@
 use ecad_model::Document;
 
 use crate::defaults::text as d;
-use crate::styles::text_style::{default_family, kind_font, text_style, text_style_at};
-use ecad_model::look::{TextKind, TextLook, TextStyle};
+use crate::styles::text_style::{default_family, kind_font, own_style, own_style_of, style_of, text_shown, text_style, text_style_at};
+use ecad_model::document::sheet::{Margins, SheetSpec};
+use ecad_model::look::{FrameBlock, FrameDraw, FrameText, OwnStyle, Shown, TextKind, TextStyle, TextTarget};
 use ecad_model::objects::styles::text::Weight;
 use ecad_model::registry::Scope;
+use ecad_model::{PageId, StyleRef};
 
 /// What the drawing engine knows about fonts on this machine: whether a font is found, and the
 /// width of a text drawn in it.
@@ -67,14 +69,42 @@ impl<T: TextMetrics + ?Sized> TextMetrics for &T {
     }
 }
 
-/// The rules' [`TextLook`] over the font metrics it holds: a kind's style is its text style
-/// ([`text_style_at`]), and a width is measured in the fonts the metrics find.
+/// The rules' [`ecad_model::look::Look`] over the font metrics it holds: a kind's style is its
+/// text style ([`text_style_at`]), and a width is measured in the fonts the metrics find.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Look<M>(pub M);
+pub struct FontLook<M>(pub M);
 
-impl<M: TextMetrics> TextLook for Look<M> {
+impl<M: TextMetrics> ecad_model::look::Look for FontLook<M> {
     fn style(&self, doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
         text_style_at(doc, kind, at)
+    }
+
+    fn style_ref(&self, doc: &Document, kind: TextKind, at: Scope) -> StyleRef {
+        style_of(doc, kind, at)
+    }
+
+    fn own_style(&self, doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::Properties) -> Option<OwnStyle> {
+        own_style(doc, kind, at, props)
+    }
+
+    fn own_style_of(&self, doc: &Document, id: &StyleRef) -> OwnStyle {
+        own_style_of(doc, id)
+    }
+
+    fn shown(&self, doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
+        text_shown(doc, target, kind)
+    }
+
+    fn frame_text(&self, doc: &Document) -> FrameText {
+        crate::pages::frames::frame_text_with(doc, &self.0)
+    }
+
+    fn frame_draw(&self, doc: &Document, page: PageId) -> FrameDraw {
+        crate::styles::frame::frame_draw(doc, page)
+    }
+
+    fn title_block(&self, doc: &Document, id: &StyleRef, spec: &SheetSpec, margins: &Margins, text: &FrameText) -> FrameBlock {
+        crate::title_blocks::block_of(doc, id, spec, margins, text)
     }
 
     fn width(&self, doc: &Document, kind: TextKind, s: TextStyle, value: &str) -> f64 {
@@ -223,11 +253,12 @@ const ROUGH_WIDTH: f64 = 0.8;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecad_model::look::Look as _;
 
     #[test]
     fn a_fixed_width_text_is_its_characters_times_the_share() {
         let doc = Document::default();
-        let w = Look(FixedWidth).text_width(&doc, TextKind::Tag, "ABC");
+        let w = FontLook(FixedWidth).text_width(&doc, TextKind::Tag, "ABC");
         let h = text_style(&doc, TextKind::Tag).height;
         assert!((w - 3.0 * h * FixedWidth::SHARE).abs() < 1e-9);
         assert_eq!(Fonts::resolve_with(&doc, &FixedWidth).bold_lineweight, None);

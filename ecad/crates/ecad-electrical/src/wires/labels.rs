@@ -24,7 +24,7 @@ pub struct WireLabel {
     pub width: f64,
     /// The conductor's own wire label style (its `text.wire_label.style`), else the
     /// project's.
-    pub own: Option<crate::styles::text_style::OwnStyle>,
+    pub own: Option<ecad_model::look::OwnStyle>,
 }
 
 /// The vertices of a route path.
@@ -142,9 +142,9 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// Labels are placed in route order. Each takes the first place (`candidates`) where its box
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
-pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn TextLook) -> Vec<WireLabel> {
+pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn Look) -> Vec<WireLabel> {
     // The wire label height, weight and width through the text styles.
-    let style = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::WireLabel);
+    let style = m.text_style(doc, ecad_model::look::TextKind::WireLabel);
     let h = style.height;
     // Every route on the page (through the page index): (representation, wire, points).
     let mut routes: Vec<(RepresentationId, WireId, Vec<Pt>)> = Vec::new();
@@ -177,8 +177,8 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         else {
             continue;
         };
-        let target = crate::styles::text_style::TextTarget::conductor(*c, Some(page));
-        if crate::styles::text_style::text_shown(doc, target, ecad_model::look::TextKind::WireLabel) == crate::styles::text_style::Shown::Off {
+        let target = ecad_model::look::TextTarget::conductor(*c, Some(page));
+        if m.shown(doc, target, ecad_model::look::TextKind::WireLabel) == ecad_model::look::Shown::Off {
             continue;
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
@@ -207,7 +207,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         // A conductor's own wire label style (height, weight, colour, font).
         let own = doc.wires().get(c).and_then(|x| {
             let at = ecad_model::registry::Scope { conductor: Some(*c), ..ecad_model::registry::Scope::project() };
-            crate::styles::text_style::own_style(doc, ecad_model::look::TextKind::WireLabel, at, &x.display)
+            m.own_style(doc, ecad_model::look::TextKind::WireLabel, at, &x.display)
         });
         let h = own.as_ref().map_or(h, |o| o.style.height);
         let Some((a, b)) = longest_segment(v) else { continue };
@@ -257,7 +257,9 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
 /// The text beside a continuation symbol: its name; `None` when `a` is not a
 /// continuation. Its other ends' places are reference parts
 /// ([`crate::continuations`]).
-pub(crate) fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
+pub(crate) fn continuation_texts(
+    doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement, m: &dyn ecad_model::look::Look,
+) -> Option<Vec<DerivedText>> {
     let (name, _) = crate::continuations::continuation(doc, a)?;
     let name = name.unwrap_or_default().to_string();
     let mut out = Vec::new();
@@ -270,7 +272,7 @@ pub(crate) fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId
         of: TextOf::Name,
         value: name,
         at,
-        height: crate::styles::text_style::text_style(doc, crate::devices::texts::kind_of(TextOf::Name)).height,
+        height: m.text_style(doc, crate::devices::texts::kind_of(TextOf::Name)).height,
         halign: ecad_model::TextHAlign::Left,
         valign: ecad_model::TextVAlign::Bottom,
         aci: None,

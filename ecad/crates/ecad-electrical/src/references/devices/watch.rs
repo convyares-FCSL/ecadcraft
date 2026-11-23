@@ -1,7 +1,7 @@
 //! What a commit changes in the device references: the devices to compare and the texts to redraw.
 
 use ecad_model::document::effect::Effect;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId, Representation, Subject};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -27,6 +27,9 @@ pub(super) struct Scope {
     /// index of the same state is at hand ([`Scope::resolve`]).
     device_pages: BTreeSet<PageId>,
     name_pages: BTreeSet<PageId>,
+    /// Text styles changed, weighed once the look is at hand ([`Scope::styles`]): the table
+    /// text's style makes the devices wide, the reference or caption text's the arrows.
+    text_styles: BTreeSet<ecad_model::StyleRef>,
 }
 
 impl Scope {
@@ -97,11 +100,10 @@ impl Scope {
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key.raw) => {
                 self.wide = true;
             }
-            // A change of the text style the table text uses (its height, weight).
-            Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
-                if **id == crate::styles::text_style::style_of(doc, ecad_model::look::TextKind::Table, ecad_model::registry::Scope::project()) =>
-            {
-                self.wide = true;
+            // A change of a text style: the table text's sizes every table, the reference or
+            // caption text's every arrow.
+            Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. } => {
+                self.text_styles.insert((*id).clone());
             }
             Effect::Settings { before, after }
                 if before.reference_style != after.reference_style
@@ -149,9 +151,6 @@ impl Scope {
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key.raw) => {
                 self.arrows_wide = true;
             }
-            Effect::Style { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
-                self.arrows_wide = true;
-            }
             Effect::Page { .. }
             | Effect::Layer { .. }
             | Effect::Item { .. }
@@ -177,9 +176,24 @@ impl Scope {
         crate::continuations::names_named_by(doc, effect, &mut self.names);
     }
 
+    /// Weigh the text styles noted so far in `m`: the table text's makes the devices wide, the
+    /// reference or caption text's the arrows.
+    fn styles(&mut self, doc: &Document, m: &dyn Look) {
+        let at = ecad_model::registry::Scope::project();
+        for id in std::mem::take(&mut self.text_styles) {
+            if id == m.style_ref(doc, ecad_model::look::TextKind::Table, at) {
+                self.wide = true;
+            }
+            if crate::continuations::is_wide_style(doc, m, &id) {
+                self.arrows_wide = true;
+            }
+        }
+    }
+
     /// The devices with a member, and the names of the arrows, on the pages noted so far, through
     /// `idx`, the reference index of `doc`'s state.
-    fn resolve(&mut self, doc: &Document, idx: &RefIndex) {
+    fn resolve(&mut self, doc: &Document, idx: &RefIndex, m: &dyn Look) {
+        self.styles(doc, m);
         for p in std::mem::take(&mut self.device_pages) {
             self.devices.extend(idx.devices_on(doc, p));
         }
@@ -278,8 +292,8 @@ impl Watch {
     /// state before the commit, with `idx` its index. `reuse` holds what the last commit derived,
     /// for the same `doc` (the caller keeps it only while the state is unchanged): a device found
     /// there is not derived again.
-    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn TextLook) {
-        self.scope.resolve(doc, idx);
+    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn Look) {
+        self.scope.resolve(doc, idx, m);
         let scope = (!self.all_cables).then_some(&self.cable_scope);
         self.cables = Some(crate::references::cables::Snapshot::take(doc, scope));
         let mut places = Places::new(doc);
@@ -319,7 +333,7 @@ impl Watch {
 
     /// After the After notes: `doc` is the state after the commit and `idx` its index, already
     /// brought up to date. Says what changed. A watch never taken compares nothing.
-    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn TextLook) -> Outcome {
+    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn Look) -> Outcome {
         let Some(cables) = self.cables.take() else { return Outcome::default() };
         if self.rebuild {
             self.scope.wide = true;
@@ -328,7 +342,7 @@ impl Watch {
         let after_cables = crate::references::cables::Snapshot::take(doc, scope);
         let orphaned = cables.orphaned_line(doc, &after_cables);
         let mut pages = cables.pages_changed(&after_cables);
-        self.scope.resolve(doc, idx);
+        self.scope.resolve(doc, idx, m);
         let mut shown_after = Shown::new();
         let device_pages: BTreeSet<PageId> = if self.scope.wide {
             let mut p = std::mem::take(&mut self.wide_pages);

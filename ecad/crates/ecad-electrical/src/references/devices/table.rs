@@ -1,6 +1,6 @@
 //! The contact mirror table: rows, their states, the parts drawn, the table box and its placement.
 
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 use ecad_model::objects::devices::PoleKind;
 use ecad_model::{DeviceId, Document, Form, LengthUnit, PageId, Pt, RepresentationId, Subject};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,8 +13,8 @@ use super::places::Places;
 const REF: ecad_model::look::TextKind = ecad_model::look::TextKind::Reference;
 
 /// The height of reference text in drawing units: the `Reference` text style's.
-fn ref_height(doc: &Document) -> f64 {
-    crate::styles::text_style::text_style(doc, REF).height
+fn ref_height(doc: &Document, look: &dyn Look) -> f64 {
+    look.text_style(doc, REF).height
 }
 
 /// `ecad.references`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
@@ -257,7 +257,7 @@ pub(super) fn unit(doc: &Document) -> f64 {
 /// The text under contact `rep` of device `dev`: its head's place, where it is
 /// drawn, and how it is aligned. `None` when the device has no head or the contact cannot be
 /// drawn.
-pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: RepresentationId) -> Option<Part> {
+pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: RepresentationId, look: &dyn Look) -> Option<Part> {
     let head = dev.head?;
     if !dev.children.contains(&rep) {
         return None;
@@ -288,7 +288,7 @@ pub fn contact_text(doc: &Document, places: &mut Places<'_>, dev: &Device, rep: 
     at.is_finite().then_some(Part {
         rep,
         index: 0,
-        shape: Shape::Text { kind: REF, at, value, height: ref_height(doc), halign, valign: VAlign::Top, rotation: 0.0 },
+        shape: Shape::Text { kind: REF, at, value, height: ref_height(doc, look), halign, valign: VAlign::Top, rotation: 0.0 },
         aci: None,
         row: None,
         bar: false,
@@ -333,7 +333,7 @@ impl TableShown {
 
 /// The box of a table at `top` with `rows`: from −10 mm to 12 mm plus the widest
 /// place text across, 3 mm plus the rows and the power/auxiliary gap down. (lo, hi), drawing units.
-pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextLook) -> (Pt, Pt) {
+pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn Look) -> (Pt, Pt) {
     let k = unit(doc);
     // The widest place text in the font and size it is drawn with (drawing units).
     let widest = rows.iter().map(|r| m.text_width(doc, ecad_model::look::TextKind::Table, &r.place)).fold(0.0, f64::max);
@@ -372,9 +372,7 @@ pub(crate) fn enters_title_block(doc: &Document, page: PageId, b: (Pt, Pt)) -> b
 /// when its box lies in the free area; else right of the head (`auto`, `below`) when that fits;
 /// else lifted onto the free area's bottom and pulled left inside the frame. A table taller than
 /// the free area starts at its top. A table the user placed (`at`) is never moved.
-pub fn settle(
-    doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn TextLook,
-) -> (Pt, TableShown) {
+pub fn settle(doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement, top: Pt, rows: &[Row], m: &dyn Look) -> (Pt, TableShown) {
     if matches!(placement, Placement::At(_) | Placement::Off) {
         return (top, TableShown::AsPlaced);
     }
@@ -461,7 +459,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
 
 /// The table under device `dev`'s head, or `None`: no head, `off`, or neither
 /// children nor an offer.
-pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextLook) -> Option<Table> {
+pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Look) -> Option<Table> {
     let head = dev.head?;
     let offer = offer_of(doc, dev.component);
     if dev.children.is_empty() && offer.is_none() {
@@ -472,13 +470,13 @@ pub fn table_measured(doc: &Document, places: &mut Places<'_>, dev: &Device, m: 
     let page = doc.representations().get(&head)?.page;
     let rows = rows(places, dev, offer.as_ref().map(|(_, o)| o.as_slice()));
     let (top, shown) = settle(doc, dev.component, head, placement, top, &rows, m);
-    let parts = table_parts(doc, head, top, &rows);
+    let parts = table_parts(doc, head, top, &rows, m);
     let bottom = table_box(doc, top, &rows, m).0.y;
     Some(Table { head, page, top, placement, rows, parts, shown, bottom })
 }
 
 /// The lines and texts of a table at `top`.
-pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]) -> Vec<Part> {
+pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row], look: &dyn Look) -> Vec<Part> {
     let k = unit(doc);
     let at = |x: f64, y: f64| Pt::new(top.x + x * k, top.y + y * k);
     let mut parts = Vec::new();
@@ -488,7 +486,7 @@ pub fn table_parts(doc: &Document, head: RepresentationId, top: Pt, rows: &[Row]
     };
     push(Shape::Line(at(-10.0, 0.0), at(10.0, 0.0)), None, None, true);
     // Contact-table rows are table text.
-    let h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Table).height;
+    let h = look.text_style(doc, ecad_model::look::TextKind::Table).height;
     let mut y = -3.0;
     let mut last_power = rows.first().map(|r| r.power);
     for (i, r) in rows.iter().enumerate() {
@@ -533,7 +531,7 @@ pub(crate) const MAX_CONNECTOR_PLACES: usize = 3;
 
 /// The reference texts of connector `c`: under each member with targets, their
 /// places (`/102.C4`), at most [`MAX_CONNECTOR_PLACES`] then `+n`. O(the connector's symbols).
-pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: DeviceId) -> Vec<(PageId, Part)> {
+pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: DeviceId, look: &dyn Look) -> Vec<(PageId, Part)> {
     let list = crate::connectors::ref_classes(doc, c);
     let edges = crate::connectors::ref_edges(doc, c, &list);
     let mut targets: BTreeMap<RepresentationId, Vec<RepresentationId>> = BTreeMap::new();
@@ -568,7 +566,15 @@ pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: Device
             Part {
                 rep: rid,
                 index: 0,
-                shape: Shape::Text { kind: REF, at, value, height: ref_height(doc), halign: HAlign::Center, valign: VAlign::Top, rotation: 0.0 },
+                shape: Shape::Text {
+                    kind: REF,
+                    at,
+                    value,
+                    height: ref_height(doc, look),
+                    halign: HAlign::Center,
+                    valign: VAlign::Top,
+                    rotation: 0.0,
+                },
                 aci: None,
                 row: None,
                 bar: false,
@@ -580,7 +586,7 @@ pub(crate) fn connector_parts(doc: &Document, places: &mut Places<'_>, c: Device
 
 /// Every reference part drawn on `page`: the texts under its contacts and the tables under its
 /// heads. O(the page's component representations and their groups).
-pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn Look) -> Vec<Part> {
     let mut by_component: BTreeMap<DeviceId, Vec<RepresentationId>> = BTreeMap::new();
     for (rid, r) in doc.representations_on(page) {
         if let Subject::Device(c) = r.subject {
@@ -593,7 +599,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) ->
     for (c, here) in by_component {
         // A connector's half and pin references.
         if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
-            out.extend(connector_parts(doc, &mut places, c).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
+            out.extend(connector_parts(doc, &mut places, c, m).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
             continue;
         }
         let dev = device(doc, c);
@@ -601,7 +607,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextLook) ->
             continue;
         }
         for rid in &here {
-            if let Some(p) = contact_text(doc, &mut places, &dev, *rid) {
+            if let Some(p) = contact_text(doc, &mut places, &dev, *rid, m) {
                 out.push(p);
             }
         }
@@ -636,7 +642,7 @@ fn boxes_overlap(a: (Pt, Pt), b: (Pt, Pt)) -> bool {
 /// when it clears the tables before it, else moves right past them; when that leaves the free
 /// area, it goes under them instead, if that stays in the free area, else stays. Deterministic,
 /// and each table moves only for tables before it.
-pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextLook) {
+pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn Look) {
     let Some(page) = tables.first().map(|t| t.page) else { return };
     let free = free_area(doc, page);
     let gap = SPREAD_GAP_MM * unit(doc);
@@ -674,7 +680,7 @@ pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextLook) {
         let b = table_box(doc, top, &t.rows, m);
         if top != t.top && top.is_finite() && taken.iter().all(|o| !boxes_overlap(b, *o)) {
             t.top = top;
-            t.parts = table_parts(doc, t.head, top, &t.rows);
+            t.parts = table_parts(doc, t.head, top, &t.rows, m);
             t.bottom = top.y - height;
         }
         taken.push(table_box(doc, t.top, &t.rows, m));
@@ -683,7 +689,7 @@ pub fn spread(doc: &Document, tables: &mut [Table], m: &dyn TextLook) {
 
 /// Device `dev`'s table where its page draws it: `table`, then moved by [`spread`] with the other
 /// tables on its page. O(devices on that page); for replies, not per commit.
-pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn TextLook) -> Option<Table> {
+pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dyn Look) -> Option<Table> {
     let own = table_measured(doc, places, dev, m)?;
     let mut others: BTreeSet<DeviceId> = BTreeSet::new();
     for (_, r) in doc.representations_on(own.page) {
@@ -708,11 +714,11 @@ pub(crate) fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device,
 
 /// What device `c` shows on each page (its contacts' texts and its table), for comparing before
 /// and after a commit: page → parts.
-pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextLook) -> BTreeMap<PageId, Vec<Part>> {
+pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn Look) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     // A connector's references.
     if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
-        for (page, p) in connector_parts(doc, places, c) {
+        for (page, p) in connector_parts(doc, places, c, m) {
             out.entry(page).or_default().push(p);
         }
         return out;
@@ -722,7 +728,7 @@ pub(super) fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dy
         return out;
     }
     for rid in &dev.children {
-        if let (Some(p), Some(r)) = (contact_text(doc, places, &dev, *rid), doc.representations().get(rid)) {
+        if let (Some(p), Some(r)) = (contact_text(doc, places, &dev, *rid, m), doc.representations().get(rid)) {
             out.entry(r.page).or_default().push(p);
         }
     }

@@ -284,6 +284,7 @@ pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
 /// the card is in a slot.
 pub fn caption_text(
     doc: &Document, c: DeviceId, rep: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
+    m: &dyn ecad_model::look::Look,
 ) -> Option<crate::devices::texts::PageText> {
     let s = crate::devices::tags::rep_starter(doc, r)?;
     let ty = CardType::of_symbol(s)?;
@@ -297,7 +298,7 @@ pub fn caption_text(
         return None;
     }
     // One kind for height and style, the one `TextOf::Caption` draws in.
-    let height = crate::styles::text_style::text_style(doc, crate::devices::texts::kind_of(crate::devices::texts::TextOf::Caption)).height;
+    let height = m.text_style(doc, crate::devices::texts::kind_of(crate::devices::texts::TextOf::Caption)).height;
     Some(crate::devices::texts::PageText {
         text: crate::devices::texts::DerivedText {
             rep,
@@ -431,7 +432,7 @@ pub(crate) fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, Channel
 /// anchors. `cache` holds the racks' blocks for one page draw.
 pub(crate) fn channel_texts(
     doc: &Document, c: DeviceId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
-    kept: Option<&kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, address::Block>>,
+    kept: Option<&kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, address::Block>>, m: &dyn ecad_model::look::Look,
 ) -> Vec<crate::devices::texts::PageText> {
     use crate::devices::texts::{DerivedText, PageText, TextOf};
     use crate::symbols::anchors::TextRole;
@@ -461,10 +462,10 @@ pub(crate) fn channel_texts(
     let rotated =
         ecad_model::registry::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors::anchors(s);
-    let label = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::PointLabel).height;
+    let label = m.text_style(doc, ecad_model::look::TextKind::PointLabel).height;
     // The two text styles of their own.
-    let addr_h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::Address).height;
-    let desc_h = crate::styles::text_style::text_style(doc, ecad_model::look::TextKind::ChannelText).height;
+    let addr_h = m.text_style(doc, ecad_model::look::TextKind::Address).height;
+    let desc_h = m.text_style(doc, ecad_model::look::TextKind::ChannelText).height;
     // A cell at 180° keeps its texts upright and in their bands.
     let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();

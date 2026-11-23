@@ -1831,6 +1831,7 @@ mod tests {
                 "ecad-bench",
                 "ecad-cli",
                 "ecad-desktop",
+                "ecad-drawing-style",
                 "ecad-electrical",
                 "ecad-engine",
                 "ecad-file",
@@ -1843,7 +1844,18 @@ mod tests {
         assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop", "ecad-mcp"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-electrical", "ecad-engine", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
+            [
+                "ecad-app",
+                "ecad-bench",
+                "ecad-desktop",
+                "ecad-drawing-style",
+                "ecad-electrical",
+                "ecad-engine",
+                "ecad-file",
+                "ecad-inspector",
+                "ecad-mcp",
+                "ecad-store"
+            ]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-engine", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());

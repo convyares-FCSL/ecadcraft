@@ -1,10 +1,6 @@
 //! Text styles: the kinds of text ECAD draws, their resolved height,
 //! weight and CADCraft style name, and whether a text is shown.
 //!
-//! **The shared contract**: [`text_style`], [`TextStyle`], [`Weight`] and
-//! [`TextKind`]. The name, signature and the three fields do not change in v0.15; kinds may be
-//! added. [`text_shown`] is public too.
-//!
 //! Every value comes from the kind's text style ([`crate::styles::text`]): the
 //! registry's `text.<kind>.style` choice says which style, and [`ecad_model::registry::styles::field`] what it
 //! says. Nothing here writes a size or a weight as a literal. The readers are a few map lookups
@@ -12,11 +8,10 @@
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::Word;
-use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
 
 use crate::defaults::text as d;
-use ecad_model::look::{TextColour, TextKind, TextStyle};
+use ecad_model::look::{Look, OwnStyle, RunRule, Shown, TextColour, TextKind, TextStyle, TextTarget};
 use ecad_model::objects::styles::text::Weight;
 use ecad_model::registry::{Entry, Scope};
 
@@ -81,14 +76,6 @@ pub fn show_entry(kind: TextKind) -> Option<&'static Entry> {
     }
 }
 
-/// The refusal of a `text.` key through `projectprops`, `pageprops` or `setprop`.
-pub const RESERVED_KEY: &str = "\"text.…\" is set with Text styles (textstyle, showtext, movetext).";
-
-/// Whether `key` is one of the text commands' keys (`text.` prefix, any case).
-pub fn is_reserved_key(key: &str) -> bool {
-    key.trim().get(..5).is_some_and(|p| p.eq_ignore_ascii_case("text."))
-}
-
 /// The style of `kind` in this project: its text style (the project's `text.<kind>.style`, else
 /// the standard's, else the kind's built-in style) and that style's fields. The
 /// wire label's height is `settings.wiring.label_height`. Never fails; a hostile stored
@@ -125,18 +112,6 @@ pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     };
     let colour = f("colour").and_then(|r| text_colour(&r.text()));
     TextStyle { height, weight, style_name, colour }
-}
-
-/// An object's own text style as drawn: its
-/// height, weight and colour, and the CADCraft text style naming its font. `family` is the font
-/// family it draws in when that is not the project font, so the page installs that style
-/// (`install_family`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct OwnStyle {
-    pub style: TextStyle,
-    /// The CADCraft text style an entity names.
-    pub name: String,
-    pub family: Option<String>,
 }
 
 /// The CADCraft text style of an own text style drawn in `family`: `ECAD-FONT-<FAMILY>` and its
@@ -256,96 +231,6 @@ pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
         _ => default_family(),
     };
     (!f.eq_ignore_ascii_case(project)).then_some(f)
-}
-
-ecad_model::word_enum! {
-    /// Whether a text is shown.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-    pub enum Shown {
-        #[default]
-        #[strum(serialize = "yes")]
-        On,
-        #[strum(serialize = "no")]
-        Off,
-        /// Once per run: on the first symbol of each run, hidden on the others. Tags only.
-        First,
-    }
-}
-
-impl Shown {
-    /// The value typed in a box: a stored word, any yes/no word ([`ecad_model::naming::words::flag`]), or
-    /// its words in the panels (`Shown`, `Hidden`, `Once per run`), in any case.
-    pub fn from_input(text: &str) -> Option<Shown> {
-        let t = text.trim();
-        <Self as ecad_model::Word>::parse(t)
-            .or_else(|| ecad_model::naming::words::flag(t).map(|on| if on { Shown::On } else { Shown::Off }))
-            .or_else(|| Shown::ALL_LABELS.into_iter().find(|s| s.label().eq_ignore_ascii_case(t)))
-    }
-
-    const ALL_LABELS: [Shown; 3] = [Shown::On, Shown::Off, Shown::First];
-
-    /// Its words in the panels.
-    pub fn label(self) -> &'static str {
-        match self {
-            Shown::On => "Shown",
-            Shown::Off => "Hidden",
-            Shown::First => "Once per run",
-        }
-    }
-}
-
-/// The built-in run rule of a symbol: strip terminals and PLC channels show
-/// their tag once per run unless something narrower says otherwise.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum RunRule {
-    /// Any other symbol.
-    #[default]
-    None,
-    /// A strip terminal (starter kind `ConnectionPoint`).
-    Strip,
-    /// A PLC channel (starter kind `Plc`).
-    Plc,
-}
-
-/// What a text belongs to, for [`text_shown`]: a symbol (its representation, component and page),
-/// a conductor, a page or the project.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct TextTarget {
-    pub page: Option<PageId>,
-    pub component: Option<DeviceId>,
-    pub representation: Option<RepresentationId>,
-    pub conductor: Option<WireId>,
-    /// The symbol's run rule (only for a tag).
-    pub run: RunRule,
-}
-
-impl TextTarget {
-    /// The project only.
-    #[cfg(test)]
-    pub(crate) fn project() -> Self {
-        TextTarget::default()
-    }
-
-    /// A page.
-    pub fn page(page: PageId) -> Self {
-        TextTarget { page: Some(page), ..TextTarget::default() }
-    }
-
-    /// A symbol: `rep`, its component and its page (looked up in `doc`), with its run rule.
-    #[cfg(test)]
-    pub(crate) fn symbol(doc: &Document, rep: RepresentationId, run: RunRule) -> Self {
-        let s = Scope::symbol(doc, rep);
-        TextTarget { page: s.page, component: s.component, representation: Some(rep), conductor: None, run }
-    }
-
-    /// A conductor drawn on `page` (for wire labels).
-    pub fn conductor(conductor: WireId, page: Option<PageId>) -> Self {
-        TextTarget { page, conductor: Some(conductor), ..TextTarget::default() }
-    }
-
-    fn scope(self) -> Scope {
-        Scope { page: self.page, component: self.component, rep: self.representation, conductor: self.conductor }
-    }
 }
 
 /// Whether a text of `kind` on `target` is shown: the narrowest level that has a
@@ -694,7 +579,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
 /// overlap), never crossing the frame's inside edge when a candidate inside it exists. Each placed
 /// block becomes an obstacle. Deterministic: the result does not depend on op order.
 pub(crate) fn place_blocks(
-    doc: &Document, page: PageId, blocks: &[Block], fixed: &[TextBox],
+    doc: &Document, page: PageId, blocks: &[Block], fixed: &[TextBox], look: &dyn Look,
 ) -> std::collections::BTreeMap<RepresentationId, BlockPlace> {
     let mut out = std::collections::BTreeMap::new();
     let mut obs = page_obstacles(doc, page, fixed);
@@ -703,7 +588,7 @@ pub(crate) fn place_blocks(
         (ecad_model::Pt::new(grid.frame_left(), grid.frame_bottom()), ecad_model::Pt::new(grid.frame_left() + grid.area_width(), grid.frame_top()));
     let inside = |b: &TextBox| !finite_box(&frame) || (b.0.x >= frame.0.x && b.0.y >= frame.0.y && b.1.x <= frame.1.x && b.1.y <= frame.1.y);
     let gap_factor = ecad_model::registry::resolve(doc, &d::TAG_GAP, Scope::project()).number();
-    let tag_height = text_style(doc, TextKind::Tag).height;
+    let tag_height = look.text_style(doc, TextKind::Tag).height;
     let mut free: Vec<&Block> = Vec::new();
     // Moved blocks first.
     for b in blocks {
@@ -897,39 +782,10 @@ fn runs_along(members: &[Placed], all: &[Placed], axis: Axis, align: f64, gap: f
     out
 }
 
-/// A kind's name as the Properties panel's Texts rows show it: `Tag`, `Pin labels`…
-pub fn shown_name(kind: TextKind) -> String {
-    match kind {
-        TextKind::PointLabel => "Pin labels".to_string(),
-        k => {
-            let mut c = kind_words(k).chars();
-            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
-        }
-    }
-}
-
-/// Words for a kind in labels and echoes: `tag`, `connection point labels`…
-pub fn kind_words(kind: TextKind) -> &'static str {
-    match kind {
-        TextKind::Tag => "tag",
-        TextKind::PointLabel => "connection point labels",
-        TextKind::Description => "description",
-        TextKind::PartNumber => "part number",
-        TextKind::ContinuationName => "continuation name",
-        TextKind::Reference => "references",
-        TextKind::ContinuationCaption => "continuation captions",
-        TextKind::LocationLabel => "location labels",
-        TextKind::WireLabel => "wire labels",
-        _ => kind.word(),
-    }
-}
-
-// The engine half, at its old paths until the split moves this module to
-// ecad-electrical, where ecad-engine's `text_style` facade takes over (step 6).
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecad_model::Word;
     use ecad_model::registry::Value;
     use ecad_model::{Device, LengthUnit, Page, Representation};
 
@@ -1085,6 +941,6 @@ mod tests {
         doc2.edit_parts(|parts| {
             parts.display.insert("text.tag.show.strip".into(), "yes".into());
         });
-        assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::project() }, TextKind::Tag), Shown::On);
+        assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::default() }, TextKind::Tag), Shown::On);
     }
 }

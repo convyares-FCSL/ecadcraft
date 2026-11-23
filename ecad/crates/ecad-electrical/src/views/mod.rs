@@ -37,14 +37,14 @@ pub use crate::references::view::{ReferencesScope, ReferencesView};
 pub use crate::reports::view::{ReportsScope, ReportsView};
 pub use changes::Changes;
 
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// What the engine supplies to the views: the text look, and any later
 /// engine-made input. ecad-engine fills it in.
 #[derive(Clone)]
 pub struct EngineInputs {
     /// How a text is drawn on this machine, and how wide.
-    pub look: Arc<dyn TextLook + Send + Sync>,
+    pub look: Arc<dyn Look + Send + Sync>,
     /// Every crate's defaults and style catalogues.
     pub registry: &'static ecad_model::registry::data::Registry,
 }
@@ -209,7 +209,7 @@ impl Views {
 
     /// The text look the views are built with, to build one off the thread
     /// ([`ReportsView::build`], [`ChecksView::build`]).
-    pub fn look(&self) -> Arc<dyn TextLook + Send + Sync> {
+    pub fn look(&self) -> Arc<dyn Look + Send + Sync> {
         self.inputs.look.clone()
     }
 
@@ -365,7 +365,7 @@ impl Views {
         if let Some(view) = self.checks.get_mut() {
             merge(&mut changes, view.update(after, checks, &inputs));
             if cover {
-                view.set_cover(after);
+                view.set_cover(after, inputs.engine.look.as_ref());
             }
         }
         // Stage 4: the feeds, merged in field order.

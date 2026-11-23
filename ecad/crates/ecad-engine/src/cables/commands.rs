@@ -224,7 +224,14 @@ impl Command for CablefanParams {
                 return Err(CmdError::refused("no such cable"));
             }
             let title = views::cable_title(doc, cable);
-            let ends = ecad_electrical::cables::layout::fan_ends(doc, page, cable, p.tolerance, &crate::cables::draw::font_width);
+            let ends = ecad_electrical::cables::layout::fan_ends(
+                doc,
+                page,
+                cable,
+                p.tolerance,
+                &crate::cables::draw::font_width,
+                &crate::styles::draw::LOOK,
+            );
             if ends.is_empty() {
                 return Err(CmdError::refused(format!("Cable {title} has no fanned end on this page.")));
             }

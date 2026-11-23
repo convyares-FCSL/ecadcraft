@@ -246,7 +246,7 @@ fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
 
 /// The checks of step 1 for `cable` on `page`, without any geometry.
 fn check_continue(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
-    ecad_electrical::references::cables::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0)
+    ecad_electrical::references::cables::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0, &crate::styles::draw::LOOK)
         .map(|_| ())
         .map_err(String::from)
 }
@@ -352,9 +352,21 @@ impl Continue {
 
     /// The plan a click at `toward` would commit (the JSON form's own planning).
     fn plan(s: &Session, k: CableId, at: Pt, toward: Pt) -> Option<ecad_electrical::references::cables::Plan> {
-        read(s, |p, page| Ok(ecad_electrical::references::cables::plan_continue(p.ledger.document(), page, k, None, at, toward, p.tolerance).ok()))
-            .ok()
-            .flatten()
+        read(s, |p, page| {
+            Ok(ecad_electrical::references::cables::plan_continue(
+                p.ledger.document(),
+                page,
+                k,
+                None,
+                at,
+                toward,
+                p.tolerance,
+                &crate::styles::draw::LOOK,
+            )
+            .ok())
+        })
+        .ok()
+        .flatten()
     }
 }
 

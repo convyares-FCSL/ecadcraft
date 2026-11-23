@@ -617,7 +617,7 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 /// A value as the inspector shows it: a show word in words, else as the Standards table.
 fn shown(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
-        use ecad_electrical::styles::text_style::Shown;
+        use ecad_model::look::Shown;
         return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
             Shown::Off => "Hidden".into(),
             Shown::First => "Shown on the first of each run".into(),

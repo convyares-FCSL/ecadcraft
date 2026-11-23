@@ -23,7 +23,7 @@ use crate::styles::text_style::fonts::TextMetrics;
 use crate::symbols::StarterKey;
 use crate::symbols::proposals::Conflict;
 use crate::views::Views;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands
@@ -57,7 +57,7 @@ pub struct Cx<'a> {
     /// blocks).
     pub metrics: &'static dyn TextMetrics,
     /// How the rules' texts look on this machine, to lay out and measure them.
-    pub look: &'static dyn TextLook,
+    pub look: &'static dyn Look,
     /// Every crate's defaults and style catalogues.
     pub registry: &'static ecad_model::registry::data::Registry,
     /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: what

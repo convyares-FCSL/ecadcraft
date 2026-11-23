@@ -449,11 +449,11 @@ fn contact_cross_references_follow_the_reference_style() {
 #[test]
 fn the_cable_draw_follows_the_cable_text_style() {
     let mut h = H::new(0x66_d2);
-    let before = ecad_engine::cables::draw::label_height(&h.doc());
+    let before = ecad_electrical::cables::words::label_height(&h.doc(), &ecad_engine::styles::draw::LOOK);
     assert!((before - 1.6).abs() < 1e-9, "{before}");
     h.run("setstyle", json!({"catalogue": "text", "id": "cable_text", "fields": {"height": 3.0}})).unwrap();
     let doc = h.doc();
-    assert!((ecad_engine::cables::draw::label_height(&doc) - 3.0).abs() < 1e-9);
+    assert!((ecad_electrical::cables::words::label_height(&doc, &ecad_engine::styles::draw::LOOK) - 3.0).abs() < 1e-9);
     // A reference flag is laid out around text of that height: its rectangle is two heights tall.
     let f = ecad_engine::cables::draw::flag_shape(ecad_model::Pt::new(0.0, 0.0), 10.0, ecad_engine::cables::draw::FlagSide::Right, 3.0);
     assert!((f.hi.y - f.lo.y - 6.0).abs() < 1e-9, "{:?} {:?}", f.lo, f.hi);

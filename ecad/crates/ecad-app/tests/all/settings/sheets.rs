@@ -77,7 +77,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     type_into(&mut h, "ecad.props.page.number", "100");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(last_label(&mut h), "Page properties");
-    let references = ecad_electrical::references::cables::markers_on_page(&doc(&mut h), field);
+    let references = ecad_electrical::references::cables::markers_on_page(&doc(&mut h), field, &ecad_engine::styles::draw::LOOK);
     assert_eq!(references.first().map(|m| m.text.as_str()), Some("100/F2"));
     // A refusal keeps the field and says why; nothing recorded.
     let before = head(&mut h);
@@ -133,7 +133,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
     assert_eq!((d.settings().reference_style(), d.settings().tag_padding()), (ecad_model::ReferenceStyle::PageColumn, 3));
-    let references = ecad_electrical::references::cables::markers_on_page(&d, field);
+    let references = ecad_electrical::references::cables::markers_on_page(&d, field, &ecad_engine::styles::draw::LOOK);
     assert_eq!(references.first().map(|m| m.text.as_str()), Some("/100.2"), "the column");
     ok(&mut h, "u");
     assert_eq!(doc(&mut h).settings().reference_style(), ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");

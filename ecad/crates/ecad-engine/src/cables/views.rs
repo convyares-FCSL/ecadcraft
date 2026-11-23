@@ -125,7 +125,7 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
     if !routed {
         return FanOnPage::Nothing;
     }
-    let d = ecad_electrical::cables::layout::cable_on_page(doc, page, cable, true, tol, &crate::cables::draw::font_width);
+    let d = ecad_electrical::cables::layout::cable_on_page(doc, page, cable, true, tol, &crate::cables::draw::font_width, &crate::styles::draw::LOOK);
     match d.state {
         ecad_electrical::cables::layout::FanState::Drawn => FanOnPage::Drawn(d),
         ecad_electrical::cables::layout::FanState::TooFew => FanOnPage::TooFew,
@@ -138,7 +138,7 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
 pub fn drawings_on_page(
     doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64,
 ) -> BTreeMap<CableId, ecad_electrical::cables::layout::CableDrawing> {
-    ecad_electrical::cables::layout::cables_on_page(doc, page, fan, tol, &crate::cables::draw::font_width)
+    ecad_electrical::cables::layout::cables_on_page(doc, page, fan, tol, &crate::cables::draw::font_width, &crate::styles::draw::LOOK)
 }
 
 // ---------------------------------------------------------------- remembering

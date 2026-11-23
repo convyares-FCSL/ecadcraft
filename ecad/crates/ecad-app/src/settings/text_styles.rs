@@ -6,7 +6,7 @@ use ecad_model::Word;
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
-use {ecad_electrical::styles::text_style::Shown, ecad_model::look::TextKind};
+use {ecad_model::look::Shown, ecad_model::look::TextKind};
 
 /// The section's element name.
 pub(crate) const SECTION_ID: &str = "ecad.projectsettings.text";

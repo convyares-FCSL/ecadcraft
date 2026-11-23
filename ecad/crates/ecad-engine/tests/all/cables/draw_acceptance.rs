@@ -125,7 +125,7 @@ fn view(h: &mut H, k: CableId, v: &str) {
 fn drawing(h: &mut H, page: PageId, k: CableId, fan: bool) -> layout::CableDrawing {
     let doc = h.doc();
     let tol = h.p(|p| p.tolerance);
-    layout::cable_on_page(&doc, page, k, fan, tol, &draw::font_width)
+    layout::cable_on_page(&doc, page, k, fan, tol, &draw::font_width, &ecad_engine::styles::draw::LOOK)
 }
 
 fn fan(h: &mut H, page: PageId, k: CableId) -> views::Fan {
@@ -832,7 +832,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
             parts.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(prim);
         });
         for fan_view in [false, true] {
-            let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width);
+            let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
             assert!(all_finite(&d), "{name}, fan {fan_view}: every shape finite");
         }
     }
@@ -844,17 +844,17 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
             parts.items.get_mut(&rep_item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
         });
         for fan_view in [false, true] {
-            let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width);
+            let d = layout::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
             assert!(all_finite(&d), "reference at {at:?}, fan {fan_view}: every shape finite");
         }
     }
     // Hostile tolerances and measuring functions.
     for tol in [f64::NAN, f64::INFINITY, -1.0, 0.0, 1e300] {
-        let d = layout::cable_on_page(&base, f.page, f.c1, true, tol, &draw::font_width);
+        let d = layout::cable_on_page(&base, f.page, f.c1, true, tol, &draw::font_width, &ecad_engine::styles::draw::LOOK);
         assert!(all_finite(&d), "tol {tol}");
     }
     for m in [f64::NAN, f64::INFINITY, -5.0, 1e308] {
-        let d = layout::cable_on_page(&base, f.page, f.c1, true, 1e-6, &move |_| m);
+        let d = layout::cable_on_page(&base, f.page, f.c1, true, 1e-6, &move |_| m, &ecad_engine::styles::draw::LOOK);
         assert!(all_finite(&d), "measure {m}");
     }
     // Through the JSON form: wires at ±1e12 and at 1e300 (finite but overflowing in products),
@@ -1249,7 +1249,7 @@ fn cablefan_hostile_stored_join_draws_finite() {
         doc.edit_parts(|parts| {
             parts.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
         });
-        let d = layout::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &draw::font_width);
+        let d = layout::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &draw::font_width, &ecad_engine::styles::draw::LOOK);
         assert!(d.is_fan(), "{at:?}");
         assert!(all_finite(&d), "{at:?}");
         let j = junction(&d, 22.5);
@@ -1343,5 +1343,5 @@ fn hover_shows_blank_cores_as_unset() {
 /// The cable look's text height in a project with the built-in styles (brief 066d: the
 /// `CableText` text style's).
 fn hh() -> f64 {
-    ecad_engine::cables::draw::label_height(&ecad_model::Document::default())
+    ecad_electrical::cables::words::label_height(&ecad_model::Document::default(), &ecad_engine::styles::draw::LOOK)
 }

@@ -43,7 +43,7 @@ use ecad_model::{Document, Op};
 use crate::references::devices::index::RefIndex;
 use crate::references::devices::watch::{Shown, Watch};
 use crate::views::Inputs;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// The references view: the kept index and what the last commit derived.
 #[derive(Debug, Default)]
@@ -83,7 +83,7 @@ impl ReferencesView {
 
     /// The end of the Before phase: derive what the noted devices, names and cables show on
     /// `before`. Changes nothing kept.
-    pub fn take(&self, before: &Document, scope: &mut ReferencesScope, m: &dyn TextLook) {
+    pub fn take(&self, before: &Document, scope: &mut ReferencesScope, m: &dyn Look) {
         scope.watch.take(before, &self.index, &self.shown, m);
     }
 

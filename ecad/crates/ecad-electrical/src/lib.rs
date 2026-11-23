@@ -32,7 +32,7 @@
 //!
 //! It contains **no** drawing engine (no `cadcraft-*` crate, no entities or handles), **no** UI, **no** OS access
 //! (no files, clock, environment or process: callers pass the time in) and **no** font lookup: text is measured
-//! through [`ecad_model::look::TextLook`], which the caller supplies.
+//! through [`ecad_model::look::Look`], which the caller supplies.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub use crate::error::{CmdError, msg};

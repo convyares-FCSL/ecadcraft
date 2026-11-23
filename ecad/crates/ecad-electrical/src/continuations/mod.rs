@@ -37,9 +37,9 @@ use crate::references::devices::classify::Group;
 use crate::references::devices::index::RefIndex;
 use crate::references::devices::places::Places;
 use crate::references::devices::table::{HAlign, Part, Shape, VAlign};
-use crate::styles::text_style::{TextTarget, text_shown, text_style};
+use ecad_model::look::Look;
 use ecad_model::look::TextKind;
-use ecad_model::look::TextLook;
+use ecad_model::look::TextTarget;
 use ecad_model::registry::Scope;
 
 /// The `setprop` key of a continuation's name.
@@ -204,7 +204,7 @@ struct Settings {
 }
 
 impl Settings {
-    fn of(doc: &Document) -> Settings {
+    fn of(doc: &Document, m: &dyn Look) -> Settings {
         use crate::defaults::continuations as c;
         let len = |e: &ecad_model::registry::Entry| ecad_model::registry::resolve(doc, e, Scope::project()).length(doc);
         let mm = |x: f64| match doc.settings().length_unit {
@@ -221,8 +221,8 @@ impl Settings {
             overhang: mm(BRACKET_OVERHANG_MM),
             text_gap: mm(CAPTION_TEXT_GAP_MM),
             min_wrap: mm(MIN_WRAP_MM),
-            ref_height: text_style(doc, TextKind::Reference).height,
-            caption_height: text_style(doc, TextKind::ContinuationCaption).height,
+            ref_height: m.text_style(doc, TextKind::Reference).height,
+            caption_height: m.text_style(doc, TextKind::ContinuationCaption).height,
         }
     }
 }
@@ -291,12 +291,12 @@ struct Cache<'m> {
     settings: Settings,
     ends: BTreeMap<String, Vec<End>>,
     /// What measures the texts.
-    m: &'m dyn TextLook,
+    m: &'m dyn Look,
 }
 
 impl<'m> Cache<'m> {
-    fn new(doc: &Document, m: &'m dyn TextLook) -> Cache<'m> {
-        Cache { settings: Settings::of(doc), ends: BTreeMap::new(), m }
+    fn new(doc: &Document, m: &'m dyn Look) -> Cache<'m> {
+        Cache { settings: Settings::of(doc, m), ends: BTreeMap::new(), m }
     }
 
     /// The width of `value` in `kind`'s style.
@@ -428,7 +428,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
         part(BRACKET_INDEX + 1, Shape::Line(a, back(a))),
         part(BRACKET_INDEX + 2, Shape::Line(b, back(b))),
     ];
-    if text_shown(doc, TextTarget::page(page), TextKind::ContinuationCaption) == crate::styles::text_style::Shown::Off {
+    if cache.m.shown(doc, TextTarget::page(page), TextKind::ContinuationCaption) == ecad_model::look::Shown::Off {
         return out;
     }
     let lines = wrap(doc, cache, caption, (hi - lo).max(s.min_wrap));
@@ -455,7 +455,7 @@ fn run_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, cap
 
 /// Every continuation part drawn on `page`: each arrow's reference text, then
 /// each caption run's bracket and caption. O(the page's arrows and their names' arrows).
-pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn TextLook) -> Vec<Part> {
+pub fn parts_on_page_measured(doc: &Document, places: &mut Places<'_>, page: PageId, m: &dyn Look) -> Vec<Part> {
     let arrows = arrows_on(doc, page);
     if arrows.is_empty() {
         return Vec::new();
@@ -480,7 +480,7 @@ fn page_parts(doc: &Document, places: &mut Places<'_>, cache: &mut Cache<'_>, pa
 
 /// What the arrows of names `names` show, by page: their reference texts, and every caption run
 /// part on a page that holds one of them. For comparing before and after a commit.
-pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>, m: &dyn TextLook) -> BTreeMap<PageId, Vec<Part>> {
+pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>, m: &dyn Look) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     if names.is_empty() {
         return out;
@@ -589,17 +589,15 @@ pub(crate) fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet
 pub(crate) fn is_wide_key(key: &str) -> bool {
     ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::Continuation)
         || matches!(ecad_model::naming::keys::text_kind(key), Some("reference" | "continuation_caption"))
-        || key == crate::defaults::text::FONT.key
+        || key == ecad_model::look::FONT_KEY
 }
 
 /// Whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
-pub(crate) fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
-    use crate::styles::text_style::style_of;
+pub(crate) fn is_wide_style(doc: &Document, look: &dyn Look, id: &ecad_model::StyleRef) -> bool {
     use ecad_model::look::TextKind;
     let at = ecad_model::registry::Scope::project();
-    catalogue == ecad_model::StyleCatalogue::Text
-        && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
+    *id == look.style_ref(doc, TextKind::Reference, at) || *id == look.style_ref(doc, TextKind::ContinuationCaption, at)
 }
 
 // ---------------------------------------------------------------- captions

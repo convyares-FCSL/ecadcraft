@@ -115,7 +115,7 @@ impl crate::checks::CheckSource for StyleRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
+    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry, _look: &dyn ecad_model::look::Look) -> Vec<Check> {
         rows(doc, registry)
     }
 }

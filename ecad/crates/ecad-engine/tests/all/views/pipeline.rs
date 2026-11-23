@@ -94,7 +94,7 @@ fn the_tree_feed_follows_its_update_map() {
     let doc = Document::default();
     for (what, ops, want) in cases {
         let mut views = Views::new(EngineInputs {
-            look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth)),
+            look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth)),
             registry: &ecad_drawing_style::REGISTRY,
         });
         let pending = views.begin(&doc, &ops);
@@ -298,7 +298,7 @@ fn the_connectors_view_follows_the_document() {
     h.cmdline("r");
     h.cmdline("r");
     let log = h.p(|p| p.ledger.log().to_vec());
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
     let mut views =
         ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
     let mut doc = Document::default();
@@ -386,8 +386,9 @@ fn a_view_out_of_step_is_reported_and_rebuilt() {
 /// of three pages stale, through `Views::begin` and `finish`; with no frame shown, none does.
 #[test]
 fn the_frame_view_follows_its_update_map() {
-    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::pages::frames::FrameInput;
     use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_model::look::Look as _;
     use ecad_model::{Page, PageTitle};
     let b = ecad_engine::dev::test_support::ProjectBuilder::new(644).page().page().page().coil("K1", (20.0, 20.0)).build();
     let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
@@ -395,7 +396,8 @@ fn the_frame_view_follows_its_update_map() {
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(&doc, first, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let look = ecad_electrical::styles::text_style::fonts::FontLook(metrics);
+    let input = FrameInput::with(&doc, first, &ecad_model::document::book::Book::of(&doc), &look, look.frame_text(&doc));
     let index = |p: PageId| doc.page_order().iter().position(|x| *x == p).unwrap();
     let page = |p: PageId| doc.pages()[&p].clone();
     let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
@@ -425,7 +427,7 @@ fn the_frame_view_follows_its_update_map() {
         ("a free project property", vec![note(ObjectRef::Project)], false),
         ("nothing", vec![], false),
     ];
-    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
+    let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(ecad_electrical::styles::text_style::fonts::FixedWidth));
     for (what, ops, want) in cases {
         let after = crate::common::applied(&doc, &ops);
         let mut views = Views::new(EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY });
@@ -439,12 +441,19 @@ fn the_frame_view_follows_its_update_map() {
 
 /// Whether `ops` make the frame of `page` (as `doc` shows it) stale, through `Views`.
 fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
-    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::pages::frames::FrameInput;
     use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_model::look::Look as _;
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), FrameText::with(doc, &metrics));
+    let input = FrameInput::with(
+        doc,
+        page,
+        &ecad_model::document::book::Book::of(doc),
+        &ecad_electrical::styles::text_style::fonts::FontLook(metrics),
+        ecad_electrical::styles::text_style::fonts::FontLook(metrics).frame_text(doc),
+    );
     let mut views = Views::new(EngineInputs {
-        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)),
+        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(metrics)),
         registry: &ecad_drawing_style::REGISTRY,
     });
     views.frame_mut().show(page, input);
@@ -505,16 +514,23 @@ fn the_frame_view_follows_the_rest_of_its_map() {
 /// nothing into the next commit; nothing is set before `finish`.
 #[test]
 fn a_dropped_pending_leaves_the_frame_alone() {
-    use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::pages::frames::FrameInput;
     use ecad_electrical::views::{EngineInputs, Views};
+    use ecad_model::look::Look as _;
     let b = ecad_engine::dev::test_support::ProjectBuilder::new(646).page().build();
     let page = b.added_pages[0];
     let mut h = crate::common::H::from_built(b);
     let doc = h.doc();
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
-    let input = FrameInput::with(&doc, page, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let input = FrameInput::with(
+        &doc,
+        page,
+        &ecad_model::document::book::Book::of(&doc),
+        &ecad_electrical::styles::text_style::fonts::FontLook(metrics),
+        ecad_electrical::styles::text_style::fonts::FontLook(metrics).frame_text(&doc),
+    );
     let mut views = Views::new(EngineInputs {
-        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)),
+        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::FontLook(metrics)),
         registry: &ecad_drawing_style::REGISTRY,
     });
     views.frame_mut().show(page, input);

@@ -9,7 +9,7 @@ use ecad_model::document::sheet::{SheetSpec, unit_scale};
 use ecad_model::{Document, LengthUnit, ObjectRef, Op, PageId};
 
 use crate::styles::text_style::fonts::{DrawStyles, TextMetrics};
-use ecad_model::look::TextKind;
+use ecad_model::look::{FrameBlock, FrameDraw, FrameText, Look, TextDraw, TextKind};
 use ecad_model::objects::styles::text::Weight;
 
 /// The reserved layer of the frame (`ecad.frame`), locked so CADCraft's own commands leave it.
@@ -89,12 +89,12 @@ pub struct FrameInput {
     /// Whether the drawing changed since the newest issue: set by the project,
     /// which keeps the flag; `of` leaves it off.
     pub pending: bool,
-    /// The frame's text styles, from the style getter.
+    /// The frame's text styles, from the look.
     pub text: FrameText,
     /// The page's frame style (line weights, colour, grid labels).
-    pub draw: crate::styles::frame::FrameDraw,
-    /// The block the frame draws (its own, or the house block for this sheet).
-    pub block: crate::title_blocks::Block,
+    pub draw: FrameDraw,
+    /// The block the frame draws (its own, or the built-in block for this sheet).
+    pub block: FrameBlock,
     /// The project properties the block's fields read, by key (empty when unset): the
     /// block's bound key set.
     pub project: BTreeMap<String, String>,
@@ -102,49 +102,17 @@ pub struct FrameInput {
     pub newest: BTreeMap<String, String>,
 }
 
-/// A text kind's style where ECAD draws in paper millimetres (frame, generated pages): its height
-/// in millimetres, its style name, and the lineweight of bold drawn in the stroke font.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TextDraw {
-    pub mm: f64,
-    pub style: &'static str,
-    pub weight: Option<u16>,
-}
-
-/// The frame's text styles: grid labels, box captions, values and revision rows,
-/// Project and Page title, the Page number box, the Rev box.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FrameText {
-    pub grid: TextDraw,
-    pub caption: TextDraw,
-    pub value: TextDraw,
-    pub main: TextDraw,
-    pub page: TextDraw,
-    pub rev: TextDraw,
-    /// The lineweight bold is drawn with in the title fonts, for a block's bold texts
-    /// when the main style is not bold itself.
-    pub bold_weight: Option<u16>,
-}
-
-impl TextDraw {
-    /// Whether its style is bold (the CADCraft style name of a bold weight; a block
-    /// item's `bold` comes from its kind's style, never a literal).
-    pub fn bold(&self) -> bool {
-        self.style.ends_with("BOLD")
-    }
-
-    /// `kind`'s style in a project of length unit `unit`, from its resolved `draw`.
-    pub fn of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
-        let s = draw.style(kind);
-        let mm = height_mm(s.height, unit);
-        // The per-kind fonts decide whether bold is drawn as a heavier stroke
-        // as the engine's `DrawApply::apply` does.
-        let weight = match s.weight {
-            Weight::Bold => draw.fonts_for(kind).bold_lineweight,
-            Weight::Regular => None,
-        };
-        TextDraw { mm, style: s.style_name, weight }
-    }
+/// `kind`'s style in a project of length unit `unit`, from its resolved `draw`.
+pub fn text_draw_of(draw: &DrawStyles, kind: TextKind, unit: LengthUnit) -> TextDraw {
+    let s = draw.style(kind);
+    let mm = height_mm(s.height, unit);
+    // The per-kind fonts decide whether bold is drawn as a heavier stroke
+    // as the engine's `DrawApply::apply` does.
+    let weight = match s.weight {
+        Weight::Bold => draw.fonts_for(kind).bold_lineweight,
+        Weight::Regular => None,
+    };
+    TextDraw { mm, style: s.style_name, weight }
 }
 
 /// A text height `height` in drawing units of a project of length unit `unit`, in paper millimetres.
@@ -153,61 +121,27 @@ pub(crate) fn height_mm(height: f64, unit: LengthUnit) -> f64 {
     if k.is_finite() && k > 0.0 { height / k } else { height }
 }
 
-impl FrameText {
-    /// The text styles of `doc`'s frame, with the fonts `m` finds.
-    pub fn with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
-        let draw = DrawStyles::with(doc, m);
-        let u = doc.settings().length_unit;
-        let t = |k| TextDraw::of(&draw, k, u);
-        FrameText {
-            grid: t(TextKind::Grid),
-            caption: t(TextKind::TitleCaption),
-            value: t(TextKind::TitleValue),
-            main: t(TextKind::TitleMain),
-            page: t(TextKind::TitlePage),
-            rev: t(TextKind::TitleRev),
-            bold_weight: draw.fonts_for(TextKind::TitleMain).bold_lineweight,
-        }
-    }
-
-    /// The text styles of `doc`'s frame without the fonts: sizes and style names, and no bold
-    /// lineweights (those exist only when bold is drawn in the stroke font). What a rule that
-    /// reads the block's layout and values needs (the title block checks); drawing uses
-    /// [`FrameText::with`].
-    pub fn sizes(doc: &Document) -> FrameText {
-        let t = FrameText::with(doc, &AllFound);
-        let plain = |l: TextDraw| TextDraw { weight: None, ..l };
-        FrameText {
-            grid: plain(t.grid),
-            caption: plain(t.caption),
-            value: plain(t.value),
-            main: plain(t.main),
-            page: plain(t.page),
-            rev: plain(t.rev),
-            bold_weight: None,
-        }
-    }
-}
-
-/// Fonts that are all found, so nothing is drawn in the stroke font: [`FrameText::sizes`].
-struct AllFound;
-
-impl TextMetrics for AllFound {
-    fn found(&self, _name: &str) -> bool {
-        true
-    }
-    fn width(&self, _name: &str, _text: &str, _height: f64) -> f64 {
-        0.0
-    }
-    fn stroke_font(&self) -> &str {
-        ""
+/// The text styles of `doc`'s frame, with the fonts `m` finds.
+pub fn frame_text_with(doc: &Document, m: &dyn TextMetrics) -> FrameText {
+    let draw = DrawStyles::with(doc, m);
+    let u = doc.settings().length_unit;
+    let t = |k| text_draw_of(&draw, k, u);
+    FrameText {
+        grid: t(TextKind::Grid),
+        caption: t(TextKind::TitleCaption),
+        value: t(TextKind::TitleValue),
+        main: t(TextKind::TitleMain),
+        page: t(TextKind::TitlePage),
+        rev: t(TextKind::TitleRev),
+        bold_weight: draw.fonts_for(TextKind::TitleMain).bold_lineweight,
     }
 }
 
 impl FrameInput {
-    /// What `page`'s frame shows in `doc` (`book`: its book order), with its text styles `text`
-    /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
-    pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
+    /// What `page`'s frame shows in `doc` (`book`: its book order), in `look`, with its text
+    /// styles `text` ([`Look::frame_text`], or its [`FrameText::sizes`] for a rule that only reads
+    /// the layout).
+    pub fn with(doc: &Document, page: PageId, book: &Book, look: &dyn Look, text: FrameText) -> FrameInput {
         let prop = |k: &str| project_text(doc, k).unwrap_or_default();
         let issued = crate::releases::revisions::issued(doc);
         let rev_columns = crate::releases::revisions::columns(doc);
@@ -215,10 +149,10 @@ impl FrameInput {
         // Checked there, so the frame and the references always use the same sheet:
         // the frame's own sheet first.
         let sheet = ecad_model::document::sheet::sheet_of(doc, page);
-        let draw = crate::styles::frame::frame_draw(doc, page);
+        let draw = look.frame_draw(doc, page);
         // The block may be borrowed from another frame (page, page type, frame).
         let id = ecad_model::document::sheet::title_block_style(doc, page);
-        let block = crate::title_blocks::block_of(doc, &id, &sheet, &draw.margins, &text);
+        let block = look.title_block(doc, &id, &sheet, &draw.margins, &text);
         let (project, newest) = crate::title_blocks::bind::read(doc, &block.layout);
         // The rows the block's tables can show.
         let rows = block
@@ -303,7 +237,7 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
         Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         // A text size or the font (the `text.` keys).
-        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::styles::text_style::is_reserved_key(key.raw) => true,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if ecad_model::look::is_reserved_key(key.raw) => true,
         // The frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
         Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::FRAME.key => true,

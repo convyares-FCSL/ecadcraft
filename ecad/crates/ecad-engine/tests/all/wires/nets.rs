@@ -535,7 +535,7 @@ fn quiet_ends_come_from_the_document() {
     assert!(
         !quiet.is_empty(),
         "the ends at the reference are quiet: {quiet:?} shown {shown:?} markers {}",
-        ecad_electrical::references::cables::markers_on_page(&doc, page).len()
+        ecad_electrical::references::cables::markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK).len()
     );
     for q in &shown {
         assert!(quiet.iter().any(|x| x.near(*q, 1e-9)), "{q:?} not in {quiet:?}");

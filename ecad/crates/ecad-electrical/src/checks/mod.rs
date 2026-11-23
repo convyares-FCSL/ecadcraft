@@ -39,7 +39,7 @@ use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, NetData, N
 use serde_json::{Value, json};
 
 use crate::wires::{self, ON_WIRE};
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 pub mod cables;
 pub mod devices;
@@ -639,7 +639,7 @@ pub trait CheckSource: Sync {
         false
     }
     /// Its rows, from scratch.
-    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check>;
+    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry, look: &dyn Look) -> Vec<Check>;
 }
 
 /// The whole-project sources, in the order `Checks::build` asks them.
@@ -1033,7 +1033,7 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
 pub fn all_measured(
-    doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry,
+    doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn Look, registry: &ecad_model::registry::data::Registry,
 ) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m, registry).rows().cloned().collect();
     rows.extend(reports.checks());

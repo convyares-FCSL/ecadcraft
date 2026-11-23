@@ -13,8 +13,9 @@ use ecad_model::objects::title_block::{Align, BlockItem, Ink, LineWeight, Newest
 use ecad_model::{LengthUnit, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{LABEL_ACI, LAYER, Part, TextDraw};
+use crate::pages::frame::{LABEL_ACI, LAYER, Part};
 use ecad_electrical::pages::frames::FrameInput;
+use ecad_model::look::TextDraw;
 
 /// `ecad.title-red`: ACI 1, red (a field's Red colour; house style: the status).
 pub const RED_ACI: u8 = 1;

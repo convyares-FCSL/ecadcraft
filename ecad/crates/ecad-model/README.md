@@ -14,7 +14,7 @@ It has no drawing engine, no UI, no file encoding and no I/O.
 - `connectivity`, `wiring`, `derive`: nets (kept up to date by every op), wire numbers, and results worked out from the document.
 - `merge`, `numbering`, `diff`: merging two documents, renumbering by rule, comparing two states.
 - `book`, `sheet`, `title_block`, `style`, `tag`, `links`, `geom`, `id`: pages and sheets, style catalogues, tags, typed ids, points.
-- `look`: the kinds of text (`TextKind`), a kind's resolved style (`TextStyle`), and `TextLook`, through which the electrical rules ask how a text is drawn and how wide it is.
+- `look`: the kinds of text (`TextKind`), a kind's resolved style (`TextStyle`), whether a text is shown (`Shown`), a page frame's text styles, lines and title block (`FrameText`, `FrameDraw`, `FrameBlock`), and `Look`, through which the electrical rules ask for them and how wide a text is.
 - `registry`: the defaults registry's mechanism: entries, kinds, levels, resolution, the built-in data sets each crate declares and the `Registry` that lists them together (`registry::data`), and style catalogues: their fields, built-ins and the hooks a declaring crate gives them (`registry::styles`).
 - `palette`: the canvas palette: `Color`, the paper and dark sheet colours, markers, wire colours and dashes, line weights in mm, the sheet font's bytes.
 - `dev`: the verify-mode switch (a developer and test hook).

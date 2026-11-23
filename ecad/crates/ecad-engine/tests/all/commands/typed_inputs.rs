@@ -1641,7 +1641,7 @@ fn setprop_keeps_its_rule_words() {
     let b = crate::common::place(&mut h, "coil", (200.0, 100.0))["component"].clone();
     let tag_b = h.run("deviceprops", json!({"component": b})).unwrap_or_default()["tag_shown"].clone();
     let rows: &[(Value, &str)] = &[
-        (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::styles::text_style::RESERVED_KEY),
+        (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_model::look::RESERVED_KEY),
         (json!({"devices": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
         (json!({"component": a, "key": "tag", "value": "{\"state\":\"maybe\",\"tag\":\"-K9\"}"}), "A tag value is text, or"),
         (

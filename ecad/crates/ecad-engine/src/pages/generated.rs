@@ -8,9 +8,10 @@ use ecad_model::document::sheet::unit_scale;
 use ecad_model::{Document, GenKind, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextDraw};
+use crate::pages::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT};
 use ecad_electrical::pages::generated::*;
 use ecad_electrical::reports::kept::ReportModels;
+use ecad_model::look::TextDraw;
 use {crate::styles::draw::DrawStyles, ecad_model::look::TextKind};
 
 /// Draws in paper millimetres, sheet origin at `x0`.
@@ -99,7 +100,7 @@ fn content(
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);
-    let draw = |kind| TextDraw::of(&draws, kind, input.unit);
+    let draw = |kind| ecad_electrical::pages::frames::text_draw_of(&draws, kind, input.unit);
     let (header, cell_draw, heading) = (draw(TextKind::TableHeader), draw(TextKind::Table), draw(TextKind::TableHeading));
     // The cover's blocks.
     if kind == GenKind::Cover {

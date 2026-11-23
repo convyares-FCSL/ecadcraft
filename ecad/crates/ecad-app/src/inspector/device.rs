@@ -104,7 +104,7 @@ fn kind_title(kind: SectionKind) -> &'static str {
 /// A text row's name (`Pin labels`, `Tag`…).
 pub(crate) fn text_label(row: &Row) -> String {
     match row.kind {
-        ecad_electrical::cables::words::RowKind::Text(k) => ecad_electrical::styles::text_style::shown_name(k),
+        ecad_electrical::cables::words::RowKind::Text(k) => k.shown_name(),
         ecad_electrical::cables::words::RowKind::Value => row.label.clone(),
     }
 }

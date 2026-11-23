@@ -819,15 +819,17 @@ impl crate::checks::CheckSource for CoverRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry) -> Vec<crate::checks::Check> {
-        check_rows(doc)
+    fn checks(
+        &self, doc: &Document, _registry: &ecad_model::registry::data::Registry, look: &dyn ecad_model::look::Look,
+    ) -> Vec<crate::checks::Check> {
+        check_rows(doc, look)
     }
 }
 
 /// The cover's Checks rows: `cover-legend-cut` when the legend shows fewer cells
 /// than are used, `cover-notes-cut` when the stored notes are past the bounds. Worked out on open
 /// and again only after a change [`touches`] names (the cover is laid out once for it).
-pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {
+pub fn check_rows(doc: &Document, look: &dyn ecad_model::look::Look) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Kind, Object};
     let cover_page = doc.page_order().iter().copied().find(|p| crate::pages::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
     let Some(page) = cover_page else { return Vec::new() };
@@ -835,8 +837,8 @@ pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {
     if notes(doc).1 {
         out.push(Check { kind: Kind::CoverNotesCut, page: Some(page), at: None, object: Object::None, which: String::new(), fix: None });
     }
-    let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), crate::pages::frames::FrameText::sizes(doc));
-    let cover_mm = crate::pages::frames::height_mm(crate::styles::text_style::text_style(doc, TextKind::Cover).height, input.unit);
+    let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), look, look.frame_text(doc).sizes());
+    let cover_mm = crate::pages::frames::height_mm(look.text_style(doc, TextKind::Cover).height, input.unit);
     let fit = layout(doc, &input, cover_mm).fit;
     if fit.shown < fit.all {
         let which = format!("The cover's symbol legend shows {} of {} symbols.", fit.shown, fit.all);

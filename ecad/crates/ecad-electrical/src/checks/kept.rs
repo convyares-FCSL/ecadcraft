@@ -1,5 +1,5 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
-//! the title block) take the text look, [`ecad_model::look::TextLook`]; `crate::views::ChecksView`
+//! the title block) take the text look, [`ecad_model::look::Look`]; `crate::views::ChecksView`
 //! keeps the list, measuring with the look the engine supplies.
 
 use super::cables::{cable_checks_in, reference_checks};
@@ -12,7 +12,7 @@ use ecad_model::naming::numbering::Places;
 use ecad_model::{Document, NetKey, PageId};
 
 use crate::checks::*;
-use ecad_model::look::TextLook;
+use ecad_model::look::Look;
 
 /// The kept Checks list (see the module docs).
 #[derive(Debug, Clone, Default)]
@@ -39,7 +39,7 @@ pub struct Checks {
 
 impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
-    pub fn build_with(doc: &Document, tol: f64, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry) -> Self {
+    pub fn build_with(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) -> Self {
         let mut ch = Checks { off: ecad_model::document::sheet::checks_off_pages(doc), ..Checks::default() };
         for r in doc.routes().keys() {
             ch.grid.insert(doc, *r);
@@ -78,7 +78,7 @@ impl Checks {
             ch.set(Key::Page(*page), page_checks(doc, *page));
         }
         for s in PROJECT_SOURCES {
-            ch.set(s.key(), s.checks(doc, registry));
+            ch.set(s.key(), s.checks(doc, registry, m));
         }
         ch.rating = crate::circuits::kept::Kept::build(doc);
         let rows: Vec<(crate::circuits::RatedSubject, Vec<Check>)> =
@@ -93,8 +93,8 @@ impl Checks {
     }
 
     /// Work out the cover's rows again (after a change the cover's map names).
-    pub fn set_cover(&mut self, doc: &Document) {
-        self.set(Key::Cover, crate::pages::front::check_rows(doc));
+    pub fn set_cover(&mut self, doc: &Document, m: &dyn Look) {
+        self.set(Key::Cover, crate::pages::front::check_rows(doc, m));
         self.revision += 1;
     }
 
@@ -177,7 +177,7 @@ impl Checks {
     /// Re-check the subjects in `scope` on `doc`, the state after the commit. `scope` holds what
     /// each of the commit's effects names on the state before and on the state after
     /// ([`Scope::note`]; `crate::views::ChecksView` notes them).
-    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry) {
+    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) {
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m, registry) };
             return;
@@ -275,7 +275,7 @@ impl Checks {
         }
         for s in PROJECT_SOURCES {
             if s.touched(&scope) {
-                self.set(s.key(), s.checks(doc, registry));
+                self.set(s.key(), s.checks(doc, registry, m));
             }
         }
         self.provisional = ecad_model::naming::numbering::provisional_on(doc);

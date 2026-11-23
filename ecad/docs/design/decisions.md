@@ -28,8 +28,11 @@ words.
   page, a title block and its fields, the text kinds), `ecad-electrical` what they mean electrically (location,
   function, revisions, what fills a field), and `ecad-drawing-style` how they look (built-in title blocks and frames,
   text styles, fonts and text fitting). The order is model → store → file → electrical → drawing-style.
-- Electrical lays out its own content but owns no look: it asks through a `TextLook` trait that `ecad-model`
-  defines and `ecad-drawing-style` implements.
+- Electrical lays out its own content but owns no look: it asks through a `Look` trait that `ecad-model`
+  defines and `ecad-drawing-style` implements: a text kind's style, whether a text is shown, a text's width, and a
+  page frame's text styles, lines and title block (the built-in one when the frame defines none) (owner,
+  2026-11-23). The checks that read the look (a title block field cut, the cover legend) stay in electrical and
+  are given it.
 - The defaults registry's mechanism (keys, levels, resolution) is `ecad-model`'s; each crate contributes its own
   entries (electrical the electrical ones, drawing-style the look ones). Drawing-style assembles them into one
   `Registry`, and the engine passes it to commands and views (owner, 2026-11-23).

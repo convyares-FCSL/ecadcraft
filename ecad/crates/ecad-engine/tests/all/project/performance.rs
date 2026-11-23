@@ -94,7 +94,8 @@ fn a_standard_change_retraces_every_cable_reference() {
     assert!(ops.iter().any(|op| matches!(op, ecad_model::Op::SetStandard { .. })), "the commit set the standard: {ops:?}");
     let doc = h.doc();
     assert_eq!(crate::common::cables_touched(&doc, &ops), None, "a standard re-traces every cable");
-    let shown: Vec<_> = ecad_electrical::references::cables::markers_on_page(&doc, supply).into_iter().map(|m| m.text).collect();
+    let shown: Vec<_> =
+        ecad_electrical::references::cables::markers_on_page(&doc, supply, &ecad_engine::styles::draw::LOOK).into_iter().map(|m| m.text).collect();
     let fresh = zone(&doc);
     assert_eq!(shown, fresh.iter().map(|z| z.4.clone()).collect::<Vec<_>>(), "the page shows the fresh zone");
     assert_eq!(fresh, before, "this standard carries no sheet, so the zone is unchanged");
@@ -108,9 +109,9 @@ fn a_page_s_markers_equal_those_of_every_reference() {
     let doc = h.doc();
     let every = ecad_electrical::references::cables::all(&doc);
     for page in [supply, field] {
-        let markers = ecad_electrical::references::cables::markers_on_page(&doc, page);
+        let markers = ecad_electrical::references::cables::markers_on_page(&doc, page, &ecad_engine::styles::draw::LOOK);
         assert!(!markers.is_empty(), "a marker on each page");
-        assert_eq!(markers, ecad_electrical::references::cables::markers_from(&doc, every.clone(), page));
+        assert_eq!(markers, ecad_electrical::references::cables::markers_from(&doc, every.clone(), page, &ecad_engine::styles::draw::LOOK));
         let on_page: Vec<_> = every.iter().filter(|r| r.page == page).cloned().collect();
         assert_eq!(ecad_electrical::references::cables::references_on_page(&doc, page), on_page);
         let items: Vec<_> = doc.items().iter().filter(|(_, i)| i.page == page).map(|(id, _)| *id).collect();

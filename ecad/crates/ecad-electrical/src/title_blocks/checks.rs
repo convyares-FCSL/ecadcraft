@@ -71,16 +71,16 @@ impl crate::checks::CheckSource for TitleBlockRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
-        rows(doc)
+    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry, look: &dyn ecad_model::look::Look) -> Vec<Check> {
+        rows(doc, look)
     }
 }
 
 /// Every title block row of `doc`.
-pub fn rows(doc: &Document) -> Vec<Check> {
+pub fn rows(doc: &Document, look: &dyn ecad_model::look::Look) -> Vec<Check> {
     let mut out = unknown_rows(doc);
     out.extend(sheet_rows(doc));
-    out.extend(cut_rows(doc));
+    out.extend(cut_rows(doc, look));
     out
 }
 
@@ -194,7 +194,7 @@ pub(crate) fn cut_fields(inp: &FrameInput) -> Vec<usize> {
 }
 
 /// `title-value-cut`: one row per frame and field cut on at least one page.
-fn cut_rows(doc: &Document) -> Vec<Check> {
+fn cut_rows(doc: &Document, look: &dyn ecad_model::look::Look) -> Vec<Check> {
     let book = Book::of(doc);
     let mut bases: BTreeMap<(String, String), FrameInput> = BTreeMap::new();
     // (frame, item) → (first page, pages, field name)
@@ -203,7 +203,7 @@ fn cut_rows(doc: &Document) -> Vec<Check> {
         let id = sheet::title_block_style(doc, *page);
         // One input per frame, borrowed block and sheet.
         let key = (format!("{} {}", sheet::frame_style(doc, *page).text(), id.text()), sheet::sheet_of(doc, *page).text());
-        let base = bases.entry(key).or_insert_with(|| FrameInput::with(doc, *page, &book, crate::pages::frames::FrameText::sizes(doc)));
+        let base = bases.entry(key).or_insert_with(|| FrameInput::with(doc, *page, &book, look, look.frame_text(doc).sizes()));
         let mut inp = page_input(doc, &book, base, *page);
         inp.total = base.total.clone();
         for i in cut_fields(&inp) {
