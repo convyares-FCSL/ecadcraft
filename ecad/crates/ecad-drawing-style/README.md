@@ -7,7 +7,7 @@ The look of an ECAD page, drawn on the definitions of `ecad-model` and the elect
 `ecad-electrical`. It is the last crate in Core.
 
 ## Contents
-- `src/lib.rs`: the crate doc.
+- `src/lib.rs`: the crate doc and `REGISTRY`, every crate's defaults and style catalogues together.
 
 ## Must not depend on
 No `cadcraft-*` crate, no UI toolkit and no UI kit. It holds neither the screen's own appearance
@@ -15,7 +15,8 @@ No `cadcraft-*` crate, no UI toolkit and no UI kit. It holds neither the screen'
 `ecad_model::palette`.
 
 ## Key types
-None yet.
+- `REGISTRY` (`ecad_model::registry::data::Registry`): what the `defaults` and `style` commands, the
+  Standards screen and Checks list. The engine passes it to commands and views.
 
 ## How to test
 ```bash

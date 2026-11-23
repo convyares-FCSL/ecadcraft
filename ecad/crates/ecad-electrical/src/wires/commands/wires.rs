@@ -96,10 +96,7 @@ pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
         .collect();
     let draws = crate::styles::wire::WireDraws::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| draws.category(doc, *c).0).collect();
-    let named = |id: &StyleRef| CategoryName {
-        id: id.text(),
-        name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id),
-    };
+    let named = |id: &StyleRef| CategoryName { id: id.text(), name: ecad_model::registry::styles::name(doc, &crate::styles::wire::CATALOGUE, id) };
     let uncategorised = net.wires.iter().any(|c| draws.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
@@ -469,7 +466,7 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// No such wire.
 pub(crate) fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let pot = value
-        .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, "potential", None))
+        .and_then(|id| ecad_model::registry::styles::field_of(doc, &crate::styles::wire::CATALOGUE, id, "potential", None))
         .and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
@@ -532,12 +529,12 @@ pub(crate) fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Res
         Wires::Many(v) => v,
     };
     let id = match value {
-        Some(v) => Some(crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, v)?),
+        Some(v) => Some(crate::styles::find(doc, &crate::styles::wire::CATALOGUE, v)?),
         None => None,
     };
     let (ops, message) = category_ops(doc, &conductors, id.as_ref())?;
     let label = match &id {
-        Some(i) => format!("Category {}", ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), i)),
+        Some(i) => format!("Category {}", ecad_model::registry::styles::name(doc, &crate::styles::wire::CATALOGUE, i)),
         None => "Clear category".into(),
     };
     Ok(Categorised { ops, label, wires: conductors.len(), category: id, message })
@@ -716,7 +713,7 @@ pub fn wire(
     let doc = ledger.document();
     let mut plan = wires::joining::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
-        let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
+        let id = crate::styles::find(doc, &crate::styles::wire::CATALOGUE, c)?;
         let drawn = ledger.preview(&plan.ops)?;
         let rewritten = ecad_model::connectivity::wire_order::rewrite(&drawn, &plan.ops);
         let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };

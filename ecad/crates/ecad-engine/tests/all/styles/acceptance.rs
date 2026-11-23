@@ -13,7 +13,6 @@
 
 use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
-use ecad_electrical::defaults::{self};
 use ecad_model::Word;
 use ecad_model::look::TextKind;
 use ecad_model::palette::sheet::PAPER;
@@ -416,7 +415,7 @@ fn a02_registry_choice_entries_and_their_levels() {
         let key: &'static str = Box::leak(format!("text.{}.style", k.word()).into_boxed_str());
         (key, "text", text_ids.clone(), vec![Level::Standard, Level::Project, Level::Object], vec![Level::Page])
     })) {
-        let e = defaults::find(key).unwrap_or_else(|| panic!("choice entry {key}"));
+        let e = ecad_drawing_style::REGISTRY.find(key).unwrap_or_else(|| panic!("choice entry {key}"));
         assert!(matches!(&e.kind, Kind::Style(c) if c.catalogue.to_string() == cat), "{key} is Kind::Style({cat})");
         let b = ecad_model::registry::Resolved { value: e.builtin(), from: Source::Builtin }.text();
         assert!(ids.contains(&b), "{key}: built-in {b} names a built-in style of {cat} ({ids:?})");
@@ -431,13 +430,17 @@ fn a02_registry_choice_entries_and_their_levels() {
     assert_eq!(checked, 2 + TextKind::ALL.len(), "23 text kinds since 049's continuation caption and 051's two");
     for k in TextKind::ALL {
         for old in ["height", "weight", "font"] {
-            assert!(defaults::find(&format!("text.{}.{old}", k.word())).is_none(), "FP4: text.{}.{old} left the registry", k.word());
+            assert!(
+                ecad_drawing_style::REGISTRY.find(&format!("text.{}.{old}", k.word())).is_none(),
+                "FP4: text.{}.{old} left the registry",
+                k.word()
+            );
         }
     }
     for k in ["tag", "point_label", "description", "part_number", "continuation_name", "reference", "location", "wire_label"] {
-        assert!(defaults::find(&format!("text.{k}.show")).is_some(), "the .show entries stay: {k}");
+        assert!(ecad_drawing_style::REGISTRY.find(&format!("text.{k}.show")).is_some(), "the .show entries stay: {k}");
     }
-    assert!(defaults::find("text.font").is_some(), "the project font stays");
+    assert!(ecad_drawing_style::REGISTRY.find("text.font").is_some(), "the project font stays");
 }
 
 /// §12.2: a standard holds registry values at the Standard level; the chain shows them; a project
@@ -454,7 +457,7 @@ fn a02_standard_level_values_resolve_between_built_in_and_project() {
     assert_eq!(s(&r["based_on"]).to_lowercase(), "iec");
     assert!(r["origin"].is_null(), "FP1: origin is reserved, null in 050");
     assert!(!s(&r["id"]).is_empty(), "a fresh StandardId");
-    let e = defaults::find("symbol.coil.prefix").unwrap();
+    let e = ecad_drawing_style::REGISTRY.find("symbol.coil.prefix").unwrap();
     let (_, tx) = one_tx(&mut h, "setdefault", json!({"key": e.key, "level": "standard", "value": "Q"}));
     assert!(matches!(tx.ops.as_slice(), [Op::SetProperty { object: ObjectRef::Standard, .. }]), "{:?}", tx.ops);
     let d = h.doc();
@@ -510,7 +513,7 @@ fn res_field_and_choice_resolution_order() {
         own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
     let at = |c: DeviceId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
     let height = |h: &mut H, c: DeviceId| ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
-    let e = defaults::find("text.tag.style").unwrap();
+    let e = ecad_drawing_style::REGISTRY.find("text.tag.style").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "standard", "value": big})).unwrap();
     assert_eq!((height(&mut h, k1), ecad_model::registry::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "Mid"})).unwrap();
@@ -521,7 +524,7 @@ fn res_field_and_choice_resolution_order() {
     let m = refused(&mut h, "setdefault", json!({"key": e.key, "level": "page", "page": page.hex(), "value": "tag"}));
     assert!(m.contains("cannot be set at page level"), "{m}");
     // Frames: page level allowed, object not.
-    let f = defaults::find("print.frame.style").unwrap();
+    let f = ecad_drawing_style::REGISTRY.find("print.frame.style").unwrap();
     h.run("setdefault", json!({"key": f.key, "level": "page", "page": page.hex(), "value": "sheet"})).unwrap();
     assert_eq!(ecad_model::registry::resolve(&h.doc(), f, Scope::page(page)).from, Source::Page);
 }
@@ -543,7 +546,7 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
         ("text.tag.show", "maybe".to_string()),
         ("print.colour", "sepia".to_string()),
     ] {
-        let e = defaults::find(key).unwrap();
+        let e = ecad_drawing_style::REGISTRY.find(key).unwrap();
         let before = h.doc().standard().and_then(|s| s.values.get(key).cloned());
         inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Standard, key: key.into(), before, after: Some(value.clone()) }]);
         let d = h.doc();
@@ -792,7 +795,7 @@ fn a05_promote_a_style_and_a_value() {
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     refused(&mut h, "promote", json!({"catalogue": "text", "id": "tag"}));
     // A value: project → standard, the project value cleared.
-    let e = defaults::find("symbol.coil.prefix").unwrap();
+    let e = ecad_drawing_style::REGISTRY.find("symbol.coil.prefix").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "project", "value": "Q"})).unwrap();
     let (_, tx) = one_tx(&mut h, "promote", json!({"key": e.key}));
     assert!(tx.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Standard, .. })), "{:?}", tx.ops);
@@ -843,7 +846,7 @@ fn a06_a_standard_is_taken_by_copy_and_keeps_its_id() {
     assert_eq!(s(&style_row(&mut b, "text", &own)["layer"]), "standard");
     assert_eq!(hash(&path_a), before, "the first file is unchanged on disk");
     // Replacing an existing standard; the project's own values stay.
-    let rule = defaults::find("wiring.label_rule").unwrap();
+    let rule = ecad_drawing_style::REGISTRY.find("wiring.label_rule").unwrap();
     b.run("setdefault", json!({"key": rule.key, "level": "project", "value": "each"})).unwrap();
     one_tx(&mut b, "standard", json!({"from": path_a}));
     assert_eq!(ecad_model::registry::resolve(&b.doc(), rule, Scope::project()).from, Source::Project, "project values stay");

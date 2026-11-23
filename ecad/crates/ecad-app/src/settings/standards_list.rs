@@ -9,7 +9,6 @@
 //! patched and tinted. Any other commit: nothing. A full rebuild only on first show or a new
 //! project.
 
-use ecad_electrical::defaults::{self};
 use ecad_model::Document;
 use ecad_model::registry::{Entry, Source};
 use ecad_widgets::prim::Tone;
@@ -100,14 +99,14 @@ impl Default for DefaultsSource {
 impl DefaultsSource {
     /// Every row from `doc` (first show, new project).
     pub fn build(&mut self, doc: &Document) {
-        self.rows = defaults::all().map(|e| row(doc, e)).collect();
+        self.rows = ecad_drawing_style::REGISTRY.entries().map(|e| row(doc, e)).collect();
         self.keys = (0..self.rows.len()).filter_map(|i| u16::try_from(i).ok()).collect();
     }
 
     /// Resolve every entry again and return the rows whose value or source changed.
     pub fn patch(&mut self, doc: &Document) -> Changed<u16> {
         let mut touched = Vec::new();
-        for (i, e) in defaults::all().enumerate() {
+        for (i, e) in ecad_drawing_style::REGISTRY.entries().enumerate() {
             let fresh = row(doc, e);
             match self.rows.get_mut(i) {
                 Some(r) if *r == fresh => {}

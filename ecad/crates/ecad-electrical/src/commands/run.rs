@@ -58,6 +58,8 @@ pub struct Cx<'a> {
     pub metrics: &'static dyn TextMetrics,
     /// How the rules' texts look on this machine, to lay out and measure them.
     pub look: &'static dyn TextLook,
+    /// Every crate's defaults and style catalogues.
+    pub registry: &'static ecad_model::registry::data::Registry,
     /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: what
     /// each read parameter's file gave, or why it could not be read. A parameter not given is
     /// absent.
@@ -295,7 +297,7 @@ pub trait Generic: DeserializeOwned + schemars::JsonSchema {
     ///
     /// # Errors
     /// The refusal, in words.
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         Ok(())
     }
 

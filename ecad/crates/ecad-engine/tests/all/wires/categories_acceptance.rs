@@ -117,7 +117,7 @@ fn b11_twelve_built_in_wire_types_and_a_24v_wire_is_dc24() {
             part_numbers.push((id, format!("part_number {pn:?}")));
         }
     }
-    let e = ecad_electrical::defaults::find("wire.category").expect("the choice entry");
+    let e = ecad_drawing_style::REGISTRY.find("wire.category").expect("the choice entry");
     use ecad_model::registry::Level;
     assert!(e.allows(Level::Standard) && e.allows(Level::Project) && e.allows(Level::Object) && !e.allows(Level::Page), "S P O");
 

@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 use ecad_app::settings::{Section, standards};
 use ecad_app::shell::{Workspace, status_bar, top_bar};
-use ecad_electrical::defaults::{self};
 use ecad_model::registry::{Scope, Source};
 use eframe::egui::Key;
 use egui_kittest::Harness;
@@ -108,7 +107,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     h.state_mut().open_standards(Some("symbol.coil.prefix"));
     h.run_steps(3);
     let v = &h.state().settings.standards;
-    assert_eq!(ecad_widgets::table::TableSource::keys(&v.defaults).len(), defaults::all().count(), "one row per default");
+    assert_eq!(ecad_widgets::table::TableSource::keys(&v.defaults).len(), ecad_drawing_style::REGISTRY.entries().count(), "one row per default");
     assert!(h.query_by_label(standards::STANDARD_LINE).is_some());
     // The chain: built-in and the standard; the built-in in use.
     assert!(h.query_by_label("ecad.standards.chain.builtin").is_some());
@@ -121,7 +120,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     h.run_steps(3);
     assert!(h.query_by_label(standards::CONSEQUENCE).is_some(), "the consequence line");
     assert_eq!(
-        standards::consequence(defaults::find("symbol.coil.prefix").unwrap(), 1, "-K", "-Q"),
+        standards::consequence(ecad_drawing_style::REGISTRY.find("symbol.coil.prefix").unwrap(), 1, "-K", "-Q"),
         "1 device uses -K; fixed and released tags keep their names; new devices get -Q."
     );
     assert_eq!(head(&mut h), before, "said, not applied");
@@ -129,7 +128,7 @@ fn standards_lists_every_default_says_the_consequence_first_and_resets() {
     click(&mut h, standards::APPLY);
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    let e = defaults::find("symbol.coil.prefix").unwrap();
+    let e = ecad_drawing_style::REGISTRY.find("symbol.coil.prefix").unwrap();
     assert_eq!(ecad_model::registry::resolve(&d, e, Scope::project()).from, Source::Project);
     h.run_steps(2);
     assert!(h.query_by_label("ecad.standards.chain.project").is_some(), "the project's level, above the built-in");

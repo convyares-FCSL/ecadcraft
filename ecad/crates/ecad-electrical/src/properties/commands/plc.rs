@@ -77,7 +77,7 @@ fn is_field_key(k: &str) -> bool {
 }
 
 /// The refusal of a module's or station's key on another device.
-fn not_plc(doc: &Document, o: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
+fn not_plc(doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
     let (who, is) = match o {
         ObjectRef::Device(c) => (
             crate::devices::tags::tag_words(doc, c),

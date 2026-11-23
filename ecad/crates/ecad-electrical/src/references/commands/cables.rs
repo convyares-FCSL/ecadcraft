@@ -253,7 +253,7 @@ impl Generic for CableReferenceParams {
     const TITLE: &'static str = "Cable Reference";
     const HELP: &'static str = "{cable: id, at: [x,y]} (a reference end of the cable on this page)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.at.within(crate::cables::words::MAX_COORD, "at").map(|_| ())
     }
 
@@ -281,7 +281,7 @@ impl Generic for CablecontinueParams {
     const TITLE: &'static str = "Continue Cable";
     const HELP: &'static str = "{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.at.within(crate::cables::words::MAX_COORD, "at")?;
         self.toward.within(crate::cables::words::MAX_COORD, "toward").map(|_| ())
     }

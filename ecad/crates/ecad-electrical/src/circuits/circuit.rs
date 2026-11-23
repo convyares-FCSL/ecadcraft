@@ -324,8 +324,8 @@ pub struct Sheet {
     pub class: u8,
 }
 
-pub(super) fn sheet(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: Option<&StyleRef>) -> Sheet {
-    let f = |k: &str| id.and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(catalogue), id, k, None));
+pub(super) fn sheet(doc: &Document, cat: &ecad_model::registry::styles::Catalogue, id: Option<&StyleRef>) -> Sheet {
+    let f = |k: &str| id.and_then(|id| ecad_model::registry::styles::field_of(doc, cat, id, k, None));
     Sheet {
         rated: f("rated_current").and_then(|r| crate::devices::ratings::parse::current(&r.text())),
         rated_at: f("rated_at").map_or(30.0, |r| r.number()),
@@ -344,7 +344,7 @@ pub(crate) fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
         return true;
     }
     let (cat, _) = ctx.draws.category(doc, c);
-    sheet(doc, ecad_model::StyleCatalogue::Wire, cat.as_ref()).rated.is_some()
+    sheet(doc, &crate::styles::wire::CATALOGUE, cat.as_ref()).rated.is_some()
 }
 
 /// Whether cable `k` is a rated subject.
@@ -407,17 +407,15 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
     let (sh, size, assumed) = match s {
         RatedSubject::Wire(c) => {
             let draw = ctx.draws.draw(doc, c);
-            let sh = sheet(doc, ecad_model::StyleCatalogue::Wire, draw.category.as_ref());
+            let sh = sheet(doc, &crate::styles::wire::CATALOGUE, draw.category.as_ref());
             (sh, draw.cross_section.as_ref().and_then(|(t, _)| crate::devices::ratings::parse::cross_section(t)), false)
         }
         RatedSubject::Cable(k) => {
             let ty = cable::of(doc, k);
-            let sh = sheet(doc, ecad_model::StyleCatalogue::Cable, ty.as_ref());
+            let sh = sheet(doc, &crate::styles::cable::CATALOGUE, ty.as_ref());
             let from_type = ty
                 .as_ref()
-                .and_then(|id| {
-                    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id, "size", None)
-                })
+                .and_then(|id| ecad_model::registry::styles::field_of(doc, &crate::styles::cable::CATALOGUE, id, "size", None))
                 .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
             let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::cores::notation_size));
             (sh, size, ty.is_none())
@@ -514,16 +512,15 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
             None => {
                 let why = match s {
                     RatedSubject::Wire(c) => match ctx.draws.category(doc, c).0 {
-                        Some(id) => format!(
-                            "category {} has no rated current",
-                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &id)
-                        ),
+                        Some(id) => {
+                            format!("category {} has no rated current", ecad_model::registry::styles::name(doc, &crate::styles::wire::CATALOGUE, &id))
+                        }
                         None => "no wire category".into(),
                     },
                     RatedSubject::Cable(k) => match cable::of(doc, k) {
                         Some(id) => format!(
                             "cable type {} has no rated current",
-                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), &id)
+                            ecad_model::registry::styles::name(doc, &crate::styles::cable::CATALOGUE, &id)
                         ),
                         None => "no cable type".into(),
                     },

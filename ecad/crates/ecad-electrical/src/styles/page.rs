@@ -102,6 +102,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: None,
+    set: set_body,
+    implicit,
+    reach: page_reach,
 };
 
 /// The value field `key` of a page style record holds.
@@ -149,7 +152,7 @@ pub struct TypeDraw {
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<ecad_model::registry::Resolved<'a>> {
-    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), id, key, None)
+    ecad_model::registry::styles::field_of(doc, &crate::styles::page::CATALOGUE, id, key, None)
 }
 
 /// What type `id` brings. Never fails: a malformed field falls through.
@@ -159,12 +162,12 @@ pub fn draw_of(doc: &Document, id: &StyleRef) -> TypeDraw {
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), f));
+        .filter(|f| ecad_model::registry::styles::exists(doc, &crate::styles::frame::CATALOGUE, f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), f));
+        .filter(|f| ecad_model::registry::styles::exists(doc, &crate::styles::frame::CATALOGUE, f));
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false));
     let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);
@@ -297,10 +300,7 @@ pub(crate) fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
         [one] => one.clone(),
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
-    format!(
-        "A {} page is generated: give generated: {words}.",
-        ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), id)
-    )
+    format!("A {} page is generated: give generated: {words}.", ecad_model::registry::styles::name(doc, &crate::styles::page::CATALOGUE, id))
 }
 
 /// The value of field `key` that `t` sets, if it sets one.
@@ -349,4 +349,29 @@ pub fn set(t: &mut PageType, key: &str, value: Option<&str>) -> Result<(), CmdEr
         _ => return Err(CmdError::refused(format!("Page types have no field {key:?}."))),
     }
     Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Page(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// Pages with no own type whose generated kind (or none) gives `id`.
+fn implicit(doc: &Document, _: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    doc.pages()
+        .values()
+        .filter(|p| !p.page_type.as_ref().is_some_and(|t| ecad_model::registry::styles::exists(doc, &CATALOGUE, t)))
+        .filter(|p| ecad_model::document::sheet::page_type_of(doc, p) == *id)
+        .count()
+}
+
+/// A page type reaches its pages only.
+fn page_reach(doc: &Document, op: &ecad_model::Op, _: &StyleRef) -> ecad_model::registry::styles::Reach {
+    match touched_by(doc, op) {
+        Some((pages, _)) => ecad_model::registry::styles::Reach::Only(pages.into_iter().collect()),
+        None => ecad_model::registry::styles::Reach::Also(std::collections::BTreeSet::new()),
+    }
 }

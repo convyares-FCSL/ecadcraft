@@ -128,7 +128,7 @@ pub(crate) fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId
             }
             Some(Aid::Box(_)) if key == crate::locations::BOX_STYLE_KEY => {
                 let style = value.map(str::trim).filter(|v| !v.is_empty());
-                let style = style.map(|v| crate::styles::find(doc, ecad_model::StyleCatalogue::Location, v)).transpose()?;
+                let style = style.map(|v| crate::styles::find(doc, &crate::styles::location::CATALOGUE, v)).transpose()?;
                 ops.extend(box_op(doc, *a, |b| b.style = style));
                 continue;
             }
@@ -183,7 +183,7 @@ impl Generic for ContcaptionParams {
         "{continuations: [id…] (1-2000), caption: \"TO CONTROL SUPPLY\" | null} (sets or removes the arrows' caption, one transaction)";
     const STATE: State = State::LastCaption;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match self.caption {
             Some(_) => Ok(()),
             None => Err(CmdError::input("`caption` (text, or null) is required")),

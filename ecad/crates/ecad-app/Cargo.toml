@@ -16,6 +16,7 @@ ecad-model = { workspace = true }
 ecad-file = { workspace = true }
 # Brief 074: the release check plan, by its own path.
 ecad-electrical = { workspace = true }
+ecad-drawing-style = { workspace = true }
 # Brief 037: the style, fonts and primitives of ECAD's interface.
 ecad-widgets = { path = "../../crates/ecad-widgets" }
 # The sheet colours the canvas paints (design 065 §1.1).

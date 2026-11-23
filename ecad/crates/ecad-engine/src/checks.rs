@@ -14,7 +14,7 @@ pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
 
 /// [`all`] with the report models already kept (the project's, reused by `checks`).
 pub fn all_with(doc: &Document, tol: f64, reports: &ecad_electrical::reports::kept::ReportModels) -> Vec<Check> {
-    ecad_electrical::checks::all_measured(doc, tol, reports, &LOOK)
+    ecad_electrical::checks::all_measured(doc, tol, reports, &LOOK, &ecad_drawing_style::REGISTRY)
 }
 
 /// The drawn handles of `object` on `page` (for a go-to's selection): a wire's lines, a route's line, a

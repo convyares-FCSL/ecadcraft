@@ -331,7 +331,7 @@ impl Generic for DesignationsParams {
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         opt_aspect(self.aspect.as_deref()).map(|_| ())
     }
 
@@ -360,7 +360,7 @@ impl Generic for AddParams {
     const TITLE: &'static str = "Add Function or Location";
     const HELP: &'static str = "{aspect: \"function\" | \"location\", code, description?} (one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
     }
 
@@ -400,7 +400,7 @@ impl Generic for EditParams {
     const TITLE: &'static str = "Rename Function or Location";
     const HELP: &'static str = "{aspect, key, code?: the new code (a rename), description?: text | null} | {aspect, code: the entry, to: the new code, description?} (one transaction; a code another entry has is refused: merge instead)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
     }
 
@@ -433,7 +433,7 @@ impl Generic for MergeParams {
     const TITLE: &'static str = "Merge Functions or Locations";
     const HELP: &'static str = "{aspect, from: key | code, into: key | code} (every user of `from` takes `into`; `from` is removed; one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         aspect(&self.aspect).map(|_| ())
     }
 
@@ -470,7 +470,7 @@ impl Generic for RemoveParams {
     const HELP: &'static str =
         "{aspect, key | code} (only an entry nothing uses) | {aspect?, unused: true} (every entry nothing uses) (one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match self.unused == Some(true) {
             true => opt_aspect(self.aspect.as_deref()).map(|_| ()),
             false => required_aspect(self.aspect.as_deref()).map(|_| ()),

@@ -356,10 +356,11 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             let Some((_, rest)) = rest.split_once('.') else { continue };
             let Some((cat, id)) = rest.split_once('.') else { continue };
             if let Some(sid) = ecad_model::StyleRef::parse(id).filter(ecad_model::StyleRef::is_builtin)
-                && let Some(cat) = <ecad_model::StyleCatalogue as ecad_model::Word>::parse(cat)
+                && let Some(cat) =
+                    <ecad_model::StyleCatalogue as ecad_model::Word>::parse(cat).and_then(|c| ecad_drawing_style::REGISTRY.catalogue(c))
             {
-                let name = ecad_model::registry::styles::name(target, ecad_electrical::styles::catalogue(cat), &sid);
-                c.what = format!("{} \"{name}\" · changed on both", ecad_electrical::styles::catalogue(cat).one);
+                let name = ecad_model::registry::styles::name(target, cat, &sid);
+                c.what = format!("{} \"{name}\" · changed on both", cat.one);
             }
         }
         plan

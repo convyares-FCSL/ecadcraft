@@ -265,7 +265,7 @@ impl Generic for WirenumberParams {
     const TITLE: &'static str = "Fix Wire Number";
     const HELP: &'static str = "{conductor: id | number, value: string|null, conflict?: \"swap\"|\"another\"|\"merge\"} | {conductor: id, fixed: bool} (fixes the net's number; null or fixed false releases it; a number another net uses needs `conflict`)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         if self.value.is_none() && self.fixed.is_none() {
             return Err(CmdError::refused("`value` (text, or null) is required"));
         }
@@ -276,7 +276,7 @@ impl Generic for WirenumberParams {
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        self.check()?;
+        self.check(cx.registry)?;
         let choice = NetChoice { conductor: self.conductor, connection_point: self.connection_point, number: self.number };
         // `fixed` alone (the Properties panel's Fixed box): fix the net's current number, or
         // release it.
@@ -418,7 +418,7 @@ impl Generic for ChecksParams {
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         for k in self.kinds.iter().flatten() {
             if crate::checks::Kind::parse(k).is_none() {
                 return Err(CmdError::refused(format!("unknown check kind {k:?}")));
@@ -428,13 +428,13 @@ impl Generic for ChecksParams {
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        self.check()?;
+        self.check(cx.registry)?;
         let kinds: Option<BTreeSet<_>> = self.kinds.map(|words| words.iter().filter_map(|k| crate::checks::Kind::parse(k)).collect());
         let limit = self.limit.unwrap_or(crate::checks::DEFAULT_LIMIT).clamp(1, crate::checks::MAX_LIMIT);
         let after = self.after.unwrap_or(0);
         // The project's kept report models (built on first use, then kept from each change).
         let reports = cx.derived.reports(cx.doc);
-        let rows: Vec<_> = crate::checks::all_measured(cx.doc, cx.tolerance, reports, cx.look)
+        let rows: Vec<_> = crate::checks::all_measured(cx.doc, cx.tolerance, reports, cx.look, cx.registry)
             .into_iter()
             .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))
             .collect();

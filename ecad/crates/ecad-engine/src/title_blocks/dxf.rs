@@ -306,7 +306,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                 if let ecad_model::objects::styles::StyleBody::Frame(f) = &mut after.body {
                     f.title_block = Some(layout);
                 }
-                let name = ecad_model::registry::styles::name(doc, ecad_electrical::styles::catalogue(FRAME_CATALOGUE), &id);
+                let name = ecad_model::registry::styles::name(doc, &ecad_electrical::styles::frame::CATALOGUE, &id);
                 let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }];
                 p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
                 Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))

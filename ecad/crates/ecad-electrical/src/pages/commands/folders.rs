@@ -60,7 +60,7 @@ impl Generic for NewfolderParams {
     const TITLE: &'static str = "New Folder";
     const HELP: &'static str = "{name, parent?: id|null}";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         folder_name(&self.name).map(|_| ())
     }
 
@@ -76,7 +76,7 @@ impl Generic for RenamefolderParams {
     const TITLE: &'static str = "Rename Folder";
     const HELP: &'static str = "{folder: id, name}";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         folder_name(&self.name).map(|_| ())
     }
 

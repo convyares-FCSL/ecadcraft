@@ -103,11 +103,57 @@ pub struct Catalogue {
     pub typed: Option<Typed>,
     /// A change to a built-in style's values read from the data files.
     pub adjust: Option<fn(&Builtin, &mut Vec<(&'static str, Value<'static>)>)>,
+    /// Write field `key` of a record body of this catalogue (`None` clears it). A value the
+    /// field does not take is refused in words.
+    pub set: fn(&mut StyleBody, &str, Option<&str>) -> Result<(), Refused>,
+    /// How many objects with no choice of their own use style `id` through `entry`'s page,
+    /// project, standard or built-in level.
+    pub implicit: fn(&Document, &Entry, &StyleRef) -> usize,
+    /// The pages a change `op` to style `id` reaches besides those its explicit users are on.
+    pub reach: fn(&Document, &crate::Op, &StyleRef) -> Reach,
+}
+
+/// Whether `props` hold a choice of `entry` of their own that reads.
+pub fn chooses(doc: &Document, entry: &Entry, props: &Properties) -> bool {
+    props.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some())
+}
+
+/// A value a catalogue's field does not take ([`Catalogue::set`]), in words.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct Refused(pub String);
+
+/// The pages a style change reaches ([`Catalogue::reach`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reach {
+    /// These pages only, whoever uses the style.
+    Only(std::collections::BTreeSet<crate::PageId>),
+    /// These pages as well as its explicit users' pages.
+    Also(std::collections::BTreeSet<crate::PageId>),
+    /// Every page.
+    Every,
+}
+
+/// A catalogue whose objects all choose their style themselves: no implicit users.
+pub fn no_implicit(_: &Document, _: &Entry, _: &StyleRef) -> usize {
+    0
+}
+
+/// A catalogue whose style changes reach only their explicit users' pages.
+pub fn no_reach(_: &Document, _: &crate::Op, _: &StyleRef) -> Reach {
+    Reach::Also(std::collections::BTreeSet::new())
 }
 
 impl fmt::Debug for Catalogue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Catalogue({})", self.catalogue)
+    }
+}
+
+/// Two catalogues are the same when they describe the same word.
+impl PartialEq for Catalogue {
+    fn eq(&self, other: &Self) -> bool {
+        self.catalogue == other.catalogue
     }
 }
 

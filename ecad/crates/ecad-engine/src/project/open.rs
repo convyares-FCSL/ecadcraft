@@ -237,7 +237,7 @@ impl Project {
                 .map_err(|e| e.to_string())?;
         let ledger = o.ledger;
         // Words in values that stay text: read once on open, never per commit.
-        o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document()));
+        o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document(), &ecad_drawing_style::REGISTRY));
         let default_layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
         let pages: Vec<PageId> = ledger.document().page_order().to_vec();
         // A fresh ID stream for this session, never reissuing the file's IDs.

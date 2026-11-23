@@ -44,7 +44,7 @@ impl Generic for RenamepageParams {
     const TITLE: &'static str = "Rename Page";
     const HELP: &'static str = "{page: id, title}";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         page_title(&self.title).map(|_| ())
     }
 

@@ -425,7 +425,7 @@ fn the_label_rule_labels_a_net_once_or_every_wire() {
 /// what `wire` uses (the label rule's project value is what the label pass uses: the bus test).
 #[test]
 fn the_join_default_comes_from_the_registry() {
-    let keys: Vec<&str> = ecad_electrical::defaults::all().map(|e| e.key).collect();
+    let keys: Vec<&str> = ecad_drawing_style::REGISTRY.entries().map(|e| e.key).collect();
     for k in ["wire.join", "wiring.label_rule", "wiring.label_min_length"] {
         assert!(keys.contains(&k), "{k} not in {keys:?}");
     }

@@ -98,6 +98,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: None,
+    set: set_body,
+    implicit,
+    reach: ecad_model::registry::styles::no_reach,
 };
 
 /// The value field `key` of a frame style record holds.
@@ -160,7 +163,7 @@ pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
 
 /// The look of frame style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Frame), id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::frame::CATALOGUE, id, k, None);
     FrameDraw {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),
@@ -225,4 +228,20 @@ pub fn set(f: &mut FrameStyle, key: &str, value: Option<&str>) -> Result<(), Cmd
         _ => return Err(CmdError::refused(format!("Frames have no field {key:?}."))),
     }
     Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Frame(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// Pages with no frame of their own when the project's choice is `id`.
+fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    if ecad_model::registry::styles::chosen(doc, entry, ecad_model::registry::Scope::project()) != *id {
+        return 0;
+    }
+    doc.pages().values().filter(|p| !ecad_model::registry::styles::chooses(doc, entry, &p.display)).count()
 }

@@ -222,6 +222,51 @@ impl DataSet {
     }
 }
 
+/// Every crate's data sets together: the whole registry, as the `defaults` and `style` commands,
+/// the Standards screen and Checks see it. The crate that knows every set builds it; code that
+/// needs one entry or catalogue it declares names that directly.
+#[derive(Debug)]
+pub struct Registry {
+    sets: &'static [&'static DataSet],
+}
+
+impl Registry {
+    /// The registry of `sets`, in listing order.
+    pub const fn new(sets: &'static [&'static DataSet]) -> Self {
+        Registry { sets }
+    }
+
+    /// Its data sets.
+    pub fn sets(&self) -> impl Iterator<Item = &'static DataSet> + use<> {
+        self.sets.iter().copied()
+    }
+
+    /// Every listed entry, set by set.
+    pub fn entries(&self) -> impl Iterator<Item = &'static Entry> + use<> {
+        self.sets().flat_map(DataSet::entries)
+    }
+
+    /// The listed entry with this key.
+    pub fn find(&self, key: &str) -> Option<&'static Entry> {
+        self.entries().find(|e| e.key == key)
+    }
+
+    /// Every style catalogue, set by set.
+    pub fn catalogues(&self) -> impl Iterator<Item = &'static Catalogue> + use<> {
+        self.sets().flat_map(|s| s.catalogues.iter().copied())
+    }
+
+    /// The catalogue that describes `c`, if a set declares it.
+    pub fn catalogue(&self, c: crate::StyleCatalogue) -> Option<&'static Catalogue> {
+        self.catalogues().find(|x| x.catalogue == c)
+    }
+
+    /// Every set's problems ([`DataSet::problems`]).
+    pub fn problems(&self) -> impl Iterator<Item = &'static DefaultsError> + use<> {
+        self.sets().flat_map(|s| s.problems().iter())
+    }
+}
+
 /// A slot that holds a built-in value once it has been read from its data set ([`Entry::builtin`],
 /// [`Field::builtin`], [`BuiltinStyle::values`]).
 pub struct Slot<T> {

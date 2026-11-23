@@ -161,6 +161,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: None,
+    set: set_body,
+    implicit: ecad_model::registry::styles::no_implicit,
+    reach: ecad_model::registry::styles::no_reach,
 };
 
 /// The value field `key` of a cable style record holds.
@@ -173,16 +176,12 @@ fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::Sty
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
-    doc.cables()
-        .get(&k)?
-        .cable_type
-        .clone()
-        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id))
+    doc.cables().get(&k)?.cable_type.clone().filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::cable::CATALOGUE, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id, key, None)
+    ecad_model::registry::styles::field_of(doc, &crate::styles::cable::CATALOGUE, id, key, None)
         .map(|r| r.text())
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
@@ -202,10 +201,7 @@ pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>,
     {
         return Some((c, crate::terminal_strips::cores::OfferSource::Cores, v.to_string()));
     }
-    let ty = cab
-        .cable_type
-        .as_ref()
-        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), id));
+    let ty = cab.cable_type.as_ref().filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::cable::CATALOGUE, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
         && let Ok(c) = crate::terminal_strips::cores::parse_cores(&v)
     {
@@ -398,7 +394,7 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
 /// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
 pub fn size(doc: &Document, k: CableId) -> Option<String> {
     let from_type = of(doc, k)
-        .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Cable), &id, "size", None))
+        .and_then(|id| ecad_model::registry::styles::field_of(doc, &crate::styles::cable::CATALOGUE, &id, "size", None))
         .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
     from_type
         .or_else(|| doc.cables().get(&k).and_then(|x| x.properties.get("type")).and_then(|t| crate::terminal_strips::cores::notation_size(t)))
@@ -519,6 +515,14 @@ pub(crate) struct SchemeData {
 /// Read the built-in schemes.
 ///
 /// # Errors
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Cable(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
 #[cfg(test)]
 const SCHEMES_FILE: &str = "core_schemes.toml";
 

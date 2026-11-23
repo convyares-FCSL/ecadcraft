@@ -197,9 +197,7 @@ fn checked(
             Ok(Some(t))
         }
         CableField::Cores => crate::terminal_strips::cores::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
-        CableField::CableType => {
-            styles::find(doc, ecad_model::StyleCatalogue::Cable, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry))
-        }
+        CableField::CableType => styles::find(doc, &styles::cable::CATALOGUE, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry)),
         CableField::EndLocation(_) => pending.store(doc, ids, Aspect::Location, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
         CableField::EndFunction(_) => pending.store(doc, ids, Aspect::Function, &t, ops).map(Some).map_err(|_| bad(BadReason::UnknownEntry)),
     }

@@ -130,11 +130,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         // A standard with 50 values and 20 styles, then back to IEC.
         exec(&mut s, "standard", json!({"new": "Bench"}))?;
         let keys: Vec<&'static str> =
-            ecad_electrical::defaults::all().filter(|e| e.allows(ecad_model::registry::Level::Standard)).map(|e| e.key).take(50).collect();
+            ecad_drawing_style::REGISTRY.entries().filter(|e| e.allows(ecad_model::registry::Level::Standard)).map(|e| e.key).take(50).collect();
         project.read(&mut s, |_, _| ())?;
         let mut values = 0;
         for k in &keys {
-            let e = ecad_electrical::defaults::find(k).ok_or("a registry key")?;
+            let e = ecad_drawing_style::REGISTRY.find(k).ok_or("a registry key")?;
             let v = ecad_model::registry::Resolved { value: e.builtin(), from: ecad_model::registry::Source::Builtin }.text();
             if s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v})).is_ok() {
                 values += 1;
@@ -148,7 +148,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         // The project saved with a standard of 50 values and 50 styles, for the open row.
         exec(&mut s, "standard", json!({"new": "Bench"}))?;
         for k in &keys {
-            if let Some(e) = ecad_electrical::defaults::find(k) {
+            if let Some(e) = ecad_drawing_style::REGISTRY.find(k) {
                 let v = ecad_model::registry::Resolved { value: e.builtin(), from: ecad_model::registry::Source::Builtin }.text();
                 let _ = s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v}));
             }

@@ -346,7 +346,7 @@ fn every_built_in_lives_in_exactly_one_place() {
     }
     // Every model key but the structured sheet is a registry entry reading it.
     for key in model.iter().filter(|k| **k != ecad_model::naming::builtins::SHEET) {
-        let e = defaults::find(key).unwrap_or_else(|| panic!("{key} has no entry"));
+        let e = ecad_drawing_style::REGISTRY.find(key).unwrap_or_else(|| panic!("{key} has no entry"));
         assert!(ecad_model::registry::data::in_model(e.key) && e.accepts(&e.builtin()), "{key}");
     }
     // And they are today's values: nothing moves.

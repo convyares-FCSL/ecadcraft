@@ -31,7 +31,8 @@ words.
 - Electrical lays out its own content but owns no look: it asks through a `TextLook` trait that `ecad-model`
   defines and `ecad-drawing-style` implements.
 - The defaults registry's mechanism (keys, levels, resolution) is `ecad-model`'s; each crate contributes its own
-  entries (electrical the electrical ones, drawing-style the look ones), and the engine assembles them.
+  entries (electrical the electrical ones, drawing-style the look ones). Drawing-style assembles them into one
+  `Registry`, and the engine passes it to commands and views (owner, 2026-11-23).
 - The canvas palette (`Color`, sheet colours, markers, wire colours and dashes, line weights, the sheet font) is
   `ecad_model::palette`, so the UI kit uses `ecad-model` and nothing else of ours.
 - App tests that need `ecad-mcp` or `ecad-desktop` live in those programs' own suites.

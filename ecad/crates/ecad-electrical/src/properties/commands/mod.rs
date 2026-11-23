@@ -36,7 +36,7 @@ pub(crate) const PROVISIONAL_FIXED: &str = "A provisional tag's state can't be s
 pub(crate) const NO_SUCH_OBJECT: &str = "no such object";
 
 /// A row's check: the value to store for `key` on `object` (`None` clears it), or the refusal.
-pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
+pub type Check = fn(&Document, &ecad_model::registry::data::Registry, ObjectRef, &str, Option<&str>) -> Result<Option<String>, CmdError>;
 
 /// A row's plan for a key that became a struct field: the `Modify*` op recording the
 /// whole record (`None`: unchanged), or the refusal.
@@ -174,41 +174,55 @@ pub(crate) fn is_device_property(object: ObjectRef, key: &str) -> bool {
     is_component(object) && crate::devices::PROPERTIES.iter().any(|(k, _)| *k == key)
 }
 
-fn free_text(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn free_text(_: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     Ok(value.map(str::to_string))
 }
 
-fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn device_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     crate::devices::json::property_value(doc, key, value)
 }
 
-fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn wire_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     Ok(crate::wires::commands::wires::setprop_rule(doc, o, key, value)?.unwrap_or_else(|| value.map(str::to_string)))
 }
 
-fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn offer_value(
+    _: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, _: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     crate::terminal_strips::offer_value(value)
 }
 
-fn pe_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn pe_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     crate::devices::json::property_value(doc, key, value)
 }
 
-fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn connector_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::connectors::setprop_value(doc, c, key, value)) {
         Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
 
-fn connection_point_default_value(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn connection_point_default_value(
+    _: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     match crate::defaults::terminal_blocks::setprop_value(key, value) {
         Some(r) => r,
         None => Ok(value.map(str::to_string)),
     }
 }
 
-fn level_label_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn level_label_value(
+    _: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, _: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     use crate::terminal_strips::terminal_blocks::MAX_LABEL_CHARS;
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
@@ -219,25 +233,33 @@ fn level_label_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -
     }
 }
 
-fn plc_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn plc_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     match component(o).and_then(|c| crate::plc::setprop_rule(doc, c, key, value)) {
         Some(r) => r,
         None => Ok(None),
     }
 }
 
-fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn rating_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     crate::symbols::rules::setprop_rule(doc, o, key, value)
 }
 
-fn bom_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn bom_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     match component(o) {
         Some(c) => crate::reports::bom::setprop_rule(doc, c, key, value),
         None => Ok(value.map(str::to_string)),
     }
 }
 
-fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn accessory_value(
+    doc: &Document, _: &ecad_model::registry::data::Registry, o: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     let rule = match component(o) {
         Some(c) => crate::terminal_strips::accessories::setprop_rule(doc, c, key, value)?,
         None => None,
@@ -277,7 +299,9 @@ pub(crate) fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
 /// # Errors
 /// The rule's refusal; a key decided by an `Aspect` or `Fixed` row is refused (those build their
 /// change in [`plan_state`] and [`crate::locations::commands::locations::plan_set`]).
-pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn value(
+    doc: &Document, registry: &ecad_model::registry::data::Registry, object: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
     let check = match rule_for(doc, object, key).build {
         Build::Device(f) | Build::Value(f) => f,
         // A device's tag is a device property too: merging into the device that holds it reads it
@@ -285,7 +309,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         Build::Tag => device_value,
         Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
-    check(doc, object, key, value)
+    check(doc, registry, object, key, value)
 }
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
@@ -311,8 +335,10 @@ pub(crate) struct ValueSet {
 ///
 /// # Errors
 /// The rule's refusal; [`NO_SUCH_OBJECT`].
-pub(crate) fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<ValueSet, CmdError> {
-    let after = value(doc, object, key, typed)?;
+pub(crate) fn plan_value(
+    doc: &Document, registry: &ecad_model::registry::data::Registry, object: ObjectRef, key: &str, typed: Option<&str>,
+) -> Result<ValueSet, CmdError> {
+    let after = value(doc, registry, object, key, typed)?;
     let before = match object {
         // A cable's tag and description are fields: read them as `setprop` does.
         ObjectRef::Cable(c) => doc.cables().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?.get(key).map(str::to_string),
@@ -336,7 +362,9 @@ pub(crate) fn plan_value(doc: &Document, object: ObjectRef, key: &str, typed: Op
 ///
 /// # Errors
 /// [`ONE_TAG_PER_DEVICE`], [`NO_SUCH_OBJECT`], or the first rule that refuses.
-pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
+pub(crate) fn plan_many(
+    doc: &Document, registry: &ecad_model::registry::data::Registry, cs: &[DeviceId], key: &str, typed: Option<&str>,
+) -> Result<Vec<Op>, CmdError> {
     if key == TAG_KEY {
         return Err(CmdError::refused(ONE_TAG_PER_DEVICE));
     }
@@ -352,7 +380,7 @@ pub(crate) fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Optio
             }
             Build::Aspect | Build::Tag | Build::Device(_) | Build::Value(_) => {}
         }
-        let after = value(doc, o, &key, typed)?;
+        let after = value(doc, registry, o, &key, typed)?;
         let before = comp.properties.get(&key).cloned();
         if before != after {
             ops.push(Op::SetProperty { object: o, key, before, after });
@@ -381,10 +409,11 @@ pub(crate) enum DeviceSet {
 /// # Errors
 /// [`NO_SUCH_OBJECT`]; the value rule's refusal; a taken tag without `merge`.
 pub(crate) fn plan_device(
-    doc: &Document, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str, typed: Option<&str>, merge: bool,
+    doc: &Document, registry: &ecad_model::registry::data::Registry, ids: &mut IdAllocator, tag_high: &TagHigh, c: DeviceId, key: &str,
+    typed: Option<&str>, merge: bool,
 ) -> Result<DeviceSet, CmdError> {
     let component = doc.devices().get(&c).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
-    let value = value(doc, ObjectRef::Device(c), key, typed)?;
+    let value = value(doc, registry, ObjectRef::Device(c), key, typed)?;
     let before = component.value(key);
     if key == TAG_KEY
         && let Some(t) = &value
@@ -716,7 +745,7 @@ impl Generic for SetpropParams {
     const HELP: &'static str = "{component|conductor|cable: id, key, value: string|null, conflict?: \"swap\"|\"merge\"|\"next\", merge?: bool} | {devices: [id], key, value} (several devices in one transaction; not `tag`) (a device's or cable's tag: typing fixes it; `-K?` is the next provisional; a tag another device or cable holds needs `conflict`; `tag` also takes {\"state\": \"automatic\"|\"fixed\"|\"provisional\", \"tag\": \"-K1\"}; null clears it)";
     const STATE: State = State::Conflicts;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         reserved(&self.key)?;
         if self.sets_location() {
             return location_objects(self.component, self.devices.as_ref().map(|c| c.0.as_slice())).map(|_| ());
@@ -761,7 +790,7 @@ impl Generic for SetpropParams {
         }
         // Several devices at once (the Properties panel): one transaction for all.
         if let Some(cs) = self.devices {
-            let ops = plan_many(cx.doc, &cs.0, &key, typed.as_deref())?;
+            let ops = plan_many(cx.doc, cx.registry, &cs.0, &key, typed.as_deref())?;
             let n = ops.len();
             return Ok(match n {
                 0 => Outcome::answer(json!({"changed": false})),
@@ -787,9 +816,9 @@ impl Generic for SetpropParams {
             }
             Build::Device(_) => match object {
                 ObjectRef::Device(c) => set_device(cx, c, &key, typed.as_deref(), merge),
-                _ => set_value(doc, object, &key, typed.as_deref()),
+                _ => set_value(doc, cx.registry, object, &key, typed.as_deref()),
             },
-            Build::Value(_) | Build::Aspect => set_value(doc, object, &key, typed.as_deref()),
+            Build::Value(_) | Build::Aspect => set_value(doc, cx.registry, object, &key, typed.as_deref()),
             Build::Record(_) => {
                 let op = plan_record(doc, object, &key, typed.as_deref())?;
                 let changed = op.is_some();
@@ -823,8 +852,10 @@ fn record_answer(doc: &Document, object: ObjectRef, key: &str, changed: bool) ->
 }
 
 /// A `Value` row's change on one object.
-fn set_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Outcome, CmdError> {
-    let done = plan_value(doc, object, key, typed)?;
+fn set_value(
+    doc: &Document, registry: &ecad_model::registry::data::Registry, object: ObjectRef, key: &str, typed: Option<&str>,
+) -> Result<Outcome, CmdError> {
+    let done = plan_value(doc, registry, object, key, typed)?;
     let Some(op) = done.op else { return Ok(Outcome::answer(json!({"changed": false}))) };
     Ok(match done.note {
         Some(m) => Outcome::edit("Set property", vec![op], json!({"changed": true, "message": m})).echo(Some(m)),
@@ -834,7 +865,7 @@ fn set_value(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) 
 
 /// A device property, merging with `merge`.
 fn set_device(cx: &mut Cx<'_>, c: DeviceId, key: &str, typed: Option<&str>, merge: bool) -> Result<Outcome, CmdError> {
-    Ok(match plan_device(cx.doc, cx.ids, cx.tag_high, c, key, typed, merge)? {
+    Ok(match plan_device(cx.doc, cx.registry, cx.ids, cx.tag_high, c, key, typed, merge)? {
         DeviceSet::Unchanged(value) => Outcome::answer(json!({"changed": false, "value": value})),
         DeviceSet::Set { op, label, value } => Outcome::edit(label, vec![*op], json!({"changed": true, "value": value, "component": c.hex()})),
         DeviceSet::Merged { ops, holder, into, before } => Outcome::edit_then(format!("Merge into {into}"), ops, move |doc| {

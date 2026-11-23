@@ -223,7 +223,7 @@ pub(crate) fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKin
     let Some(t) = ty.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(kind.map(|k| ptype::derived(Some(k))));
     };
-    let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Page, t)?;
+    let id = crate::styles::find(doc, &crate::styles::page::CATALOGUE, t)?;
     match kind {
         None if ptype::generated_only(&id) => Err(CmdError::refused(ptype::generated_refusal(doc, &id))),
         Some(k) if ptype::draw_of(doc, &id).holds != ptype::holds_of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
@@ -350,7 +350,7 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         if StyleRef::parse(value).is_some_and(|id| ecad_model::document::sheet::page_type_exists(doc, &id)) {
             continue;
         }
-        let used = ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Page), &ptype::type_of(doc, p));
+        let used = ecad_model::registry::styles::name(doc, &crate::styles::page::CATALOGUE, &ptype::type_of(doc, p));
         let which = format!("Page {}: page type {value:?} not found; drawn as {used}", book::page_number(doc, p));
         let mut r = row(Kind::PageTypeUnknown, Some(p), which);
         r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));

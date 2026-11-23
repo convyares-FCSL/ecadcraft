@@ -1,8 +1,14 @@
 //! The rules of the unknown-word check: a stored word that is not one of the
 //! words its setting allows is named, and so is a key a typed field has taken over.
 
-use ecad_electrical::checks::words_check::check;
-use ecad_electrical::defaults;
+use ecad_model::registry::data::Registry;
+
+/// The electrical rules' own registry.
+static REGISTRY: Registry = Registry::new(&[&ecad_electrical::defaults::data::DATA]);
+
+fn check(doc: &ecad_model::Document) -> Vec<ecad_model::document::strict::UnknownWord> {
+    ecad_electrical::checks::words_check::check(doc, &REGISTRY)
+}
 use ecad_model::document::strict::{UnknownWord, WordPlace};
 use ecad_model::naming::keys;
 use ecad_model::{Device, DeviceId, Document, PageId, RepresentationId};
@@ -127,7 +133,7 @@ fn tag_prefixes_name_built_in_symbols() {
 
 #[test]
 fn registry_and_key_list_are_disjoint() {
-    for e in defaults::all() {
+    for e in ecad_electrical::defaults::data::DATA.entries() {
         assert!(keys::spec(e.key).is_none(), "{} is both a registry entry and in keys::KEYS", e.key);
         // A page's type is a page-level-only entry whose value is the page's field (design 072
         // §5.1): `setdefault` writes it with `ModifyPage`, so a bag holding it is an error.

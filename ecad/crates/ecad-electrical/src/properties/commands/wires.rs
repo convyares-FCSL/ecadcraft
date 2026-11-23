@@ -9,7 +9,6 @@ use ecad_model::naming::words::Word;
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
 
-use crate::defaults::{self};
 use crate::error::{CmdError, msg};
 use crate::properties::commands::{Build, PropRule};
 use ecad_model::registry::Level;
@@ -75,7 +74,7 @@ pub(crate) fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option
         after.cable_type = match value {
             None => None,
             Some(v) => Some(
-                crate::styles::find(doc, ecad_model::StyleCatalogue::Cable, v)
+                crate::styles::find(doc, &crate::styles::cable::CATALOGUE, v)
                     .ok()
                     .or_else(|| ecad_model::StyleRef::parse(v))
                     .ok_or_else(|| CmdError::refused(format!("No cable type {:?} in this project's standards.", crate::cables::clip(v))))?,
@@ -119,7 +118,7 @@ fn is_net_key(k: &str) -> bool {
         || k == ecad_model::connectivity::wiring::POTENTIAL_KEY
 }
 
-fn net_key(_: &Document, _: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
+fn net_key(_: &Document, _: &ecad_model::registry::data::Registry, _: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {
     Err(CmdError::refused(if key == ecad_model::connectivity::wiring::POTENTIAL_KEY { msg::USE_POTENTIAL } else { msg::USE_WIRENUMBER }))
 }
 
@@ -209,8 +208,10 @@ pub(crate) fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option
 ///
 /// # Errors
 /// [`no_such_key`]; a value the entry does not take.
-pub(crate) fn wire_display(_: &Document, _: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    let entry = defaults::find(key).filter(|e| e.allows(Level::Object)).ok_or_else(|| no_such_key(key))?;
+pub(crate) fn wire_display(
+    _: &Document, registry: &ecad_model::registry::data::Registry, _: ObjectRef, key: &str, value: Option<&str>,
+) -> Result<Option<String>, CmdError> {
+    let entry = registry.find(key).filter(|e| e.allows(Level::Object)).ok_or_else(|| no_such_key(key))?;
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
         Some(v) if entry.parse(v).is_some() => Ok(Some(v.to_string())),

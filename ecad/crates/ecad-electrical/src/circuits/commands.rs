@@ -137,7 +137,7 @@ pub(crate) fn check_value(doc: &Document, key: &str, value: &str) -> Result<Stri
             ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v)).map(str::to_string).ok_or_else(|| no("system is ac1, ac3 or dc."))
         }
         "vd_limit" => crate::devices::ratings::parse::percent(v).map(|_| v.to_string()).ok_or_else(|| no("vd_limit is 0.5 to 20 %.")),
-        "cable_type" => styles::find(doc, ecad_model::StyleCatalogue::Cable, v).map(|id| id.text()),
+        "cable_type" => styles::find(doc, &styles::cable::CATALOGUE, v).map(|id| id.text()),
         _ => Err(CmdError::refused(format!("{key} is not a rating key."))),
     }
 }
@@ -334,7 +334,7 @@ pub(crate) fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>)
 /// No such table, or none chosen and no name.
 pub(crate) fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::Table, CmdError> {
     let id = match name {
-        Some(n) => styles::find(doc, ecad_model::StyleCatalogue::RatingTable, n)?,
+        Some(n) => styles::find(doc, &styles::ratingtable::CATALOGUE, n)?,
         None => ratingtable::chosen(doc).ok_or(CmdError::refused("No rating table chosen; give `name`."))?,
     };
     Ok(ratingtable::read(doc, &id))
@@ -416,7 +416,7 @@ pub(crate) fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) 
     if let Some(src) = &w.source {
         set.push((ratingtable::SOURCE.to_string(), Some(src.clone())));
     }
-    let rec = styles::with_fields(cat.catalogue, Some(&rec), None, &set)?;
+    let rec = styles::with_fields(cat, Some(&rec), None, &set)?;
     styles::check_record(doc, cat, &id, w.layer, &rec)?;
     let rows = data.rows.len();
     let label = format!("Rating table {}: {rows} row{}", w.name, if rows == 1 { "" } else { "s" });
@@ -691,7 +691,7 @@ manual?, bundling?: \"0.8\"|\"3 bunched\", load?, protected_by?: \"-Q01\"|\"-F01
 \"ac1\"|\"ac3\"|\"dc\", vd_limit?, cable_type?: id or name} | {location: \"+CAB1\", temperature: °C | null} (a location's panel \
 temperature, on its location boxes; null clears; one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match &self.location {
             Some(loc) => self.location_temperature(loc).map(|_| ()),
             None if self.temperature.is_some() => Err(not_a_key("temperature")),
@@ -700,7 +700,7 @@ temperature, on its location boxes; null clears; one transaction)";
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        self.check()?;
+        self.check(cx.registry)?;
         if let Some(loc) = &self.location {
             let (typed, after) = self.location_temperature(loc)?;
             let planned = plan_temperature(cx.doc, &typed, after.as_deref())?;
@@ -743,7 +743,7 @@ impl Generic for RatingtableParams {
     const PAGES: Pages = Pages::ReadAnywhere;
     const IO: Io = Io { reads: &[("import", Read::Bytes(crate::devices::ratings::dataset::MAX_BYTES))], writes: &["export"] };
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.source_given()
     }
 

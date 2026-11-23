@@ -45,12 +45,19 @@ use ecad_model::{DefinitionId, Document, ItemKind, ObjectRef, Op, PageId, Subjec
 use crate::views::Inputs;
 
 /// The drawn pages' feed.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PagesView {
     named: BTreeSet<PageId>,
+    /// The registry whose entries and catalogues a style or standard change is read against.
+    registry: &'static ecad_model::registry::data::Registry,
 }
 
 impl PagesView {
+    /// The feed, reading style and standard changes against `registry`.
+    pub fn new(registry: &'static ecad_model::registry::data::Registry) -> Self {
+        PagesView { named: BTreeSet::new(), registry }
+    }
+
     /// The pages the last commit's ops named directly, taken for the change log.
     pub fn take_named(&mut self) -> BTreeSet<PageId> {
         std::mem::take(&mut self.named)
@@ -177,7 +184,7 @@ fn project_pages(doc: &Document, before: &ecad_model::document::project::Project
 }
 
 /// The Before phase: what `effect` could redraw, read in `doc` before the ops.
-fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mut PagesScope) {
+fn before(doc: &Document, registry: &ecad_model::registry::data::Registry, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mut PagesScope) {
     let out = &mut scope.pages;
     match effect {
         // A device link is a relationship, drawn on no page.
@@ -279,7 +286,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         // A standard's value acts like a project-level write of its key, and changes nothing on
         // a page while the project holds its own value.
         Effect::Prop { object: ObjectRef::Standard, key, .. } => {
-            let hidden = crate::defaults::find(key.raw).is_some_and(|e| {
+            let hidden = registry.find(key.raw).is_some_and(|e| {
                 ecad_model::registry::resolve(doc, e, ecad_model::registry::Scope::project()).from == ecad_model::registry::Source::Project
             });
             if !hidden && !project_key_drawn_nowhere(*key) {
@@ -290,7 +297,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         // project's choice resolves to it); the standard's header none.
         Effect::Style { layer, catalogue, id, before, after } => {
             let op = Op::SetStyle { layer: *layer, catalogue: *catalogue, id: (*id).clone(), before: before.cloned(), after: after.cloned() };
-            match crate::styles::pages_touched(doc, &op) {
+            match crate::styles::pages_touched(doc, registry, &op) {
                 Some(ps) => extend(out, ps),
                 None => *out = PageSet::All,
             }
@@ -354,7 +361,7 @@ impl<'i> DerivedView<Inputs<'i>> for PagesView {
             Phase::Before => {
                 scope.seen += 1;
                 if !scope.is_all() {
-                    before(cx.doc, cx.effects, effect, scope);
+                    before(cx.doc, self.registry, cx.effects, effect, scope);
                 } else if let Effect::Item { before, after, .. } = effect {
                     scope.named.extend(before.iter().chain(after.iter()).map(|i| i.page));
                 } else if let Effect::Rep { before, after, .. } = effect {

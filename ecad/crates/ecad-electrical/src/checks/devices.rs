@@ -11,7 +11,7 @@ impl CheckSource for DesignationRows {
     fn touched(&self, scope: &Scope) -> bool {
         scope.designations
     }
-    fn checks(&self, doc: &Document) -> Vec<Check> {
+    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
         designation_rows(doc)
     }
 }

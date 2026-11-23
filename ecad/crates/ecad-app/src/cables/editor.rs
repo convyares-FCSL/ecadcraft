@@ -87,7 +87,7 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
             c.values.insert(CableField::Gland(side), (g, s.hint()));
         }
     }
-    let catalogue = ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Cable);
+    let catalogue = &ecad_electrical::styles::cable::CATALOGUE;
     c.types = ecad_model::registry::styles::rows(doc, catalogue).into_iter().map(|r| (r.id.text(), r.name)).collect();
     let own_type = ecad_electrical::styles::cable::of(doc, k).map(|id| id.text());
     c.type_index = own_type.and_then(|t| c.types.iter().position(|(id, _)| *id == t)).map_or(0, |i| i + 1);

@@ -254,13 +254,13 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
             }
         })
         .collect();
-    let c = styles::users(doc, cat.catalogue, id);
+    let c = styles::users(doc, cat, id);
     let boxes = styles::box_users(doc, cat.catalogue, id).len();
-    let explicit = ecad_electrical::styles::commands::styles::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
+    let explicit = ecad_electrical::styles::commands::styles::users_words(&styles::explicit_users(doc, cat, id), boxes);
     let layer = ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),
-        name: ecad_model::registry::styles::name(doc, ecad_electrical::styles::catalogue(cat.catalogue), id),
+        name: ecad_model::registry::styles::name(doc, cat, id),
         layer,
         fields,
         has_standard: doc.standard().is_some(),

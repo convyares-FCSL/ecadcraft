@@ -377,7 +377,7 @@ fn registry_defaults_apply() {
     let t = text_of(&mut f.h, f.pages[0], f.arrows[0].1).unwrap();
     assert!(t.ends_with(" +1") && t.split(' ').count() == 2, "{t}");
     // Brief 050a: the caption is a built-in text style, 2.5 mm regular.
-    let entry = ecad_electrical::defaults::find("text.continuation_caption.style").unwrap();
+    let entry = ecad_drawing_style::REGISTRY.find("text.continuation_caption.style").unwrap();
     assert_eq!(entry.builtin(), ecad_model::registry::Value::Text("continuation_caption"));
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();

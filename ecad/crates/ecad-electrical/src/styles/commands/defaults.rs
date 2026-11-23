@@ -254,7 +254,7 @@ pub enum Chosen {
     /// The stored text (`None`: reset).
     Stored(Option<String>),
     /// A style of catalogue `.0`, by ID or name, resolved in the project ([`ops_for`]).
-    Style(ecad_model::StyleCatalogue, String),
+    Style(&'static ecad_model::registry::styles::Catalogue, String),
 }
 
 /// What `entry` is given: `value`, or `reset`.
@@ -264,7 +264,7 @@ pub enum Chosen {
 pub(crate) fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen, CmdError> {
     // A style choice names a style by ID or name, resolved in the project.
     if let (Some(Given::Text(v)), false, ecad_model::registry::Kind::Style(cat)) = (&value, reset, entry.kind) {
-        return Ok(Chosen::Style(cat.catalogue, v.clone()));
+        return Ok(Chosen::Style(cat, v.clone()));
     }
     match (value, reset) {
         // An empty cover heading is allowed, stored as `none`.
@@ -452,9 +452,9 @@ impl Generic for SetdefaultParams {
     const TITLE: &'static str = "Set Default";
     const HELP: &'static str = "{key, level: \"standard\"|\"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, value: string|number | reset: true} (writes a default at that level; page: the page shown if not given; one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         // A registry entry's level and value are refused before the project is taken (as before).
-        if let Some(entry) = defaults::find(self.key.trim()) {
+        if let Some(entry) = registry.find(self.key.trim()) {
             if let Some(w) = self.level.as_deref() {
                 level_of(w)?;
             }
@@ -467,7 +467,7 @@ impl Generic for SetdefaultParams {
         let key = self.key.trim().to_string();
         let reset = self.reset.unwrap_or(false);
         let given = self.given();
-        let Some(entry) = defaults::find(&key) else {
+        let Some(entry) = cx.registry.find(&key) else {
             // A symbol's family entry, `symbol.<key>.<field>`.
             let Some(done) = plan_family(cx.doc, &key, self.level.as_deref(), given, reset)? else {
                 return Err(CmdError::refused(format!("No default \"{key}\".")));
@@ -551,9 +551,11 @@ impl Generic for DefaultsParams {
         let doc = cx.doc;
         let at = super::text::scope(doc, self.representation, self.component, self.page)?;
         if let Some(k) = &key {
-            super::text::default_key(doc, k)?;
+            super::text::default_key(doc, cx.registry, k)?;
         }
-        let mut list: Vec<serde_json::Value> = defaults::all()
+        let mut list: Vec<serde_json::Value> = cx
+            .registry
+            .entries()
             .filter(|e| group.as_deref().is_none_or(|g| e.group.eq_ignore_ascii_case(g)))
             .filter(|e| key.as_deref().is_none_or(|k| e.key == k))
             .map(|e| super::text::entry_json(doc, e, at))

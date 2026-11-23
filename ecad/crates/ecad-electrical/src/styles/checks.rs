@@ -17,6 +17,8 @@
 
 use ecad_model::document::effect::Effect;
 use ecad_model::objects::styles::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
+use ecad_model::registry::data::Registry;
+use ecad_model::registry::styles::Catalogue;
 use ecad_model::{Document, ObjectRef, Properties};
 
 use crate::checks::{Check, Fix, Kind, Object};
@@ -66,35 +68,37 @@ fn touches_own(effect: &Effect<'_>) -> bool {
     }
 }
 
-/// The catalogue a choice key names a style of, for the keys this check covers (the wire
-/// style's `wire.category` has its own check).
-fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
-    match key {
-        "location.style" => Some(ecad_model::StyleCatalogue::Location),
-        crate::styles::cable::CABLE_TYPE => Some(ecad_model::StyleCatalogue::Cable),
-        "print.frame.style" => Some(ecad_model::StyleCatalogue::Frame),
-        k if ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::Text) && k.ends_with(".style") => {
-            Some(ecad_model::StyleCatalogue::Text)
+/// The catalogue a choice key names a style of, for the keys this check covers: a cable's type,
+/// and the text, location and frame choices (the wire style's `wire.category` has its own check,
+/// a page's type its own rows).
+fn catalogue_of(registry: &Registry, key: &str) -> Option<&'static Catalogue> {
+    if key == crate::styles::cable::CABLE_TYPE {
+        return Some(&crate::styles::cable::CATALOGUE);
+    }
+    match registry.find(key)?.kind {
+        ecad_model::registry::Kind::Style(c)
+            if matches!(c.catalogue, ecad_model::StyleCatalogue::Text | ecad_model::StyleCatalogue::Location | ecad_model::StyleCatalogue::Frame) =>
+        {
+            Some(c)
         }
         _ => None,
     }
 }
 
 /// Whether a stored choice is dangling.
-fn dangling(doc: &Document, catalogue: ecad_model::StyleCatalogue, value: &str) -> bool {
-    StyleRef::parse(value).is_none_or(|id| !ecad_model::registry::styles::exists(doc, crate::styles::catalogue(catalogue), &id))
+fn dangling(doc: &Document, cat: &Catalogue, value: &str) -> bool {
+    StyleRef::parse(value).is_none_or(|id| !ecad_model::registry::styles::exists(doc, cat, &id))
 }
 
-/// `Not found: drawn as Tag` words for a dangling choice of `key`.
-fn words(doc: &Document, key: &str, value: &str, whose: &str) -> String {
-    let next = crate::defaults::find(key).and_then(|e| {
+/// `Not found: drawn as Tag` words for a dangling choice of `key` of `cat`.
+fn words(doc: &Document, registry: &Registry, cat: &Catalogue, key: &str, value: &str, whose: &str) -> String {
+    let next = registry.find(key).map(|e| {
         let id = ecad_model::registry::styles::chosen(doc, e, ecad_model::registry::Scope::project());
-        catalogue_of(key).map(|c| ecad_model::registry::styles::name(doc, crate::styles::catalogue(c), &id))
+        ecad_model::registry::styles::name(doc, cat, &id)
     });
-    let one = catalogue_of(key).map_or("Style", |c| crate::styles::catalogue(c).one);
     match next {
-        Some(n) => format!("{whose}: {one} {value:?} not found; drawn as {n}"),
-        None => format!("{whose}: {one} {value:?} not found"),
+        Some(n) => format!("{whose}: {} {value:?} not found; drawn as {n}", cat.one),
+        None => format!("{whose}: {} {value:?} not found", cat.one),
     }
 }
 
@@ -111,18 +115,18 @@ impl crate::checks::CheckSource for StyleRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document) -> Vec<Check> {
-        rows(doc)
+    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check> {
+        rows(doc, registry)
     }
 }
 
 /// Every style row of `doc`.
-pub fn rows(doc: &Document) -> Vec<Check> {
+pub fn rows(doc: &Document, registry: &Registry) -> Vec<Check> {
     let mut out = Vec::new();
     // One drawing order for the rows' go-to places: the book is built at most once.
     let mut places = ecad_model::naming::numbering::Places::new(doc);
     // A built-in default that failed to load. Never in a tested build.
-    if let Some(first) = crate::defaults::data::DATA.problems().first() {
+    if let Some(first) = registry.problems().next() {
         out.push(Check {
             kind: Kind::DefaultsDamaged,
             page: None,
@@ -134,8 +138,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     }
     // Two categories default for one potential.
     for (pot, ids) in &crate::styles::wire::WireDraws::new(doc).twice {
-        let names: Vec<String> =
-            ids.iter().map(|id| ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id)).collect();
+        let names: Vec<String> = ids.iter().map(|id| ecad_model::registry::styles::name(doc, &crate::styles::wire::CATALOGUE, id)).collect();
         let shown = doc.settings().wiring.potential(pot).map_or_else(|| pot.clone(), |p| p.name.clone());
         out.push(Check {
             kind: Kind::CategoryPotentialTwice,
@@ -148,7 +151,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     }
     // A category on the BOM (a part number) with no allowance.
     for row in ecad_model::registry::styles::rows(doc, &crate::styles::wire::CATALOGUE) {
-        let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &row.id, k, None);
+        let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::wire::CATALOGUE, &row.id, k, None);
         let has_part = f("part_number").is_some_and(|r| crate::styles::wire::filled(&r).is_some());
         if has_part && f("allowance").is_some_and(|r| r.number() <= 0.0) {
             out.push(Check {
@@ -165,7 +168,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     for (value, key, o) in doc.style_choices() {
         if key == ecad_model::connectivity::wiring::WIRE_CATEGORY {
             if let ObjectRef::Wire(c) = o
-                && dangling(doc, ecad_model::StyleCatalogue::Wire, value)
+                && dangling(doc, &crate::styles::wire::CATALOGUE, value)
             {
                 let page = ecad_model::naming::numbering::rep_anchor_in(&mut places, ecad_model::Subject::Wire(c)).map(|(p, _)| p);
                 out.push(Check { kind: Kind::CategoryUnknown, page, at: None, object: Object::Wire(c), which: String::new(), fix: None });
@@ -176,7 +179,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         if key == ecad_model::document::sheet::PAGE_TYPE_KEY {
             continue;
         }
-        let Some(cat) = catalogue_of(key) else { continue };
+        let Some(cat) = catalogue_of(registry, key) else { continue };
         if !dangling(doc, cat, value) {
             continue;
         }
@@ -193,30 +196,29 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             ObjectRef::Cable(k) => (Object::Cable(k), None, crate::cables::cable_title(doc, k)),
             _ => continue,
         };
-        out.push(Check { kind: Kind::StyleUnknown, page, at: None, object, which: words(doc, key, value, &whose), fix: None });
+        out.push(Check { kind: Kind::StyleUnknown, page, at: None, object, which: words(doc, registry, cat, key, value, &whose), fix: None });
     }
     // A location box's own style naming no location style (boxes are few: one pass).
+    let location = registry.catalogue(ecad_model::StyleCatalogue::Location);
     for (a, x) in doc.aids() {
         let Some(value) = x.as_box().and_then(|b| b.style.as_ref()).map(StyleRef::text) else { continue };
-        if !dangling(doc, ecad_model::StyleCatalogue::Location, &value) {
-            continue;
-        }
+        let Some(location) = location.filter(|c| dangling(doc, c, &value)) else { continue };
         let page = doc.representations_of(ecad_model::Subject::Aid(*a)).next().map(|(_, r)| r.page);
-        let which = words(doc, "location.style", &value, "A location box");
+        let which = words(doc, registry, location, "location.style", &value, "A location box");
         out.push(Check { kind: Kind::StyleUnknown, page, at: None, object: Object::Aid(*a), which, fix: None });
     }
     // Dangling choices of the project and the standard.
     let level = |props: &Properties, whose: &str, out: &mut Vec<Check>| {
         for (key, value) in props.iter().filter(|(k, _)| is_choice_key(k)) {
-            let Some(cat) = catalogue_of(key) else { continue };
+            let Some(cat) = catalogue_of(registry, key) else { continue };
             if dangling(doc, cat, value) {
                 out.push(Check {
                     kind: Kind::StyleUnknown,
                     page: None,
                     at: None,
                     object: Object::None,
-                    which: words(doc, key, value, whose),
-                    fix: Some(Fix::OpenStandards(cat)),
+                    which: words(doc, registry, cat, key, value, whose),
+                    fix: Some(Fix::OpenStandards(cat.catalogue)),
                 });
             }
         }

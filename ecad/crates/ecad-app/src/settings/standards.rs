@@ -121,7 +121,7 @@ impl Default for StandardsView {
         table.empty = "No project is open.";
         let cats = CATALOGUES
             .iter()
-            .map(|(w, _, id)| (ecad_electrical::styles::catalogue(*w), *id))
+            .filter_map(|(w, _, id)| Some((ecad_drawing_style::REGISTRY.catalogue(*w)?, *id)))
             .map(|(c, id)| {
                 let mut tb = Table::new(id, c.plural);
                 tb.empty = "No project is open.";
@@ -312,9 +312,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     ui.painter().vline(list.right() - 0.5, list.y_range(), line);
     let mut tabs: Vec<(String, &str)> = vec![("All defaults".into(), CATALOGUE_DEFAULTS)];
     for (w, name, _) in CATALOGUES {
-        tabs.push((ecad_electrical::styles::catalogue(*w).plural.to_string(), name));
+        if let Some(c) = ecad_drawing_style::REGISTRY.catalogue(*w) {
+            tabs.push((c.plural.to_string(), name));
+        }
     }
-    let defaults_n = ecad_electrical::defaults::all().count();
+    let defaults_n = ecad_drawing_style::REGISTRY.entries().count();
     let mut choose = None;
     let mut y = list.top() + space::S;
     for (i, (label, name)) in tabs.into_iter().enumerate() {

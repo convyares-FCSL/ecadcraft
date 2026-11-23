@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 # The strips bench calls the terminal rules directly.
 ecad-electrical = { workspace = true }
+ecad-drawing-style = { workspace = true }
 ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }

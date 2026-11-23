@@ -13,9 +13,9 @@ use ecad_model::objects::styles::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, 
 use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
-use crate::defaults::{self};
 use crate::error::CmdError;
 use crate::styles::{self};
+use ecad_model::registry::data::Registry;
 use ecad_model::registry::styles::{Catalogue, Layer};
 use ecad_model::registry::{Entry, Kind};
 
@@ -34,26 +34,26 @@ pub(crate) const MAX_FIELDS_PER_CALL: usize = ecad_model::objects::styles::MAX_F
 // Parameters
 
 /// `No catalogue "x"; the catalogues are text, location, …`
-fn no_catalogue(w: &str) -> CmdError {
-    CmdError::refused(format!("No catalogue {w:?}; the catalogues are {}.", styles::words()))
+fn no_catalogue(registry: &Registry, w: &str) -> CmdError {
+    CmdError::refused(format!("No catalogue {w:?}; the catalogues are {}.", styles::words(registry)))
 }
 
 /// The catalogue `word` names (spaces around ignored).
 ///
 /// # Errors
 /// No catalogue has that word.
-pub fn catalogue(word: &str) -> Result<&'static Catalogue, CmdError> {
+pub fn catalogue(registry: &Registry, word: &str) -> Result<&'static Catalogue, CmdError> {
     let w = word.trim();
-    <ecad_model::StyleCatalogue as ecad_model::Word>::parse(w).map(styles::catalogue).ok_or_else(|| no_catalogue(w))
+    <ecad_model::StyleCatalogue as ecad_model::Word>::parse(w).and_then(|c| registry.catalogue(c)).ok_or_else(|| no_catalogue(registry, w))
 }
 
 /// The catalogue a call that may name none names (`promote {key}` names none).
 ///
 /// # Errors
 /// None named, or no catalogue has that word.
-pub(crate) fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogue, CmdError> {
-    let w = word.ok_or_else(|| CmdError::input(format!("`catalogue` is required: {}.", styles::words())))?;
-    catalogue(w)
+pub(crate) fn required_catalogue(registry: &Registry, word: Option<&str>) -> Result<&'static Catalogue, CmdError> {
+    let w = word.ok_or_else(|| CmdError::input(format!("`catalogue` is required: {}.", styles::words(registry))))?;
+    catalogue(registry, w)
 }
 
 /// The style a call names: `id`, else `name` (each trimmed).
@@ -62,7 +62,7 @@ pub(crate) fn required_catalogue(word: Option<&str>) -> Result<&'static Catalogu
 /// Neither given, or no style of the catalogue has it (or two share the name).
 pub fn target(doc: &Document, cat: &Catalogue, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::input("Name the style: `id` or `name`."))?;
-    styles::find(doc, cat.catalogue, t)
+    styles::find(doc, cat, t)
 }
 
 /// The layer a `setstyle` call writes: "project" (the default) or "standard".
@@ -118,7 +118,7 @@ fn field_value(doc: &Document, f: &ecad_model::registry::styles::Field, v: Field
         FieldInput::Value(s) => s.trim().to_string(),
     };
     if let Kind::Style(c) = f.kind {
-        return styles::find(doc, c.catalogue, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
+        return styles::find(doc, c, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
     }
     let parsed = match f.kind {
         Kind::Flag => ecad_model::registry::parse_input(f.kind, &typed),
@@ -227,7 +227,7 @@ pub(crate) fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: 
             }
         }
     };
-    for (key, o) in styles::explicit_users(doc, cat.catalogue, id) {
+    for (key, o) in styles::explicit_users(doc, cat, id) {
         put(o, key);
     }
     for e in (cat.choices)() {
@@ -351,7 +351,9 @@ fn standard_name(name: &str) -> Result<&str, CmdError> {
 /// # Errors
 /// A name that does not read, a second standard, no standard to rename or remove, or a user of
 /// a standard-only style with no (or no valid) replacement.
-pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChange) -> Result<Option<StandardPlan>, CmdError> {
+pub(crate) fn plan_standard(
+    doc: &Document, registry: &Registry, ids: &mut IdAllocator, change: StandardChange,
+) -> Result<Option<StandardPlan>, CmdError> {
     let plan = |ops, label, message| Ok(Some(StandardPlan { ops, label, message }));
     match change {
         StandardChange::New(name) => {
@@ -402,12 +404,12 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
             let cur = doc.standard().ok_or(CmdError::refused(STANDARD_FIRST))?;
             let mut ops = Vec::new();
             // Explicit users of a standard-only own style need a replacement.
-            for cat in styles::CATALOGUES {
+            for cat in registry.catalogues() {
                 for (id, _) in ecad_model::registry::styles::records(doc, StyleLayer::Standard, cat.catalogue) {
                     if cat.builtin(id).is_some() || ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, id).is_some() {
                         continue;
                     }
-                    let users = styles::explicit_users(doc, cat.catalogue, id);
+                    let users = styles::explicit_users(doc, cat, id);
                     let boxes = styles::box_users(doc, cat.catalogue, id).len();
                     if users.is_empty() && boxes == 0 && !chosen_by_levels(doc, cat, id) {
                         continue;
@@ -416,17 +418,17 @@ pub(crate) fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: Stand
                         let (who, verb) = who_uses(&users, boxes);
                         return Err(CmdError::refused(format!(
                             "{who} {verb} {}, which only the standard has; give replace_with {{\"{}\": style}}.",
-                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id),
+                            ecad_model::registry::styles::name(doc, cat, id),
                             cat.catalogue
                         )));
                     };
-                    let to = styles::find(doc, cat.catalogue, w)?;
+                    let to = styles::find(doc, cat, w)?;
                     let standard_only =
                         cat.builtin(&to).is_none() && ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, &to).is_none();
                     if standard_only {
                         return Err(CmdError::refused(format!(
                             "{} is the standard's too; replace it with a built-in or a project style.",
-                            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &to)
+                            ecad_model::registry::styles::name(doc, cat, &to)
                         )));
                     }
                     ops.extend(rewrite_users(doc, cat, id, &to));
@@ -496,7 +498,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
         // A catalogue with no built-in styles (cable types, rating tables) starts an
         // empty style.
         let from = match copy_of {
-            Some(t) => Some(styles::find(doc, cat.catalogue, &t)?),
+            Some(t) => Some(styles::find(doc, cat, &t)?),
             None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
         };
         let id = StyleRef::Own(ids.fresh::<u128>());
@@ -513,7 +515,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
             }
         }
         copied.extend(fields.iter().cloned());
-        let rec = styles::with_fields(cat.catalogue, None, Some(&name), &copied)?;
+        let rec = styles::with_fields(cat, None, Some(&name), &copied)?;
         styles::check_record(doc, cat, &id, layer, &rec)?;
         let op = Op::SetStyle { layer, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) };
         return Ok(StylePlan { ops: vec![op], id, label: format!("New {} {name}", cat.one.to_lowercase()) });
@@ -548,7 +550,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
             continue;
         }
         let before = ecad_model::registry::styles::record(doc, l, cat.catalogue, &id).cloned();
-        let rec = styles::with_fields(cat.catalogue, before.as_ref(), n, &f)?;
+        let rec = styles::with_fields(cat, before.as_ref(), n, &f)?;
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
         let keep = !rec.body.is_empty() || rec.name.is_some();
@@ -565,13 +567,11 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
     let changes: Vec<String> = fields
         .iter()
         .map(|(k, v)| {
-            let was = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(cat.catalogue), &id, k, None)
-                .map(|r| r.text())
-                .unwrap_or_default();
+            let was = ecad_model::registry::styles::field_of(doc, cat, &id, k, None).map(|r| r.text()).unwrap_or_default();
             format!("{k} {was} → {}", v.as_deref().unwrap_or("(reset)"))
         })
         .collect();
-    let name = rename.map_or_else(|| ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id), str::to_string);
+    let name = rename.map_or_else(|| ecad_model::registry::styles::name(doc, cat, &id), str::to_string);
     let label = if changes.is_empty() { format!("{} {name}", cat.one) } else { format!("{} {name}: {}", cat.one, changes.join(", ")) };
     Ok(StylePlan { ops, id, label })
 }
@@ -599,8 +599,8 @@ pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace
     if id.is_builtin() {
         return Err(CmdError::refused(BUILTIN_KEPT));
     }
-    let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id);
-    let users = styles::explicit_users(doc, cat.catalogue, &id);
+    let name = ecad_model::registry::styles::name(doc, cat, &id);
+    let users = styles::explicit_users(doc, cat, &id);
     let boxes = styles::box_users(doc, cat.catalogue, &id).len();
     let mut ops = Vec::new();
     if !users.is_empty() || boxes > 0 || chosen_by_levels(doc, cat, &id) {
@@ -612,7 +612,7 @@ pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace
             let (who, verb) = who_uses(&users, boxes);
             return Err(CmdError::refused(format!("{who} {verb} {name}; give replace_with.")));
         };
-        let to = styles::find(doc, cat.catalogue, w)?;
+        let to = styles::find(doc, cat, w)?;
         if to == id {
             return Err(CmdError::refused("replace_with must be another style."));
         }
@@ -633,8 +633,8 @@ pub(crate) fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace
 ///
 /// # Errors
 /// No default has that key.
-pub(crate) fn promote_entry(key: &str) -> Result<&'static Entry, CmdError> {
-    defaults::find(key).ok_or_else(|| CmdError::refused(format!("No default \"{key}\".")))
+pub(crate) fn promote_entry(registry: &Registry, key: &str) -> Result<&'static Entry, CmdError> {
+    registry.find(key).ok_or_else(|| CmdError::refused(format!("No default \"{key}\".")))
 }
 
 /// The project's standard, which a promotion needs.
@@ -681,15 +681,12 @@ pub(crate) fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef)
         ));
     }
     if ecad_model::registry::styles::record(doc, StyleLayer::Standard, cat.catalogue, id).is_some() {
-        return Err(CmdError::refused(format!(
-            "{} is already in the standard.",
-            ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id)
-        )));
+        return Err(CmdError::refused(format!("{} is already in the standard.", ecad_model::registry::styles::name(doc, cat, id))));
     }
     let rec = ecad_model::registry::styles::record(doc, StyleLayer::Project, cat.catalogue, id)
         .cloned()
         .ok_or(CmdError::refused("Only a project style can be promoted."))?;
-    let name = ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), id);
+    let name = ecad_model::registry::styles::name(doc, cat, id);
     let ops = vec![
         Op::SetStyle { layer: StyleLayer::Project, catalogue: cat.catalogue, id: id.clone(), before: Some(rec.clone()), after: None },
         Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) },
@@ -737,7 +734,7 @@ pub(crate) fn style_json(doc: &Document, cat: &Catalogue, row: &ecad_model::regi
     }
     // A record holds only its catalogue's typed fields; none is unknown.
     if users {
-        let c = styles::users(doc, cat.catalogue, &row.id);
+        let c = styles::users(doc, cat, &row.id);
         v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
     }
     v
@@ -890,16 +887,16 @@ impl Generic for StylesParams {
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
-    fn check(&self) -> Result<(), CmdError> {
-        self.catalogue.as_deref().map(catalogue).transpose().map(|_| ())
+    fn check(&self, registry: &Registry) -> Result<(), CmdError> {
+        self.catalogue.as_deref().map(|w| catalogue(registry, w)).transpose().map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let only = self.catalogue.as_deref().map(catalogue).transpose()?;
+        let only = self.catalogue.as_deref().map(|w| catalogue(cx.registry, w)).transpose()?;
         let users = self.users.unwrap_or(false);
         let doc = cx.doc;
         let mut out = Vec::new();
-        for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
+        for cat in cx.registry.catalogues().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
             for row in ecad_model::registry::styles::rows(doc, cat) {
                 out.push(style_json(doc, cat, &row, users));
             }
@@ -935,7 +932,7 @@ impl Generic for StandardParams {
             (None, None, Some(src)) => StandardChange::Copy(src),
             (None, None, None) => StandardChange::Remove(self.replace_with.unwrap_or_default()),
         };
-        let Some(plan) = plan_standard(cx.doc, cx.ids, change)? else {
+        let Some(plan) = plan_standard(cx.doc, cx.registry, cx.ids, change)? else {
             return Ok(Outcome::answer(json!({"changed": false, "standard": standard_json(cx.doc)})));
         };
         let message = plan.message;
@@ -949,12 +946,12 @@ impl Generic for SetstyleParams {
     const HELP: &'static str = "{catalogue, id? | name?, new?: true, copy_of?: style, rename?: name, fields?: {key: value|null}, \
 layer?: \"project\"|\"standard\"} (one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
-        catalogue(&self.catalogue).map(|_| ())
+    fn check(&self, registry: &Registry) -> Result<(), CmdError> {
+        catalogue(registry, &self.catalogue).map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let cat = catalogue(&self.catalogue)?;
+        let cat = catalogue(cx.registry, &self.catalogue)?;
         let edit = StyleEdit {
             new: self.new == Some(true),
             id: self.id,
@@ -971,7 +968,7 @@ layer?: \"project\"|\"standard\"} (one transaction)";
             let row =
                 ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| ecad_model::registry::styles::Row {
                     id: id.clone(),
-                    name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat.catalogue), &id),
+                    name: ecad_model::registry::styles::name(doc, cat, &id),
                     layer: Layer::Project,
                     overridden: false,
                 });
@@ -987,12 +984,12 @@ impl Generic for DeletestyleParams {
     const TITLE: &'static str = "Delete Style";
     const HELP: &'static str = "{catalogue, id | name, replace_with?: style} (own styles only; its users move to replace_with)";
 
-    fn check(&self) -> Result<(), CmdError> {
-        catalogue(&self.catalogue).map(|_| ())
+    fn check(&self, registry: &Registry) -> Result<(), CmdError> {
+        catalogue(registry, &self.catalogue).map(|_| ())
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let cat = catalogue(&self.catalogue)?;
+        let cat = catalogue(cx.registry, &self.catalogue)?;
         let doc = cx.doc;
         let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
         let plan = plan_delete(doc, cat, id, self.replace_with.as_deref())?;
@@ -1007,17 +1004,17 @@ impl Generic for PromoteParams {
     const TITLE: &'static str = "Promote to Standard";
     const HELP: &'static str = "{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, registry: &Registry) -> Result<(), CmdError> {
         match self.key.as_deref().map(str::trim) {
-            Some(key) => promote_entry(key).map(|_| ()),
-            None => required_catalogue(self.catalogue.as_deref()).map(|_| ()),
+            Some(key) => promote_entry(registry, key).map(|_| ()),
+            None => required_catalogue(registry, self.catalogue.as_deref()).map(|_| ()),
         }
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let doc = cx.doc;
         if let Some(key) = self.key.as_deref().map(str::trim) {
-            let entry = promote_entry(key)?;
+            let entry = promote_entry(cx.registry, key)?;
             needs_standard(doc)?;
             if !entry.allows(ecad_model::registry::Level::Standard) {
                 return Err(CmdError::refused(crate::styles::commands::defaults::level_refused(entry, ecad_model::registry::Level::Standard)));
@@ -1032,7 +1029,7 @@ impl Generic for PromoteParams {
             )?);
             return Ok(Outcome::edit(format!("Promote {}", entry.label), ops, json!({"changed": true, "key": entry.key, "value": text})));
         }
-        let cat = required_catalogue(self.catalogue.as_deref())?;
+        let cat = required_catalogue(cx.registry, self.catalogue.as_deref())?;
         needs_standard(doc)?;
         let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
         let (ops, name) = plan_promote_style(doc, cat, &id)?;

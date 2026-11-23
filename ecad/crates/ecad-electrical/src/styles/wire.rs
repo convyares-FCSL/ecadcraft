@@ -161,6 +161,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: Some(ecad_model::registry::styles::Typed { field: typed_field, values: typed_values }),
     adjust: None,
+    set: set_body,
+    implicit,
+    reach,
 };
 
 /// The value field `key` of a wire style record holds.
@@ -198,6 +201,34 @@ pub struct Data {
 /// Read the built-in data.
 ///
 /// # Errors
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Wire(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// Conductors whose resolved category is `id` and that have none of their own.
+fn implicit(doc: &Document, _: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    let draws = WireDraws::new(doc);
+    doc.wires()
+        .iter()
+        .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| ecad_model::registry::styles::exists(doc, &CATALOGUE, t)))
+        .filter(|(c, _)| draws.category(doc, **c).0.as_ref() == Some(id))
+        .count()
+}
+
+/// A category that is (or becomes, or was) a potential's default reaches every net of that
+/// potential, on any page (there is no potential index): every page.
+fn reach(doc: &Document, op: &ecad_model::Op, id: &StyleRef) -> ecad_model::registry::styles::Reach {
+    use ecad_model::registry::styles::Reach;
+    let ecad_model::Op::SetStyle { before, after, .. } = op else { return Reach::Every };
+    let names_potential = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.wire()).is_some_and(|w| w.potential.is_some());
+    let default = WireDraws::new(doc).by_potential_ids().any(|x| x == id);
+    if default || names_potential(before) || names_potential(after) { Reach::Every } else { Reach::Also(std::collections::BTreeSet::new()) }
+}
+
 #[cfg(test)]
 const DATA_FILE: &str = "wire_types.toml";
 
@@ -433,7 +464,7 @@ impl WireDraws {
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
         let own = doc.wires().get(&c).and_then(|x| x.wire_type.clone());
-        if let Some(id) = own.filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id)) {
+        if let Some(id) = own.filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::wire::CATALOGUE, id)) {
             return (Some(id), CategoryFrom::Own);
         }
         let conn = doc.connectivity();
@@ -451,9 +482,7 @@ impl WireDraws {
             Source::Standard => CategoryFrom::Standard,
             _ => CategoryFrom::None,
         };
-        match StyleRef::parse(&r.text())
-            .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id))
-        {
+        match StyleRef::parse(&r.text()).filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::wire::CATALOGUE, id)) {
             Some(id) => (Some(id), from),
             None => (None, CategoryFrom::None),
         }
@@ -464,11 +493,8 @@ impl WireDraws {
         let (category, from) = self.category(doc, c);
         let wire = doc.wires().get(&c);
         let core = !doc.cables_of(c).is_empty();
-        let f = |key: &str| {
-            category
-                .as_ref()
-                .and_then(|id| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, key, None))
-        };
+        let f =
+            |key: &str| category.as_ref().and_then(|id| ecad_model::registry::styles::field_of(doc, &crate::styles::wire::CATALOGUE, id, key, None));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
         let own_colours = wire.and_then(|w| w.colours.clone()).map(|c| (c, Source::Object));
         let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));

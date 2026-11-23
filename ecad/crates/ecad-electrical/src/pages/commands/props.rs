@@ -286,7 +286,7 @@ clears; no fields: the current values, read only)";
     const PAGES: Pages = Pages::ReadAnywhere;
     const STATE: State = State::Conflicts;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         if self.generated.is_some() {
             return Err(CmdError::refused(generated::KIND_FIXED));
         }

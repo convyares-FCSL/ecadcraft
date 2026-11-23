@@ -16,7 +16,7 @@ use ecad_model::document::strict::{UnknownWord, WordPlace};
 use ecad_model::{Document, Properties, RepresentationId};
 use {ecad_model::naming::keys, ecad_model::naming::words};
 
-use crate::defaults::{self};
+use ecad_model::registry::data::Registry;
 use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
 /// Every unknown word in `doc`, in a stable order (by place, then setting).
@@ -24,28 +24,30 @@ use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 /// # Example
 /// ```
 /// use ecad_model::Document;
+/// use ecad_model::registry::data::Registry;
+/// static REGISTRY: Registry = Registry::new(&[&ecad_electrical::defaults::data::DATA]);
 /// let mut doc = Document::default();
-/// assert!(ecad_electrical::checks::words_check::check(&doc).is_empty());
-/// doc.edit_parts(|parts| parts.display.insert("text.tag.show".into(), "maybe".into()));
-/// let found = ecad_electrical::checks::words_check::check(&doc);
+/// assert!(ecad_electrical::checks::words_check::check(&doc, &REGISTRY).is_empty());
+/// doc.edit_parts(|parts| parts.display.insert("wire.join".into(), "maybe".into()));
+/// let found = ecad_electrical::checks::words_check::check(&doc, &REGISTRY);
 /// assert_eq!(found.len(), 1);
 /// assert!(found[0].to_string().contains("`maybe`"));
 /// ```
-pub fn check(doc: &Document) -> Vec<UnknownWord> {
+pub fn check(doc: &Document, registry: &Registry) -> Vec<UnknownWord> {
     let mut out = Vec::new();
-    bag(doc.display(), WordPlace::Project, Level::Project, &mut out);
+    bag(registry, doc.display(), WordPlace::Project, Level::Project, &mut out);
     if let Some(std) = &doc.standard() {
-        bag(&std.values, WordPlace::Standard, Level::Standard, &mut out);
+        bag(registry, &std.values, WordPlace::Standard, Level::Standard, &mut out);
     }
     for (id, p) in doc.pages() {
-        bag(&p.display, WordPlace::Page(*id), Level::Page, &mut out);
+        bag(registry, &p.display, WordPlace::Page(*id), Level::Page, &mut out);
     }
     for (id, c) in doc.devices() {
-        bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
+        bag(registry, &c.properties, WordPlace::Device(*id), Level::Object, &mut out);
         old_kind(&c.properties, WordPlace::Device(*id), &mut out);
     }
     for (id, c) in doc.wires() {
-        bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
+        bag(registry, &c.display, WordPlace::Wire(*id), Level::Object, &mut out);
     }
     for (id, c) in doc.cables() {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
@@ -66,11 +68,11 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
 }
 
 /// The unknown words of one property bag held at `level`.
-fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<UnknownWord>) {
+fn bag(registry: &Registry, props: &Properties, place: WordPlace, level: Level, out: &mut Vec<UnknownWord>) {
     reserved(props, place, out);
     flags(props, place, out);
     for (key, value) in props {
-        let Some((entry, level)) = entry_of(key, level) else { continue };
+        let Some((entry, level)) = entry_of(registry, key, level) else { continue };
         let words = match entry.kind {
             Kind::Choice(words) => words,
             // Stored strictly as `yes` or `no`.
@@ -126,8 +128,8 @@ fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
 
 /// The registry entry stored under `key` at `level`: the entry itself, or on an object a
 /// symbol's own value of it (`text.<rep>.tag.show`, [`ecad_model::registry::symbol_key`]).
-fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
-    if let Some(e) = defaults::find(key) {
+fn entry_of(registry: &Registry, key: &str, level: Level) -> Option<(&'static Entry, Level)> {
+    if let Some(e) = registry.find(key) {
         return Some((e, level));
     }
     if level != Level::Object {
@@ -140,5 +142,5 @@ fn entry_of(key: &str, level: Level) -> Option<(&'static Entry, Level)> {
         Some(rest) => format!("{area}.{rest}"),
         None => area.to_string(),
     };
-    defaults::find(&generic).map(|e| (e, Level::Object))
+    registry.find(&generic).map(|e| (e, Level::Object))
 }

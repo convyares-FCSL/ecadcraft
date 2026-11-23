@@ -26,9 +26,9 @@ fn a_box_draws_in_its_own_style_and_is_its_user() {
     assert_eq!(d.aids()[&b].as_box().and_then(|x| x.style.clone()), Some(field.clone()), "stored by ID");
     assert_eq!(styles::location::box_draw(&d, b).linetype, styles::location::linetype("continuous"), "drawn in its own");
     assert_eq!(styles::box_users(&d, StyleCatalogue::Location, &field), vec![b]);
-    let c = styles::users(&d, StyleCatalogue::Location, &field);
+    let c = styles::users(&d, &styles::location::CATALOGUE, &field);
     assert_eq!((c.explicit, c.implicit), (1, 0));
-    let builtin = styles::users(&d, StyleCatalogue::Location, &StyleRef::Builtin("box".into()));
+    let builtin = styles::users(&d, &styles::location::CATALOGUE, &StyleRef::Builtin("box".into()));
     assert_eq!(builtin.implicit, 0, "a box with its own style is not the project style's");
 
     // Deleting a style a box uses asks for a replacement, then moves the box to it.

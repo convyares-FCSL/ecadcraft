@@ -618,7 +618,7 @@ impl Scope {
             // resolving to it: its explicit users, the wires of the potentials it names (before
             // and after), and every wire when it is the project's or standard's choice.
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Wire, id, before, after, .. } => {
-                for (_, o) in crate::styles::explicit_users(doc, ecad_model::StyleCatalogue::Wire, id) {
+                for (_, o) in crate::styles::explicit_users(doc, &crate::styles::wire::CATALOGUE, id) {
                     if let ObjectRef::Wire(c) = o {
                         self.wires.insert(c);
                     }
@@ -628,9 +628,7 @@ impl Scope {
                         self.potentials.insert(pot.as_str().to_lowercase());
                     }
                 }
-                if let Some(r) =
-                    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id, "potential", None)
-                {
+                if let Some(r) = ecad_model::registry::styles::field_of(doc, &crate::styles::wire::CATALOGUE, id, "potential", None) {
                     self.potentials.insert(r.text().trim().to_lowercase());
                 }
                 if ecad_model::registry::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, ecad_model::registry::Scope::project()) == **id

@@ -450,7 +450,7 @@ impl Generic for SetlocationParams {
 (one transaction; a code not in the project's list adds its entry; null clears it)";
     const STATE: State = State::Conflicts;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         setlocation_target(self).map(|_| ())
     }
 
@@ -467,7 +467,7 @@ impl Generic for SetfunctionParams {
     const HELP: &'static str = "{component: id | devices: [id], value: code | null} (as setlocation with aspect \"function\")";
     const STATE: State = State::Conflicts;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         if self.r#type.is_some() {
             return Err(CmdError::refused(NO_FUNCTION_OVERRIDES));
         }
@@ -504,7 +504,7 @@ impl Generic for ConflictsParams {
     const PAGES: Pages = Pages::ReadAnywhere;
     const STATE: State = State::Conflicts;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         conflicts_pick(self).map(|_| ())
     }
 

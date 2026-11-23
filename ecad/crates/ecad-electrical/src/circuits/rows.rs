@@ -139,8 +139,8 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
 /// Whether a subject's category or cable type has a rated current (the **Use Datasheet** fix).
 pub(super) fn has_datasheet(doc: &Document, s: RatedSubject) -> bool {
     match s {
-        RatedSubject::Wire(c) => sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireDraws::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
-        RatedSubject::Cable(k) => sheet(doc, ecad_model::StyleCatalogue::Cable, cable::of(doc, k).as_ref()).rated.is_some(),
+        RatedSubject::Wire(c) => sheet(doc, &crate::styles::wire::CATALOGUE, wire::WireDraws::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
+        RatedSubject::Cable(k) => sheet(doc, &crate::styles::cable::CATALOGUE, cable::of(doc, k).as_ref()).rated.is_some(),
     }
 }
 

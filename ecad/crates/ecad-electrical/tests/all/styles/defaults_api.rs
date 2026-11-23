@@ -96,7 +96,7 @@ fn getter_ignores_hostile_stored_values() {
 fn registry_keys_unique_builtins_valid_and_project_level_allowed() {
     let mut seen = std::collections::BTreeSet::new();
     let d = doc_with(&[]);
-    for e in defaults::all() {
+    for e in ecad_electrical::defaults::data::DATA.entries() {
         assert!(seen.insert(e.key), "duplicate {}", e.key);
         assert!(e.key.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')), "{}", e.key);
         // Brief 054 (design 054 §2.3): a page's type is a property of the page, never a project

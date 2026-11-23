@@ -2,11 +2,11 @@
 
 use std::collections::BTreeSet;
 
+use ecad_electrical::connectors;
 use ecad_model::Word;
 use ecad_model::document::view::PageSet;
 use ecad_model::naming::keys::{self, Area};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
-use {ecad_electrical::connectors, ecad_electrical::defaults};
 
 /// C3: every fixed key and every defaults entry classifies to an area other than `Free`, and the
 /// registry's area words, in order, are the 17 written out before design 064.
@@ -16,7 +16,7 @@ fn areas_cover_the_keys() {
         assert_ne!(keys::area_of(k.key.as_str()), Area::Free, "{}", k.key);
         assert_eq!(keys::area_of(k.key.as_str()), k.area, "{}", k.key);
     }
-    for e in defaults::all() {
+    for e in ecad_drawing_style::REGISTRY.entries() {
         assert_ne!(keys::area_of(e.key), Area::Free, "{}", e.key);
     }
     // The registry's words as they were written out before design 064 (`ecad_model::registry::AREAS` is now
@@ -95,6 +95,7 @@ fn the_tree_feed_follows_its_update_map() {
     for (what, ops, want) in cases {
         let mut views = Views::new(EngineInputs {
             look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth)),
+            registry: &ecad_drawing_style::REGISTRY,
         });
         let pending = views.begin(&doc, &ops);
         let changes = views.finish(&doc, &ops, pending);
@@ -298,7 +299,8 @@ fn the_connectors_view_follows_the_document() {
     h.cmdline("r");
     let log = h.p(|p| p.ledger.log().to_vec());
     let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
-    let mut views = ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics });
+    let mut views =
+        ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
     let mut doc = Document::default();
     views.rebuild(&doc);
     // The view on its own, for its pages: the pipeline's `Changes.pages` holds every view's.
@@ -426,7 +428,7 @@ fn the_frame_view_follows_its_update_map() {
     let metrics = std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(ecad_electrical::styles::text_style::fonts::FixedWidth));
     for (what, ops, want) in cases {
         let after = crate::common::applied(&doc, &ops);
-        let mut views = Views::new(EngineInputs { look: metrics.clone() });
+        let mut views = Views::new(EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY });
         let pending = views.begin(&doc, &ops);
         assert!(!views.finish(&after, &ops, pending).frame_stale, "{what}: no frame shown");
         views.frame_mut().show(first, input.clone());
@@ -441,7 +443,10 @@ fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
     use ecad_electrical::views::{EngineInputs, Views};
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
     let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), FrameText::with(doc, &metrics));
-    let mut views = Views::new(EngineInputs { look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)) });
+    let mut views = Views::new(EngineInputs {
+        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)),
+        registry: &ecad_drawing_style::REGISTRY,
+    });
     views.frame_mut().show(page, input);
     let after = crate::common::applied(doc, ops);
     let pending = views.begin(doc, ops);
@@ -508,7 +513,10 @@ fn a_dropped_pending_leaves_the_frame_alone() {
     let doc = h.doc();
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
     let input = FrameInput::with(&doc, page, &ecad_model::document::book::Book::of(&doc), FrameText::with(&doc, &metrics));
-    let mut views = Views::new(EngineInputs { look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)) });
+    let mut views = Views::new(EngineInputs {
+        look: std::sync::Arc::new(ecad_electrical::styles::text_style::fonts::Look(metrics)),
+        registry: &ecad_drawing_style::REGISTRY,
+    });
     views.frame_mut().show(page, input);
     let touching = [Op::SetProperty { object: ObjectRef::Page(page), key: "note".into(), before: None, after: Some("x".into()) }];
     drop(views.begin(&doc, &touching));

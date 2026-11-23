@@ -68,6 +68,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: None,
+    set: set_body,
+    implicit,
+    reach,
 };
 
 /// The value field `key` of a location style record holds; a label style naming no text style
@@ -119,12 +122,12 @@ pub(crate) fn box_style(doc: &Document, a: AidId) -> StyleRef {
 pub(crate) fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
     crate::locations::box_values(doc, a)
         .and_then(|b| b.style.as_ref())
-        .filter(|s| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Location), s))
+        .filter(|s| ecad_model::registry::styles::exists(doc, &crate::styles::location::CATALOGUE, s))
 }
 
 /// The look of location style `id`.
 pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> BoxDraw {
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Location), id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::location::CATALOGUE, id, k, None);
     let lt = f("line_type").map(|r| r.word()).unwrap_or("dashed");
     let mm = f("line_weight").map_or(0.25, |r| r.number());
     let lineweight = (mm * 100.0).round().clamp(0.0, 211.0) as i16;
@@ -176,4 +179,29 @@ pub fn set(l: &mut LocationStyle, key: &str, value: Option<&str>) -> Result<(), 
         _ => return Err(CmdError::refused(format!("Location styles have no field {key:?}."))),
     }
     Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Location(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// Boxes with no style of their own when the project's choice is `id`.
+fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    if ecad_model::registry::styles::chosen(doc, entry, ecad_model::registry::Scope::project()) != *id {
+        return 0;
+    }
+    doc.aids().iter().filter(|(a, x)| x.as_box().is_some() && own_style(doc, **a).is_none()).count()
+}
+
+/// The pages of the boxes drawn in style `id` of their own.
+fn reach(doc: &Document, _: &ecad_model::Op, id: &StyleRef) -> ecad_model::registry::styles::Reach {
+    let mut out = std::collections::BTreeSet::new();
+    for a in crate::styles::box_users(doc, ecad_model::StyleCatalogue::Location, id) {
+        out.extend(doc.representations_of(ecad_model::Subject::Aid(a)).map(|(_, r)| r.page));
+    }
+    ecad_model::registry::styles::Reach::Also(out)
 }

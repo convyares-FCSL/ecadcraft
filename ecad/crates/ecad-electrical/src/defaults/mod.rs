@@ -26,14 +26,10 @@ pub mod terminal_blocks;
 pub mod text;
 pub mod wires;
 
-/// Every entry of the electrical rules, in [`data::LISTS`] order.
-pub fn all() -> impl Iterator<Item = &'static Entry> {
-    data::DATA.entries()
-}
-
-/// The entry with this key.
+/// The electrical rules' entry with this key (the whole registry's is
+/// [`ecad_model::registry::data::Registry::find`]).
 pub fn find(key: &str) -> Option<&'static Entry> {
-    all().find(|e| e.key == key)
+    data::DATA.entries().find(|e| e.key == key)
 }
 
 /// What [`users`] counts for `entry`: `"devices"`, `"wires"` or `"pages"`.
@@ -73,7 +69,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     if let Kind::Style(cat) = entry.kind
         && let Some(id) = ecad_model::StyleRef::parse(&resolve(doc, entry, Scope::project()).text())
     {
-        let c = crate::styles::users(doc, cat.catalogue, &id);
+        let c = crate::styles::users(doc, cat, &id);
         return c.explicit + c.implicit;
     }
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
@@ -101,7 +97,7 @@ mod tests {
     #[test]
     fn keys_are_unique_and_well_formed() {
         let mut seen = std::collections::BTreeSet::new();
-        for e in all() {
+        for e in data::DATA.entries() {
             assert!(seen.insert(e.key), "duplicate key {}", e.key);
             assert!(key_ok(e.key), "bad key {}", e.key);
             assert!(!e.label.is_empty() && !e.group.is_empty(), "{} lacks words", e.key);
@@ -111,7 +107,7 @@ mod tests {
     #[test]
     fn every_builtin_is_valid_for_its_kind() {
         // Levels are per entry (an entry may declare fewer); only the built-in is always there.
-        for e in all() {
+        for e in data::DATA.entries() {
             assert!(e.accepts(&e.builtin()), "{}: built-in {:?} is not a valid {:?}", e.key, e.builtin(), e.kind);
             // The built-in, written as text, parses back to itself.
             let r = Resolved { value: e.builtin(), from: Source::Builtin };

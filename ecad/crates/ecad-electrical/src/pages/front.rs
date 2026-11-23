@@ -310,7 +310,7 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
             continue;
         }
         let f = |k: &str| {
-            ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), &row.id, k, None)
+            ecad_model::registry::styles::field_of(doc, &crate::styles::wire::CATALOGUE, &row.id, k, None)
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };
@@ -819,7 +819,7 @@ impl crate::checks::CheckSource for CoverRows {
     fn kept_on_pages_off(&self) -> bool {
         true
     }
-    fn checks(&self, doc: &Document) -> Vec<crate::checks::Check> {
+    fn checks(&self, doc: &Document, _registry: &ecad_model::registry::data::Registry) -> Vec<crate::checks::Check> {
         check_rows(doc)
     }
 }

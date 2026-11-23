@@ -639,7 +639,7 @@ pub trait CheckSource: Sync {
         false
     }
     /// Its rows, from scratch.
-    fn checks(&self, doc: &Document) -> Vec<Check>;
+    fn checks(&self, doc: &Document, registry: &ecad_model::registry::data::Registry) -> Vec<Check>;
 }
 
 /// The whole-project sources, in the order `Checks::build` asks them.
@@ -1032,8 +1032,10 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 
 /// Every check of the project with the report models already kept, measuring text with `m`
 /// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
-pub fn all_measured(doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextLook) -> Vec<Check> {
-    let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
+pub fn all_measured(
+    doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry,
+) -> Vec<Check> {
+    let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m, registry).rows().cloned().collect();
     rows.extend(reports.checks());
     sort(doc, rows)
 }

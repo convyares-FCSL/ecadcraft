@@ -188,7 +188,10 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::views::Views {
 ///
 /// [`Views::detached`]: ecad_electrical::views::Views::detached
 pub fn engine_views() -> ecad_electrical::views::Views {
-    ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: Arc::new(crate::styles::draw::LOOK) })
+    ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs {
+        look: Arc::new(crate::styles::draw::LOOK),
+        registry: &ecad_drawing_style::REGISTRY,
+    })
 }
 
 /// A new project's first page: titled and numbered `1`.

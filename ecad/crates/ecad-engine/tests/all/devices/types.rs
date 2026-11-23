@@ -112,7 +112,7 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
     assert!(!prefixes.contains_key(&PrefixOf::Project("float1".into())), "{prefixes:?}");
     assert_eq!(prefixes.get(&PrefixOf::Project("float2".into())).map(|p| p.to_string()), Some("S".into()));
     // Nothing names a project symbol that is not there: the open check finds nothing.
-    assert!(ecad_electrical::checks::words_check::check(&h.doc()).is_empty());
+    assert!(ecad_electrical::checks::words_check::check(&h.doc(), &ecad_drawing_style::REGISTRY).is_empty());
 }
 
 /// Step 2b (design 072 §2.1): a device's description, part number, maker, article number and type

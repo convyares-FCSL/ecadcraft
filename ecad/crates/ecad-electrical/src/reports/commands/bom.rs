@@ -627,7 +627,7 @@ impl Generic for BomitemParams {
     const HELP: &'static str = "{description, qty?, unit?: \"pcs\"|\"m\", location?: \"+CP1\", part_number?, maker?, article_number?} (adds an item) \
 | {item: id, set: {field: value|null}} | {item: id, delete: true} (one transaction)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         // An add takes item fields only.
         match self.item {
             Some(_) => Ok(()),
@@ -639,7 +639,7 @@ impl Generic for BomitemParams {
     }
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        self.check()?;
+        self.check(cx.registry)?;
         let change = match self.item {
             Some(item) => ItemChange::Edit { item, delete: self.delete == Some(true), set: self.set.map(ItemParams::fields) },
             None => {

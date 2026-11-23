@@ -113,7 +113,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
 /// object's style changes height, weight and colour).
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     let id = style_of(doc, kind, at);
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::text::CATALOGUE, &id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -163,7 +163,7 @@ pub(crate) fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_
 /// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
 /// For a text whose style is chosen by something other than its kind (a location box's label).
 pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
-    let f = |k: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), id, k, None);
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::text::CATALOGUE, id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -184,9 +184,7 @@ fn builtin_height(doc: &Document) -> f64 {
 
 /// [`OwnStyle`] for `style` of text style `id`: its font family when not the project font.
 fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
-    let font = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), id, "font", None)
-        .map(|r| r.text())
-        .unwrap_or_default();
+    let font = ecad_model::registry::styles::field_of(doc, &crate::styles::text::CATALOGUE, id, "font", None).map(|r| r.text()).unwrap_or_default();
     let project = match ecad_model::registry::resolve(doc, &d::FONT, Scope::project()).value {
         ecad_model::registry::Value::Text(t) => t.to_string(),
         _ => default_family().to_string(),
@@ -248,7 +246,7 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
 /// built-in).
 pub(crate) fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     let id = style_of(doc, kind, Scope::project());
-    let r = ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, "font", None)?;
+    let r = ecad_model::registry::styles::field_of(doc, &crate::styles::text::CATALOGUE, &id, "font", None)?;
     let ecad_model::registry::Value::Text(f) = r.value else { return None };
     if f.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) {
         return None;

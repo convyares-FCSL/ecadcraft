@@ -66,6 +66,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: None,
+    set: set_body,
+    implicit: ecad_model::registry::styles::no_implicit,
+    reach: ecad_model::registry::styles::no_reach,
 };
 
 /// The value field `key` of a ratingtable style record holds.
@@ -79,8 +82,7 @@ fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::Sty
 /// The project's chosen rating table, when it names one that exists.
 pub fn chosen(doc: &Document) -> Option<StyleRef> {
     let r = ecad_model::registry::resolve(doc, &crate::defaults::rating::TABLE, Scope::project());
-    StyleRef::parse(&r.text())
-        .filter(|id| ecad_model::registry::styles::exists(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id))
+    StyleRef::parse(&r.text()).filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::ratingtable::CATALOGUE, id))
 }
 
 /// The stored rows of table `id`: the project's record, else the standard's; within the cap.
@@ -99,9 +101,7 @@ pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
 
 /// The source text of table `id` (empty when none was given).
 pub fn source(doc: &Document, id: &StyleRef) -> String {
-    ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id, SOURCE, None)
-        .map(|r| r.text())
-        .unwrap_or_default()
+    ecad_model::registry::styles::field_of(doc, &crate::styles::ratingtable::CATALOGUE, id, SOURCE, None).map(|r| r.text()).unwrap_or_default()
 }
 
 /// A rating table read: its ID, name, source and rows.
@@ -117,7 +117,7 @@ pub struct Table {
 pub fn read(doc: &Document, id: &StyleRef) -> Table {
     Table {
         id: id.clone(),
-        name: ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::RatingTable), id),
+        name: ecad_model::registry::styles::name(doc, &crate::styles::ratingtable::CATALOGUE, id),
         source: source(doc, id),
         data: dataset::parse(rows_text(doc, id)),
     }
@@ -152,4 +152,14 @@ pub fn set(t: &mut RatingTable, key: &str, value: Option<&str>) -> Result<(), Cm
         _ => return Err(CmdError::refused(format!("Rating tables have no field {key:?}."))),
     }
     Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::RatingTable(x) => {
+            set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string()))
+        }
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
 }

@@ -1349,6 +1349,7 @@ dependencies = [
  "cadcraft-engine",
  "cadcraft-mcp",
  "cadcraft-ui-egui",
+ "ecad-drawing-style",
  "ecad-electrical",
  "ecad-engine",
  "ecad-file",
@@ -1368,6 +1369,7 @@ name = "ecad-bench"
 version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
+ "ecad-drawing-style",
  "ecad-electrical",
  "ecad-engine",
  "ecad-file",
@@ -1402,6 +1404,10 @@ dependencies = [
 [[package]]
 name = "ecad-drawing-style"
 version = "0.3.0-dev"
+dependencies = [
+ "ecad-electrical",
+ "ecad-model",
+]
 
 [[package]]
 name = "ecad-electrical"
@@ -1427,6 +1433,7 @@ dependencies = [
  "cadcraft-io",
  "cadcraft-ui-egui",
  "chrono",
+ "ecad-drawing-style",
  "ecad-electrical",
  "ecad-engine",
  "ecad-file",

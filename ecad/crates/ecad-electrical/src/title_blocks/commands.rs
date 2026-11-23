@@ -38,7 +38,7 @@ fn catalogue() -> &'static ecad_model::registry::styles::Catalogue {
 /// Neither given, or no such frame.
 pub fn frame(doc: &Document, id: Option<&str>, name: Option<&str>) -> Result<StyleRef, CmdError> {
     let t = id.or(name).map(str::trim).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    styles::find(doc, FRAME_CATALOGUE, t)
+    styles::find(doc, &styles::frame::CATALOGUE, t)
 }
 
 /// The sheet `text` names, else the project's.
@@ -101,7 +101,7 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
     let layer = layer_of(doc, id).ok_or(CmdError::refused(NOT_A_FRAME))?;
     let before = ecad_model::registry::styles::record(doc, layer, FRAME_CATALOGUE, id).cloned();
     let fields = fields(doc, cat, edit.fields)?;
-    let current = ecad_model::registry::styles::name(doc, crate::styles::catalogue(FRAME_CATALOGUE), id);
+    let current = ecad_model::registry::styles::name(doc, &crate::styles::frame::CATALOGUE, id);
     let rename = edit.rename.as_deref().filter(|n| *n != current);
     if let Some(n) = rename {
         if !is_name(n) {
@@ -111,7 +111,7 @@ pub(crate) fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Resul
             return Err(name_taken(n));
         }
     }
-    let mut after = styles::with_fields(FRAME_CATALOGUE, before.as_ref(), rename, &fields)?;
+    let mut after = styles::with_fields(&styles::frame::CATALOGUE, before.as_ref(), rename, &fields)?;
     if let (Some(b), StyleBody::Frame(f)) = (edit.body, &mut after.body) {
         f.title_block = Some(b);
     }
@@ -149,7 +149,7 @@ pub(crate) fn new_source(doc: &Document, from: Option<&str>) -> Result<Option<St
     if from.eq_ignore_ascii_case("blank") {
         return Ok(None);
     }
-    styles::find(doc, FRAME_CATALOGUE, from).map(Some)
+    styles::find(doc, &styles::frame::CATALOGUE, from).map(Some)
 }
 
 /// A new frame's name: the one given, else a unique one from the sheet's size (`A3 title block`,
@@ -209,7 +209,7 @@ pub(crate) fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>)
     }
     set.push((FRAME_SHEET_FIELD.into(), Some(new.spec.text())));
     set.push(("block".into(), Some("bottom_right".into())));
-    let mut rec = styles::with_fields(FRAME_CATALOGUE, None, Some(&new.name), &set)?;
+    let mut rec = styles::with_fields(&styles::frame::CATALOGUE, None, Some(&new.name), &set)?;
     if let StyleBody::Frame(f) = &mut rec.body {
         f.title_block = Some(new.layout);
     }

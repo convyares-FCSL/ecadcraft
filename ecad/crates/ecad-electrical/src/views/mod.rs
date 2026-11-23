@@ -45,6 +45,8 @@ use ecad_model::look::TextLook;
 pub struct EngineInputs {
     /// How a text is drawn on this machine, and how wide.
     pub look: Arc<dyn TextLook + Send + Sync>,
+    /// Every crate's defaults and style catalogues.
+    pub registry: &'static ecad_model::registry::data::Registry,
 }
 
 impl std::fmt::Debug for EngineInputs {
@@ -132,7 +134,7 @@ impl Detached {
     /// Every check of that state `doc`, worked out from scratch with tolerance `tol`, the report
     /// models' rows included, in book order.
     pub fn checks(&self, doc: &Document, tol: f64) -> Vec<crate::checks::Check> {
-        crate::checks::all_measured(doc, tol, self.reports(), &*self.inputs.look)
+        crate::checks::all_measured(doc, tol, self.reports(), &*self.inputs.look, self.inputs.registry)
     }
 }
 
@@ -163,12 +165,13 @@ pub struct Views {
 impl Views {
     /// No view built yet; [`Views::rebuild`] builds the kept ones.
     pub fn new(inputs: EngineInputs) -> Self {
+        let registry = inputs.registry;
         Views {
             inputs,
             references: ReferencesView::default(),
             connectors: ConnectorsView::default(),
             reports: Lazy::default(),
-            pages: PagesView::default(),
+            pages: PagesView::new(registry),
             frame: FrameView::default(),
             generated: GeneratedView::default(),
             checks: Lazy::default(),
@@ -265,8 +268,8 @@ impl Views {
     /// The Checks list, built on its first show with tolerance `tol` and kept
     /// after that.
     pub fn checks(&mut self, doc: &Document, tol: f64) -> &crate::checks::kept::Checks {
-        let look = &*self.inputs.look;
-        self.checks.get_or_build(|| ChecksView::build(doc, tol, look)).model()
+        let (look, registry) = (&*self.inputs.look, self.inputs.registry);
+        self.checks.get_or_build(|| ChecksView::build(doc, tol, look, registry)).model()
     }
 
     /// The Checks list, if shown once.

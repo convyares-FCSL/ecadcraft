@@ -128,13 +128,12 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id =
-                read(s, |p, _| ecad_electrical::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
-                    .map_err(other)?;
-            let name = read(s, |p, _| {
-                Ok(ecad_model::registry::styles::name(p.ledger.document(), ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire), &id))
+            let id = read(s, |p, _| {
+                ecad_electrical::styles::find(p.ledger.document(), &ecad_electrical::styles::wire::CATALOGUE, &choice).map_err(String::from)
             })
-            .unwrap_or_default();
+            .map_err(other)?;
+            let name = read(s, |p, _| Ok(ecad_model::registry::styles::name(p.ledger.document(), &ecad_electrical::styles::wire::CATALOGUE, &id)))
+                .unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -240,10 +239,7 @@ impl Interactive for Wire {
         if self.asking_category {
             let names = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(ecad_model::registry::styles::rows(doc, ecad_electrical::styles::catalogue(ecad_model::StyleCatalogue::Wire))
-                    .into_iter()
-                    .map(|r| r.name)
-                    .collect::<Vec<_>>())
+                Ok(ecad_model::registry::styles::rows(doc, &ecad_electrical::styles::wire::CATALOGUE).into_iter().map(|r| r.name).collect::<Vec<_>>())
             })
             .unwrap_or_default();
             let mut p = Prompt::new(format!("Category for new wires [auto/{}]", names.join("/")), Accept::TEXT);

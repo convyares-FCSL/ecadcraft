@@ -129,7 +129,7 @@ fn prefixes_are_registered_defaults() {
         let entry =
             defaults::symbols::prefix_entry(ecad_model::Word::parse(&e.key).unwrap()).unwrap_or_else(|| panic!("{}: no registry entry", e.key));
         assert_eq!(entry.key, format!("symbol.{}.prefix", e.key));
-        assert!(defaults::find(entry.key).is_some_and(|x| std::ptr::eq(x, entry)), "{}: listed in the registry", e.key);
+        assert!(ecad_drawing_style::REGISTRY.find(entry.key).is_some_and(|x| std::ptr::eq(x, entry)), "{}: listed in the registry", e.key);
         assert_eq!(defaults::symbols::builtin_prefix(entry), e.prefix, "{}", e.key);
         assert_eq!(s(&e.key).prefix(), e.prefix, "{}: Starter::prefix reads the registry", e.key);
     }
@@ -159,7 +159,10 @@ fn prefixes_are_registered_defaults() {
         "rating.system",
         "rating.vd_limit",
     ];
-    assert!(defaults::all().all(|x| !x.key.contains("rating") || BRIEF_057.contains(&x.key)), "ratings have no registry default (ruling)");
+    assert!(
+        ecad_drawing_style::REGISTRY.entries().all(|x| !x.key.contains("rating") || BRIEF_057.contains(&x.key)),
+        "ratings have no registry default (ruling)"
+    );
 }
 
 /// §2.3: the change-over rule itself: s = 1 + the highest sequence digit; refused after 9.

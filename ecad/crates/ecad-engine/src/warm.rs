@@ -105,7 +105,7 @@ impl Warm {
         }
         if !have_checks {
             let tol = p.tolerance;
-            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*look))));
+            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*look, &ecad_drawing_style::REGISTRY))));
         }
         false
     }

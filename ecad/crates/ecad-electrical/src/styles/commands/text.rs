@@ -235,7 +235,7 @@ fn kind_ops(doc: &Document, c: &KindChange, ops: &mut Vec<Op>, style: &mut Style
 fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     for (id, fields) in style {
         let before = ecad_model::objects::styles::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
-        let Ok(rec) = crate::styles::with_fields(ecad_model::StyleCatalogue::Text, before.as_ref(), None, fields) else { continue };
+        let Ok(rec) = crate::styles::with_fields(&crate::styles::text::CATALOGUE, before.as_ref(), None, fields) else { continue };
         let after = (rec.name.is_some() || !rec.body.is_empty() || !id.is_builtin()).then_some(rec);
         if after != before {
             ops.push(Op::SetStyle { layer: StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Text, id: id.clone(), before, after });
@@ -303,8 +303,8 @@ pub fn scope(doc: &Document, rep: Option<RepresentationId>, component: Option<De
 ///
 /// # Errors
 /// No default has that key.
-pub fn default_key(doc: &Document, key: &str) -> Result<(), CmdError> {
-    if defaults::find(key).is_none() && defaults::symbols::family(doc, key).is_none() {
+pub fn default_key(doc: &Document, registry: &ecad_model::registry::data::Registry, key: &str) -> Result<(), CmdError> {
+    if registry.find(key).is_none() && defaults::symbols::family(doc, key).is_none() {
         return Err(CmdError::refused(format!("No default \"{key}\".")));
     }
     Ok(())
@@ -557,15 +557,14 @@ pub fn textstyle_json(doc: &Document, fonts: &crate::styles::text_style::fonts::
         .iter()
         .map(|k| {
             let id = crate::styles::text_style::style_of(doc, *k, Scope::project());
-            let f =
-                |key: &str| ecad_model::registry::styles::field_of(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Text), &id, key, None);
+            let f = |key: &str| ecad_model::registry::styles::field_of(doc, &crate::styles::text::CATALOGUE, &id, key, None);
             let h = f("height").unwrap_or(Resolved { value: ecad_model::registry::Value::Length(2.5), from: Source::Builtin });
             let w = f("weight").unwrap_or(Resolved { value: ecad_model::registry::Value::Choice("regular"), from: Source::Builtin });
             let colour = f("colour").map(|r| r.text());
             let sh = crate::styles::text_style::show_entry(*k).map(|e| ecad_model::registry::resolve(doc, e, Scope::project()));
             let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
             let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
-            let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
+            let cat = &crate::styles::text::CATALOGUE;
             let b = |key: &str| cat.builtin(&k.builtin_style()).and_then(|s| s.value(key));
             json!({
                 "kind": k.word(),

@@ -56,7 +56,7 @@ enum Held {
 /// it returned that could not be written.
 pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
-    p.check().map_err(|e| err(e.to_string()))?;
+    p.check(&ecad_drawing_style::REGISTRY).map_err(|e| err(e.to_string()))?;
     let read: Read = P::IO.reads.iter().filter_map(|(k, what)| Some((*k, read_file(given(params, k)?, *what)))).collect();
     let (v, writes, lines) = match P::PAGES {
         Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p, None))?,
@@ -140,6 +140,7 @@ fn commit<P: Generic>(
             off_release_line,
             metrics: &crate::styles::draw::EngineMetrics,
             look: &crate::styles::draw::LOOK,
+            registry: &ecad_drawing_style::REGISTRY,
             read,
             state,
         };

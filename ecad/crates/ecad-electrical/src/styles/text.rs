@@ -103,6 +103,9 @@ pub static CATALOGUE: Catalogue = Catalogue {
     body,
     typed: None,
     adjust: Some(wire_label_height),
+    set: set_body,
+    implicit,
+    reach,
 };
 
 /// The value field `key` of a text style record holds.
@@ -169,4 +172,42 @@ pub fn set(t: &mut TextStyle, key: &str, value: Option<&str>) -> Result<(), CmdE
         _ => return Err(CmdError::refused(format!("Text styles have no field {key:?}."))),
     }
     Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Text(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// The objects of `entry`'s noun with no text style of their own when the project's choice is
+/// `id`.
+fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    if ecad_model::registry::styles::chosen(doc, entry, ecad_model::registry::Scope::project()) != *id {
+        return 0;
+    }
+    let own = |p: &ecad_model::Properties| ecad_model::registry::styles::chooses(doc, entry, p);
+    match noun(entry.key) {
+        Noun::Devices => doc.devices().values().filter(|x| !own(&x.properties)).count(),
+        Noun::Wires => doc.wires().values().filter(|x| !own(&x.display)).count(),
+        Noun::Pages => doc.pages().len(),
+    }
+}
+
+/// A text style a location style labels with reaches every box; otherwise the boxes whose own
+/// style labels with it.
+fn reach(doc: &Document, _: &ecad_model::Op, id: &StyleRef) -> ecad_model::registry::styles::Reach {
+    use crate::styles::location;
+    if location::labels_with(doc, id) {
+        return ecad_model::registry::styles::Reach::Every;
+    }
+    let mut out = std::collections::BTreeSet::new();
+    for (a, x) in doc.aids() {
+        if x.as_box().is_some() && location::own_style(doc, *a).is_some_and(|s| location::draw_of(doc, s).label_style == *id) {
+            out.extend(doc.representations_of(ecad_model::Subject::Aid(*a)).map(|(_, r)| r.page));
+        }
+    }
+    ecad_model::registry::styles::Reach::Also(out)
 }

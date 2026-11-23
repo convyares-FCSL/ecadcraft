@@ -210,7 +210,7 @@ impl Generic for FolderpropsParams {
     const HELP: &'static str =
         "{folder: id, start?: \"100\"|null} (a folder's start number: 1 to 6 digits, leading zeros set the width; null clears; no start: read only)";
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         match &self.start {
             Some(Some(t)) => start_value(t).map(|_| ()),
             _ => Ok(()),

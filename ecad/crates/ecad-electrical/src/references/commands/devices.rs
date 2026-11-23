@@ -224,7 +224,7 @@ impl Generic for DeviceReferencesParams {
     const PAGES: Pages = Pages::Any;
     const ACCESS: Access = Access::Reads;
 
-    fn check(&self) -> Result<(), CmdError> {
+    fn check(&self, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
         self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number"))).map(|_| ())
     }
 

@@ -695,7 +695,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     let (scope, entries, here): (Scope, Vec<&'static Entry>, Option<(Level, Target)>) = match what {
         What::Page(pg) => {
             deps.insert(ObjectRef::Page(pg));
-            (Scope::page(pg), defaults::all().filter(|e| e.allows(Level::Page)).collect(), Some((Level::Page, Target::Page(pg))))
+            (
+                Scope::page(pg),
+                ecad_drawing_style::REGISTRY.entries().filter(|e| e.allows(Level::Page)).collect(),
+                Some((Level::Page, Target::Page(pg))),
+            )
         }
         What::Symbol(c, rep) => {
             deps.insert(ObjectRef::Device(c));
@@ -716,7 +720,8 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         }
         What::Wire(w) => {
             deps.insert(ObjectRef::Wire(w));
-            let es = defaults::all()
+            let es = ecad_drawing_style::REGISTRY
+                .entries()
                 .filter(|e| {
                     e.key == defaults::text::WIRE_LABEL_HEIGHT.key
                         || e.group == "Wire labels"

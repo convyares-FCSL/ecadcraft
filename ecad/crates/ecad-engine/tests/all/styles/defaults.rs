@@ -100,7 +100,7 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
     let (mut h, page, c, rep) = fixture();
     let doc = h.doc();
     let mut written = 0;
-    for e in defaults::all() {
+    for e in ecad_drawing_style::REGISTRY.entries() {
         let Some(value) = other_value(e) else {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
@@ -149,7 +149,7 @@ fn setdefault_is_one_undoable_transaction() {
     for (key, value, (level, target, scope, source)) in
         [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "no", t[1]), ("text.tag.show", "first", t[3])]
     {
-        let e = defaults::find(key).unwrap();
+        let e = ecad_drawing_style::REGISTRY.find(key).unwrap();
         let d0 = h.doc();
         let base = ecad_model::registry::resolve(&d0, e, scope);
         let head = h.head();
@@ -202,7 +202,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     let (mut h, _, _, _) = fixture();
     h.run("place", json!({"symbol": "no", "at": [150, 100]})).unwrap();
     h.run("place", json!({"symbol": "fuse", "at": [200, 100]})).unwrap();
-    let e = defaults::find("symbol.coil.prefix").unwrap();
+    let e = ecad_drawing_style::REGISTRY.find("symbol.coil.prefix").unwrap();
     // Two K devices (the coil and the NO contact), not the fuse.
     assert_eq!(defaults::users(&h.doc(), e), 2);
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
@@ -222,8 +222,8 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
 #[test]
 fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     let (mut h, page, c, rep) = fixture();
-    let show = defaults::find("text.tag.show").unwrap();
-    let height = defaults::find("text.run.gap").unwrap();
+    let show = ecad_drawing_style::REGISTRY.find("text.tag.show").unwrap();
+    let height = ecad_drawing_style::REGISTRY.find("text.run.gap").unwrap();
     let doc = h.doc();
     let at = Scope::symbol(&doc, rep);
     let levels = |e: &Entry, d: &ecad_model::Document| ecad_model::registry::chain(d, e, at).iter().map(|(s, _)| *s).collect::<Vec<_>>();

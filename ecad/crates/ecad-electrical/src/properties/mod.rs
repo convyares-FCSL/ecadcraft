@@ -232,13 +232,13 @@ fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>)
 /// A box's Style row: its own location style's name, else the project's (faint); the
 /// location styles' names as choices.
 fn box_style_row(doc: &Document, b: ecad_model::AidId) -> Row {
-    let cat = ecad_model::StyleCatalogue::Location;
     let style = crate::styles::location::box_style(doc, b);
-    let mut r = Row::rw(crate::locations::BOX_STYLE_KEY, "Style", ecad_model::registry::styles::name(doc, crate::styles::catalogue(cat), &style));
+    let mut r =
+        Row::rw(crate::locations::BOX_STYLE_KEY, "Style", ecad_model::registry::styles::name(doc, &crate::styles::location::CATALOGUE, &style));
     // An own style naming none that exists falls through to the project's, shown faint too (the
     // Checks list has its row).
     r.inherited = crate::styles::location::own_style(doc, b).is_none();
-    r.choices = ecad_model::registry::styles::rows(doc, crate::styles::catalogue(cat)).into_iter().map(|x| x.name).collect();
+    r.choices = ecad_model::registry::styles::rows(doc, &crate::styles::location::CATALOGUE).into_iter().map(|x| x.name).collect();
     r
 }
 
@@ -604,8 +604,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let draw = crate::styles::wire::wire_draw(doc, w);
     let cat_value =
         |v: &Option<(String, ecad_model::registry::Source)>| v.as_ref().filter(|x| x.1 != ecad_model::registry::Source::Object).map(|x| x.0.clone());
-    let cat_name =
-        draw.category.as_ref().map(|id| ecad_model::registry::styles::name(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire), id));
+    let cat_name = draw.category.as_ref().map(|id| ecad_model::registry::styles::name(doc, &crate::styles::wire::CATALOGUE, id));
     let (cs_default, colour_default) = (cat_value(&draw.cross_section), cat_value(&draw.colour_text()));
     let wire = doc.wires().get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());

@@ -18,10 +18,11 @@
 use std::collections::BTreeSet;
 
 use ecad_model::objects::styles::{self as ms, MAX_STYLES_PER_CATALOGUE, StyleBody, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
-use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject, Word};
+use ecad_model::{Document, ObjectRef, Op, PageId, Subject, Word};
 
 use ecad_model::registry::Scope;
-use ecad_model::registry::styles::{Catalogue, Count, Row, chosen, exists, hex_rgb, name, rows};
+use ecad_model::registry::data::Registry;
+use ecad_model::registry::styles::{Catalogue, Count, Reach, Row, chosen, exists, hex_rgb, name, rows};
 
 use crate::CmdError;
 
@@ -36,7 +37,7 @@ pub mod text;
 pub mod text_style;
 pub mod wire;
 
-/// Every catalogue: one line each (a new catalogue adds a line).
+/// This crate's catalogues: one line each (a new catalogue adds a line).
 #[rustfmt::skip]
 pub static CATALOGUES: &[&Catalogue] = &[
     &text::CATALOGUE,
@@ -48,30 +49,16 @@ pub static CATALOGUES: &[&Catalogue] = &[
     &ratingtable::CATALOGUE,
 ];
 
-/// The catalogue's description.
-pub fn catalogue(c: StyleCatalogue) -> &'static Catalogue {
-    match c {
-        StyleCatalogue::Text => &text::CATALOGUE,
-        StyleCatalogue::Location => &location::CATALOGUE,
-        StyleCatalogue::Frame => &frame::CATALOGUE,
-        StyleCatalogue::Wire => &wire::CATALOGUE,
-        StyleCatalogue::Page => &page::CATALOGUE,
-        StyleCatalogue::Cable => &cable::CATALOGUE,
-        StyleCatalogue::RatingTable => &ratingtable::CATALOGUE,
-    }
-}
-
-/// The style of `catalogue` that `text` names: an ID (built-in word or `#<hex>`) of an existing
+/// The style of `cat` that `text` names: an ID (built-in word or `#<hex>`) of an existing
 /// style, else a name (without case) that exactly one style has.
 ///
 /// # Errors
 /// In words: no such style, or the name is shared and the ID is needed.
-pub fn find(doc: &Document, catalogue: StyleCatalogue, text: &str) -> Result<StyleRef, CmdError> {
+pub fn find(doc: &Document, cat: &Catalogue, text: &str) -> Result<StyleRef, CmdError> {
     let t = text.trim();
-    if let Some(id) = StyleRef::parse(t).filter(|id| exists(doc, crate::styles::catalogue(catalogue), id)) {
+    if let Some(id) = StyleRef::parse(t).filter(|id| exists(doc, cat, id)) {
         return Ok(id);
     }
-    let cat = crate::styles::catalogue(catalogue);
     let hits: Vec<Row> = rows(doc, cat).into_iter().filter(|r| r.name.eq_ignore_ascii_case(t)).collect();
     match hits.as_slice() {
         [one] => Ok(one.id.clone()),
@@ -85,16 +72,15 @@ fn ids(rows: &[Row]) -> String {
 }
 
 /// The catalogue words, for messages.
-pub fn words() -> String {
-    CATALOGUES.iter().map(|c| c.catalogue.word()).collect::<Vec<_>>().join(", ")
+pub fn words(registry: &Registry) -> String {
+    registry.catalogues().map(|c| c.catalogue.word()).collect::<Vec<_>>().join(", ")
 }
 
-/// Who uses style `id` of `catalogue`. Explicit users come from the document's style-choice index;
-/// implicit ones are counted from the resolved choices, one pass over the kind of object the
-/// catalogue styles. Asked for one style at a time (a selected row, a consequence line), never per
-/// frame.
-pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count {
-    let cat = crate::styles::catalogue(catalogue);
+/// Who uses style `id` of `cat`. Explicit users come from the document's style-choice index and
+/// the location boxes; implicit ones are counted from the resolved choices, one
+/// pass over the kind of object the catalogue styles. Asked for one style at a time (a selected
+/// row, a consequence line), never per frame.
+pub fn users(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Count {
     let value = id.text();
     let mut c = Count::default();
     // A cable's type is its field (cables have no registry level).
@@ -103,9 +89,9 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
     }
     for entry in (cat.choices)() {
         c.explicit += doc.style_users(entry.key, &value).count();
-        c.implicit += implicit(doc, cat, entry, id);
+        c.implicit += (cat.implicit)(doc, entry, id);
     }
-    c.explicit += box_users(doc, catalogue, id).len();
+    c.explicit += box_users(doc, cat.catalogue, id).len();
     c
 }
 
@@ -119,44 +105,8 @@ pub fn box_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Ve
     doc.aids().iter().filter(|(_, a)| a.as_box().and_then(|b| b.style.as_ref()) == Some(id)).map(|(a, _)| *a).collect()
 }
 
-/// The objects of `entry`'s kind with no own choice that resolve to `id` through the page,
-/// project, standard or built-in.
-fn implicit(doc: &Document, cat: &Catalogue, entry: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
-    let project = chosen(doc, entry, Scope::project());
-    let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
-    match cat.catalogue {
-        ecad_model::StyleCatalogue::Frame => doc.pages().iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
-        // Pages with no own type whose generated kind (or none) gives `id`.
-        ecad_model::StyleCatalogue::Page => doc
-            .pages()
-            .values()
-            .filter(|p| !p.page_type.as_ref().is_some_and(|t| exists(doc, &page::CATALOGUE, t)))
-            .filter(|p| ecad_model::document::sheet::page_type_of(doc, p) == *id)
-            .count(),
-        ecad_model::StyleCatalogue::Location if project == *id => {
-            doc.aids().iter().filter(|(a, x)| x.as_box().is_some() && location::own_style(doc, **a).is_none()).count()
-        }
-        // Conductors whose resolved category is `id` and that have none of their own.
-        ecad_model::StyleCatalogue::Wire => {
-            let draws = wire::WireDraws::new(doc);
-            doc.wires()
-                .iter()
-                .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| exists(doc, &wire::CATALOGUE, t)))
-                .filter(|(c, _)| draws.category(doc, **c).0.as_ref() == Some(id))
-                .count()
-        }
-        ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
-            text::Noun::Devices => doc.devices().values().filter(|x| !own(&x.properties)).count(),
-            text::Noun::Wires => doc.wires().values().filter(|x| !own(&x.display)).count(),
-            text::Noun::Pages => doc.pages().len(),
-        },
-        _ => 0,
-    }
-}
-
-/// The explicit users of `id` (any choice key of `catalogue`), through the index.
-pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Vec<(&'static str, ObjectRef)> {
-    let cat = crate::styles::catalogue(catalogue);
+/// The explicit users of `id` (any choice key of `cat`), through the index.
+pub fn explicit_users(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Vec<(&'static str, ObjectRef)> {
     let value = id.text();
     let mut out = Vec::new();
     // A cable's type is its field (cables have no registry level).
@@ -183,54 +133,23 @@ fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
 }
 
 /// The pages a style op changes the look of, or `None` for every page. `None`
-/// for an op this module does not cover.
-pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
+/// for an op this module does not cover, and for a catalogue `registry` does not declare.
+pub fn pages_touched(doc: &Document, registry: &Registry, op: &Op) -> Option<BTreeSet<PageId>> {
     match op {
         // The header shows on the Standards screen only.
         Op::SetStandard { .. } => Some(BTreeSet::new()),
         Op::SetStyle { catalogue, id, .. } => {
-            let cat = crate::styles::catalogue(*catalogue);
-            // A page type reaches its pages only.
-            if let Some((pages, _)) = page::touched_by(doc, op) {
-                return Some(pages.into_iter().collect());
-            }
+            let cat = registry.catalogue(*catalogue)?;
+            let mut out = match (cat.reach)(doc, op, id) {
+                Reach::Only(pages) => return Some(pages),
+                Reach::Every => return None,
+                Reach::Also(pages) => pages,
+            };
             // A style the project (or standard, or built-in) choice resolves to is on every page.
             if (cat.choices)().iter().any(|e| chosen(doc, e, Scope::project()) == *id) {
                 return None;
             }
-            // A text style a location style labels with reaches every box.
-            if cat.catalogue == ecad_model::StyleCatalogue::Text && location::labels_with(doc, id) {
-                return None;
-            }
-            let mut out = BTreeSet::new();
-            // A box drawn in its own style: that style's boxes, or the boxes whose own
-            // style labels with this text style.
-            for (a, x) in doc.aids() {
-                let Some(b) = x.as_box() else { continue };
-                let hit = match cat.catalogue {
-                    ecad_model::StyleCatalogue::Location => b.style.as_ref() == Some(id),
-                    ecad_model::StyleCatalogue::Text => location::own_style(doc, *a).is_some_and(|s| location::draw_of(doc, s).label_style == *id),
-                    _ => false,
-                };
-                if hit {
-                    out.extend(doc.representations_of(Subject::Aid(*a)).map(|(_, r)| r.page));
-                }
-            }
-            // A category that is (or becomes, or was) a potential's default reaches every
-            // net of that potential, on any page (there is no potential index): every page.
-            if cat.catalogue == ecad_model::StyleCatalogue::Wire {
-                let names_potential = |r: &Option<StyleRecord>| r.as_ref().and_then(|r| r.body.wire()).is_some_and(|w| w.potential.is_some());
-                let (before, after) = match op {
-                    Op::SetStyle { before, after, .. } => (before, after),
-                    _ => return None,
-                };
-                let draws = wire::WireDraws::new(doc);
-                let default = draws.by_potential_ids().any(|x| x == id);
-                if default || names_potential(before) || names_potential(after) {
-                    return None;
-                }
-            }
-            for (_, o) in explicit_users(doc, *catalogue, id) {
+            for (_, o) in explicit_users(doc, cat, id) {
                 pages_of(doc, o, &mut out);
             }
             Some(out)
@@ -239,7 +158,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
     }
 }
 
-/// Whether record `r` may be written as `(layer, catalogue, id)`: a name that is
+/// Whether record `r` may be written as `(layer, cat, id)`: a name that is
 /// none or 1–64 characters, at most [`MAX_FIELDS_PER_STYLE`] fields of at most
 /// [`MAX_FIELD_CHARS`] characters, and room in the layer for a new style.
 ///
@@ -271,29 +190,26 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
 }
 
 /// The record a `style` command writes for `fields` set or cleared on `before`,
-/// in catalogue `catalogue`. The values are as [`crate::styles::commands::styles::fields`] checked them.
+/// in catalogue `cat`. The values are as [`crate::styles::commands::styles::fields`] checked them.
 ///
 /// # Errors
 /// A value the typed field does not take, in words.
 pub(crate) fn with_fields(
-    catalogue: StyleCatalogue, before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)],
+    cat: &Catalogue, before: Option<&StyleRecord>, name: Option<&str>, fields: &[(String, Option<String>)],
 ) -> Result<StyleRecord, CmdError> {
-    let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(catalogue));
+    let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(cat.catalogue));
     if let Some(n) = name {
         r.name = Some(ms::StyleName::new(n).map_err(|e| CmdError::refused(format!("A style's name: {e}.")))?);
     }
     for (k, v) in fields {
-        match &mut r.body {
-            StyleBody::Wire(w) => wire::set(w, k, v.as_deref())?,
-            StyleBody::Text(t) => text::set(t, k, v.as_deref())?,
-            StyleBody::Location(l) => location::set(l, k, v.as_deref())?,
-            StyleBody::RatingTable(t) => ratingtable::set(t, k, v.as_deref())?,
-            StyleBody::Page(t) => page::set(t, k, v.as_deref())?,
-            StyleBody::Cable(t) => cable::set(t, k, v.as_deref())?,
-            StyleBody::Frame(f) => frame::set(f, k, v.as_deref())?,
-        }
+        (cat.set)(&mut r.body, k, v.as_deref()).map_err(|e| CmdError::refused(e.0))?;
     }
     Ok(r)
+}
+
+/// A record body that is not of the catalogue whose `set` was given it, in words.
+pub(crate) fn wrong_body(b: &StyleBody, one: &str) -> ecad_model::registry::styles::Refused {
+    ecad_model::registry::styles::Refused(format!("A {} record is not a {}.", b.catalogue(), one.to_lowercase()))
 }
 
 /// Whether `s` is a colour a style field takes: `none`, one IEC 60757 code

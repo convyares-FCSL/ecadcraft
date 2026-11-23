@@ -29,8 +29,8 @@ pub struct ChecksView {
 
 impl ChecksView {
     /// The whole list, from scratch (first show), with tolerance `tol` and text measured in `m`.
-    pub fn build(doc: &Document, tol: f64, m: &dyn TextLook) -> Self {
-        ChecksView { model: Checks::build_with(doc, tol, m), tol }
+    pub fn build(doc: &Document, tol: f64, m: &dyn TextLook, registry: &ecad_model::registry::data::Registry) -> Self {
+        ChecksView { model: Checks::build_with(doc, tol, m, registry), tol }
     }
 
     /// The kept list.
@@ -80,7 +80,7 @@ impl<'i> DerivedView<Inputs<'i>> for ChecksView {
     fn update(&mut self, doc: &Document, scope: ChecksScope, cx: &Inputs<'i>) -> Outcome {
         let ChecksScope { scope, begun } = scope;
         if begun {
-            self.model.update(doc, scope, self.tol, &*cx.engine.look);
+            self.model.update(doc, scope, self.tol, &*cx.engine.look, cx.engine.registry);
         }
         Outcome::default()
     }
