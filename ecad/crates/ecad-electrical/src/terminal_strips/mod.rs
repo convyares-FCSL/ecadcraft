@@ -85,23 +85,13 @@ pub(crate) fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool 
     crate::devices::tags::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
 }
 
-/// A strip's drawn terminals: (terminal, its representation, whether PE).
+/// A strip's drawn terminal blocks: (its connection point, its representation, whether PE).
 pub fn drawn_connection_points(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, bool)> {
-    let mut out = Vec::new();
-    let mut seen = BTreeSet::new();
-    for (rid, r) in doc.representations_of(Subject::Device(c)) {
-        let pe = rep_is_pe(doc, r);
-        for (t, _) in crate::devices::merge::shown_connection_points(doc, c, r) {
-            if seen.insert(t) {
-                out.push((t, rid, pe));
-            }
-        }
-    }
-    out
+    drawn_at(doc, c).into_iter().map(|(t, rid, pe, _)| (t, rid, pe)).collect()
 }
 
-/// [`drawn_connection_points`] with where each sits on its page, worked out from its own representation
-/// (O(the strip's symbols), never a search per terminal).
+/// A strip's drawn terminal blocks with where each sits on its page, worked out from its own
+/// representation (O(the strip's symbols), never a search per block). Each connection point once.
 fn drawn_at(doc: &Document, c: DeviceId) -> Vec<(ConnectionPointId, RepresentationId, bool, Option<Pt>)> {
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
