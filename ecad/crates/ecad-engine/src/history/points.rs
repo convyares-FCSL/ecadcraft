@@ -3,8 +3,9 @@
 use super::*;
 
 /// A point of the history as a command names it: a version, an issued revision or a step, on
-/// `branch` (default the branch shown); `branch` or `now` alone is that branch's head.
+/// `branch` (default the branch shown); `branch` or `now` alone is that branch's head. Unknown keys are refused.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PointQuery {
     /// The branch: its ID or name (default: the branch shown).
     #[serde(default)]
@@ -23,14 +24,22 @@ pub(crate) struct PointQuery {
     pub now: Option<bool>,
 }
 
-/// The point `params` names on its branch's line, read as a [`PointQuery`] (other keys are left
-/// alone: the agent gate reads `restore`'s whole parameters).
+/// The point `params` names on its branch's line, read as a [`PointQuery`].
+///
+/// # Errors
+/// Parameters that do not read (an unknown key or a wrong type); a missing or unknown point, in words.
+pub fn point(p: &Project, params: &Value) -> Result<Point, CmdError> {
+    let q = PointQuery::deserialize(params).map_err(|e| CmdError::input(e.to_string()))?;
+    point_at(p, &q)
+}
+
+/// The point a `restore` call's `params` name, read as `restore` reads them (`preview` included).
 ///
 /// # Errors
 /// Parameters that do not read; a missing or unknown point, in words.
-pub fn point(p: &Project, params: &Value) -> Result<Point, String> {
-    let q = PointQuery::deserialize(params).map_err(|e| e.to_string())?;
-    Ok(point_at(p, &q)?)
+pub(crate) fn restore_point(p: &Project, params: &Value) -> Result<Point, CmdError> {
+    let r = RestoreParams::deserialize(params).map_err(|e| CmdError::input(e.to_string()))?;
+    point_at(p, &r.query())
 }
 
 /// The point `q` names on its branch's line.
@@ -486,10 +495,16 @@ pub(crate) struct RestoreParams {
     preview: Option<bool>,
 }
 
+impl RestoreParams {
+    fn query(&self) -> PointQuery {
+        PointQuery { branch: self.branch.clone(), version: self.version.clone(), revision: self.revision.clone(), seq: self.seq, now: self.now }
+    }
+}
+
 impl Command for RestoreParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let preview = self.preview == Some(true);
-        let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
+        let q = self.query();
         on_project(s, |p, pg, _| restore(p, pg, &q, preview))
     }
 }

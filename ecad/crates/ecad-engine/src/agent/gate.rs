@@ -193,13 +193,13 @@ pub(crate) const RESTORE_OTHER_BRANCH: &str =
 
 /// The agent-undo rule for `restore`: the step it records takes back every
 /// step after the target, so every step after it on the branch shown must be the session's own.
-/// A target the engine cannot find is left to the engine's own refusal; a preview records nothing.
+/// A target that does not read or cannot be found is refused here, with the reason; a preview records nothing.
 fn check_restore(s: &mut Session, p: &ProjectHandle, params: &Value, owned: &OwnedSteps) -> Result<(), String> {
     if params.get("preview").and_then(Value::as_bool) == Some(true) {
         return Ok(());
     }
     p.read(s, |p, _| {
-        let Ok(pt) = crate::history::points::point(p, params) else { return Ok(()) };
+        let pt = crate::history::points::restore_point(p, params).map_err(|e| e.to_string())?;
         if pt.branch != crate::history::current(p) {
             return Err(RESTORE_OTHER_BRANCH.to_string());
         }

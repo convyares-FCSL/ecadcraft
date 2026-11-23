@@ -319,7 +319,7 @@ impl HistoryPanel {
         if self.details.as_ref().is_some_and(|(s, _)| *s == sel) {
             return;
         }
-        let v = history::points::point(p, &sel.params()).and_then(|mut pt| {
+        let v = history::points::point(p, &sel.params()).map_err(|e| e.to_string()).and_then(|mut pt| {
             pt.kind = sel.kind;
             if let Some(n) = &sel.name {
                 pt.title = if sel.kind == NodeKind::Version { format!("Version \"{n}\"") } else { n.clone() };

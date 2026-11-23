@@ -696,7 +696,7 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 94, 22),
-    ("ecad-engine", 145, 37),
+    ("ecad-engine", 144, 37),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 0, 0),
