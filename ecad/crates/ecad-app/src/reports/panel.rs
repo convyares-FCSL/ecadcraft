@@ -184,9 +184,9 @@ impl Reports {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }
-        // The rating results the Wires and Cables tabs show (kept by the Checks list).
+        // The rating results the Wires and Cables tabs show (kept by their own view).
         if self.wires_shown || self.cables_shown {
-            let kept = &p.checks().rating;
+            let kept = p.rating();
             if self.wires_shown {
                 self.wires.sync_rating(serial, kept);
             }

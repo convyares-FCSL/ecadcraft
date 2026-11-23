@@ -931,7 +931,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
     // (evaluated, retraced, re-checked subjects) of the last update (design 057 §10).
     let last = |h: &mut H| {
         h.cfg(|p| {
-            let k = &p.checks().rating;
+            let k = p.rating();
             (k.evaluated, k.retraced, k.last.clone())
         })
     };
@@ -953,7 +953,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
     // The kept results equal a fresh build after all of it.
     let (kept, built) = h.cfg(|p| {
         let d = p.ledger.document().clone();
-        let k = p.checks().rating.results.clone();
+        let k = p.rating().results.clone();
         (k, ecad_electrical::circuits::kept::Kept::build(&d).results)
     });
     assert!(kept == built, "the kept results equal a rebuild");
@@ -1058,7 +1058,7 @@ fn u02_a_location_temperature_rechecks_only_the_wires_there() {
     });
     box_temp(&mut h, cab, "44");
     let (ev, re) = h.cfg(|p| {
-        let k = &p.checks().rating;
+        let k = p.rating();
         (k.evaluated, k.retraced)
     });
     assert_eq!((ev, re), (1, 0), "only the wire in +CAB1, no trace");

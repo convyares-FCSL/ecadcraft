@@ -4,9 +4,10 @@
 //! # Update map
 //! Before the commit, on the state before, and after it, on the state after: the subjects each
 //! effect names ([`crate::checks::Scope::note`]: nets, wires, routes, connection points, devices,
-//! cables, the rating results, the style, title block and project rows, and whether the pages
-//! with checks off may change). The update re-checks what was noted ([`Checks::update`]); a
-//! numbering or potentials setting, or a change to the pages with checks off, rebuilds the list.
+//! cables, the style, title block and project rows, and whether the pages with checks off may
+//! change). The update re-checks what was noted ([`Checks::update`]); a numbering or potentials
+//! setting, or a change to the pages with checks off, rebuilds the list. The rating rows follow the
+//! rating results' view ([`RatingView`]), updated in the stage before and passed in [`Inputs`].
 //! The cover's rows follow the cover when the generated pages' view reports it changed
 //! ([`ChecksView::set_cover`]). The outcome is empty: the Checks panel reads the list's revision.
 //! Every other effect changes nothing. Until first show the view is not kept and notes nothing.
@@ -17,6 +18,8 @@ use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 
 use crate::checks::Scope;
 use crate::checks::kept::Checks;
+use crate::circuits::kept::Kept;
+use crate::circuits::view::RatingView;
 use crate::views::Inputs;
 use ecad_model::look::Look;
 
@@ -28,9 +31,10 @@ pub struct ChecksView {
 }
 
 impl ChecksView {
-    /// The whole list, from scratch (first show), with tolerance `tol` and text measured in `m`.
-    pub fn build(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) -> Self {
-        ChecksView { model: Checks::build_with(doc, tol, m, registry), tol }
+    /// The whole list, from scratch (first show), with tolerance `tol`, text measured in `m` and the
+    /// rating rows from the kept results `rating`.
+    pub fn build(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry, rating: &Kept) -> Self {
+        ChecksView { model: Checks::build_with(doc, tol, m, registry, rating), tol }
     }
 
     /// The kept list.
@@ -79,8 +83,18 @@ impl<'i> DerivedView<Inputs<'i>> for ChecksView {
 
     fn update(&mut self, doc: &Document, scope: ChecksScope, cx: &Inputs<'i>) -> Outcome {
         let ChecksScope { scope, begun } = scope;
+        // `Views` keeps the rating view whenever it keeps this one; updated without it, the list
+        // follows no rating results.
+        let alone;
+        let rating = match cx.rating {
+            Some(r) => r,
+            None => {
+                alone = RatingView::default();
+                &alone
+            }
+        };
         if begun {
-            self.model.update(doc, scope, self.tol, &*cx.engine.look, cx.engine.registry);
+            self.model.update(doc, scope, self.tol, &*cx.engine.look, cx.engine.registry, rating);
         }
         Outcome::default()
     }

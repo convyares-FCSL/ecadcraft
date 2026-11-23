@@ -318,7 +318,7 @@ fn the_connectors_view_follows_the_document() {
         }
         views.finish(&doc, &tx.ops, pending);
         note_view::<_, Inputs<'_>>(&alone, &NoteCx { doc: &doc, phase: Phase::After, effects: &effects }, &mut scope);
-        let pages = alone.update(&doc, scope, &Inputs { engine: views.inputs(), frame_page: None }).pages;
+        let pages = alone.update(&doc, scope, &Inputs { engine: views.inputs(), frame_page: None, rating: None }).pages;
         let what = format!("transaction {} {:?}", tx.seq, tx.label);
         assert_eq!(views.connectors(), &connectors::Index::build(&doc), "{what}: a fresh build");
         let want: BTreeSet<PageId> = tx

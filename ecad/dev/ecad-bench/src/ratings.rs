@@ -65,7 +65,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         let t = Instant::now();
         let _ = ecad_engine::project::engine_views().checks(p.ledger.document(), p.tolerance).len();
         let build = t.elapsed().as_secs_f64() * 1e3;
-        let rated = p.checks().rating.results.len();
+        let rated = p.rating().results.len();
         let doc = p.ledger.document();
         let dev = doc.devices().keys().copied().find(|c| ecad_electrical::circuits::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
@@ -103,7 +103,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
                 (false, false) => "4 A",
             };
             d.push(exec(&mut s, "setprop", json!({"component": dev.hex(), "key": "rating", "value": value}))?);
-            let (e, r) = project.configure(&mut s, |p| (p.checks().rating.evaluated, p.checks().rating.retraced))?;
+            let (e, r) = project.configure(&mut s, |p| {
+                let k = p.rating();
+                (k.evaluated, k.retraced)
+            })?;
             out.device_evaluated = e;
             out.device_retraced = r;
         }

@@ -31,7 +31,8 @@
 //!
 //! The calculations are split by side: [`circuit`] works out a subject's Iz,
 //! factors and volt drop (`Circuit`), [`protection`] the device that protects it
-//! (`Protects`); this module keeps the shared words, the update map and the Checks rows.
+//! (`Protects`); this module keeps the shared words, the update map and the Checks rows. The
+//! project keeps [`Kept`] in a view of its own ([`view::RatingView`]), which the Checks list reads.
 //!
 //! This module reads the document; it changes nothing.
 
@@ -42,6 +43,7 @@ pub mod load;
 pub mod protection;
 pub mod rows;
 pub mod trace;
+pub mod view;
 
 use circuit::{
     BoxTemp, Context, Rating, Temp, box_temp, box_temps, cable_is_rated, evaluate, fmt_amps, fmt_percent, is_panel_wire, location_code, sheet,

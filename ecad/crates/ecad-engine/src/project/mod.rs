@@ -971,6 +971,12 @@ impl Project {
         self.derived.checks(self.ledger.document(), self.tolerance)
     }
 
+    /// The wire and cable rating results, built on their first show and kept after that by the
+    /// views' pipeline (`ecad_electrical::views::RatingView`).
+    pub fn rating(&mut self) -> &ecad_electrical::circuits::kept::Kept {
+        self.derived.rating(self.ledger.document())
+    }
+
     /// The Checks list, if shown once.
     pub fn kept_checks(&self) -> Option<&ecad_electrical::checks::kept::Checks> {
         self.derived.kept_checks()

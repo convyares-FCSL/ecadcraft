@@ -1,6 +1,6 @@
-//! The kept views' first builds off the UI thread (issue 48): the report models and the
-//! Checks list, which a project builds whole the first time something shows them, on the
-//! background pool ([`crate::background`]).
+//! The kept views' first builds off the UI thread: the report models and the Checks list (with
+//! the rating results its rows follow), which a project builds whole the first time something
+//! shows them, on the background pool ([`crate::background`]).
 //!
 //! # Semantics
 //! - **Read, copy, release.** [`Warm::pump`] runs inside the caller's one project call: it copies
@@ -19,7 +19,7 @@
 
 use std::time::Duration;
 
-use ecad_electrical::views::{ChecksView, ReportsView};
+use ecad_electrical::views::{ChecksView, RatingView, ReportsView};
 
 use crate::background::{At, Jobs};
 use crate::project::Project;
@@ -28,7 +28,7 @@ use crate::project::Project;
 /// copied at.
 enum Built {
     Reports(u64, Box<ReportsView>),
-    Checks(u64, Box<ChecksView>),
+    Checks(u64, Box<(RatingView, ChecksView)>),
 }
 
 /// What [`Warm::pump`] started for which state, so a state is started once.
@@ -83,7 +83,8 @@ impl Warm {
                     p.derived.install_reports(e, *v);
                 }
                 Ok(Built::Checks(e, v)) => {
-                    p.derived.install_checks(e, *v);
+                    let (rating, checks) = *v;
+                    p.derived.install_checks(e, rating, checks);
                 }
                 Err(_) => {}
             }
@@ -105,7 +106,11 @@ impl Warm {
         }
         if !have_checks {
             let tol = p.tolerance;
-            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*look, &ecad_drawing_style::REGISTRY))));
+            self.jobs.spawn(now, move || {
+                let rating = RatingView::build(&doc);
+                let checks = ChecksView::build(&doc, tol, &*look, &ecad_drawing_style::REGISTRY, rating.kept());
+                Built::Checks(epoch, Box::new((rating, checks)))
+            });
         }
         false
     }

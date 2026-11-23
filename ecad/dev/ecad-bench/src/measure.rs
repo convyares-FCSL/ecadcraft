@@ -323,45 +323,51 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
     result
 }
 
-/// The kept Checks list as the project keeps it: built through the views and
-/// updated by its own view for each commit, noted on the state before and after it (the other
-/// views are not kept here, so only the Checks update is timed).
+/// The kept Checks list as the project keeps it: the rating results and the list, built whole and
+/// updated by their own views for each commit, noted on the state before and after it (the other
+/// views are not kept here, so only the two stages of the Checks list are timed).
 struct KeptChecks {
-    views: ecad_electrical::views::Views,
+    rating: ecad_electrical::views::RatingView,
+    checks: ecad_electrical::views::ChecksView,
     engine: ecad_electrical::views::EngineInputs,
 }
 
 impl KeptChecks {
     /// The list of `doc`, built whole (not timed by the callers).
     fn new(doc: &Document, tol: f64) -> Self {
-        let mut views = ecad_engine::project::engine_views();
-        views.checks(doc, tol);
-        let engine = views.inputs().clone();
-        KeptChecks { views, engine }
+        let engine = ecad_engine::project::engine_views().inputs().clone();
+        let rating = ecad_electrical::views::RatingView::build(doc);
+        let checks = ecad_electrical::views::ChecksView::build(doc, tol, &*engine.look, engine.registry, rating.kept());
+        KeptChecks { rating, checks, engine }
     }
 
     /// The Before phase: what `ops` name on `before`, the state before them.
-    fn before(&self, before: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::views::ChecksScope {
-        let mut scope = ecad_electrical::views::ChecksScope::default();
-        if let Some(view) = self.views.checks_view() {
-            let effects = ecad_model::document::effect::Effects::of(ops);
-            let cx = ecad_model::document::view::NoteCx { doc: before, phase: ecad_model::document::view::Phase::Before, effects: &effects };
-            ecad_electrical::views::note_view::<_, ecad_electrical::views::Inputs<'_>>(view, &cx, &mut scope);
-            view.close_before(&mut scope);
-        }
-        scope
+    fn before(&self, before: &Document, ops: &[ecad_model::Op]) -> (ecad_electrical::views::RatingScope, ecad_electrical::views::ChecksScope) {
+        use ecad_electrical::views::{Inputs, note_view};
+        let (mut rating, mut checks) = Default::default();
+        let effects = ecad_model::document::effect::Effects::of(ops);
+        let cx = ecad_model::document::view::NoteCx { doc: before, phase: ecad_model::document::view::Phase::Before, effects: &effects };
+        note_view::<_, Inputs<'_>>(&self.rating, &cx, &mut rating);
+        self.rating.close_before(&mut rating);
+        note_view::<_, Inputs<'_>>(&self.checks, &cx, &mut checks);
+        self.checks.close_before(&mut checks);
+        (rating, checks)
     }
 
-    /// The After phase on the committed transaction's ops on `after`, then the update.
-    fn after(&mut self, after: &Document, tx_ops: &[ecad_model::Op], mut scope: ecad_electrical::views::ChecksScope) {
+    /// The After phase on the committed transaction's ops on `after`, then the updates.
+    fn after(
+        &mut self, after: &Document, tx_ops: &[ecad_model::Op], scope: (ecad_electrical::views::RatingScope, ecad_electrical::views::ChecksScope),
+    ) {
+        use ecad_electrical::views::{Inputs, note_view};
         use ecad_model::document::view::DerivedView;
-        let inputs = ecad_electrical::views::Inputs { engine: &self.engine, frame_page: None };
-        if let Some(view) = self.views.checks_view_mut() {
-            let effects = ecad_model::document::effect::Effects::of(tx_ops);
-            let cx = ecad_model::document::view::NoteCx { doc: after, phase: ecad_model::document::view::Phase::After, effects: &effects };
-            ecad_electrical::views::note_view::<_, ecad_electrical::views::Inputs<'_>>(&*view, &cx, &mut scope);
-            view.update(after, scope, &inputs);
-        }
+        let (mut rating, mut checks) = scope;
+        let effects = ecad_model::document::effect::Effects::of(tx_ops);
+        let cx = ecad_model::document::view::NoteCx { doc: after, phase: ecad_model::document::view::Phase::After, effects: &effects };
+        note_view::<_, Inputs<'_>>(&self.rating, &cx, &mut rating);
+        note_view::<_, Inputs<'_>>(&self.checks, &cx, &mut checks);
+        let inputs = Inputs { engine: &self.engine, frame_page: None, rating: None };
+        self.rating.update(after, rating, &inputs);
+        self.checks.update(after, checks, &Inputs { rating: Some(&self.rating), ..inputs });
     }
 }
 

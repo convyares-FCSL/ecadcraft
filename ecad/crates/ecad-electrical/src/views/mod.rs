@@ -26,6 +26,7 @@ use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use crate::checks::view::{ChecksScope, ChecksView};
+pub use crate::circuits::view::{RatingScope, RatingView};
 pub use crate::connectors::view::{ConnectorsScope, ConnectorsView};
 pub(crate) use crate::devices::view::{DevicesFeed, DevicesScope};
 pub use crate::pages::frame_view::{FrameScope, FrameView};
@@ -62,6 +63,8 @@ pub struct Inputs<'a> {
     pub engine: &'a EngineInputs,
     /// The page whose frame is kept (`FrameView`), if any.
     pub frame_page: Option<ecad_model::PageId>,
+    /// The rating results, already updated for the commit (for the Checks list), if kept.
+    pub rating: Option<&'a RatingView>,
 }
 
 /// A view built on first show (the checks list, the report models): skipped by the pipeline
@@ -111,6 +114,7 @@ pub struct Pending {
     frame: FrameScope,
     generated: GeneratedScope,
     reports: ReportsScope,
+    rating: RatingScope,
     checks: ChecksScope,
     tree: TreeScope,
     devices: DevicesScope,
@@ -151,7 +155,10 @@ pub struct Views {
     pages: PagesView,
     frame: FrameView,
     generated: GeneratedView,
-    // Stage 3b: the Checks list, built on first show (its cover rows follow stage 3's cover).
+    // Stage 3b: the rating results, built on first show (the Wires and Cables tabs, or the
+    // Checks list), then the Checks list, built on first show (its rating rows follow the rating
+    // results, its cover rows stage 3's cover).
+    rating: Lazy<RatingView>,
     checks: Lazy<ChecksView>,
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
@@ -174,6 +181,7 @@ impl Views {
             pages: PagesView::new(registry),
             frame: FrameView::default(),
             generated: GeneratedView::default(),
+            rating: Lazy::default(),
             checks: Lazy::default(),
             tree: TreeFeed,
             devices: DevicesFeed::default(),
@@ -198,10 +206,14 @@ impl Views {
         true
     }
 
-    /// As [`Views::install_reports`], for the Checks list.
-    pub fn install_checks(&mut self, epoch: u64, view: ChecksView) -> bool {
+    /// As [`Views::install_reports`], for the Checks list and the rating results it was built
+    /// with (kept unless the rating results are already kept).
+    pub fn install_checks(&mut self, epoch: u64, rating: RatingView, view: ChecksView) -> bool {
         if epoch != self.epoch || self.checks.get().is_some() {
             return false;
+        }
+        if self.rating.get().is_none() {
+            self.rating.set(rating);
         }
         self.checks.set(view);
         true
@@ -265,26 +277,22 @@ impl Views {
         self.reports.reset();
     }
 
-    /// The Checks list, built on its first show with tolerance `tol` and kept
-    /// after that.
+    /// The rating results, built on their first show and kept after that.
+    pub fn rating(&mut self, doc: &Document) -> &crate::circuits::kept::Kept {
+        self.rating.get_or_build(|| RatingView::build(doc)).kept()
+    }
+
+    /// The Checks list, built on its first show with tolerance `tol` (with the rating results, if
+    /// not kept yet) and kept after that.
     pub fn checks(&mut self, doc: &Document, tol: f64) -> &crate::checks::kept::Checks {
         let (look, registry) = (&*self.inputs.look, self.inputs.registry);
-        self.checks.get_or_build(|| ChecksView::build(doc, tol, look, registry)).model()
+        let rating = self.rating.get_or_build(|| RatingView::build(doc));
+        self.checks.get_or_build(|| ChecksView::build(doc, tol, look, registry, rating.kept())).model()
     }
 
     /// The Checks list, if shown once.
     pub fn kept_checks(&self) -> Option<&crate::checks::kept::Checks> {
         self.checks.get().map(ChecksView::model)
-    }
-
-    /// The Checks list's view, if shown once (the bench times its update on its own).
-    pub fn checks_view(&self) -> Option<&ChecksView> {
-        self.checks.get()
-    }
-
-    /// The Checks list's view, if shown once, to update it on its own (the bench).
-    pub fn checks_view_mut(&mut self) -> Option<&mut ChecksView> {
-        self.checks.get_mut()
     }
 
     /// Before phase: every kept view notes `ops` on the document before them. Changes nothing.
@@ -304,6 +312,10 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut pending.generated);
+        if let Some(rating) = self.rating.get() {
+            note_view::<_, Inputs<'_>>(rating, &cx, &mut pending.rating);
+            rating.close_before(&mut pending.rating);
+        }
         if let Some(checks) = self.checks.get() {
             note_view::<_, Inputs<'_>>(checks, &cx, &mut pending.checks);
             checks.close_before(&mut pending.checks);
@@ -324,6 +336,7 @@ impl Views {
             mut pages,
             mut frame,
             mut generated,
+            mut rating,
             mut checks,
             mut tree,
             mut devices,
@@ -339,13 +352,16 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut generated);
+        if let Some(view) = self.rating.get() {
+            note_view::<_, Inputs<'_>>(view, &cx, &mut rating);
+        }
         if let Some(view) = self.checks.get() {
             note_view::<_, Inputs<'_>>(view, &cx, &mut checks);
         }
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
         note_view::<_, Inputs<'_>>(&self.props, &cx, &mut props);
-        let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
+        let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p), rating: None };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
         merge(&mut changes, self.references.update(after, references, &inputs));
@@ -360,9 +376,13 @@ impl Views {
         merge(&mut changes, self.frame.update(after, frame, &inputs));
         merge(&mut changes, self.generated.update(after, generated, &inputs));
         let cover = self.generated.take_cover();
-        // The Checks list: the cover's rows follow the cover (a cover page
-        // added or removed too).
+        // The rating results, then the Checks list: its rating rows follow them, the cover's rows
+        // the cover (a cover page added or removed too).
+        if let Some(view) = self.rating.get_mut() {
+            merge(&mut changes, view.update(after, rating, &inputs));
+        }
         if let Some(view) = self.checks.get_mut() {
+            let inputs = Inputs { rating: self.rating.get(), ..inputs };
             merge(&mut changes, view.update(after, checks, &inputs));
             if cover {
                 view.set_cover(after, inputs.engine.look.as_ref());
@@ -383,7 +403,7 @@ impl Views {
     /// Verify mode: every kept view against a fresh build; one line per disagreement (the view
     /// is rebuilt).
     pub fn verify(&mut self, doc: &Document) -> Vec<String> {
-        let inputs = Inputs { engine: &self.inputs, frame_page: None };
+        let inputs = Inputs { engine: &self.inputs, frame_page: None, rating: None };
         let generated = self.generated.verify(doc, &inputs);
         if generated.is_some() {
             self.generated.forget();
@@ -397,6 +417,7 @@ impl Views {
         self.references = ReferencesView::build(doc);
         self.connectors = ConnectorsView::build(doc);
         self.reports.reset();
+        self.rating.reset();
         self.checks.reset();
         self.frame.forget();
         self.generated.forget();

@@ -660,8 +660,6 @@ pub struct Scope {
     cables: BTreeSet<ecad_model::CableId>,
     /// The style rows (`crate::styles::checks::touches`).
     pub(crate) styles: bool,
-    /// What the ops reach of the rating results.
-    rating: crate::circuits::kept::Touch,
     /// The list's rows (an entry's code changed, added or removed).
     pub(crate) designations: bool,
     /// The title block rows (`crate::title_blocks::checks::touches`).
@@ -688,7 +686,6 @@ impl Scope {
             }
             s.nodes.insert(n);
         };
-        self.rating.note(doc, effect);
         self.styles |= crate::styles::checks::touches(effect);
         self.title_blocks |= crate::title_blocks::checks::touches(effect);
         // The set of pages with checks off may change (then everything is checked
@@ -1026,7 +1023,8 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 pub fn all_measured(
     doc: &Document, tol: f64, reports: &crate::reports::kept::ReportModels, m: &dyn Look, registry: &ecad_model::registry::data::Registry,
 ) -> Vec<Check> {
-    let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m, registry).rows().cloned().collect();
+    let rating = crate::circuits::kept::Kept::build(doc);
+    let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m, registry, &rating).rows().cloned().collect();
     rows.extend(reports.checks());
     sort(doc, rows)
 }

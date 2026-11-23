@@ -1,6 +1,7 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
 //! the title block) take the text look, [`ecad_model::look::Look`]; `crate::views::ChecksView`
-//! keeps the list, measuring with the look the engine supplies.
+//! keeps the list, measuring with the look the engine supplies. The rating rows are worked out from
+//! the rating results the project keeps in their own view ([`RatingView`]).
 
 use super::cables::{cable_checks_in, reference_checks};
 use super::devices::component_checks_in;
@@ -12,6 +13,8 @@ use ecad_model::naming::numbering::Places;
 use ecad_model::{Document, NetKey, PageId};
 
 use crate::checks::*;
+use crate::circuits::kept::Kept;
+use crate::circuits::view::RatingView;
 use ecad_model::look::Look;
 
 /// The kept Checks list (see the module docs).
@@ -33,13 +36,12 @@ pub struct Checks {
     pub changed: u64,
     /// The pages whose type has checks and references off.
     off: BTreeSet<PageId>,
-    /// The kept rating results and their indexes.
-    pub rating: crate::circuits::kept::Kept,
 }
 
 impl Checks {
-    /// The whole list, computed from scratch (open, reload, first show).
-    pub fn build_with(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) -> Self {
+    /// The whole list, computed from scratch (open, reload, first show), its rating rows from the
+    /// kept rating results `rating`.
+    pub fn build_with(doc: &Document, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry, rating: &Kept) -> Self {
         let mut ch = Checks { off: ecad_model::document::sheet::checks_off_pages(doc), ..Checks::default() };
         for r in doc.routes().keys() {
             ch.grid.insert(doc, *r);
@@ -80,13 +82,10 @@ impl Checks {
         for s in PROJECT_SOURCES {
             ch.set(s.key(), s.checks(doc, registry, m));
         }
-        ch.rating = crate::circuits::kept::Kept::build(doc);
-        let rows: Vec<(crate::circuits::RatedSubject, Vec<Check>)> =
-            ch.rating.results.values().map(|r| (r.subject, crate::circuits::rows::rows(doc, r))).collect();
-        for (s, v) in rows {
-            ch.set(Key::Rating(s), v);
+        for r in rating.results.values() {
+            ch.set(Key::Rating(r.subject), crate::circuits::rows::rows(doc, r));
         }
-        ch.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, &ch.rating));
+        ch.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, rating));
         ch.provisional = ecad_model::naming::numbering::provisional_on(doc);
         ch.set_unnumbered();
         ch
@@ -176,10 +175,14 @@ impl Checks {
 
     /// Re-check the subjects in `scope` on `doc`, the state after the commit. `scope` holds what
     /// each of the commit's effects names on the state before and on the state after
-    /// ([`Scope::note`]; `crate::views::ChecksView` notes them).
-    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry) {
+    /// ([`Scope::note`]; `crate::views::ChecksView` notes them). The rating rows follow `rating`,
+    /// already updated for the same commit: the subjects it re-checked ([`Kept::last`]).
+    pub fn update(
+        &mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn Look, registry: &ecad_model::registry::data::Registry, rating: &RatingView,
+    ) {
+        let kept = rating.kept();
         if scope.all {
-            *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m, registry) };
+            *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m, registry, kept) };
             return;
         }
         // Geometry first: the grid must hold the new routes before any route is re-checked.
@@ -264,14 +267,13 @@ impl Checks {
             let rows = if doc.pages().contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);
         }
-        // The subjects the ops reach, and the count rows.
-        let touched = self.rating.update(doc, &scope.rating);
-        if !touched.is_empty() || scope.rating.any() {
-            for s in touched {
-                let rows = self.rating.results.get(&s).map(|r| crate::circuits::rows::rows(doc, r)).unwrap_or_default();
-                self.set(Key::Rating(s), rows);
+        // The rated subjects the ops reached, and the count rows.
+        if !kept.last.is_empty() || rating.reached() {
+            for s in &kept.last {
+                let rows = kept.results.get(s).map(|r| crate::circuits::rows::rows(doc, r)).unwrap_or_default();
+                self.set(Key::Rating(*s), rows);
             }
-            self.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, &self.rating));
+            self.set(Key::RatingSummary, crate::circuits::rows::summary_rows(doc, kept));
         }
         for s in PROJECT_SOURCES {
             if s.touched(&scope) {
