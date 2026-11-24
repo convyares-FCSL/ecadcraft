@@ -322,8 +322,8 @@ fn a_changed_registered_prefix_is_followed_by_the_next_device() {
     assert_eq!(place(&mut h, "fusebank8", [100.0, -60.0])["tag"], "-F03");
 }
 
-/// Review of PR #63, 2: clearing `rating.<n>` always works, also once the device is no longer a
-/// fuse bank (its bank symbol erased, its fault contact kept).
+/// Clearing `rating.<n>` always works. Once the bank symbol is erased (its fault contact kept) the
+/// device is still a fuse bank by its stored data, with the ways it stored when placed.
 #[test]
 fn a_fuse_rating_can_be_cleared_after_the_bank_is_erased() {
     let mut h = new_h();
@@ -336,8 +336,9 @@ fn a_fuse_rating_can_be_cleared_after_the_bank_is_erased() {
     let handle = h.handle_of(page, item);
     h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     assert!(h.doc().devices().contains_key(&f), "the fault contact keeps the device");
-    // Setting is still refused: the device is no longer a fuse bank.
-    assert!(setprop(&mut h, f, "rating.3", json!("4A")).is_err());
+    // Its stored ways still say which outputs it has: never re-read from the drawing.
+    setprop(&mut h, f, "rating.3", json!("4A")).unwrap();
+    assert!(setprop(&mut h, f, "rating.9", json!("4A")).is_err());
     // Clearing works, by null and by an empty value.
     setprop(&mut h, f, "rating.3", Value::Null).unwrap();
     assert_eq!(prop(&mut h, f, "rating.3"), None);

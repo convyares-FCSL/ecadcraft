@@ -58,22 +58,29 @@ pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixe
         .ok_or_else(|| CmdError::refused(format!("{who} already has 9 contacts.")))
 }
 
-/// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
-/// when its head is not a fuse bank.
+/// The output labels of device `c`'s fuse bank, which are not contact labels; empty when it is
+/// not a fuse bank.
 pub(crate) fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String> {
     bank_labels(doc, c).into_iter().collect()
 }
 
-/// The output labels of device `c` when it is a fuse bank (its typed `device_type`), in the order
-/// its head symbol draws them; empty for any other device.
-///
-/// Gap: how many ways a bank has is not stored on [`ecad_model::objects::devices::FuseBank`]
-/// (only the rated outputs are), so the head symbol is still read for its labels.
+/// The output labels of device `c` when it is a fuse bank (its typed `device_type`): `1` to its
+/// stored ways; empty for any other device. A bank with no stored ways (saved before they were
+/// stored) takes them from its head symbol.
 pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     use ecad_model::objects::devices::{DeviceType, Protection};
-    if !doc.devices().get(&c).is_some_and(|d| matches!(d.device_type, DeviceType::Protection(Protection::FuseBank(_)))) {
+    let Some(DeviceType::Protection(Protection::FuseBank(bank))) = doc.devices().get(&c).map(|d| &d.device_type) else {
         return Vec::new();
+    };
+    if let Some(w) = bank.ways {
+        return (1..=w).map(|i| i.to_string()).collect();
     }
+    head_bank_labels(doc, c)
+}
+
+/// The output labels device `c`'s fuse bank head symbol draws, in its order; empty when its head
+/// is not a fuse bank symbol.
+fn head_bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     doc.representations_of(Subject::Device(c))
         .filter(|(_, r)| reps::rep_type(doc, r) == ecad_model::PartRole::Head)
         .filter_map(|(_, r)| crate::devices::tags::rep_starter(doc, r))
@@ -96,6 +103,18 @@ pub(crate) fn is_rating_key(key: &str) -> bool {
 }
 
 /// Whether `s` is a fuse bank (its fuses take `rating.<n>`).
+/// When device `c` is a fuse bank whose head symbol draws another number of ways than it stores:
+/// the stored ways and the symbol's.
+pub(crate) fn bank_ways_mismatch(doc: &Document, c: ecad_model::DeviceId) -> Option<(u8, usize)> {
+    use ecad_model::objects::devices::{DeviceType, Protection};
+    let Some(DeviceType::Protection(Protection::FuseBank(bank))) = doc.devices().get(&c).map(|d| &d.device_type) else {
+        return None;
+    };
+    let stored = bank.ways?;
+    let drawn = head_bank_labels(doc, c).len();
+    (drawn > 0 && drawn != usize::from(stored)).then_some((stored, drawn))
+}
+
 pub(crate) fn is_fuse_bank(s: &Starter) -> bool {
     s.key.fuse_bank_ways().is_some()
 }

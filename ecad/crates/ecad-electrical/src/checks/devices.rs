@@ -68,6 +68,12 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
         let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
         out.push(Check { kind: Kind::SupplyMismatch, page, at, object: Object::Device(c), which, fix: None });
     }
+    // Data stored from the symbol at placement, against the symbol drawn now.
+    if let Some((stored, drawn)) = crate::symbols::rules::bank_ways_mismatch(doc, c) {
+        let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        let which = format!("{} has {stored} ways; its symbol draws {drawn}", crate::devices::tags::tag_words(doc, c));
+        out.push(Check { kind: Kind::SymbolMismatch, page, at, object: Object::Device(c), which, fix: None });
+    }
     // A connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // A table the user placed over the title block stays there.

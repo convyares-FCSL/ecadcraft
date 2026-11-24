@@ -177,6 +177,10 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
+  How many ways it has is stored from its symbol when it is placed (`fusebank8`: 8) and its outputs
+  are read from there, also once the bank symbol is erased. A bank whose symbol now draws another
+  number of ways is a Checks row, **symbol-mismatch** (`-F1 has 6 ways; its symbol draws 4`); the
+  stored ways are never changed by themselves. Tests: `devices::fuse_bank` in ecad-engine.
 - Other groups (power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.

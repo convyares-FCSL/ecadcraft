@@ -634,6 +634,14 @@ impl Starter {
             } else {
                 P::Fuse
             };
+            // A fuse bank stores its ways, from its symbol, when it is placed.
+            if let (P::FuseBank, Some(n)) = (kind, self.key.fuse_bank_ways()) {
+                let ways = u8::try_from(n).ok();
+                return DeviceType::Protection(ecad_model::objects::devices::Protection::FuseBank(ecad_model::objects::devices::FuseBank {
+                    ways,
+                    ..Default::default()
+                }));
+            }
             return DeviceType::Protection(kind.empty());
         }
         // What operates a switching device is its symbol's.

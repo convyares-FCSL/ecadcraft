@@ -336,7 +336,10 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 contacts: contacts(),
             })),
         ),
-        (f.ids.fresh(), DeviceType::Protection(Protection::FuseBank(FuseBank { outputs: [(1, fuse()), (2, fuse())].into_iter().collect() }))),
+        (
+            f.ids.fresh(),
+            DeviceType::Protection(Protection::FuseBank(FuseBank { ways: None, outputs: [(1, fuse()), (2, fuse())].into_iter().collect() })),
+        ),
         (
             f.ids.fresh(),
             DeviceType::Switching(Switching {
