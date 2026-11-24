@@ -143,6 +143,11 @@ struct PotentialRowParam {
     /// Whether its wires are numbered (default true).
     #[serde(default)]
     numbered: Option<bool>,
+    /// What feeds it: `{current: "ac", nominal: 400, phases: "three", frequency?: 50}` (nominal is
+    /// line-to-line on three phases, line-to-neutral on one) or `{current: "dc", nominal: 24}`.
+    /// Absent: not known.
+    #[serde(default)]
+    supply: Option<ecad_model::connectivity::supply::Supply>,
     /// Refused: colours belong to wire categories now.
     #[serde(default)]
     colour: Option<Value>,
@@ -400,6 +405,7 @@ impl Generic for WiresettingsParams {
                     name: r.name,
                     prefix: r.prefix,
                     numbered: r.numbered,
+                    supply: r.supply,
                     colours: r.colour.is_some() || r.cross_section.is_some(),
                 })
                 .collect()

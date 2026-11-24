@@ -70,7 +70,7 @@ ecad-model/src/
   merge/           three-way merge of branches (#8): state, conflicts, rules, apply
   objects/         devices/ (device.rs + device/; ConnectionPoint, TerminalBlock, TerminalStrip types),
                    plc, wire, route, aid, loose_part, title_block, user, role, styles/
-  connectivity/    connectivity, jumper_bars (today links.rs), wire_order, wiring, derive
+  connectivity/    connectivity, jumper_bars (today links.rs), wire_order, wiring, supply, derive
   naming/          id, tag, prefix, numbering, keys, words, text (Text<N>), builtins
   geometry/        geom, point (connection point names), units, colour
 ```

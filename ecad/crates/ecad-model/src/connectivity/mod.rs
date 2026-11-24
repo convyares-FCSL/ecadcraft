@@ -38,6 +38,7 @@
 
 pub mod derive;
 pub mod jumper_bars;
+pub mod supply;
 pub mod wire_order;
 pub mod wiring;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};

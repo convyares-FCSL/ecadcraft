@@ -132,7 +132,8 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 S4 (#37): `NameVersion` names a `PointName` (typed rev or version), revision records are typed.
         // 0.2.3 S6 (#3): a tag, location and function each carry their state in one field (`tag`, `location`, `function`).
         // 0.2.3 #108: the fixture holds one device of each device type, every field set.
-        ("head", "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b"),
+        // 0.2.3 D4: a potential's supply (L1 and 24V in the fixture).
+        ("head", "d8b359e1c684eb423bf22e003b851d8a08aecc7e9b8255aec5cc7b66c6c972a5"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
@@ -144,10 +145,12 @@ fn record_and_definition_hashes_are_pinned() {
 /// form): the head hash of this fixture then changes, and this table gets a new row with the new
 /// number. A changed head under an unchanged number is the forgotten bump.
 // Version 2 covers S4 and S6 (nothing was released between them); version 3 also covers the
-// fixture's device types (#108), added before it was released.
+// fixture's device types (#108), added before it was released; version 4 covers all of D4's device
+// data (one bump for the whole step).
 const SCHEMA_PINS: &[(u64, &str)] = &[
     (2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
     (3, "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b"),
+    (4, "d8b359e1c684eb423bf22e003b851d8a08aecc7e9b8255aec5cc7b66c6c972a5"),
 ];
 
 #[test]

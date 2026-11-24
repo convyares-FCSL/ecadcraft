@@ -591,3 +591,33 @@ fn a_fan_view_hides_its_members_labels() {
     h.run("cableview", json!({"cable": cable, "view": "traditional"})).unwrap();
     assert_eq!(shown(&mut h), 4);
 }
+
+/// A potential's supply is typed on its row: stored, shown by `wiresettings`, and refused out of range.
+#[test]
+fn a_potential_carries_its_typed_supply() {
+    let mut h = H::new(0x22_d4);
+    let mut table: Vec<Value> = h.run("wiresettings", json!({})).unwrap()["potentials"].as_array().unwrap().clone();
+    for row in &mut table {
+        if row["name"] == "L1" {
+            row["supply"] = json!({"current": "ac", "nominal": 400, "phases": "three", "frequency": 50});
+        }
+    }
+    h.run("wiresettings", json!({"potentials": table.clone()})).unwrap();
+    let shown = h.run("wiresettings", json!({})).unwrap();
+    let l1 = shown["potentials"].as_array().unwrap().iter().find(|r| r["name"] == "L1").unwrap().clone();
+    assert_eq!(l1["supply"], json!({"current": "ac", "nominal": 400.0, "phases": "three", "frequency": 50.0}));
+    let supply = h.doc().settings().wiring.potential("L1").and_then(|d| d.supply);
+    assert_eq!(supply.and_then(|s| s.line_to_line()), Some(ecad_model::geometry::units::Volts(400.0)));
+    // Out of range: refused, naming the potential.
+    let bad: Vec<Value> = table
+        .into_iter()
+        .map(|mut r| {
+            if r["name"] == "L1" {
+                r["supply"] = json!({"current": "dc", "nominal": 0});
+            }
+            r
+        })
+        .collect();
+    let e = h.run("wiresettings", json!({"potentials": bad})).unwrap_err();
+    assert!(e.to_string().starts_with("L1: A supply's voltage"), "{e}");
+}

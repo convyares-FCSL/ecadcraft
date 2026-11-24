@@ -548,6 +548,8 @@ pub(crate) struct PotentialRow {
     pub prefix: String,
     /// `None`: numbered.
     pub numbered: Option<bool>,
+    /// What feeds it; `None`: not known.
+    pub supply: Option<ecad_model::connectivity::supply::Supply>,
     /// A colour or cross-section was given (they belong to wire categories now).
     pub colours: bool,
 }
@@ -620,7 +622,11 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
             if !names.insert(name.to_uppercase()) {
                 return Err(CmdError::refused(format!("potential {name} is listed twice")));
             }
+            if let Some(problem) = r.supply.as_ref().and_then(|s| s.problem()) {
+                return Err(CmdError::refused(format!("{name}: {problem}")));
+            }
             rows.push(wiring::PotentialDef {
+                supply: r.supply,
                 prefix: wiring::valid_text("prefix", Some(r.prefix.trim())).map_err(CmdError::refused)?.unwrap_or_default(),
                 numbered: r.numbered.unwrap_or(true),
                 name,
@@ -766,7 +772,7 @@ pub(crate) fn settings_json(doc: &Document, registry: &ecad_model::registry::dat
         "number_by": ecad_model::Word::word(w.number_by),
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
-            "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
+            "name": p.name, "prefix": p.prefix, "numbered": p.numbered, "supply": p.supply,
         })).collect::<Vec<_>>(),
     })
 }

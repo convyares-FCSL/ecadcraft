@@ -135,7 +135,7 @@ pub fn fixture() -> Fixture {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::SetProjectSettings {
                 before: ProjectSettings::default(),
-                after: ProjectSettings { length_unit: LengthUnit::Millimetre, ..ProjectSettings::default() },
+                after: ProjectSettings { length_unit: LengthUnit::Millimetre, wiring: supplied(), ..ProjectSettings::default() },
             },
         ],
     );
@@ -396,4 +396,19 @@ pub fn written(ledger: &mut Ledger) -> Vec<u8> {
     drop(p);
     ledger.mark_persisted(ledger.head()).unwrap();
     backend.bytes()
+}
+
+/// The default wiring with a supply on L1 (400 V AC, three phases, 50 Hz) and on 24V (DC).
+fn supplied() -> ecad_model::connectivity::wiring::WiringSettings {
+    use ecad_model::connectivity::supply::Supply;
+    use ecad_model::geometry::units::{Hertz, Volts};
+    let mut w = ecad_model::connectivity::wiring::WiringSettings::default();
+    for p in &mut w.potentials {
+        p.supply = match p.name.as_str() {
+            "L1" => Some(Supply::Ac { nominal: Volts(400.0), phases: ecad_model::objects::devices::Phases::Three, frequency: Some(Hertz(50.0)) }),
+            "24V" => Some(Supply::Dc { nominal: Volts(24.0) }),
+            _ => None,
+        };
+    }
+    w
 }

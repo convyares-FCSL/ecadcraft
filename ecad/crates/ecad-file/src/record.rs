@@ -21,7 +21,8 @@ use crate::records;
 /// - 1: the first format.
 /// - 2: typed revisions, point names.
 /// - 3: a strip level's own label is the property `block_label.<p>.<n>` (was `term_label.`).
-pub const SCHEMA_VERSION: u64 = 3;
+/// - 4: device data (D4): a potential's supply, a motor's rated voltage and the new rating fields.
+pub const SCHEMA_VERSION: u64 = 4;
 
 /// Longest string in a record (1 MiB).
 pub const MAX_STRING: usize = 1 << 20;

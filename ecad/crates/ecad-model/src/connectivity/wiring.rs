@@ -86,7 +86,7 @@ impl Scheme {
 }
 
 /// One row of the potentials table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PotentialDef {
     pub name: String,
@@ -94,6 +94,9 @@ pub struct PotentialDef {
     /// `false`: every net of this potential is numbered with the prefix alone, shared and exempt
     /// from the duplicate check (`PE`).
     pub numbered: bool,
+    /// What feeds it, when typed; never inferred from the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supply: Option<super::supply::Supply>,
 }
 
 /// The defaults-registry key choosing the wire type for the project or the
@@ -183,7 +186,7 @@ pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::naming::words::Wo
 pub const MAX_DIGITS: u8 = 6;
 
 fn row(name: &str, prefix: &str, numbered: bool) -> PotentialDef {
-    PotentialDef { name: name.into(), prefix: prefix.into(), numbered }
+    PotentialDef { name: name.into(), prefix: prefix.into(), numbered, supply: None }
 }
 
 /// The default potentials table (IEC 60445 and 60204-1 practice). Their colours and cross-sections are the

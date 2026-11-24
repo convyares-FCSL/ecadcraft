@@ -11,7 +11,8 @@ It has no drawing engine, no UI, no file encoding and no I/O.
 - `doc`: the objects (`Document`, `Page`, `Component`, `Cable`, `Style`…) and their reverse indexes.
 - `op`: ops, each one self-inverting. `ledger`: `Transaction`s applied with rollback, plus linear undo and redo.
 - `invariant`: the rules a document must keep, checked in full or only for what a transaction touched.
-- `connectivity`, `wiring`, `derive`: nets (kept up to date by every op), wire numbers, and results worked out from the document.
+- `connectivity`, `wiring`, `supply`, `derive`: nets (kept up to date by every op), wire numbers, a potential's typed supply
+  (voltage, AC or DC, phases, frequency), and results worked out from the document.
 - `merge`, `numbering`, `diff`: merging two documents, renumbering by rule, comparing two states.
 - `book`, `sheet`, `title_block`, `style`, `tag`, `links`, `geom`, `id`: pages and sheets, style catalogues, tags, typed ids, points.
 - `look`: the kinds of text (`TextKind`), a kind's resolved style (`TextStyle`), whether a text is shown (`Shown`), a page frame's text styles, lines and title block (`FrameText`, `FrameDraw`, `FrameBlock`), and `Look`, through which the electrical rules ask for them and how wide a text is.

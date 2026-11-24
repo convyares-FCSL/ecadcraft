@@ -549,12 +549,14 @@ pub enum Scheme {
 }
 
 /// One row of the potentials table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     pub numbered: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supply: Option<m::connectivity::supply::Supply>,
 }
 
 /// Wiring settings. `colour_style` is left out at its default; the label height, rule
@@ -601,7 +603,11 @@ impl From<&m::connectivity::wiring::WiringSettings> for WiringSettings {
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix.clone(),
-            potentials: w.potentials.iter().map(|p| PotentialDef { name: p.name.clone(), prefix: p.prefix.clone(), numbered: p.numbered }).collect(),
+            potentials: w
+                .potentials
+                .iter()
+                .map(|p| PotentialDef { name: p.name.clone(), prefix: p.prefix.clone(), numbered: p.numbered, supply: p.supply })
+                .collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
@@ -651,7 +657,7 @@ impl From<WiringSettings> for m::connectivity::wiring::WiringSettings {
             potentials: w
                 .potentials
                 .into_iter()
-                .map(|p| m::connectivity::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered })
+                .map(|p| m::connectivity::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered, supply: p.supply })
                 .collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,

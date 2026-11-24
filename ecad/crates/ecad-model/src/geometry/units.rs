@@ -109,6 +109,11 @@ unit!(
     "%"
 );
 unit!(
+    /// A frequency in hertz (a supply's, a motor's rated frequency).
+    Hertz,
+    "Hz"
+);
+unit!(
     /// A time in seconds (disconnection time).
     Seconds,
     "s"
