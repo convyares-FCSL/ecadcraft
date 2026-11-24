@@ -174,7 +174,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let target = rules::device_target(doc, device, tag.as_deref())?;
         // A terminal clicked on a wire lands on it, splitting it.
         let landing = (starter.kind == ecad_electrical::symbols::Kind::TerminalBlock)
-            .then(|| crate::terminal_strips::commands::landing_point(doc, page, at))
+            .then(|| ecad_electrical::wires::placing::landing_point(doc, page, at))
             .flatten();
         let origin = landing.map_or(at, |on| on.at);
         let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
@@ -217,7 +217,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
         p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: plan.component });
         let doc = p.ledger.document();
-        let landed = land.map(|(t, l)| crate::terminal_strips::commands::land_result(doc, t, &l));
+        let landed = land.map(|(t, l)| ecad_electrical::connectors::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {
             let labels: Vec<String> = plan.connection_points.iter().map(|(_, l, _)| l.clone()).collect();
             if let Some(line) = ecad_electrical::references::devices::table::over_line(doc, plan.component, &labels, make) {

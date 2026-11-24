@@ -189,7 +189,7 @@ pub fn side_of(doc: &Document, t: ConnectionPointId) -> Option<Side> {
 }
 
 /// The starter a representation draws when it is a connector half or pin.
-pub fn rep_half(doc: &Document, r: &Representation) -> Option<&'static Starter> {
+pub(crate) fn rep_half(doc: &Document, r: &Representation) -> Option<&'static Starter> {
     let (d, _) = crate::devices::tags::rep_definition(doc, r)?;
     // A half or a pin is what the representation's stored part says.
     if !matches!(crate::symbols::reps::rep_type(doc, r), ecad_model::PartRole::Half | ecad_model::PartRole::Pin) {
@@ -1261,6 +1261,16 @@ impl Index {
     pub fn is_empty(&self) -> bool {
         self.pages_of.is_empty()
     }
+}
+
+/// The JSON fields and echo of terminal `t` landed on a wire by `land`.
+pub fn land_result(doc: &Document, t: ConnectionPointId, land: &Land) -> (serde_json::Value, String) {
+    let words = format!(
+        "Placed {} on wire {} (split in two).",
+        crate::terminal_strips::connection_point_words(doc, t),
+        crate::wires::words::route_wire_words(doc, land.route)
+    );
+    (serde_json::json!({"split": {"route": land.route.hex(), "new": land.new.hex()}}), words)
 }
 
 /// A route split at a terminal.

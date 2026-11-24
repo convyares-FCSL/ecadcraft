@@ -200,7 +200,7 @@ pub(crate) fn place_half(
                 (c, t, true)
             }
         };
-        let landing = if pin_starter { crate::terminal_strips::commands::landing_point(doc, page, at) } else { None };
+        let landing = if pin_starter { ecad_electrical::wires::placing::landing_point(doc, page, at) } else { None };
         let origin = landing.map_or(at, |on| on.at);
         let rotation = match landing {
             Some(on) if degrees.0 == 0.0 => rules::along_wire(doc, &on),

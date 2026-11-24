@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::{
     ConnectionPoint, ConnectionPointDef, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
     ItemKind, Ledger, Noun, Op, Origin, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
-    TextHAlign, TextSlot, TextVAlign, WireId,
+    TextHAlign, TextSlot, TextVAlign,
 };
 
 use crate::defaults::symbols::Field;
@@ -399,13 +399,8 @@ fn mm(d: f64) -> String {
     if r.fract() == 0.0 { format!("{r:.0}") } else { format!("{r}") }
 }
 
-/// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
-fn wire_number(doc: &Document, c: WireId) -> String {
-    ecad_model::connectivity::wiring::wire_number(doc, c).unwrap_or_else(|| crate::cables::slash::wire_name(doc, c))
-}
-
 fn wire_words(doc: &Document, t: ConnectionPointId) -> String {
-    let names: Vec<String> = doc.ends_at(t).iter().take(3).map(|(c, _)| wire_number(doc, *c)).collect();
+    let names: Vec<String> = doc.ends_at(t).iter().take(3).map(|(c, _)| crate::wires::words::wire_words(doc, *c)).collect();
     match names.len() {
         0 => String::new(),
         1 => format!("wire {}", names.join("")),
@@ -921,12 +916,12 @@ pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
 /// object: `Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.`
 pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
-        Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
+        Some(Subject::Wire(c)) => format!("Wire {}", crate::wires::words::wire_words(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tags::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cables::cable_words(doc, k),
         // A line names the wire it carries; a loose line carries none.
         Some(Subject::Route(r)) => match crate::wires::routes::wire_of_route(doc, r) {
-            Some(c) => format!("Wire {}", wire_number(doc, c)),
+            Some(c) => format!("Wire {}", crate::wires::words::wire_words(doc, c)),
             None => "A line".to_string(),
         },
         Some(Subject::Aid(a)) => match doc.aids().get(&a).map(ecad_model::Aid::kind) {

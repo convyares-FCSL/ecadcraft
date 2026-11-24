@@ -7,7 +7,7 @@ use crate::circuits::circuit::Rating;
 use ecad_model::geometry::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::objects::wire::{InstallMethod, SupplySystem};
-use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
+use ecad_model::{Document, IdAllocator, Op, Wire, WireId, Word};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -50,18 +50,6 @@ pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
     Ok(out)
 }
 
-/// The cable `text` names: a tag or an ID.
-///
-/// # Errors
-/// No cable by that tag or ID.
-pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
-    let t = text.trim();
-    if let Some(k) = CableId::parse(t).filter(|k| doc.cables().contains_key(k)) {
-        return Ok(k);
-    }
-    doc.cables_tagged(t).into_iter().next().ok_or_else(|| CmdError::refused(format!("No cable {:?}.", t.chars().take(32).collect::<String>())))
-}
-
 /// The subjects `wire` or `cable` names (exactly one of them).
 ///
 /// # Errors
@@ -69,7 +57,7 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
 pub(crate) fn subjects_of(doc: &Document, wire: Option<&str>, cable: Option<&str>) -> Result<Vec<RatedSubject>, CmdError> {
     match (wire, cable) {
         (Some(w), None) => Ok(wires(doc, w)?.into_iter().map(RatedSubject::Wire).collect()),
-        (None, Some(c)) => Ok(vec![RatedSubject::Cable(cable_named(doc, c)?)]),
+        (None, Some(c)) => Ok(vec![RatedSubject::Cable(crate::cables::commands::cables::cable_named(doc, c)?)]),
         (Some(_), Some(_)) => Err(CmdError::input("Give `wire` or `cable`, not both.")),
         (None, None) => Err(CmdError::input("Give `wire` (a wire number or conductor ID) or `cable` (a tag or ID).")),
     }

@@ -5,6 +5,26 @@ use super::*;
 /// Most connection points a net line names before `+n`.
 pub(crate) const MAX_POINTS_SHOWN: usize = 6;
 
+/// A wire as people read it: its net's number (`24V-05`), else its own number, else
+/// `wire <first 8 hex>…`.
+pub(crate) fn wire_words(doc: &Document, w: WireId) -> String {
+    ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| crate::cables::slash::wire_name(doc, w))
+}
+
+/// A wire named in a sentence: `wire 24V-05` (its net's number), else its own number, else
+/// `wire <first 8 hex>…`.
+pub fn wire_called(doc: &Document, w: WireId) -> String {
+    match ecad_model::connectivity::wiring::wire_number(doc, w) {
+        Some(n) => format!("wire {n}"),
+        None => crate::cables::slash::wire_name(doc, w),
+    }
+}
+
+/// The words for the wire route `r` stands for, `?` for none.
+pub fn route_wire_words(doc: &Document, r: RouteId) -> String {
+    super::routes::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
+}
+
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some(term) = doc.connection_points().get(&t) else { return "?".into() };

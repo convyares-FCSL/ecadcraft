@@ -238,6 +238,23 @@ pub(crate) fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError>
     Ok(Some(t.to_string()))
 }
 
+/// A connection point in a sentence: `A1 of -K01` for a device's, the terminal's name for a
+/// strip's (`-X01:3`), a connector pin by its half (`-X10.S:3`).
+pub fn connection_point_phrase(doc: &Document, t: ConnectionPointId) -> String {
+    let name = terminal_blocks::connection_point_name(doc, t);
+    if let Some(n) = crate::connectors::pin_name(doc, t) {
+        return n;
+    }
+    match doc.connection_points().get(&t).and_then(|x| x.device()) {
+        Some(c) if strip_of(doc, c).is_some() => format!("{}:{name}", crate::devices::tags::tag_words(doc, c)),
+        Some(c) => match crate::devices::tags::tag_shown_of(doc, c) {
+            Some(tag) => format!("{name} of {tag}"),
+            None => name,
+        },
+        None => name,
+    }
+}
+
 /// `-X01:3`.
 pub fn connection_point_words(doc: &Document, t: ConnectionPointId) -> String {
     let c = doc.connection_points().get(&t).and_then(|x| x.device());

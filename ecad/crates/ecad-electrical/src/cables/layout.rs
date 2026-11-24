@@ -87,7 +87,7 @@ pub fn leaving(path: impl Iterator<Item = Pt>, tol: f64) -> Option<Pt> {
 }
 
 /// Remove repeated and collinear points of an orthogonal or straight path.
-pub fn tidy(points: Vec<Pt>, tol: f64) -> Vec<Pt> {
+pub(crate) fn tidy(points: Vec<Pt>, tol: f64) -> Vec<Pt> {
     let mut out: Vec<Pt> = Vec::with_capacity(points.len());
     for p in points {
         if out.last().is_some_and(|q| q.near(p, tol)) {

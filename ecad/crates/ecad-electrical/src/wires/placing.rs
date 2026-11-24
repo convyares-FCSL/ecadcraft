@@ -77,6 +77,20 @@ pub struct OnRoute {
     pub at: Pt,
 }
 
+/// Where a terminal placed at `at` lands on a route, or `None` when `at` is on no route (or on a
+/// route's free end): it is then placed on its own.
+pub fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
+    let on = route_at(doc, page, at, ON_WIRE, None)?;
+    let route = doc.routes().get(&on.route)?;
+    let [first, last] = route.end_points()?;
+    for (p, e) in [first, last].into_iter().zip(route.ends) {
+        if p.near(on.at, ON_WIRE) && e == RouteEnd::Free {
+            return None;
+        }
+    }
+    Some(on)
+}
+
 /// The route on `page` passing within `tol` of `p` (the nearest; never `except`), with the point
 /// snapped to a route vertex within `tol`. Reads the page's routes through the index.
 pub fn route_at(doc: &Document, page: PageId, p: Pt, tol: f64, except: Option<RouteId>) -> Option<OnRoute> {

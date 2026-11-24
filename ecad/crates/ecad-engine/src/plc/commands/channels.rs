@@ -80,7 +80,7 @@ pub(crate) fn place_channel(
             }
         }
         // On a wire: its first point lands there, the symbol shifted onto it.
-        let landing = first_point(starter, &pl).and_then(|q| crate::terminal_strips::commands::landing_point(doc, page, q).map(|on| (q, on)));
+        let landing = first_point(starter, &pl).and_then(|q| ecad_electrical::wires::placing::landing_point(doc, page, q).map(|on| (q, on)));
         if let Some((q, on)) = &landing {
             pl.origin = Pt::new(pl.origin.x + on.at.x - q.x, pl.origin.y + on.at.y - q.y);
         }

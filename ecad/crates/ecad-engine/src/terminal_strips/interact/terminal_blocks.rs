@@ -14,7 +14,6 @@ use crate::interact::{
     ring_kind, v2,
 };
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::terminal_strips::commands::{self};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
 use ecad_electrical::terminal_strips::commands::terminal_strips::MAX_FENCE;
@@ -133,7 +132,11 @@ impl PlaceTerminalBlocks {
     }
 
     fn choose_level(&mut self, s: &Session, text: &str) -> R<Step> {
-        let level = read(s, |p, _| commands::level_word(p.ledger.document(), self.strip, self.ty, text).map_err(String::from)).map_err(other)?;
+        let level = read(s, |p, _| {
+            ecad_electrical::terminal_strips::commands::terminal_strips::level_word(p.ledger.document(), self.strip, self.ty, text)
+                .map_err(String::from)
+        })
+        .map_err(other)?;
         self.level = level;
         self.stage = if level.is_some() { Stage::Position } else { Stage::Line };
         Ok(Step::Continue)

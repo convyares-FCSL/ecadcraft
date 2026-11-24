@@ -10,7 +10,7 @@
 
 use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{ConnectionPointId, Document, PageId, Subject};
+use ecad_model::{Document, PageId, Subject};
 
 use crate::interact::{capture, pick, pixel, read, route_ends};
 use crate::project::{Mapped, Project};
@@ -34,9 +34,9 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
     match command {
         "wire" => match point {
             Some(c) => {
-                let mut s = format!("joins {}", point_words(doc, c.connection_point));
+                let mut s = format!("joins {}", ecad_electrical::terminal_strips::connection_point_phrase(doc, c.connection_point));
                 if let Some(w) = wire_ending_at(doc, page, c.at, aperture) {
-                    s.push_str(&format!(" to {}", crate::pointer::kind::wire_words(doc, w)));
+                    s.push_str(&format!(" to {}", ecad_electrical::wires::words::wire_called(doc, w)));
                 }
                 Some(s)
             }
@@ -46,34 +46,15 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 match doc.representation_of_item(i)?.1.subject {
                     Subject::Route(r) => {
                         let words = ecad_electrical::wires::routes::wire_of_route(doc, r)
-                            .map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
+                            .map_or_else(|| "the wire line".into(), |w| ecad_electrical::wires::words::wire_called(doc, w));
                         Some(format!("joins {words} (a T)"))
                     }
                     _ => None,
                 }
             }
         },
-        "connect" => point.map(|c| format!("connects to {}", point_words(doc, c.connection_point))),
+        "connect" => point.map(|c| format!("connects to {}", ecad_electrical::terminal_strips::connection_point_phrase(doc, c.connection_point))),
         _ => None,
-    }
-}
-
-/// `A1 of -K01` (a device's connection point), or the terminal's name (`-X01:3`).
-fn point_words(doc: &Document, t: ConnectionPointId) -> String {
-    let name = ecad_electrical::terminal_strips::terminal_blocks::connection_point_name(doc, t);
-    // A connector pin is named by its half (`-X10.S:3`).
-    if let Some(n) = ecad_electrical::connectors::pin_name(doc, t) {
-        return n;
-    }
-    match doc.connection_points().get(&t).and_then(|x| x.device()) {
-        Some(c) if ecad_electrical::terminal_strips::strip_of(doc, c).is_some() => {
-            format!("{}:{name}", ecad_electrical::devices::tags::tag_words(doc, c))
-        }
-        Some(c) => match ecad_electrical::devices::tags::tag_shown_of(doc, c) {
-            Some(tag) => format!("{name} of {tag}"),
-            None => name,
-        },
-        None => name,
     }
 }
 

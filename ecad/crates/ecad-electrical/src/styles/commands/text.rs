@@ -6,13 +6,14 @@
 //! `ecad_drawing_style::text::commands`.
 
 use ecad_model::Word;
-use ecad_model::registry::{Entry, Level, Resolved, Source};
+use ecad_model::registry::{Entry, Resolved, Source};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use ecad_model::{ConnectionPointId, DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, TextHAlign, TextVAlign};
 
+use super::defaults::level_word;
 use crate::commands::input::Point;
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::defaults::{self};
@@ -198,15 +199,6 @@ pub(crate) fn value_json(r: &Resolved<'_>) -> Value {
         ecad_model::registry::Value::Sheet(s) => json!(s.text()),
         ecad_model::registry::Value::Margins(m) => json!(ecad_model::document::sheet::margins_text(&m)),
         ecad_model::registry::Value::CoreColours(c) => json!(c.to_string()),
-    }
-}
-
-pub fn level_word(l: Level) -> &'static str {
-    match l {
-        Level::Standard => "standard",
-        Level::Project => "project",
-        Level::Page => "page",
-        Level::Object => "object",
     }
 }
 

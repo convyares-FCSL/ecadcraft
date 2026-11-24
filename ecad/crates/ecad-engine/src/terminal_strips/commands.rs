@@ -14,17 +14,15 @@ use ecad_electrical::CmdError;
 use ecad_electrical::terminal_strips::commands::terminal_strips::{self as rules, Bridge};
 use ecad_electrical::terminal_strips::commands::terminal_strips::{Fence, definition_for, land_level, level_symbol, plan_fence};
 use ecad_model::geometry::units::{Degrees, Radians};
-use ecad_model::{ConnectionPointId, DeviceId, Document, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Op, PageId, Placement, Pt, Style};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_project, plain_style};
-use ecad_electrical::connectors::Land;
 use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
-use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::placing::OnRoute};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<BridgeParams>("bridge")];
@@ -36,40 +34,7 @@ pub fn specs() -> Vec<CommandSpec> {
 
 // ---------------------------------------------------------------- landing on a wire
 
-/// The echo of a landed terminal.
-fn land_words(doc: &Document, t: ConnectionPointId, land: &Land) -> String {
-    format!("Placed {} on wire {} (split in two).", connection_point_words(doc, t), route_words(doc, land.route))
-}
-
-/// Where a terminal starter placed at `at` lands on a route (`place`), or `None` when `at`
-/// is on no route (or on a route's free end): it is then placed as before.
-pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
-    let on = ecad_electrical::wires::placing::route_at(doc, page, at, ON_WIRE, None)?;
-    let route = doc.routes().get(&on.route)?;
-    let [first, last] = route.end_points()?;
-    for (p, e) in [first, last].into_iter().zip(route.ends) {
-        if p.near(on.at, ON_WIRE) && e == RouteEnd::Free {
-            return None;
-        }
-    }
-    Some(on)
-}
-
-/// The JSON fields and echo of a landed place.
-pub(crate) fn land_result(doc: &Document, t: ConnectionPointId, land: &Land) -> (Value, String) {
-    (json!({"split": {"route": land.route.hex(), "new": land.new.hex()}}), land_words(doc, t, land))
-}
-
 // ---------------------------------------------------------------- Place Terminals
-
-/// The level a prompt or JSON names for type `t` on strip `c` ([`rules::level_word`]), for the
-/// prompt.
-///
-/// # Errors
-/// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::BlockType, word: &str) -> Result<Option<u32>, CmdError> {
-    rules::level_word(doc, c, t, word)
-}
 
 /// [`plan_fence`] on project `p`, with its own IDs and tag numbers (tools such as the bench, which
 /// commit the plan themselves).
@@ -81,16 +46,6 @@ pub fn plan_fence_in(
 ) -> Result<Fence, CmdError> {
     let tol = p.tolerance;
     plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol)
-}
-
-/// The net number of conductor `w`, else its name.
-fn wire_words(doc: &Document, w: WireId) -> String {
-    ecad_model::connectivity::wiring::wire_number(doc, w).unwrap_or_else(|| ecad_electrical::cables::slash::wire_name(doc, w))
-}
-
-/// The words for the wire route `r` carries ([`ecad_electrical::wires::routes::wire_of_route`]), `?` for none.
-fn route_words(doc: &Document, r: RouteId) -> String {
-    ecad_electrical::wires::routes::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
 }
 
 /// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}`:
@@ -135,7 +90,7 @@ pub(crate) fn place_level(
                 (c, t.shown())
             }
         };
-        let landing = landing_point(doc, page, at);
+        let landing = ecad_electrical::wires::placing::landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
         let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
@@ -162,12 +117,12 @@ pub(crate) fn place_level(
             (Some(l), true) => format!(
                 "Placed {} {name} on wire {}: in {}, out {}.",
                 ty.word,
-                route_words(doc, l.route),
-                route_words(doc, l.route),
-                route_words(doc, l.new)
+                ecad_electrical::wires::words::route_wire_words(doc, l.route),
+                ecad_electrical::wires::words::route_wire_words(doc, l.route),
+                ecad_electrical::wires::words::route_wire_words(doc, l.new)
             ),
             (Some(l), false) => match first {
-                Some(t) => land_words(doc, t, l),
+                Some(t) => ecad_electrical::connectors::land_result(doc, t, l).1,
                 None => format!("Placed {name}."),
             },
             (None, _) => format!("Placed {name} ({what})."),
