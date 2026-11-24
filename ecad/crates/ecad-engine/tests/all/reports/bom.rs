@@ -698,8 +698,8 @@ fn rating_columns_follow_the_article_column() {
     let t = h.cfg(|p| p.reports().bom_table(Group::Location));
     assert_eq!(t.headers.last(), Some(&"Rated current"));
     same_as_built(&mut h);
-    for bad in [json!({"columns": ["rating.speed"]}), json!({"columns": ["rating.current", "rating.current"]})] {
+    for bad in [json!({"columns": ["rating.torque"]}), json!({"columns": ["rating.current", "rating.current"]})] {
         assert!(h.run("bom", bad.clone()).is_err(), "{bad}");
     }
-    assert!(h.run("setdefault", json!({"key": "bom.column.rating", "level": "project", "value": "current, speed"})).is_err());
+    assert!(h.run("setdefault", json!({"key": "bom.column.rating", "level": "project", "value": "current, torque"})).is_err());
 }

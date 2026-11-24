@@ -443,8 +443,8 @@ fn a_motor_rating_is_read_into_typed_fields() {
     assert!(e.contains("kW (rated power) or A"), "{e}");
     let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5 kW 400 VDC"})).unwrap_err();
     assert!(e.contains("runs on AC"), "{e}");
-    let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "IE3"})).unwrap();
-    assert_eq!(r["value"], json!("IE3"), "{r}");
+    let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
+    assert_eq!(r["value"], json!("see datasheet"), "{r}");
     assert!(h.doc().devices()[&m].rating_note.is_some());
     assert!(no_rating(&mut h));
 }

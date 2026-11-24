@@ -262,7 +262,7 @@ mod tests {
             let got = shown(text);
             assert!(got.starts_with(start), "{text}: {got}");
         }
-        for text in ["see datasheet", "LED", "amber", "", "NaN W", &"1".repeat(70)] {
+        for text in ["see datasheet", "LED", "amber", "", "NaN W", &"1".repeat(170)] {
             assert_eq!(shown(text), "note", "{text}");
         }
     }

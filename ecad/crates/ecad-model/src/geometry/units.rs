@@ -114,6 +114,11 @@ unit!(
     "Hz"
 );
 unit!(
+    /// A rotational speed in revolutions per minute (a motor's rated speed).
+    Rpm,
+    "rpm"
+);
+unit!(
     /// A time in seconds (disconnection time).
     Seconds,
     "s"

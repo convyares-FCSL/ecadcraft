@@ -307,7 +307,7 @@ mod tests {
             let got = shown(kind, text);
             assert!(got.starts_with(start), "{text}: {got}");
         }
-        for text in ["see datasheet", "24 V AC/DC", "5 VA", "", "coil", "NaN V DC", &"1".repeat(70)] {
+        for text in ["see datasheet", "24 V AC/DC", "5 VA", "", "coil", "NaN V DC", &"1".repeat(170)] {
             assert_eq!(shown(K::Coil, text), "note", "{text}");
         }
     }

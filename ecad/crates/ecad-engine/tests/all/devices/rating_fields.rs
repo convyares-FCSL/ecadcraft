@@ -87,12 +87,26 @@ fn a_field_out_of_range_is_refused_and_a_set_field_draws_on_the_line() {
     let words: Vec<&str> = fields.iter().filter_map(|f| f["key"].as_str()).collect();
     assert_eq!(
         words,
-        ["rating.power", "rating.voltage", "rating.current", "rating.frequency", "rating.power_factor", "rating.efficiency", "rating.starting"]
+        [
+            "rating.power",
+            "rating.voltage",
+            "rating.current",
+            "rating.frequency",
+            "rating.speed",
+            "rating.power_factor",
+            "rating.efficiency",
+            "rating.efficiency_class",
+            "rating.connection",
+            "rating.duty",
+            "rating.insulation_class",
+            "rating.ip_rating",
+            "rating.starting"
+        ]
     );
     assert_eq!(fields[0]["value"], json!("7.5 kW"));
     assert_eq!(fields[0]["source"], json!("nameplate"));
-    assert_eq!(fields[6]["source"], json!("design"));
-    assert_eq!(fields[6]["choices"], json!(["direct", "star_delta", "soft", "vfd"]));
+    assert_eq!(fields[12]["source"], json!("design"));
+    assert_eq!(fields[12]["choices"], json!(["direct", "star_delta", "soft", "vfd"]));
     assert_eq!(fields[1]["value"], json!(null));
 }
 

@@ -393,7 +393,7 @@ pub use switching::{Control, Operator, OperatorKind, Switching};
 
 pub use sensor::{Output, Sensing, Sensor};
 
-pub use motor::{Motor, Phases, Starting};
+pub use motor::{DutyType, EfficiencyClass, InsulationClass, Motor, Phases, Starting, WindingConnection};
 
 pub use load::Load;
 

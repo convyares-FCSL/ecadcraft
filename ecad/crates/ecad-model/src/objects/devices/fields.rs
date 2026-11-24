@@ -16,9 +16,12 @@
 //! fields themselves, which each group declares beside its data.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, VoltAmps, Volts, Watts};
+use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, Rpm, VoltAmps, Volts, Watts};
 use crate::naming::words::Word;
-use crate::objects::devices::{FuseClass, FuseSize, IndicatorColour, IpCode, Poles, ResidualType, SignalType, Starting, TripCurve};
+use crate::objects::devices::{
+    DutyType, EfficiencyClass, FuseClass, FuseSize, IndicatorColour, InsulationClass, IpCode, Poles, ResidualType, SignalType, Starting, TripCurve,
+    WindingConnection,
+};
 
 /// What a rating field's value is, for whoever describes the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +35,8 @@ pub enum FieldType {
     Power,
     ApparentPower,
     Frequency,
+    /// A rotational speed.
+    Speed,
     Percent,
     /// A number from 0 to 1 (a power factor).
     Ratio,
@@ -53,6 +58,7 @@ impl FieldType {
             FieldType::Power => "power",
             FieldType::ApparentPower => "apparent_power",
             FieldType::Frequency => "frequency",
+            FieldType::Speed => "speed",
             FieldType::Percent => "percent",
             FieldType::Ratio => "ratio",
             FieldType::IpCode => "ip_code",
@@ -71,6 +77,7 @@ impl FieldType {
             FieldType::Power => Watts::SYMBOL,
             FieldType::ApparentPower => VoltAmps::SYMBOL,
             FieldType::Frequency => Hertz::SYMBOL,
+            FieldType::Speed => Rpm::SYMBOL,
             FieldType::Percent => Percent::SYMBOL,
             FieldType::Ratio | FieldType::IpCode | FieldType::Choice(_) | FieldType::Combined => "",
         }
@@ -87,6 +94,7 @@ impl FieldType {
             FieldType::Power => "7.5 kW",
             FieldType::ApparentPower => "250 VA",
             FieldType::Frequency => "50 Hz",
+            FieldType::Speed => "1450 rpm",
             FieldType::Percent => "91 %",
             FieldType::Ratio => "0.85",
             FieldType::IpCode => "IP65",
@@ -107,6 +115,7 @@ impl FieldType {
             | FieldType::Power
             | FieldType::ApparentPower
             | FieldType::Frequency
+            | FieldType::Speed
             | FieldType::Percent
             | FieldType::Ratio
             | FieldType::IpCode
@@ -219,6 +228,7 @@ quantity_value!(
     crate::objects::devices::power_supply::volt_amps
 );
 quantity_value!(Hertz, FieldType::Frequency, ["hz" => 1.0], "a frequency, such as 50 Hz", |v: Hertz| v.to_string());
+quantity_value!(Rpm, FieldType::Speed, ["rpm" => 1.0, "1/min" => 1.0], "a speed, such as 1450 rpm", |v: Rpm| v.to_string());
 quantity_value!(Percent, FieldType::Percent, ["%" => 1.0], "a percentage, such as 91 %", |v: Percent| v.to_string());
 
 /// A power factor: a number more than 0 and at most 1.
@@ -300,3 +310,7 @@ choice_value!(Poles, Poles::label);
 choice_value!(TripCurve, TripCurve::letter);
 choice_value!(FuseSize, FuseSize::label);
 choice_value!(ResidualType, ResidualType::label);
+choice_value!(WindingConnection, WindingConnection::label);
+choice_value!(DutyType, DutyType::label);
+choice_value!(InsulationClass, InsulationClass::letter);
+choice_value!(EfficiencyClass, EfficiencyClass::label);

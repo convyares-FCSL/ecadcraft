@@ -176,7 +176,7 @@ mod tests {
             let got = shown(&pnp, text);
             assert!(got.starts_with(start), "{text}: {got}");
         }
-        for text in ["see datasheet", "10-30 V DC", "24 V AC/DC", "", "supply", "NaN V DC", &"1".repeat(70)] {
+        for text in ["see datasheet", "10-30 V DC", "24 V AC/DC", "", "supply", "NaN V DC", &"1".repeat(170)] {
             assert_eq!(shown(&pnp, text), "note", "{text}");
         }
         for s in [Sensor::empty(Sensing::Float, Output::Contact), Sensor::empty(Sensing::Temperature, Output::Thermocouple)] {

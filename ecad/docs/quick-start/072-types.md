@@ -211,7 +211,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 | `protection` | `curve`, `current`, `class`, `size`, `residual`, `residual_type`, `breaking`, `conditional_short_circuit`, `poles`, `voltage`, `outputs` |
 | `switching` | `control`, `ac3_current`, `ac3_power`, `operational_voltage`, `thermal_current`, `insulation_voltage` |
 | `sensor` | `supply` |
-| `motor` | `power`, `voltage`, `current`, `frequency`, `power_factor`, `efficiency`, `starting` |
+| `motor` | `power`, `voltage`, `current`, `frequency`, `speed`, `power_factor`, `efficiency`, `efficiency_class`, `connection`, `duty`, `insulation_class`, `ip_rating`, `starting` |
 | `load` | `power` |
 | `indicator` | `colour`, `signal`, `voltage`, `power` |
 
@@ -351,8 +351,17 @@ current, power factor (`cos φ 0.85`, also `pf 0.85`), efficiency (`eff 91 %`) a
 (`DOL`, `star-delta` or `Y-D`, `soft start`, `VFD`).
 
 - `7,5kW 15.2A Y-D` reads as **7.5 kW, 15.2 A, star-delta**; `370 W` as **0.37 kW**.
-- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. Other text (`IE3`,
-  `see datasheet`) is kept as the note.
+- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. Other text
+  (`see datasheet`) is kept as the note.
+- The rest of the nameplate: **Rated speed** (`1450 rpm` or `1450 1/min`), **Efficiency class**
+  (`IE1` to `IE5`, the legal minimum), **Connection** of the windings (`Y`, `Δ`, or `Y/Δ` for six
+  terminals; also `star`, `delta`: star-delta starting needs a motor rated delta at the supply
+  voltage; `Y-D` still means star-delta *starting*), **Duty** (`S1` to `S10`: an S2 or S3 motor
+  must not run continuously), **Insulation class** (`class B`, `F` or `H`: a drive or a hot room
+  needs F or above) and **IP rating** (`IP55`). `7.5 kW 400 V 15.2 A 50 Hz 1460 rpm IE3 Δ S1 class
+  F IP55` reads as **7.5 kW, 400 V, 15.2 A, 50 Hz, 1460 rpm, IE3, Δ, S1, class F, IP55**. Each is
+  also a row of its own (`rating.speed`, `rating.efficiency_class`, `rating.connection`,
+  `rating.duty`, `rating.insulation_class`, `rating.ip_rating`).
 - An unrated motor now gets the Checks warning **no-rating** (the demo's `-M01` too).
 
 To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y-D` as its rating

@@ -472,7 +472,7 @@ mod tests {
         for text in ["24 V DC 50 Hz", "24 V DC eff 90 %", "uk 4 %"] {
             assert_eq!(psu(text), "note", "{text}: a power supply's text has no frequency or percentage");
         }
-        for text in ["see datasheet", "SITOP", "", "NaN V", &"1".repeat(70)] {
+        for text in ["see datasheet", "SITOP", "", "NaN V", &"1".repeat(170)] {
             assert_eq!(psu(text), "note", "{text}");
             assert_eq!(trafo(text), "note", "{text}");
         }

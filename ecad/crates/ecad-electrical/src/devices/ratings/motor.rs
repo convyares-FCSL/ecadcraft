@@ -1,26 +1,30 @@
-//! Reading a motor's rating: its nameplate power, voltage, current, frequency, power factor,
-//! efficiency and starting.
+//! Reading a motor's rating: its nameplate power, voltage, current, frequency, speed, power factor,
+//! efficiency and its class, winding connection, duty, insulation class, IP code, and starting.
 //!
 //! # Semantics
 //! - `7.5 kW` and `7500 W` are the rated power; `400 V` the rated voltage; `15.2 A` the rated
 //!   current; `50 Hz` the rated frequency; `0,37 kW` reads as `0.37 kW` (a decimal comma).
 //! - `cos φ 0.85` (also `cosφ`, `cos phi`, `pf`) is the power factor; `eff 91 %` (also `η`) the
-//!   efficiency.
+//!   efficiency; `IE3` its class.
+//! - `1450 rpm` (or `1450 1/min`) is the rated speed; `Y`, `Δ` (`star`, `delta`) or `Y/Δ` the
+//!   winding connection (`Y-D` stays star-delta starting); `S1` to `S10` the duty; `class F` the
+//!   insulation class; `IP55` (or `IP 55`) the degree of protection.
 //! - `DOL` (or `direct`), `star-delta` (`Y-D`), `soft start` (`soft-start`) and `VFD` (`VSD`) say how
 //!   it is started.
 //! - Ambiguous text is asked about: a number without a unit (kW or A?), a percentage that does not
 //!   say it is the efficiency. A DC voltage is refused: a motor here runs on AC.
-//! - Any other word (`IE3`, `see datasheet`) is no rating: the note.
+//! - Any other word (`see datasheet`) is no rating: the note.
 //!
 //! This module excludes the protection reader (its parent) and the calculations from the rating.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::geometry::units::{Amps, Hertz, Percent, Volts, Watts};
-use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_FREQUENCY_HERTZ, MAX_POWER_WATTS, MAX_VOLTAGE_VOLTS};
-use ecad_model::objects::devices::{Motor, Starting};
+use ecad_model::Word;
+use ecad_model::geometry::units::{Amps, Hertz, Percent, Rpm, Volts, Watts};
+use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_FREQUENCY_HERTZ, MAX_POWER_WATTS, MAX_SPEED_RPM, MAX_VOLTAGE_VOLTS};
+use ecad_model::objects::devices::{DutyType, EfficiencyClass, InsulationClass, IpCode, Motor, Starting, WindingConnection};
 
 use crate::devices::ratings::parse::{number_unit, pieces};
-use crate::devices::ratings::{MAX_CHARS, Read};
+use crate::devices::ratings::{MAX_CHARS, Problem, Read};
 
 /// One read piece of a motor rating.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,6 +44,16 @@ enum Tok {
     Starting(Starting),
     /// `soft` (before `start`).
     Soft,
+    Rpm(f64),
+    EfficiencyClass(EfficiencyClass),
+    Connection(WindingConnection),
+    Duty(DutyType),
+    /// `class` (before an insulation class's letter).
+    ClassWord,
+    Insulation(InsulationClass),
+    /// `IP` (before its numerals).
+    IpWord,
+    Ip(IpCode),
 }
 
 fn unit_token(x: f64, unit: &str) -> Option<Tok> {
@@ -53,6 +67,7 @@ fn unit_token(x: f64, unit: &str) -> Option<Tok> {
         "kv" => Some(Tok::Volts(x * 1000.0)),
         "vdc" => Some(Tok::DcVolts),
         "hz" => Some(Tok::Hertz(x)),
+        "rpm" | "1/min" => Some(Tok::Rpm(x)),
         _ => None,
     }
 }
@@ -67,7 +82,21 @@ fn piece_token(lower: &str) -> Option<Tok> {
         "soft-start" | "softstart" => return Some(Tok::Starting(Starting::Soft)),
         "soft" => return Some(Tok::Soft),
         "vfd" | "vsd" => return Some(Tok::Starting(Starting::Vfd)),
+        "star" | "y" => return Some(Tok::Connection(WindingConnection::Star)),
+        "delta" | "δ" => return Some(Tok::Connection(WindingConnection::Delta)),
+        "star/delta" | "star_delta" | "y/δ" | "δ/y" => return Some(Tok::Connection(WindingConnection::StarDelta)),
+        "class" => return Some(Tok::ClassWord),
+        "ip" => return Some(Tok::IpWord),
         _ => {}
+    }
+    if let Some(c) = EfficiencyClass::parse(lower) {
+        return Some(Tok::EfficiencyClass(c));
+    }
+    if let Some(d) = DutyType::parse(lower) {
+        return Some(Tok::Duty(d));
+    }
+    if let Some(ip) = IpCode::parse(lower) {
+        return Some(Tok::Ip(ip));
     }
     let (x, unit) = number_unit(lower)?;
     unit_token(x, unit)
@@ -83,6 +112,8 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
             (Some(Tok::Soft), "start" | "starter") => Some(Tok::Starting(Starting::Soft)),
             // `cos φ` and `cos phi` are one marker.
             (Some(Tok::PowerFactor), "φ" | "phi") => Some(Tok::PowerFactor),
+            (Some(Tok::ClassWord), u) => InsulationClass::parse(u).map(Tok::Insulation),
+            (Some(Tok::IpWord), u) => IpCode::parse(&format!("ip{u}")).map(Tok::Ip),
             _ => None,
         };
         if let Some(t) = run_on {
@@ -108,18 +139,24 @@ struct Found {
     volts: Option<f64>,
     hertz: Option<f64>,
     dc: bool,
+    rpm: Option<f64>,
+    efficiency_class: Option<EfficiencyClass>,
+    connection: Option<WindingConnection>,
+    duty: Option<DutyType>,
+    insulation: Option<InsulationClass>,
+    ip: Option<IpCode>,
 }
 
-fn once<T>(slot: &mut Option<T>, v: T, what: &str) -> Result<(), Read<Motor>> {
+fn once<T>(slot: &mut Option<T>, v: T, what: &str) -> Result<(), Problem> {
     if slot.is_some() {
-        return Err(Read::Refused(format!("it gives two {what}")));
+        return Err(Problem::Refused(format!("it gives two {what}")));
     }
     *slot = Some(v);
     Ok(())
 }
 
 /// The fields of `toks`; a marker (`cos φ`, `eff`) takes the number after it.
-fn found(toks: &[Tok]) -> Result<Found, Read<Motor>> {
+fn found(toks: &[Tok]) -> Result<Found, Problem> {
     let mut f = Found::default();
     let mut i = 0;
     while let Some(t) = toks.get(i) {
@@ -139,23 +176,31 @@ fn found(toks: &[Tok]) -> Result<Found, Read<Motor>> {
                     i += 1;
                     once(&mut f.power_factor, *x, "power factors")?;
                 }
-                _ => return Err(Read::Ask("the power factor, for example cos φ 0.85".into())),
+                _ => return Err(Problem::Ask("the power factor, for example cos φ 0.85".into())),
             },
             Tok::Efficiency => match toks.get(i) {
                 Some(Tok::Percent(x)) => {
                     i += 1;
                     once(&mut f.efficiency, *x, "efficiencies")?;
                 }
-                _ => return Err(Read::Ask("the efficiency in percent, for example eff 91 %".into())),
+                _ => return Err(Problem::Ask("the efficiency in percent, for example eff 91 %".into())),
             },
-            Tok::Soft => return Err(Read::Ask("whether it has a soft starter; write soft start".into())),
+            Tok::Soft => return Err(Problem::Ask("whether it has a soft starter; write soft start".into())),
+            Tok::Rpm(x) => once(&mut f.rpm, x, "speeds")?,
+            Tok::EfficiencyClass(c) => once(&mut f.efficiency_class, c, "efficiency classes")?,
+            Tok::Connection(c) => once(&mut f.connection, c, "winding connections")?,
+            Tok::Duty(d) => once(&mut f.duty, d, "duty types")?,
+            Tok::Insulation(c) => once(&mut f.insulation, c, "insulation classes")?,
+            Tok::Ip(ip) => once(&mut f.ip, ip, "IP codes")?,
+            Tok::ClassWord => return Err(Problem::Ask("the insulation class (B, F or H), for example class F".into())),
+            Tok::IpWord => return Err(Problem::Ask("the IP code, for example IP55".into())),
         }
     }
     Ok(f)
 }
 
-fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Read<Motor>> {
-    if x.is_finite() && x > 0.0 && x <= max { Ok(x) } else { Err(Read::Refused(format!("{what} is more than 0 and at most {max}{unit}"))) }
+fn within(x: f64, max: f64, what: &str, unit: &str) -> Result<f64, Problem> {
+    if x.is_finite() && x > 0.0 && x <= max { Ok(x) } else { Err(Problem::Refused(format!("{what} is more than 0 and at most {max}{unit}"))) }
 }
 
 /// Read `text` as the rating of `motor` (its phases kept, its nameplate read).
@@ -178,24 +223,25 @@ pub fn read_motor(motor: &Motor, text: &str) -> Read<Motor> {
     let Some(toks) = tokens(t) else { return Read::NotARating };
     let f = match found(&toks) {
         Ok(f) => f,
-        Err(Read::Refused(e)) => return Read::Refused(format!("'{t}' does not read: {e}")),
-        Err(other) => return other,
+        Err(Problem::Refused(e)) => return Read::Refused(format!("'{t}' does not read: {e}")),
+        Err(Problem::Ask(q)) => return Read::Ask(q),
     };
     match build(motor, &f) {
         Ok(m) => Read::Rating(m),
-        Err(r) => r,
+        Err(Problem::Ask(q)) => Read::Ask(q),
+        Err(Problem::Refused(m)) => Read::Refused(m),
     }
 }
 
-fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
+fn build(motor: &Motor, f: &Found) -> Result<Motor, Problem> {
     if f.dc {
-        return Err(Read::Refused("a motor here runs on AC; give its voltage without DC, for example 400 V".into()));
+        return Err(Problem::Refused("a motor here runs on AC; give its voltage without DC, for example 400 V".into()));
     }
     if let Some(x) = f.bare {
-        return Err(Read::Ask(format!("a unit for {x}: kW (rated power) or A (rated current)?")));
+        return Err(Problem::Ask(format!("a unit for {x}: kW (rated power) or A (rated current)?")));
     }
     if let Some(x) = f.percent {
-        return Err(Read::Ask(format!("whether {x} % is the efficiency; write eff {x} %")));
+        return Err(Problem::Ask(format!("whether {x} % is the efficiency; write eff {x} %")));
     }
     // Read in watts or kilowatts, kept in watts to the milliwatt (0.37 kW is 370 W).
     let rated_power = f.watts.map(|w| within(w, MAX_POWER_WATTS, "a rated power", " W").map(|w| Watts((w * 1000.0).round() / 1000.0))).transpose()?;
@@ -204,7 +250,23 @@ fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
     let rated_frequency = f.hertz.map(|h| within(h, MAX_FREQUENCY_HERTZ, "a rated frequency", " Hz").map(Hertz)).transpose()?;
     let power_factor = f.power_factor.map(|p| within(p, 1.0, "a power factor", "")).transpose()?;
     let efficiency = f.efficiency.map(|e| within(e, 100.0, "an efficiency", " %").map(Percent)).transpose()?;
-    Ok(Motor { rated_power, rated_voltage, rated_current, rated_frequency, power_factor, efficiency, starting: f.starting, ..motor.unrated() })
+    let rated_speed = f.rpm.map(|n| within(n, MAX_SPEED_RPM, "a rated speed", " rpm").map(Rpm)).transpose()?;
+    Ok(Motor {
+        rated_power,
+        rated_voltage,
+        rated_current,
+        rated_frequency,
+        rated_speed,
+        power_factor,
+        efficiency,
+        efficiency_class: f.efficiency_class,
+        connection: f.connection,
+        duty: f.duty,
+        insulation_class: f.insulation,
+        ip_rating: f.ip,
+        starting: f.starting,
+        ..motor.unrated()
+    })
 }
 
 #[cfg(test)]
@@ -247,6 +309,20 @@ mod tests {
             ("400VAC", "400 V"),
             ("50 Hz", "50 Hz"),
             ("7.5 kW 400 V 15.2 A 50 Hz", "7.5 kW, 400 V, 15.2 A, 50 Hz"),
+            ("1450 rpm", "1450 rpm"),
+            ("1450 1/min", "1450 rpm"),
+            ("IE3", "IE3"),
+            ("delta", "Δ"),
+            ("Y", "Y"),
+            ("Y/Δ", "Y/Δ"),
+            ("S3", "S3"),
+            ("class F", "class F"),
+            ("IP 55", "IP55"),
+            ("ipx4", "IPX4"),
+            (
+                "7.5 kW 400 V 15.2 A 50 Hz 1460 rpm cos φ 0.85 eff 91 % IE3 Δ S1 class F IP55 star-delta",
+                "7.5 kW, 400 V, 15.2 A, 50 Hz, 1460 rpm, cos φ 0.85, eff 91 %, IE3, Δ, S1, class F, IP55, star-delta",
+            ),
         ] {
             let got = shown(text);
             assert_eq!(got, want, "{text}");
@@ -275,11 +351,16 @@ mod tests {
             ("eff 120 %", "refused: an efficiency"),
             ("0 kW", "refused: a rated power"),
             ("20000 A", "refused: a rated current"),
+            ("class", "ask: the insulation class"),
+            ("IP", "ask: the IP code"),
+            ("0 rpm", "refused: a rated speed"),
+            ("IE2 IE3", "refused: 'IE2 IE3' does not read: it gives two efficiency classes"),
+            ("Y Δ", "refused: 'Y Δ' does not read: it gives two winding connections"),
         ] {
             let got = shown(text);
             assert!(got.starts_with(start), "{text}: {got}");
         }
-        for text in ["see datasheet", "IE3", "7.5 hp", "", "NaN kW", &"1".repeat(70)] {
+        for text in ["see datasheet", "IE6", "S11", "IP75", "class Z", "7.5 hp", "", "NaN kW", &"1".repeat(170)] {
             assert_eq!(shown(text), "note", "{text}");
         }
     }

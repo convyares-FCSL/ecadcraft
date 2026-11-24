@@ -47,8 +47,9 @@ pub use power_supply::read_power_supply;
 pub use sensor::read_sensor;
 pub use switching::read_switching;
 
-/// Most characters of a typed rating (the note's bound).
-pub(crate) const MAX_CHARS: usize = ecad_model::objects::devices::RatingNote::MAX;
+/// Most characters a rating reader reads: a whole nameplate typed back (a motor's runs to about
+/// 100). Text that does not read is kept as the note, whose bound is [`RatingNote::MAX`].
+pub(crate) const MAX_CHARS: usize = 160;
 
 /// What a rating text reads as.
 #[derive(Debug, Clone, PartialEq)]
@@ -536,7 +537,9 @@ fn read_rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTy
 
 fn note_refusal(e: &ecad_model::naming::text::TextError) -> String {
     match e {
-        ecad_model::naming::text::TextError::TooLong { .. } => format!("A rating is at most {MAX_CHARS} characters."),
+        ecad_model::naming::text::TextError::TooLong { .. } => {
+            format!("A rating that does not read is kept as a note of at most {} characters.", RatingNote::MAX)
+        }
         ecad_model::naming::text::TextError::Hidden { .. } | ecad_model::naming::text::TextError::Lines => {
             "A rating is one line with no control or hidden characters.".into()
         }
@@ -756,7 +759,7 @@ mod tests {
             let got = shown(kind, text);
             assert!(got.starts_with(start), "{text}: {got}");
         }
-        for text in ["see datasheet", "C16 Siemens", "", "curve", "1e9 A", "NaN", &"1".repeat(70)] {
+        for text in ["see datasheet", "C16 Siemens", "", "curve", "1e9 A", "NaN", &"1".repeat(170)] {
             assert_eq!(shown(K::Mcb, text), "note", "{text}");
         }
     }
