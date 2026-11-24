@@ -93,3 +93,39 @@ fn a_field_out_of_range_is_refused_and_a_set_field_draws_on_the_line() {
     assert_eq!(fields[6]["choices"], json!(["direct", "star_delta", "soft", "vfd"]));
     assert_eq!(fields[1]["value"], json!(null));
 }
+
+/// Every nameplate field of a group's list is read by that group's rating reader: a device with
+/// each of them set, its rating typed back as the drawing shows it, has the same fields. A field
+/// added to a list without its reader words fails here.
+#[test]
+fn the_rating_reader_fills_every_nameplate_field() {
+    use ecad_model::objects::devices::FieldSource;
+    let mut h = H::new(0x00d4_0403);
+    let mut read = BTreeSet::new();
+    for (n, symbol) in ["motor3", "lamp", "heater", "fuse", "mcb1", "rcbo2", "psu", "trafo", "coil", "prox3"].into_iter().enumerate() {
+        let c: DeviceId = id(&crate::common::place(&mut h, symbol, (40.0 + 40.0 * n as f64, 160.0)), "component");
+        let group = h.doc().devices()[&c].device_type.group();
+        let plate: Vec<_> = group.rating_fields().iter().filter(|f| f.source == FieldSource::Plate && f.ty != FieldType::Combined).collect();
+        for f in &plate {
+            // A field this kind does not have is refused; the others take their example.
+            let _ = h.run("setprop", json!({"component": c.hex(), "key": format!("rating.{}", f.word), "value": f.ty.example()}));
+        }
+        let before = h.doc().devices()[&c].device_type.clone();
+        let text = before.rating().unwrap_or_else(|| panic!("{symbol}: rated"));
+        h.run("setprop", json!({"component": c.hex(), "key": "rating", "value": ""})).unwrap();
+        h.run("setprop", json!({"component": c.hex(), "key": "rating", "value": text})).unwrap_or_else(|e| panic!("{symbol} {text}: {e}"));
+        let after = h.doc().devices()[&c].device_type.clone();
+        for f in &plate {
+            let want = (f.get)(&before);
+            assert_eq!((f.get)(&after), want, "{symbol}: {} read from {text:?}", f.word);
+            if want.is_some() {
+                read.insert((group, f.word));
+            }
+        }
+    }
+    for g in <ecad_model::objects::devices::DeviceGroup as ecad_model::Word>::ALL {
+        for f in g.rating_fields().iter().filter(|f| f.source == FieldSource::Plate && f.ty != FieldType::Combined) {
+            assert!(read.contains(&(*g, f.word)), "{} {}: no symbol here has it", g.label(), f.word);
+        }
+    }
+}

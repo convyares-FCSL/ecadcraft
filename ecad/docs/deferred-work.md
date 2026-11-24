@@ -93,6 +93,18 @@ started.
   calculation's supply) overlap with the supply typed on a potential; decide whether the volt-drop
   calculation reads the circuit's potential instead.
 
+## Rating fields: 0.2.4 (owner, 2026-11-24)
+
+- **A generic rating reader:** today each group's reader maps the words of a typed rating to its
+  fields by hand; a test makes sure every nameplate field of a group's list is read. In 0.2.4 the
+  reader takes each value to a field by the field's type, so a new field needs no reader code.
+- **List fields by `setprop`:** a power supply's `voltages`, a switching device's `control` and a
+  fuse bank's `outputs` are read only on the Device tab and set through the whole rating text (or
+  `rating.<n>` per fuse). In 0.2.4 they get list-typed values of their own.
+- **One BOM value only when all agree:** a BOM row's article number, and its rating columns, show
+  the most common value of the row's devices. In 0.2.4 a row shows a value only when all its
+  devices agree, and flags the devices that differ.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
