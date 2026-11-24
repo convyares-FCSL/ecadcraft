@@ -259,6 +259,9 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 address: Some(NetAddress::Ip(core::net::Ipv4Addr::new(192, 168, 0, 10))),
                 head: RackHead::Coupler { protocol: Protocol::Profinet },
                 address_style: Some(AddressStyle::ByteBit),
+                supply: None,
+                backplane_budget: None,
+                power: None,
             }),
         ),
         (

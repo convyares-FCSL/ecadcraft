@@ -24,7 +24,7 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::DeviceId;
-use crate::geometry::units::RatedVoltage;
+use crate::geometry::units::{MilliAmps, RatedVoltage, Watts};
 use crate::naming::text::Text;
 
 /// The highest slot number.
@@ -37,6 +37,12 @@ pub const MAX_NODE: u16 = 65_535;
 pub const MAX_BYTE: u32 = 65_535;
 /// The largest pinned block size, in bytes.
 pub const MAX_SIZE: u32 = 4_096;
+/// The largest supply voltage of a station's head, in volts.
+const MAX_SUPPLY_VOLTS: f64 = 1000.0;
+/// The largest backplane current a station's head supplies, in milliamperes (100 A).
+const MAX_BACKPLANE_MILLIAMPS: f64 = 100_000.0;
+/// The largest power a station's head takes, in watts.
+const MAX_HEAD_WATTS: f64 = 10_000.0;
 
 /// A channel description.
 pub type ChannelText = Text<80>;
@@ -48,7 +54,8 @@ pub type PlcTag = Text<128>;
 // ------------------------------------------------------------------------------------- station
 
 /// A PLC station: on a network, with an address there, and a CPU or a coupler
-/// at its head.
+/// at its head. Its head's supply, the backplane current it supplies to the modules and the
+/// power it takes come from its datasheet.
 ///
 /// # Example
 /// ```
@@ -56,7 +63,7 @@ pub type PlcTag = Text<128>;
 /// let s = PlcRack { head: RackHead::Coupler { protocol: Protocol::Ethercat }, ..PlcRack::default() };
 /// assert_eq!(serde_json::to_string(&s).unwrap(), r#"{"head":{"coupler":{"protocol":"ethercat"}}}"#);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlcRack {
     /// The network it is on (`Line 1`).
@@ -70,6 +77,27 @@ pub struct PlcRack {
     /// `plc.address.style`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address_style: Option<AddressStyle>,
+    /// The supply its CPU or coupler takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supply: Option<RatedVoltage>,
+    /// The current its head supplies to the modules on the backplane; their draw stays under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backplane_budget: Option<MilliAmps>,
+    /// The power its head takes, for supply sizing and cabinet heat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power: Option<Watts>,
+}
+
+impl PlcRack {
+    /// Why its data is not well formed, if it is not: a datasheet value out of range or not a
+    /// number.
+    pub fn problem(&self) -> Option<String> {
+        let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
+        let bad = self.supply.is_some_and(|v| !within(v.volts.0, MAX_SUPPLY_VOLTS))
+            || self.backplane_budget.is_some_and(|a| !within(a.0, MAX_BACKPLANE_MILLIAMPS))
+            || self.power.is_some_and(|w| !within(w.0, MAX_HEAD_WATTS));
+        bad.then(|| "a datasheet value of a PLC station is out of range".to_string())
+    }
 }
 
 /// What heads a station.

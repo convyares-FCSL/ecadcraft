@@ -25,6 +25,7 @@ fn stations_and_modules_round_trip() {
         address: NetAddress::parse("10.0.0.7"),
         head: RackHead::Coupler { protocol: Protocol::Ethercat },
         address_style: Some(AddressStyle::ByteBit),
+        ..PlcRack::default()
     }));
     let mut g = ChannelGroup::new(Signal::Dc24v, 16);
     g.channels.insert(

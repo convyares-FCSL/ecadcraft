@@ -99,7 +99,8 @@ impl DeviceGroup {
             DeviceGroup::Load => load::FIELDS,
             DeviceGroup::Indicator => indicator::FIELDS,
             DeviceGroup::Connector => CONNECTOR_FIELDS,
-            DeviceGroup::TerminalStrip | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => &[],
+            DeviceGroup::PlcRack => PLC_RACK_FIELDS,
+            DeviceGroup::TerminalStrip | DeviceGroup::PlcModule | DeviceGroup::General => &[],
         }
     }
 
@@ -279,7 +280,8 @@ impl DeviceType {
             DeviceType::Load(l) => l.problem(),
             DeviceType::Indicator(i) => i.problem(),
             DeviceType::PowerSupply(p) => p.problem(),
-            DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
+            DeviceType::PlcRack(r) => r.problem(),
+            DeviceType::PlcModule(_) | DeviceType::General => None,
         }
     }
 
@@ -537,6 +539,19 @@ const CONNECTOR_MAX_MM2: f64 = 300.0;
 
 /// A connector's rating fields, all from its datasheet: it has no rating line of its own, so they
 /// show in the Device tab, answers and BOM columns.
+/// A PLC station's rating fields, all from its head's datasheet: it has no rating line.
+static PLC_RACK_FIELDS: &[RatingField] = &[
+    rating_field!("supply", "Supply", Datasheet, crate::geometry::units::RatedVoltage, DeviceType::PlcRack(r) => r.supply),
+    rating_field!(
+        "backplane_budget",
+        "Backplane current supplied",
+        Datasheet,
+        crate::geometry::units::MilliAmps,
+        DeviceType::PlcRack(r) => r.backplane_budget
+    ),
+    rating_field!("power", "Power", Datasheet, crate::geometry::units::Watts, DeviceType::PlcRack(r) => r.power),
+];
+
 static CONNECTOR_FIELDS: &[RatingField] = &[
     rating_field!("current", "Rated current per contact", Datasheet, crate::geometry::units::Amps, DeviceType::Connector(c) => c.rated_current),
     rating_field!("voltage", "Rated voltage", Datasheet, crate::geometry::units::Volts, DeviceType::Connector(c) => c.rated_voltage),

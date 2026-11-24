@@ -223,8 +223,8 @@ shows only when a template adds it. A device with no typed rating draws its note
 
 Datasheet fields a template may add: an indicator's `current` and `ip_rating`; a power supply's
 `input_current` and `efficiency` (shown `eff 90 %`); a sensor's `output_current`,
-`no_load_current` and `ip_rating`. A connector's fields (all from its datasheet) have no rating
-line.
+`no_load_current` and `ip_rating`. A connector's and a PLC station's fields (all from their
+datasheets) have no rating line.
 
 `setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
 every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;
@@ -500,6 +500,20 @@ To try it: place a power supply (Checks shows "no rating"), type `230VAC/24VDC 5
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical; the four fields above
 through `devices::rating_fields` in ecad-engine (automated, not tried by hand).
+
+### Lane B, step 3: a PLC station's datasheet fields
+
+A PLC station (`plccpu`, `plcim`) takes three fields from its CPU's or coupler's datasheet, set
+one at a time: its **Supply** (`rating.supply`, `24 V DC`), the **Backplane current supplied** to
+its modules (`rating.backplane_budget`, `1500 mA` or `1.5 A`) and its **Power** (`rating.power`,
+`12 W`). A station has no rating line: they show in the Device tab, `deviceprops`'
+`rating_fields` and a BOM rating column. Out-of-range values (over 1000 V, 100 A or 10 kW) are
+refused with the field's name. A merge of two edits of a station offers each field on its own.
+
+Tests: `devices::rating_fields::every_rating_field_is_a_row_set_through_its_type` in ecad-engine.
+
+To try it: place a PLC CPU, type `24 V DC` in its Supply row in the Device tab, then undo and
+redo. Nobody has tried it by hand yet.
 
 ### Lane B, step 5: user fields and device links
 

@@ -140,6 +140,20 @@ pub(super) fn merge_device_type(
                 &s.address_style,
                 &|x| words(&|| x.map(|v| crate::Word::word(v).to_string())),
             ),
+            supply: field(ctx, obj, "plc.supply", format!("{what} · supply"), &a.supply, &t.supply, &s.supply, &|x| {
+                words(&|| x.map(|v| v.to_string()))
+            }),
+            backplane_budget: field(
+                ctx,
+                obj,
+                "plc.backplane_budget",
+                format!("{what} · backplane current supplied"),
+                &a.backplane_budget,
+                &t.backplane_budget,
+                &s.backplane_budget,
+                &|x| words(&|| x.map(|v| v.to_string())),
+            ),
+            power: field(ctx, obj, "plc.power", format!("{what} · power"), &a.power, &t.power, &s.power, &|x| words(&|| x.map(|v| v.to_string()))),
         }),
         _ => field(ctx, obj, "device_type", format!("{what} · type"), a, t, s, &|d| d.group().label().into()),
     }

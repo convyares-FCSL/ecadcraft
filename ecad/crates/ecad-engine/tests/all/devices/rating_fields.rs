@@ -24,7 +24,9 @@ fn every_rating_field_is_a_row_set_through_its_type() {
     let mut h = H::new(0x00d4_0401);
     let mut seen = BTreeSet::new();
     for (n, symbol) in
-        ["motor3", "lamp", "heater", "fuse", "mcb1", "rcd2", "rcbo2", "psu", "trafo", "coil", "prox3", "fusebank4", "socket4"].into_iter().enumerate()
+        ["motor3", "lamp", "heater", "fuse", "mcb1", "rcd2", "rcbo2", "psu", "trafo", "coil", "prox3", "fusebank4", "socket4", "plccpu"]
+            .into_iter()
+            .enumerate()
     {
         let c: DeviceId = id(&crate::common::place(&mut h, symbol, (40.0 + 40.0 * n as f64, 100.0)), "component");
         let group = h.doc().devices()[&c].device_type.group();
