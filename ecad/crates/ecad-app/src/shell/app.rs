@@ -695,6 +695,21 @@ impl App {
                     doc.page_order().iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
+            // The active page's sheets, listed under its row.
+            let key = (p.change_count(), p.page_list_version(), p.active_page());
+            if panel.sheets_at != Some(key) {
+                let doc = p.ledger.document();
+                let sheets = match p.active_page() {
+                    Some(pg) if ecad_electrical::pages::generated::kind_of(doc, pg).is_some() => {
+                        let book = ecad_model::document::book::Book::of(doc);
+                        let numbers = ecad_electrical::pages::generated::sheet_numbers(doc, &book, pg, p.kept_reports());
+                        crate::pages::project_panel::Sheets { page: Some(pg), shown: p.shown_sheet(pg).0, numbers }
+                    }
+                    _ => crate::pages::project_panel::Sheets::default(),
+                };
+                panel.set_sheets(sheets);
+                panel.sheets_at = Some(key);
+            }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
             // the devices a change touched.
             if devices_shown {

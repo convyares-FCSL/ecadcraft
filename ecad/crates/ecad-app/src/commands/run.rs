@@ -331,6 +331,9 @@ impl App {
                 self.shell.restore_view = true;
                 let _ = self.show_page(page);
             }
+            A::OpenSheet(page, sheet) => {
+                self.show_sheet(page, sheet);
+            }
             A::New => self.open_new_page_box(),
             A::Rename(page, title) => {
                 let line = format!("renamepage {}", json!({"page": page.hex(), "title": title}));
@@ -787,6 +790,31 @@ impl App {
         r
     }
 
+    /// Show sheet `sheet` (0-based) of `page`, as a click on its row under the page does:
+    /// `openpage` with that sheet (a command waiting at a prompt is cancelled first). Returns
+    /// whether it is shown; a refusal is echoed.
+    pub fn show_sheet(&mut self, page: PageId, sheet: usize) -> bool {
+        if self.cad.session.running.is_some() {
+            self.cad.session.cancel();
+        }
+        let r = self.cad.session.execute("openpage", &json!({"page": page.hex(), "sheet": sheet.saturating_add(1)}));
+        if let Err(e) = &r {
+            self.cad.session.echo(e.to_string());
+        }
+        self.panel.reveal(page);
+        self.after_logic();
+        r.is_ok()
+    }
+
+    /// Show `page` at `at` as a go-to does: on a report page of several sheets, the sheet `at`
+    /// lies on ([`ecad_engine::Project::sheet_at`]). Returns the point on the shown sheet, `None`
+    /// when the page cannot be shown (echoed).
+    fn show_page_at(&mut self, page: PageId, at: ecad_model::Pt) -> Option<ecad_model::Pt> {
+        let p = self.project.clone()?;
+        let (sheet, local) = p.configure(&mut self.cad.session, |p| p.sheet_at(page, at)).ok()?;
+        self.show_sheet(page, sheet).then_some(local)
+    }
+
     /// The Devices tab's go to: `symbol`'s page becomes the active page (the path of `openpage` and
     /// Go to Reference), the view is centred on it at the current zoom and it is selected.
     ///
@@ -842,12 +870,18 @@ impl App {
     pub fn goto_check(&mut self, check: &ecad_electrical::checks::Check) -> Result<(), String> {
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = check.page.ok_or("that row is not on a page")?;
-        self.show_page(page)?;
+        let at = match check.at {
+            Some(at) => Some(self.show_page_at(page, at).ok_or("that page cannot be shown")?),
+            None => {
+                self.show_page(page)?;
+                None
+            }
+        };
         let handles = p.configure(&mut self.cad.session, |p| {
-            p.display.goto_ring = check.at.map(|at| (page, at, check.severity()));
+            p.display.goto_ring = at.map(|at| (page, at, check.severity()));
             ecad_engine::checks::handles_of(p, page, check.object)
         })?;
-        if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
+        if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
             let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
@@ -935,7 +969,7 @@ impl App {
 
     /// Show `page`, centred on `at` at the current zoom (kept readable).
     pub fn goto_place(&mut self, page: PageId, at: ecad_model::Pt) {
-        if self.show_page(page).is_ok()
+        if let Some(at) = self.show_page_at(page, at)
             && let Ok(st) = self.cad.session.state_mut()
         {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);

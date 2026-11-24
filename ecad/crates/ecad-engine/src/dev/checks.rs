@@ -31,6 +31,8 @@ pub struct PageInputs {
     pub id: PageId,
     pub drawing: Arc<Drawing>,
     pub map: HandleMap,
+    /// The sheet a generated page shows (0-based).
+    pub sheet: usize,
 }
 
 /// The result of an explicit check.
@@ -303,6 +305,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
+            p.sheet,
             reports.as_ref(),
         )
         .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
@@ -326,6 +329,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
+            p.sheet,
             reports.as_ref(),
         );
         ok &= v.ok();

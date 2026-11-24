@@ -44,6 +44,9 @@ pub struct Display {
     pub(super) active: Option<PageId>,
     /// Each page's views as the user left them.
     pub(super) page_views: HashMap<PageId, Vec<(cadcraft_engine::doc::Space, cadcraft_engine::View)>>,
+    /// The sheet (0-based) each generated page of several sheets shows in the page window; the
+    /// first when not set. Display only, like the views; clamped to the page's sheets when drawn.
+    pub(super) sheets: HashMap<PageId, usize>,
     /// The Checks tab's go-to ring: page, point and the row's severity, until the next change.
     pub goto_ring: Option<(PageId, Pt, ecad_electrical::checks::Severity)>,
     /// The revision opened read-only.
@@ -75,9 +78,9 @@ pub struct Counts {
 
 /// The active page's frame as last drawn, and whether the drawing is pending a revision.
 pub struct FrameCache {
-    /// The page and its frame's parts. What it showed is the frame view's
+    /// The page, the sheet shown and their frame's parts. What it showed is the frame view's
     /// (`ecad_electrical::views::FrameView`), whose update map sets `stale`.
-    pub(super) drawn: Option<(PageId, Arc<Vec<crate::pages::frame::Part>>)>,
+    pub(super) drawn: Option<(PageId, usize, Arc<Vec<crate::pages::frame::Part>>)>,
     /// An effect of the frame's update map was committed since the frame was drawn.
     pub(super) stale: bool,
     /// The drawing changed since the newest issued revision, as the title block shows it; worked

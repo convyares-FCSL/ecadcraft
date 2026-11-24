@@ -299,6 +299,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 p.tolerance,
                 p.display.show_hidden_text,
                 p.frame.pending,
+                p.shown_sheet(*page).0,
                 reports.as_ref(),
             )
             .unwrap();

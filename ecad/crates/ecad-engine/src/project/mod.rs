@@ -336,17 +336,18 @@ pub(crate) fn project_page_framed(
     project_page_shown(doc, page, base, prev, fan, tol, frame, false)
 }
 
-/// [`project_page_with`] with Show Hidden Text and the project's pending flag: the
-/// frame's Rev box and the cover show the pending marker as the project draws them.
+/// [`project_page_with`] as the page window shows it: with Show Hidden Text, the project's pending
+/// flag (the frame's Rev box and the cover show the pending marker as the project draws them) and
+/// only sheet `sheet` of a generated page ([`crate::pages::generated::shown_parts`]).
 ///
 /// # Errors
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_pending(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    reports: Option<&ReportModels>,
+    sheet: usize, reports: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
-    let frame = crate::pages::generated::parts_of_pending(doc, page, reports, pending);
+    let frame = crate::pages::generated::shown_parts(doc, page, reports, pending, sheet);
     project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text)
 }
 
@@ -609,10 +610,13 @@ impl Project {
         project_page_kept(self.ledger.document(), page, base, prev, &self.display.views, self.tolerance, &parts, self.display.show_hidden_text, plc)
     }
 
-    /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
+    /// The frame parts of `page` (its shown sheet), from the kept copy when nothing it shows can
+    /// have changed.
     fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::pages::frame::Part>> {
-        if let Some((p, parts)) = &self.frame.drawn
+        let sheet = self.sheet_index(page);
+        if let Some((p, s, parts)) = &self.frame.drawn
             && *p == page
+            && *s == sheet
             && !self.frame.stale
         {
             return parts.clone();
@@ -630,16 +634,17 @@ impl Project {
         let input = input.with_pending(doc, self.frame.pending);
         self.frame.stale = false;
         let generated = ecad_electrical::pages::generated::kind_of(doc, page).is_some();
-        if let Some((p, parts)) = &self.frame.drawn
+        if let Some((p, s, parts)) = &self.frame.drawn
             && *p == page
+            && *s == sheet
             && self.derived.frame().shown().is_some_and(|(q, old)| q == page && *old == input.0)
             && !generated
         {
             return parts.clone();
         }
         self.counts.frame_builds += 1;
-        let parts = Arc::new(crate::pages::generated::page_parts(doc, page, &input, self.kept_reports(), total));
-        self.frame.drawn = Some((page, parts.clone()));
+        let parts = Arc::new(crate::pages::generated::sheet_parts(doc, page, &input, self.kept_reports(), total, sheet));
+        self.frame.drawn = Some((page, sheet, parts.clone()));
         self.derived.frame_mut().show(page, input.0);
         parts
     }
@@ -857,6 +862,52 @@ impl Project {
         Ok(uid)
     }
 
+    /// The sheet (0-based) `page` was last asked to show, before clamping to its sheets.
+    pub(crate) fn sheet_index(&self, page: PageId) -> usize {
+        self.display.sheets.get(&page).copied().unwrap_or(0)
+    }
+
+    /// The sheet (0-based) the page window shows of `page` and how many it has: one for an
+    /// ordinary page; a generated page's count from the kept report models (one before they are
+    /// built).
+    pub fn shown_sheet(&self, page: PageId) -> (usize, usize) {
+        let n = ecad_electrical::pages::generated::sheets_of(self.ledger.document(), page, self.kept_reports()).max(1);
+        (self.sheet_index(page).min(n - 1), n)
+    }
+
+    /// Make sheet `sheet` (0-based, clamped to its sheets) the one `page` shows in the page
+    /// window, redrawing the window when it shows `page` and the sheet changed. Display only:
+    /// nothing is recorded, and the view is kept, since every sheet lies at the origin.
+    pub(crate) fn set_sheet(&mut self, pg: &mut Pages<'_>, page: PageId, sheet: usize) {
+        if ecad_electrical::pages::generated::kind_of(self.ledger.document(), page).is_some() && self.kept_reports().is_none() {
+            self.reports();
+        }
+        let (shown, n) = self.shown_sheet(page);
+        let sheet = sheet.min(n - 1);
+        if sheet == shown {
+            return;
+        }
+        if sheet == 0 {
+            self.display.sheets.remove(&page);
+        } else {
+            self.display.sheets.insert(page, sheet);
+        }
+        if self.active_page() == Some(page) {
+            self.redraw_window(pg, Some("openpage"));
+        }
+        self.counts.page_list_version += 1;
+    }
+
+    /// The sheet (0-based) of `page` that point `at` of its side-by-side layout lies on (as Print
+    /// Book draws it, [`ecad_electrical::pages::generated::sheet_at`]) and the point on that sheet
+    /// as the page window shows it: what a go-to opens. An ordinary page's point is unchanged.
+    pub fn sheet_at(&mut self, page: PageId, at: Pt) -> (usize, Pt) {
+        if ecad_electrical::pages::generated::kind_of(self.ledger.document(), page).is_some() && self.kept_reports().is_none() {
+            self.reports();
+        }
+        ecad_electrical::pages::generated::sheet_at(self.ledger.document(), page, self.kept_reports(), at)
+    }
+
     fn take_projection_fault(&mut self) -> bool {
         if self.faults.fail_projections > 0 {
             self.faults.fail_projections -= 1;
@@ -931,6 +982,7 @@ impl Project {
                             self.tolerance,
                             self.display.show_hidden_text,
                             self.frame.pending,
+                            self.sheet_index(*p),
                             reports.as_ref(),
                         )
                         .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())

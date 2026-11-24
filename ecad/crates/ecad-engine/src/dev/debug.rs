@@ -491,7 +491,7 @@ impl Project {
             .filter_map(|(id, v)| {
                 let uid = v.uid?;
                 let drawing = pg.doc(uid)?.doc.clone();
-                Some(PageInputs { id: *id, drawing, map: v.map.clone() })
+                Some(PageInputs { id: *id, drawing, map: v.map.clone(), sheet: self.sheet_index(*id) })
             })
             .collect();
         ProjectionInputs {

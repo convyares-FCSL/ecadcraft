@@ -27,6 +27,16 @@ fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
     Ok(json!({"page": page.hex(), "document": uid}))
 }
 
+/// Show sheet `sheet` (1-based) of `page`: its ID, document, the sheet shown and the page's sheets.
+fn open_sheet(s: &mut Session, page: PageId, sheet: usize) -> cadcraft_engine::Result<Value> {
+    on_any_page(s, |p, pg| {
+        p.set_sheet(pg, page, sheet.saturating_sub(1));
+        let uid = p.open_page(pg, page).map_err(CmdError::refused)?;
+        let (shown, n) = p.shown_sheet(page);
+        Ok(json!({"page": page.hex(), "document": uid, "sheet": shown + 1, "sheets": n}))
+    })
+}
+
 /// A new page, opened: right after page `after` in its folder, else last in `folder`; numbered `number`, else the
 /// next after the page before it (or a folder's start number for its first page). A type such as "front" or
 /// "report" needs `generated`.
@@ -83,17 +93,25 @@ impl Command for NewpageParams {
     }
 }
 
-/// Opens a page, or brings it to the front.
+/// Opens a page, or brings it to the front. A report page of several sheets shows one sheet at a
+/// time; `sheet` picks it (past the last shows the last), and the reply then says the sheet shown
+/// and how many there are. Display only: nothing is recorded.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OpenpageParams {
     /// The page.
     page: PageId,
+    /// The sheet to show, 1 for the first (default: the one it showed last).
+    #[serde(default)]
+    sheet: Option<std::num::NonZeroUsize>,
 }
 
 impl Command for OpenpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        open(s, self.page)
+        match self.sheet {
+            Some(n) => open_sheet(s, self.page, n.get()),
+            None => open(s, self.page),
+        }
     }
 }
 

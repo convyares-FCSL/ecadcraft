@@ -199,7 +199,7 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
         let doc = p.ledger.document();
         let pick = ecad_engine::cables::draw::pick_routes(p, page, &selection);
         let data = PageData {
-            frames: ecad_electrical::pages::generated::sheet_windows_of(doc, page, p.kept_reports()),
+            frames: vec![ecad_electrical::pages::generated::sheet_window(doc, page)],
             painted: ecad_engine::cables::draw::painted_marks(p, uid),
             provisional: ecad_engine::cables::draw::provisional_tag_handles(p, page),
             related: related(p, page, &selection),

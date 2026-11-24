@@ -111,15 +111,15 @@ pub(crate) fn verify_page_shown(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
     reports: Option<&ReportModels>,
 ) -> Verification {
-    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, reports)
+    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, 0, reports)
 }
 
-/// [`verify_page_shown`] for a project whose title block marks a pending revision:
-/// the frame is expected with the project's pending flag.
+/// [`verify_page_shown`] for a project whose title block marks a pending revision (the frame is
+/// expected with the project's pending flag) and whose generated page shows sheet `sheet`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    reports: Option<&ReportModels>,
+    sheet: usize, reports: Option<&ReportModels>,
 ) -> Verification {
     let mut v = Verification::default();
     let fans = crate::cables::views::drawings_on_page(doc, page, fan, tol);
@@ -171,7 +171,7 @@ pub(crate) fn verify_page_pending(
     // The sheet frame, derived like the cable parts.
     // Generated pages and Total in sheets come from the same function.
     let frame_rgb = crate::pages::frame::line_colour(doc, page);
-    for part in crate::pages::generated::parts_of_pending(doc, page, reports, pending) {
+    for part in crate::pages::generated::shown_parts(doc, page, reports, pending, sheet) {
         *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();

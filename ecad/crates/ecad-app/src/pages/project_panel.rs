@@ -92,6 +92,8 @@ pub fn row_label(number: &str, title: &str) -> String {
 pub enum Action {
     /// Make this page the active page (`openpage`).
     Open(PageId),
+    /// Show this sheet (0-based) of a report page of several sheets (`openpage` with a sheet).
+    OpenSheet(PageId, usize),
     /// `newpage` titled with its number, then rename it in place.
     New,
     /// `renamepage` with this title (trimmed by the command).
@@ -237,13 +239,24 @@ pub struct InPlace<T> {
     old: String,
 }
 
-/// One row of the Pages list as drawn: a folder, a page (index into the page rows), or the
-/// `(empty)` line of an open folder with nothing in it.
+/// One row of the Pages list as drawn: a folder, a page (index into the page rows), one sheet
+/// (0-based) of the active page when it has several, or the `(empty)` line of an open folder
+/// with nothing in it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Vis {
     Folder(usize),
     Page(usize),
+    Sheet(usize, usize),
     Empty(FolderId, usize),
+}
+
+/// The sheets of the active page when it is a report page of several: the page, the sheet shown
+/// (0-based) and every sheet's number.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Sheets {
+    pub page: Option<PageId>,
+    pub shown: usize,
+    pub numbers: Vec<String>,
 }
 
 /// The panel's two tabs.
@@ -371,6 +384,10 @@ pub struct ProjectPanel {
     pub starts: std::collections::BTreeMap<FolderId, String>,
     pub generated: BTreeSet<PageId>,
     pub starts_at: Option<u64>,
+    /// The active page's sheets, listed under its row; read again when the change count, the page
+    /// list or the active page moves (that key).
+    sheets: Sheets,
+    pub sheets_at: Option<(u64, u64, Option<PageId>)>,
     /// A folder's start number being typed in place.
     pub start_edit: Option<InPlace<FolderId>>,
 }
@@ -405,6 +422,14 @@ impl ProjectPanel {
             if self.rename.as_ref().is_some_and(|r| !self.rows.iter().any(|x| x.id == r.page)) {
                 self.rename = None;
             }
+        }
+    }
+
+    /// Take the active page's sheets (listed under its row when it has more than one).
+    pub fn set_sheets(&mut self, sheets: Sheets) {
+        if self.sheets != sheets {
+            self.sheets = sheets;
+            self.relayout();
         }
     }
 
@@ -479,8 +504,11 @@ impl ProjectPanel {
                         }
                     }
                 }
-                TreeRow::Page(_) => {
+                TreeRow::Page(p) => {
                     out.push(Vis::Page(page_i));
+                    if self.sheets.page == Some(p.id) && self.sheets.numbers.len() > 1 {
+                        out.extend((0..self.sheets.numbers.len()).map(|k| Vis::Sheet(page_i, k)));
+                    }
                     page_i += 1;
                 }
             }
@@ -697,6 +725,29 @@ impl ProjectPanel {
                             self.folder_row(ui, rect, resp, (id, &name, depth, pages), writable, &mut out);
                         }
                     }
+                    Vis::Sheet(i, k) => {
+                        let Some(row) = self.rows.get(i).cloned() else { continue };
+                        let indent = if self.has_folders() && self.find.trim().is_empty() { row.depth as f32 * INDENT } else { 0.0 };
+                        let shown = self.sheets.shown == k && self.active == Some(row.id);
+                        let number = self.sheets.numbers.get(k).cloned().unwrap_or_default();
+                        let words = format!("Sheet {} of {} \u{b7} {number}", k + 1, self.sheets.numbers.len());
+                        resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, shown, &words));
+                        if shown {
+                            ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(ecad_widgets::SHELL.accent_soft));
+                        } else if resp.hovered() {
+                            ui.painter().rect_filled(rect, 0.0, t.chrome);
+                        }
+                        ui.painter().text(
+                            pos2(rect.left() + indent + 2.0 * INDENT + 14.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            words,
+                            egui::TextStyle::Small.resolve(ui.style()),
+                            if shown { t.accent } else { t.text_dim },
+                        );
+                        if resp.clicked() && !shown {
+                            out.push(Action::OpenSheet(row.id, k));
+                        }
+                    }
                     Vis::Empty(_, depth) => {
                         let x = rect.left() + depth as f32 * INDENT + INDENT + 4.0;
                         ui.painter().text(
@@ -823,7 +874,7 @@ impl ProjectPanel {
     /// folder), else of the row before it.
     fn folder_at_gap(&self, g: usize) -> Option<FolderId> {
         let of = |v: Option<&Vis>| match v {
-            Some(Vis::Page(i)) => Some(self.rows.get(*i).and_then(|r| r.folder)),
+            Some(Vis::Page(i) | Vis::Sheet(i, _)) => Some(self.rows.get(*i).and_then(|r| r.folder)),
             Some(Vis::Folder(ti)) => match self.tree.get(*ti) {
                 Some(TreeRow::Folder { parent, .. }) => Some(*parent),
                 _ => None,

@@ -825,6 +825,35 @@ fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_change
     assert_eq!(r.log(), before);
 }
 
+/// `openpage` with `sheet` shows that sheet of a report page of several and says which it shows
+/// and how many there are; past the last it shows the last. Display only: it records nothing,
+/// and works with writes off.
+#[test]
+fn openpage_with_a_sheet_shows_that_sheet_and_records_nothing() {
+    let mut c = writer(SEED);
+    let first = c.doc().page_order()[0];
+    let bom = c.exec("newpage", json!({"generated": "bom-location"}))["page"].as_str().unwrap().to_string();
+    c.exec("openpage", json!({"page": first.hex()}));
+    // One heading and 50 rows: two sheets.
+    for i in 0..50 {
+        c.exec("place", json!({"symbol": "coil", "at": [10 + (i % 12) * 30, 40 + (i / 12) * 30]}));
+    }
+    let before = c.log();
+    let reply = c.exec("openpage", json!({"page": bom, "sheet": 2}));
+    assert_eq!((reply["sheet"].as_u64(), reply["sheets"].as_u64()), (Some(2), Some(2)), "{reply}");
+    let reply = c.exec("openpage", json!({"page": bom, "sheet": 7}));
+    assert_eq!(reply["sheet"].as_u64(), Some(2), "{reply}");
+    assert_eq!(c.log(), before, "showing a sheet records nothing");
+
+    // Writes off: it still works (an ordinary page has one sheet).
+    let mut r = reader();
+    let first = r.doc().page_order()[0];
+    let before = r.log();
+    let reply = r.exec("openpage", json!({"page": first.hex(), "sheet": 3}));
+    assert_eq!((reply["sheet"].as_u64(), reply["sheets"].as_u64()), (Some(1), Some(1)), "{reply}");
+    assert_eq!(r.log(), before);
+}
+
 // ---------- brief 018: devices, tags and starter symbols ----------
 
 /// Brief 018 (design 018 §8): `place` (a new device and a join) and `setprop` on a tag record the

@@ -220,9 +220,20 @@ fn content(
 }
 
 /// Every frame and content part of `page`: one sheet for an ordinary page, every sheet of a
-/// generated one side by side. `input` is the page's frame input with Total already counting
-/// sheets.
+/// generated one side by side (what Print Book and PDF cut into sheets). `input` is the page's
+/// frame input with Total already counting sheets.
 pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Option<&ReportModels>, total: usize) -> Vec<Part> {
+    sheets_parts(doc, page, input, reports, total, None)
+}
+
+/// The frame and content parts of sheet `sheet` (0-based, clamped to the last) of `page`, drawn
+/// at the origin: what the page window shows. An ordinary page has one sheet.
+pub(crate) fn sheet_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Option<&ReportModels>, total: usize, sheet: usize) -> Vec<Part> {
+    sheets_parts(doc, page, input, reports, total, Some(sheet))
+}
+
+/// [`page_parts`] for every sheet side by side (`only` `None`), or [`sheet_parts`] for one.
+fn sheets_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Option<&ReportModels>, total: usize, only: Option<usize>) -> Vec<Part> {
     let Some(kind) = kind_of(doc, page) else { return crate::pages::frame::parts(input) };
     let n = sheets_of(doc, page, reports);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
@@ -233,7 +244,11 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Opt
         .flatten();
     let mut out = Vec::new();
     let mut laid = None;
-    for i in 0..n {
+    let which = match only {
+        Some(i) => i.min(n.saturating_sub(1))..i.min(n.saturating_sub(1)).saturating_add(1),
+        None => 0..n,
+    };
+    for i in which {
         let mut inp = input.clone();
         if let Some(o) = graphic {
             if let Some(t) = ecad_electrical::terminal_strips::pages::sheet_title(doc, page, o, i) {
@@ -249,7 +264,7 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, reports: Opt
                 inp.next = sheet_number(&input.page, i + 1);
             }
         }
-        let x0 = width * i as f64;
+        let x0 = if only.is_some() { 0.0 } else { width * i as f64 };
         let mut frame = crate::pages::frame::parts(&inp);
         if x0 != 0.0 {
             let m = cadcraft_engine::geom::Mat3::translate(cadcraft_engine::geom::Vec2::new(x0 * unit_scale(input.unit), 0.0));
@@ -285,4 +300,12 @@ pub fn parts_of_pending(doc: &Document, page: PageId, reports: Option<&ReportMod
     let (input, total) = input_of(doc, page, reports);
     let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, reports, total)
+}
+
+/// [`parts_of_pending`] for sheet `sheet` only, at the origin ([`sheet_parts`]): the page as the
+/// page window shows it.
+pub(crate) fn shown_parts(doc: &Document, page: PageId, reports: Option<&ReportModels>, pending: bool, sheet: usize) -> Vec<Part> {
+    let (input, total) = input_of(doc, page, reports);
+    let input = input.with_pending(doc, pending);
+    sheet_parts(doc, page, &input, reports, total, sheet)
 }

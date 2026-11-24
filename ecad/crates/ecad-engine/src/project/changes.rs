@@ -202,6 +202,7 @@ impl Project {
                     self.tolerance,
                     self.display.show_hidden_text,
                     self.frame.pending,
+                    self.sheet_index(page),
                     reports.as_ref(),
                 );
                 if v.ok() {
@@ -297,7 +298,7 @@ impl Project {
     /// kept for another page means the active page's frame is not kept, so it is drawn.
     pub(super) fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
         let active = self.active_page();
-        let frame_other = self.frame.drawn.as_ref().is_none_or(|(p, _)| Some(*p) != active);
+        let frame_other = self.frame.drawn.as_ref().is_none_or(|(p, _, _)| Some(*p) != active);
         let touched = match (pages, active) {
             (Some(set), Some(a)) => set.contains(&a),
             _ => true,

@@ -45,7 +45,9 @@
 //!   same on another strip (no projection, counted in `spageoff_projections`); **spagetype**: one
 //!   of the strip's cables gets another type with the page shown (`spagetype_work` strips marked).
 //!   **stripbuild** now includes the graphic pages' kept data (`StripPages::build`), as first show
-//!   does.
+//!   does. **spageall**: with a graphic page of every strip shown (`spageall_sheets` sheets, one
+//!   or more per strip), the same wire number set on the bench strip's wire: the page window
+//!   draws only the sheet it shows.
 //!
 //! Each edit is undone after it is measured.
 
@@ -100,6 +102,8 @@ pub struct MeasuredStrips {
     pub spageoff_projections: u64,
     pub spagetype_ms: f64,
     pub spagetype_work: usize,
+    pub spageall_ms: f64,
+    pub spageall_sheets: usize,
     /// The `StripPages::build` share of `stripbuild`.
     pub spbuild_ms: f64,
     /// Strips, terminals and cables in the project.
@@ -524,6 +528,22 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 run(&mut s, "undo", json!({}))?;
             }
             out.spagetype_ms = median(&mut v);
+        }
+        // A graphic page of every strip, shown.
+        let all = run(&mut s, "newpage", json!({"generated": "terminal_blocks", "style": "graphic"}))?;
+        let all_page: PageId = hex(&all, "page")?;
+        run(&mut s, "openpage", json!({"page": all_page.hex()}))?;
+        out.spageall_sheets =
+            project.read(&mut s, |p, _| ecad_electrical::pages::generated::sheets_of(p.ledger.document(), all_page, p.kept_reports())).unwrap_or(0);
+        if let Some(w) = mine {
+            let mut v = Vec::new();
+            for i in 0..runs {
+                let t = Instant::now();
+                run(&mut s, "wirenumber", json!({"conductor": w.hex(), "value": format!("SA-{i}")}))?;
+                v.push(ms(t));
+                run(&mut s, "undo", json!({}))?;
+            }
+            out.spageall_ms = median(&mut v);
         }
         drop(project);
         drop(s);

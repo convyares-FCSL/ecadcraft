@@ -6,8 +6,11 @@
 //!
 //! # Semantics
 //! - A generated page has one or more **sheets**: a table that does not fit continues on the next
-//!   sheet of the same page, header repeated ([`rows_per_sheet`] rows per A3 sheet). Sheets are
-//!   drawn side by side, sheet *i* at x = *i* × (paper width + [`SHEET_GAP`]).
+//!   sheet of the same page, header repeated ([`rows_per_sheet`] rows per A3 sheet). The sheets
+//!   are views of the one stored page, never stored themselves. The page window shows one sheet
+//!   at a time, at the origin, and draws only that one; Print Book and PDF lay every sheet side
+//!   by side, sheet *i* at x = *i* × (paper width + [`SHEET_GAP`]), and cut them apart. A point in
+//!   that side-by-side layout (a go-to into a later sheet) is on sheet [`sheet_at`].
 //! - Each sheet has the page's frame and title block: the page title gets ` (2/3)`, Next shows the
 //!   same number on all but the last sheet, and Total counts sheets in the whole book.
 //! - Content lies on the reserved, locked layer [`LAYER`]; it is mapped like the frame, so
@@ -679,7 +682,29 @@ impl Laid {
     }
 }
 
-/// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet.
+/// The sheet of `page` that point `at` of its side-by-side layout lies on (0-based, clamped to
+/// its sheets) and the point on that sheet drawn alone at the origin.
+pub fn sheet_at(doc: &Document, page: PageId, reports: Option<&ReportModels>, at: Pt) -> (usize, Pt) {
+    let n = sheets_of(doc, page, reports);
+    let spec = ecad_model::document::sheet::sheet_of(doc, page);
+    let step = (f64::from(spec.width) + SHEET_GAP) * unit_scale(doc.settings().length_unit);
+    if n < 2 || !step.is_finite() || step <= 0.0 || !at.x.is_finite() || at.x < step {
+        return (0, at);
+    }
+    let i = ((at.x / step).floor().min((n - 1) as f64)).max(0.0);
+    (i as usize, Pt::new(at.x - i * step, at.y))
+}
+
+/// The window of one sheet of `page` drawn alone (bottom-left, top-right) in model coordinates:
+/// the sheet the page window shows.
+pub fn sheet_window(doc: &Document, page: PageId) -> (Pt, Pt) {
+    let spec = ecad_model::document::sheet::sheet_of(doc, page);
+    let k = unit_scale(doc.settings().length_unit);
+    (Pt::new(0.0, 0.0), Pt::new(f64::from(spec.width) * k, f64::from(spec.height) * k))
+}
+
+/// The sheet windows of `page` in model coordinates: (bottom-left, top-right) per sheet, side by
+/// side as Print Book lays them.
 pub fn sheet_windows_of(doc: &Document, page: PageId, reports: Option<&ReportModels>) -> Vec<(Pt, Pt)> {
     let spec = ecad_model::document::sheet::sheet_of(doc, page);
     let k = unit_scale(doc.settings().length_unit);

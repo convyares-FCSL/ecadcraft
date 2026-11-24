@@ -117,6 +117,18 @@ started.
   the most common value of the row's devices. In 0.2.4 a row shows a value only when all its
   devices agree, and flags the devices that differ.
 
+## Report sheets as pages of their own: an open question (owner, 2026-11-24)
+
+- **Question:** should each sheet of a report page (BOM, terminal strip pages, cable schedule,
+  I/O list) be a page in the book of its own, rather than a derived view of one stored page?
+  Recorded only as a question, not as the plan: the engine would then write pages nobody made,
+  against "derived, never stored".
+- **Today:** a report page is one stored page; its sheets are derived. The page window shows and
+  draws one sheet at a time (the Pages tree lists them under the page), and Print Book prints
+  them all. On the large project that brought a BOM column toggle from 95 ms to 16 ms and a strip
+  edit with a 252-sheet graphic strip page shown from 436 ms to 6 ms, so keeping parts per sheet
+  between edits was not needed.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
