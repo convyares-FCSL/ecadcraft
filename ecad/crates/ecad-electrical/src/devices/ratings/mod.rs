@@ -312,7 +312,9 @@ pub fn read_protection(kind: ProtectionKind, text: &str) -> Read<Protection> {
     }
 }
 
-enum Problem {
+/// Why a reader's text does not give a rating: a question, or a refusal (kept small, so a
+/// reader's steps return it rather than a whole [`Read`]).
+pub(crate) enum Problem {
     Ask(String),
     Refused(String),
 }

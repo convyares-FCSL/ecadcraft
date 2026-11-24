@@ -18,7 +18,7 @@
 "rating.supply_tolerance" = 5.0
 "rating.template.power_supply" = "voltages, current, power, apparent_power, frequency, impedance_voltage"
 "rating.template.protection" = "curve, current, class, size, residual, residual_type, breaking, conditional_short_circuit, poles, voltage, outputs"
-"rating.template.switching" = "control, ac3_current, ac3_power"
+"rating.template.switching" = "control, ac3_current, ac3_power, operational_voltage, thermal_current, insulation_voltage"
 "rating.template.sensor" = "supply"
 "rating.template.motor" = "power, voltage, current, frequency, power_factor, efficiency, starting"
 "rating.template.load" = "power"

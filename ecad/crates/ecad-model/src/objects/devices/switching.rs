@@ -5,10 +5,14 @@
 //!   or a hand (push buttons, selectors, switch-disconnectors). The symbol declares it.
 //! - A coil or an SSR input has a rated control voltage (`24 V DC`) and a power (`3 W`).
 //! - The switched side has an AC-3 rating (IEC 60947-4-1, motor switching): the rated operational
-//!   current (`AC-3 9 A`) and the motor power it switches (`4 kW`).
+//!   current (`AC-3 9 A`) and the motor power it switches (`4 kW`), and the operational voltage
+//!   they are rated at (`Ue 400 V`: an AC-3 current means nothing without it).
+//! - Its nameplate also gives its conventional thermal current (`Ith 20 A`: the resistive and
+//!   auxiliary-circuit rating; a push button, selector or relay has no AC-3 value at all) and its
+//!   rated insulation voltage (`Ui 690 V`: the highest circuit voltage it may switch or sit beside).
 //! - Every field may be empty (not typed yet); [`Switching::is_unrated`] says when all are.
-//!   [`fmt::Display`] writes the set fields in a fixed order (`coil 24 V DC, 3 W, AC-3 9 A, 4 kW`),
-//!   which is what the drawing and every command's answer show.
+//!   [`fmt::Display`] writes the set fields in a fixed order (`coil 24 V DC, 3 W, AC-3 9 A, 4 kW,
+//!   Ue 400 V, Ith 20 A, Ui 690 V`), which is what the drawing and every command's answer show.
 //!
 //! - `contacts` is what the part offers ([`ContactSet`]) and `contact_table` where its contact
 //!   table goes (none: the project's default); neither is part of the rating.
@@ -27,7 +31,7 @@ use crate::objects::devices::{FieldSource, RatingField};
 
 use crate::objects::devices::contacts::{ContactSet, ContactTable};
 
-use crate::geometry::units::{Amps, RatedVoltage, Watts};
+use crate::geometry::units::{Amps, RatedVoltage, Volts, Watts};
 
 /// The largest control voltage of a coil or SSR input, in volts.
 pub const MAX_CONTROL_VOLTS: f64 = 1000.0;
@@ -37,6 +41,10 @@ pub const MAX_CONTROL_WATTS: f64 = 1000.0;
 pub const MAX_AC3_AMPS: f64 = 6300.0;
 /// The largest AC-3 motor power, in watts (4 MW).
 pub const MAX_AC3_WATTS: f64 = 4_000_000.0;
+/// The highest rated operational voltage, in volts.
+pub const MAX_OPERATIONAL_VOLTS: f64 = 1000.0;
+/// The highest rated insulation voltage, in volts.
+pub const MAX_INSULATION_VOLTS: f64 = 1500.0;
 
 /// A switching device: what operates it and its AC-3 rating.
 ///
@@ -66,6 +74,15 @@ pub struct Switching {
     /// The AC-3 motor power it switches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ac3_power: Option<Watts>,
+    /// The rated operational voltage (Ue) its AC-3 rating is given at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operational_voltage: Option<Volts>,
+    /// The conventional thermal current (Ith).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_current: Option<Amps>,
+    /// The rated insulation voltage (Ui).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insulation_voltage: Option<Volts>,
     /// The contacts it offers.
     #[serde(default, skip_serializing_if = "ContactSet::is_empty")]
     pub contacts: ContactSet,
@@ -117,7 +134,16 @@ impl OperatorKind {
             OperatorKind::SolidState => Operator::SolidState(Control::default()),
             OperatorKind::Manual => Operator::Manual,
         };
-        Switching { operator, ac3_current: None, ac3_power: None, contacts: ContactSet::default(), contact_table: None }
+        Switching {
+            operator,
+            ac3_current: None,
+            ac3_power: None,
+            operational_voltage: None,
+            thermal_current: None,
+            insulation_voltage: None,
+            contacts: ContactSet::default(),
+            contact_table: None,
+        }
     }
 }
 
@@ -167,7 +193,10 @@ impl Switching {
         });
         let bad = control_bad
             || self.ac3_current.is_some_and(|a| !within(a.0, MAX_AC3_AMPS))
-            || self.ac3_power.is_some_and(|w| !within(w.0, MAX_AC3_WATTS));
+            || self.ac3_power.is_some_and(|w| !within(w.0, MAX_AC3_WATTS))
+            || self.operational_voltage.is_some_and(|v| !within(v.0, MAX_OPERATIONAL_VOLTS))
+            || self.thermal_current.is_some_and(|a| !within(a.0, MAX_AC3_AMPS))
+            || self.insulation_voltage.is_some_and(|v| !within(v.0, MAX_INSULATION_VOLTS));
         if bad {
             return Some(format!("a rating value of a {} is out of range", self.operator_kind().label()));
         }
@@ -207,6 +236,33 @@ pub(super) static FIELDS: &[RatingField] = &[
         DeviceType::Switching(s) => s.ac3_current
     ),
     rating_field!("ac3_power", "AC-3 power", Plate, Watts, show motor_power, after [], DeviceType::Switching(s) => s.ac3_power),
+    rating_field!(
+        "operational_voltage",
+        "Operational voltage",
+        Plate,
+        Volts,
+        show |v: Volts| format!("Ue {v}"),
+        after ["ue"],
+        DeviceType::Switching(s) => s.operational_voltage
+    ),
+    rating_field!(
+        "thermal_current",
+        "Thermal current",
+        Plate,
+        Amps,
+        show |a: Amps| format!("Ith {a}"),
+        after ["ith"],
+        DeviceType::Switching(s) => s.thermal_current
+    ),
+    rating_field!(
+        "insulation_voltage",
+        "Insulation voltage",
+        Plate,
+        Volts,
+        show |v: Volts| format!("Ui {v}"),
+        after ["ui"],
+        DeviceType::Switching(s) => s.insulation_voltage
+    ),
 ];
 
 /// The coil's or input's voltage and power as one part: `coil 24 V DC, 3 W`.

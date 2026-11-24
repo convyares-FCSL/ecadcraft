@@ -209,7 +209,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 | --- | --- |
 | `power_supply` | `voltages`, `current`, `power` (a power supply's, in W), `apparent_power` (a transformer's, in VA), `frequency` and `impedance_voltage` (a transformer's, `uk 4 %`) |
 | `protection` | `curve`, `current`, `class`, `size`, `residual`, `residual_type`, `breaking`, `conditional_short_circuit`, `poles`, `voltage`, `outputs` |
-| `switching` | `control`, `ac3_current`, `ac3_power` |
+| `switching` | `control`, `ac3_current`, `ac3_power`, `operational_voltage`, `thermal_current`, `insulation_voltage` |
 | `sensor` | `supply` |
 | `motor` | `power`, `voltage`, `current`, `frequency`, `power_factor`, `efficiency`, `starting` |
 | `load` | `power` |
@@ -277,14 +277,21 @@ current (`AC-3 9 A`) and motor power (`4 kW`).
   rating. An unrated push button or selector gets no **no-rating** warning; an unrated coil or
   SSR does.
 - `24 V AC/DC`, `5 VA` and other text that does not read are kept as the note.
+- From the nameplate, each read after its letters: the **Operational voltage** the AC-3 rating is
+  given at (`Ue 400 V`), the **Thermal current** (`Ith 20 A`: a push button, selector or relay has
+  no AC-3 value, only this) and the **Insulation voltage** (`Ui 690 V`: the highest circuit
+  voltage it may switch or sit beside). `24 V DC AC-3 9 A 4 kW Ue 400 V Ith 20 A Ui 690 V` on a
+  coil reads as **coil 24 V DC, AC-3 9 A, 4 kW, Ue 400 V, Ith 20 A, Ui 690 V**. Each is also a
+  row of its own (`rating.operational_voltage`, `rating.thermal_current`,
+  `rating.insulation_voltage`), on a push button too.
 
 To try it: place a coil (Checks shows "no rating"), type `24VDC AC-3 9A` as its rating (shown as
 `coil 24 V DC, AC-3 9 A`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a
 push button and type `24 V DC` (refused: no coil). Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
-(`…switching…`), and `rating::reader::switching` in ecad-electrical (automated, not tried by
-hand).
+(`…switching…`), and `rating::reader::switching` in ecad-electrical; the three nameplate fields
+above through `devices::rating_fields` in ecad-engine (automated, not tried by hand).
 
 ### Lane B, step 3: sensors' ratings are typed
 
