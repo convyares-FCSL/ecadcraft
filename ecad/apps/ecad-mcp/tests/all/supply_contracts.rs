@@ -1,5 +1,5 @@
 //! A potential's supply and a motor's rated voltage through MCP: `wiresettings` with a supply and
-//! `setprop rated_voltage` each record one transaction by `Author::Agent(<client>)`; the motor's
+//! `setprop rating.voltage` each record one transaction by `Author::Agent(<client>)`; the motor's
 //! offer is never written by itself; a rated voltage that differs from the supply is the Checks row
 //! `supply-mismatch`; with writes off both writes are refused and nothing is recorded.
 
@@ -61,7 +61,7 @@ fn a_supply_and_a_rated_voltage_by_the_agent_then_refused_with_writes_off() {
             _ => None,
         };
         assert_eq!(rated(&mut c), None);
-        one_by_agent(&mut c, "setprop", json!({"component": m, "key": "rated_voltage", "value": "230 V"}));
+        one_by_agent(&mut c, "setprop", json!({"component": m, "key": "rating.voltage", "value": "230 V"}));
         let rows = mismatches(&mut c);
         assert!(rows.len() == 1 && rows[0].contains("its supply gives 400 V line-to-line"), "{rows:?}");
         assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
@@ -73,7 +73,7 @@ fn a_supply_and_a_rated_voltage_by_the_agent_then_refused_with_writes_off() {
     assert!(!c.s.writes());
     let log = c.log();
     for (cmd, params) in
-        [("setprop", json!({"component": motor, "key": "rated_voltage", "value": "400 V"})), ("wiresettings", json!({"potentials": table}))]
+        [("setprop", json!({"component": motor, "key": "rating.voltage", "value": "400 V"})), ("wiresettings", json!({"potentials": table}))]
     {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");

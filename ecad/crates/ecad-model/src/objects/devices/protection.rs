@@ -17,6 +17,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::fields::FieldType;
+use crate::objects::devices::{FieldSource, RatingField};
+
 use crate::geometry::units::{Amps, KiloAmps, MilliAmps};
 
 /// The largest rated current a protective device takes, in amperes.
@@ -194,43 +198,8 @@ impl Protection {
 
 impl fmt::Display for Protection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Protection(self.clone()).rating_parts()))
     }
-}
-
-impl Protection {
-    /// Its set rating fields as shown, each with its field word, in the order [`fmt::Display`]
-    /// writes them.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        match self {
-            Protection::Fuse(x) | Protection::FuseTerminalBlock(x) => {
-                parts(&[("current", show(x.rated_current)), ("class", x.class.map(|c| c.label().to_string())), ("breaking", show(x.breaking))])
-            }
-            Protection::Mcb(x) => parts(&[
-                ("curve", curve_words(x.curve)),
-                ("current", show(x.rated_current)),
-                ("breaking", show(x.breaking)),
-                ("poles", x.poles.map(|p| p.label().to_string())),
-            ]),
-            Protection::Rcd(x) => {
-                parts(&[("current", show(x.rated_current)), ("residual", show(x.residual)), ("poles", x.poles.map(|p| p.label().to_string()))])
-            }
-            Protection::Rcbo(x) => parts(&[
-                ("curve", curve_words(x.curve)),
-                ("current", show(x.rated_current)),
-                ("residual", show(x.residual)),
-                ("breaking", show(x.breaking)),
-                ("poles", x.poles.map(|p| p.label().to_string())),
-            ]),
-            // Each rated output: `1: 4 A; 2: 6.3 A, T`, one part.
-            Protection::FuseBank(x) => parts(&[("outputs", Some(x.to_string()).filter(|s| !s.is_empty()))]),
-        }
-    }
-}
-
-/// The set ones of `fields`, with their words.
-fn parts(fields: &[(&'static str, Option<String>)]) -> Vec<(&'static str, String)> {
-    fields.iter().filter_map(|(w, v)| v.clone().map(|v| (*w, v))).collect()
 }
 
 /// Writes `parts` joined by `, `.
@@ -436,3 +405,69 @@ impl Poles {
         }
     }
 }
+
+/// A protective device's rating fields, in the rating line's order; each kind shows the ones it
+/// has. A fuse bank's `outputs` (`1: 4 A; 2: 6.3 A, T`) is written per output (`rating.<n>`).
+pub(super) static FIELDS: &[RatingField] = &[
+    rating_field!(
+        "curve",
+        "Trip curve",
+        Plate,
+        TripCurve,
+        show |c: TripCurve| format!("curve {}", c.letter()),
+        after ["curve"],
+        DeviceType::Protection(Protection::Mcb(x)) => x.curve,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.curve
+    ),
+    rating_field!(
+        "current",
+        "Rated current",
+        Plate,
+        Amps,
+        DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.rated_current,
+        DeviceType::Protection(Protection::Mcb(x)) => x.rated_current,
+        DeviceType::Protection(Protection::Rcd(x)) => x.rated_current,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.rated_current
+    ),
+    rating_field!(
+        "class",
+        "Fuse class",
+        Plate,
+        FuseClass,
+        DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.class
+    ),
+    rating_field!(
+        "residual",
+        "Residual current",
+        Plate,
+        MilliAmps,
+        DeviceType::Protection(Protection::Rcd(x)) => x.residual,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.residual
+    ),
+    rating_field!(
+        "breaking",
+        "Breaking capacity",
+        Plate,
+        KiloAmps,
+        DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.breaking,
+        DeviceType::Protection(Protection::Mcb(x)) => x.breaking,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.breaking
+    ),
+    rating_field!(
+        "poles",
+        "Poles",
+        Plate,
+        Poles,
+        DeviceType::Protection(Protection::Mcb(x)) => x.poles,
+        DeviceType::Protection(Protection::Rcd(x)) => x.poles,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.poles
+    ),
+    RatingField {
+        word: "outputs",
+        label: "Outputs",
+        source: FieldSource::Plate,
+        ty: FieldType::Combined,
+        get: |t| if let DeviceType::Protection(Protection::FuseBank(x)) = t { Some(x.to_string()).filter(|s| !s.is_empty()) } else { None },
+        set: crate::objects::devices::combined,
+    },
+];

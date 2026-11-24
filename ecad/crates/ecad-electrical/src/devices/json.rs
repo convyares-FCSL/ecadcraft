@@ -134,7 +134,31 @@ pub(crate) fn device_json(doc: &Document, c: DeviceId) -> Value {
     // (a provisional one with its `?`).
     v["tag"] = json!(comp.tag);
     v["tag_shown"] = json!(comp.tag_shown());
+    v["rating_fields"] = rating_fields_json(&comp.device_type);
     v
+}
+
+/// The rating fields of a device's group, each with its `setprop` key, label, source, type, unit,
+/// an example it reads, its choices and value as shown (null when not set): what an agent reads before writing one.
+pub(crate) fn rating_fields_json(t: &ecad_model::DeviceType) -> Value {
+    use ecad_model::objects::devices::{FieldSource, RATING_OF_PREFIX};
+    let fields: Vec<Value> = t
+        .group()
+        .rating_fields()
+        .iter()
+        .map(|f| {
+            let source = match f.source {
+                FieldSource::Plate => "nameplate",
+                FieldSource::Design => "design",
+                FieldSource::Datasheet => "datasheet",
+            };
+            json!({
+                "key": format!("{RATING_OF_PREFIX}{}", f.word), "label": f.label, "source": source, "type": f.ty.word(),
+                "unit": f.ty.unit(), "example": f.ty.example(), "choices": f.ty.choices(), "value": (f.get)(t),
+            })
+        })
+        .collect();
+    Value::Array(fields)
 }
 
 /// The device a starter symbol `key` names.

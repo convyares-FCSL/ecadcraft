@@ -47,6 +47,7 @@ mod plc_visuals_contracts;
 mod print_project_contracts;
 mod print_project_saved_contracts;
 mod printbook_contracts;
+mod rating_fields_contracts;
 mod ratings_contracts;
 mod ratings_saved_contracts;
 mod reference_contracts;

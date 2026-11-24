@@ -28,9 +28,6 @@ use ecad_model::{DeviceId, DeviceType, Document};
 use crate::devices::ratings::parse::{decimal, pieces};
 use crate::error::CmdError;
 
-/// The setprop key of a motor's rated voltage (`400 V`; empty clears it).
-pub(crate) const RATED_VOLTAGE_KEY: &str = "rated_voltage";
-
 /// How far two frequencies may differ, in hertz, and still be the same.
 const FREQUENCY_TOLERANCE: f64 = 0.5;
 

@@ -19,8 +19,11 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::fields::{FieldError, put, shown};
+use crate::objects::devices::{FieldSource, RatingField};
+
 use crate::geometry::units::{RatedVoltage, Watts};
-use crate::objects::devices::load::load_power;
 
 /// The largest power of an indicator, in watts.
 pub const MAX_POWER_WATTS: f64 = 10_000.0;
@@ -147,22 +150,28 @@ impl Indicator {
 
 impl fmt::Display for Indicator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Indicator(self.clone()).rating_parts()))
     }
 }
 
-impl Indicator {
-    /// Its set rating fields as shown, each with its field word.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        let signal = (self.signal != SignalType::Steady).then(|| self.signal.word().to_string());
-        [
-            ("colour", self.colour.map(|c| c.label().to_string())),
-            ("signal", signal),
-            ("voltage", self.rated_voltage.map(|v| v.to_string())),
-            ("power", self.power.map(load_power)),
-        ]
-        .into_iter()
-        .filter_map(|(w, v)| v.map(|v| (w, v)))
-        .collect()
-    }
-}
+/// An indicator's rating fields, in the rating line's order. How it signals is always set; the
+/// line shows it unless it is steady, and clearing it makes it steady.
+pub(super) static FIELDS: &[RatingField] = &[
+    rating_field!("colour", "Colour", Plate, IndicatorColour, DeviceType::Indicator(i) => i.colour),
+    RatingField {
+        word: "signal",
+        label: "Signal",
+        source: FieldSource::Design,
+        ty: <SignalType as crate::objects::devices::fields::FieldValue>::TYPE,
+        get: |t| if let DeviceType::Indicator(i) = t { shown(Some(i.signal).filter(|s| *s != SignalType::Steady)) } else { None },
+        set: |t, v| {
+            let DeviceType::Indicator(i) = t else { return Err(FieldError::NotHere) };
+            let mut s = None;
+            put(&mut s, v)?;
+            i.signal = s.unwrap_or_default();
+            Ok(())
+        },
+    },
+    rating_field!("voltage", "Rated voltage", Plate, RatedVoltage, DeviceType::Indicator(i) => i.rated_voltage),
+    rating_field!("power", "Power", Plate, Watts, DeviceType::Indicator(i) => i.power),
+];

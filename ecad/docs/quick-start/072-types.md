@@ -195,7 +195,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 
 | Group | Field words (built-in order) |
 | --- | --- |
-| `power_supply` | `voltages`, `current`, `power` |
+| `power_supply` | `voltages`, `current`, `power` (a power supply's, in W), `apparent_power` (a transformer's, in VA) |
 | `protection` | `curve`, `current`, `class`, `residual`, `breaking`, `poles`, `outputs` |
 | `switching` | `control`, `ac3_current`, `ac3_power` |
 | `sensor` | `supply` |
@@ -218,6 +218,31 @@ set "Rating line: motor" in Standards ▸ Defaults to `current, power`.
 
 Tests: `devices::rating_line` in ecad-engine, including the redraw on a template change
 (automated, not tried by hand).
+
+#### One rating field at a time
+
+Each field in the table above can also be set by itself, without retyping the whole rating:
+
+- The Device tab of one device shows a row per field its kind has (**Rated power**, **Rated
+  voltage**, **Starting**…), the nameplate and design fields first, then the datasheet's. Type a
+  value in a row: `7.5 kW` or `7500` (a bare number is in the field's own unit: W, V, A, mA, kA,
+  Hz, %), `24 V DC` for a voltage that needs AC or DC, a word or its label for a choice
+  (`star_delta` or `star-delta`). Empty clears it.
+- `setprop {"component": …, "key": "rating.<word>", "value": …}` does the same (`rating.voltage`,
+  `rating.power_factor`). A value that is not of the field's type is refused with the field's
+  name (`Rated voltage takes a voltage, such as 400 V.`), as is one outside the group's range or a
+  field this kind of device does not have (a transformer has no output current).
+- A field holding several values in one part (a power supply's `voltages`, a switching device's
+  `control`, a fuse bank's `outputs`) is shown read-only and changed through the whole rating
+  (or `rating.<n>` per fuse of a bank).
+- `deviceprops` lists them under `rating_fields`: each field's key, label, source (`nameplate`,
+  `design`, `datasheet`), type, unit, choices and value, so an agent can see what it may set.
+
+To try it: select a `motor3`, type `400` in its **Rated voltage** row (shown as `400 V`), then
+`15 A` (refused). Nobody has tried it by hand yet.
+
+Tests: `devices::rating_fields` in ecad-engine, `rating_fields_contracts` in ecad-mcp and
+`objects::rating_fields` in ecad-model (automated, not tried by hand).
 
 ### Lane B, step 3: switching devices' ratings are typed
 
@@ -322,8 +347,8 @@ wiresettings {"potentials": [{"name": "L1", "prefix": "L1-", "numbered": true,
 - The Device tab of one motor shows **Rated voltage**. Empty, on a net whose potential has a
   supply, it offers **Use 400 V** (hover: `From L1: 400/230 V 3~ 50 Hz`): a three-phase motor is
   offered the line-to-line voltage, a single-phase motor the line-to-neutral one. Nothing is
-  filled in until the link is clicked. `setprop rated_voltage` sets it (`400 V` or `400`; empty
-  clears it).
+  filled in until the link is clicked. The row is the motor's `rating.voltage` field (`400 V`
+  or `400`; empty clears it), like every rating field.
 - Checks warns **supply-mismatch** when a motor does not fit its supply: a rated voltage further
   from the supply's than the project's **Motor voltage tolerance** (Standards ▸ Defaults,
   `rating.supply_tolerance`, 5 % unless changed), a rated frequency other than the

@@ -538,7 +538,14 @@ pub fn echo(d: &Device, key: &str) -> Option<String> {
             }
         });
     }
-    key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX).and(d.value(key)).map(|r| format!("Read: {r}."))
+    let rest = key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX)?;
+    if let Some(f) = d.device_type.group().rating_field(rest) {
+        return Some(match (f.get)(&d.device_type) {
+            Some(v) => format!("{}: {v}.", f.label),
+            None => format!("{}: not set.", f.label),
+        });
+    }
+    d.value(key).map(|r| format!("Read: {r}."))
 }
 
 #[cfg(test)]

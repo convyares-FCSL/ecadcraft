@@ -35,12 +35,12 @@ pub(crate) static RULES: &[PropRule] = &[
         build: Build::Record(table_value),
     },
     PropRule {
-        what: "a motor's rated voltage",
+        what: "a rating field",
         claims: |doc, o, k| match o {
-            ObjectRef::Device(c) => k == crate::devices::supply::RATED_VOLTAGE_KEY && crate::devices::supply::motor_of(doc, c).is_some(),
+            ObjectRef::Device(c) => rating_field(doc, c, k).is_some(),
             _ => false,
         },
-        build: Build::Record(rated_voltage_value),
+        build: Build::Record(rating_field_value),
     },
     PropRule {
         what: "device rating (072 B)",
@@ -76,29 +76,36 @@ pub(crate) fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Optio
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
-/// A motor's rated voltage (`400 V` or `400`; empty clears it): one `ModifyDevice`.
+/// The rating field `rating.<word>` names on device `c`: a field of its group.
+fn rating_field(doc: &Document, c: DeviceId, key: &str) -> Option<&'static ecad_model::objects::devices::RatingField> {
+    let word = key.strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX)?;
+    doc.devices().get(&c)?.device_type.group().rating_field(word)
+}
+
+/// One rating field (`rating.voltage` = `400 V`; empty clears it), read through the field's type:
+/// one `ModifyDevice`.
 ///
 /// # Errors
-/// Not a voltage, or out of range.
-pub(crate) fn rated_voltage_value(doc: &Document, o: ObjectRef, _key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
-    use ecad_model::geometry::units::Volts;
-    use ecad_model::objects::devices::motor::MAX_VOLTAGE_VOLTS;
+/// Refused with the field's label: not a value of its type, out of the group's range, a kind of
+/// device in the group without the field, or a field written only through the whole rating.
+pub(crate) fn rating_field_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    use ecad_model::objects::devices::fields::FieldError;
     let (c, d) = device_of(doc, o)?;
-    let ecad_model::DeviceType::Motor(m) = &d.device_type else { return Ok(None) };
-    let refused = || CmdError::refused(format!("A rated voltage is a number of volts, more than 0 and at most {MAX_VOLTAGE_VOLTS} V."));
-    let volts = match value.map(str::trim).filter(|v| !v.is_empty()) {
-        None => None,
-        Some(v) => {
-            let lower = v.to_lowercase();
-            let (x, unit) = crate::devices::ratings::parse::number_unit(&lower).ok_or_else(refused)?;
-            if !matches!(unit.trim(), "" | "v" | "vac") || !(x.is_finite() && x > 0.0 && x <= MAX_VOLTAGE_VOLTS) {
-                return Err(refused());
-            }
-            Some(Volts(x))
-        }
-    };
-    let after =
-        Device { device_type: ecad_model::DeviceType::Motor(ecad_model::objects::devices::Motor { rated_voltage: volts, ..m.clone() }), ..d.clone() };
+    let Some(f) = rating_field(doc, c, key) else { return Ok(None) };
+    let mut device_type = d.device_type.clone();
+    (f.set)(&mut device_type, value).map_err(|e| {
+        CmdError::refused(match e {
+            FieldError::Bad(reason) => format!("{} takes {reason}.", f.label),
+            FieldError::NotHere => format!("{} has no {}.", crate::devices::tags::tag_words(doc, c), f.label.to_lowercase()),
+            FieldError::Combined => format!("{} is written with the whole rating (`rating`).", f.label),
+        })
+    })?;
+    if d.device_type.problem().is_none()
+        && let Some(p) = device_type.problem()
+    {
+        return Err(CmdError::refused(format!("{}: {p}.", f.label)));
+    }
+    let after = Device { device_type, ..d.clone() };
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 

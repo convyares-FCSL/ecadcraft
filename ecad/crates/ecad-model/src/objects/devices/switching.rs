@@ -21,6 +21,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::fields::FieldType;
+use crate::objects::devices::{FieldSource, RatingField};
+
 use crate::objects::devices::contacts::{ContactSet, ContactTable};
 
 use crate::geometry::units::{Amps, RatedVoltage, Watts};
@@ -178,37 +182,42 @@ pub(crate) fn motor_power(w: Watts) -> String {
 
 impl fmt::Display for Switching {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Switching(self.clone()).rating_parts()))
     }
 }
 
-impl Switching {
-    /// Its set rating fields as shown, each with its field word (`control`: the coil or input
-    /// voltage and power, one part), in the order [`fmt::Display`] writes them.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        let mut out: Vec<(&'static str, String)> = Vec::new();
-        let mut parts: Vec<String> = Vec::new();
-        let word = match self.operator {
-            Operator::Coil(_) => "coil",
-            Operator::SolidState(_) => "input",
-            Operator::Manual => "",
-        };
-        if let Some(c) = self.control() {
-            let mut first = true;
-            for p in [c.voltage.map(|v| v.to_string()), c.power.map(|w| w.to_string())].into_iter().flatten() {
-                parts.push(if first { format!("{word} {p}") } else { p });
-                first = false;
-            }
-        }
-        if !parts.is_empty() {
-            out.push(("control", parts.join(", ")));
-        }
-        if let Some(a) = self.ac3_current {
-            out.push(("ac3_current", format!("AC-3 {a}")));
-        }
-        if let Some(w) = self.ac3_power {
-            out.push(("ac3_power", motor_power(w)));
-        }
-        out
-    }
+/// A switching device's rating fields, in the rating line's order. `control` is the coil's or
+/// input's voltage and power in one part (`coil 24 V DC, 3 W`), written through the whole rating.
+pub(super) static FIELDS: &[RatingField] = &[
+    RatingField {
+        word: "control",
+        label: "Control",
+        source: FieldSource::Plate,
+        ty: FieldType::Combined,
+        get: |t| if let DeviceType::Switching(s) = t { control_text(s) } else { None },
+        set: crate::objects::devices::combined,
+    },
+    rating_field!(
+        "ac3_current",
+        "AC-3 current",
+        Plate,
+        Amps,
+        show |a: Amps| format!("AC-3 {a}"),
+        after ["ac-3"],
+        DeviceType::Switching(s) => s.ac3_current
+    ),
+    rating_field!("ac3_power", "AC-3 power", Plate, Watts, show motor_power, after [], DeviceType::Switching(s) => s.ac3_power),
+];
+
+/// The coil's or input's voltage and power as one part: `coil 24 V DC, 3 W`.
+fn control_text(s: &Switching) -> Option<String> {
+    let word = match s.operator {
+        Operator::Coil(_) => "coil",
+        Operator::SolidState(_) => "input",
+        Operator::Manual => "",
+    };
+    let c = s.control()?;
+    let parts: Vec<String> = [c.voltage.map(|v| v.to_string()), c.power.map(|w| w.to_string())].into_iter().flatten().collect();
+    let (first, rest) = parts.split_first()?;
+    Some(std::iter::once(format!("{word} {first}")).chain(rest.iter().cloned()).collect::<Vec<_>>().join(", "))
 }

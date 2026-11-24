@@ -15,6 +15,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::RatingField;
+
 use crate::geometry::units::Watts;
 
 /// The largest rated power of a load, in watts (100 MW).
@@ -64,13 +67,9 @@ impl Load {
 
 impl fmt::Display for Load {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Load(self.clone()).rating_parts()))
     }
 }
 
-impl Load {
-    /// Its set rating fields as shown, each with its field word.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        self.rated_power.map(|w| ("power", load_power(w))).into_iter().collect()
-    }
-}
+/// A load's rating fields.
+pub(super) static FIELDS: &[RatingField] = &[rating_field!("power", "Rated power", Plate, Watts, DeviceType::Load(l) => l.rated_power)];

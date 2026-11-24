@@ -421,7 +421,7 @@ pub fn device_section(
         // A strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::terminal_strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         (true, Some(c)) => {
-            motor_voltage_row(doc, c, &mut rows);
+            rating_rows(doc, c, &mut rows);
             device_reference_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
@@ -439,14 +439,37 @@ pub fn device_section(
     }
 }
 
-/// A motor's Rated voltage row; an empty one offers its supply's voltage as **Use 400 V**, which
-/// the person takes (never written by itself).
-fn motor_voltage_row(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
-    use crate::devices::supply;
-    let Some(m) = supply::motor_of(doc, c) else { return };
-    let mut r = Row::rw(supply::RATED_VOLTAGE_KEY, "Rated voltage", m.rated_voltage.map(|v| v.to_string()).unwrap_or_default());
-    r.proposal = supply::fed(doc, c).and_then(|f| supply::suggested_voltage(m, &f).map(|v| (v.to_string(), f.source_words())));
-    rows.push(r);
+/// A row per rating field of device `c`'s group (`rating.<word>`), the nameplate and design fields
+/// first, then the datasheet's: a field this kind of device does not have is left out, and one
+/// written only through the whole rating is read only and shown when set. A motor's empty Rated voltage offers its
+/// supply's voltage as **Use 400 V**, which the person takes (never written by itself).
+fn rating_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
+    use ecad_model::objects::devices::fields::{FieldError, FieldType};
+    use ecad_model::objects::devices::{DeviceGroup, FieldSource, RATING_OF_PREFIX};
+    let Some(d) = doc.devices().get(&c) else { return };
+    let group = d.device_type.group();
+    let mut fields: Vec<_> = group.rating_fields().iter().collect();
+    fields.sort_by_key(|f| f.source == FieldSource::Datasheet);
+    for f in fields {
+        // A kind without the field refuses to clear it.
+        if (f.set)(&mut d.device_type.clone(), None) == Err(FieldError::NotHere) {
+            continue;
+        }
+        let key = format!("{RATING_OF_PREFIX}{}", f.word);
+        let value = (f.get)(&d.device_type).unwrap_or_default();
+        let mut r = match f.ty {
+            // Shown when set; written with the whole rating.
+            FieldType::Combined if value.is_empty() => continue,
+            FieldType::Combined => Row::ro(&key, f.label, value),
+            _ => Row::rw(&key, f.label, value),
+        };
+        if group == DeviceGroup::Motor && f.word == "voltage" {
+            use crate::devices::supply;
+            r.proposal = supply::motor_of(doc, c)
+                .and_then(|m| supply::fed(doc, c).and_then(|fed| supply::suggested_voltage(m, &fed).map(|v| (v.to_string(), fed.source_words()))));
+        }
+        rows.push(r);
+    }
 }
 
 /// The proposal for an unset aspect `a`: the selected symbol's context.

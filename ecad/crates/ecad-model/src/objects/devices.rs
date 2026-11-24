@@ -50,11 +50,35 @@ pub enum FieldSource {
     Datasheet,
 }
 
-/// One field of a group's rating line: its word in a template and where its value comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One rating field of a group, declared once: its word (in a template, `setprop rating.<word>`,
+/// the agent's view), its label, where its value comes from, its value type, and how it is read and
+/// written on a device's type.
+///
+/// # Semantics
+/// `get` is the value as the drawing shows it, `None` when it is not set or this kind of device in
+/// the group has no such field. `set` writes it from text through the type's parser
+/// ([`fields::FieldValue`]); empty text clears it. The upper limits are the group's
+/// ([`DeviceType::problem`]).
+#[derive(Debug, Clone, Copy)]
 pub struct RatingField {
     pub word: &'static str,
+    /// As a person reads it (`Rated voltage`).
+    pub label: &'static str,
     pub source: FieldSource,
+    pub ty: fields::FieldType,
+    pub get: fn(&DeviceType) -> Option<String>,
+    pub set: fn(&mut DeviceType, Option<&str>) -> Result<(), fields::FieldError>,
+}
+
+impl PartialEq for RatingField {
+    fn eq(&self, other: &Self) -> bool {
+        self.word == other.word && self.label == other.label && self.source == other.source && self.ty == other.ty
+    }
+}
+
+/// The `set` of a field written only through the whole rating.
+pub(crate) fn combined(_: &mut DeviceType, _: Option<&str>) -> Result<(), fields::FieldError> {
+    Err(fields::FieldError::Combined)
 }
 
 /// `parts`' texts joined by `, `.
@@ -67,44 +91,20 @@ impl DeviceGroup {
     /// rating line.
     pub fn rating_fields(self) -> &'static [RatingField] {
         match self {
-            DeviceGroup::PowerSupply => &[
-                RatingField { word: "voltages", source: FieldSource::Plate },
-                RatingField { word: "current", source: FieldSource::Plate },
-                RatingField { word: "power", source: FieldSource::Plate },
-            ],
-            DeviceGroup::Protection => &[
-                RatingField { word: "curve", source: FieldSource::Plate },
-                RatingField { word: "current", source: FieldSource::Plate },
-                RatingField { word: "class", source: FieldSource::Plate },
-                RatingField { word: "residual", source: FieldSource::Plate },
-                RatingField { word: "breaking", source: FieldSource::Plate },
-                RatingField { word: "poles", source: FieldSource::Plate },
-                RatingField { word: "outputs", source: FieldSource::Plate },
-            ],
-            DeviceGroup::Switching => &[
-                RatingField { word: "control", source: FieldSource::Plate },
-                RatingField { word: "ac3_current", source: FieldSource::Plate },
-                RatingField { word: "ac3_power", source: FieldSource::Plate },
-            ],
-            DeviceGroup::Sensor => &[RatingField { word: "supply", source: FieldSource::Plate }],
-            DeviceGroup::Motor => &[
-                RatingField { word: "power", source: FieldSource::Plate },
-                RatingField { word: "voltage", source: FieldSource::Plate },
-                RatingField { word: "current", source: FieldSource::Plate },
-                RatingField { word: "frequency", source: FieldSource::Plate },
-                RatingField { word: "power_factor", source: FieldSource::Plate },
-                RatingField { word: "efficiency", source: FieldSource::Plate },
-                RatingField { word: "starting", source: FieldSource::Design },
-            ],
-            DeviceGroup::Load => &[RatingField { word: "power", source: FieldSource::Plate }],
-            DeviceGroup::Indicator => &[
-                RatingField { word: "colour", source: FieldSource::Plate },
-                RatingField { word: "signal", source: FieldSource::Design },
-                RatingField { word: "voltage", source: FieldSource::Plate },
-                RatingField { word: "power", source: FieldSource::Plate },
-            ],
+            DeviceGroup::PowerSupply => power_supply::FIELDS,
+            DeviceGroup::Protection => protection::FIELDS,
+            DeviceGroup::Switching => switching::FIELDS,
+            DeviceGroup::Sensor => sensor::FIELDS,
+            DeviceGroup::Motor => motor::FIELDS,
+            DeviceGroup::Load => load::FIELDS,
+            DeviceGroup::Indicator => indicator::FIELDS,
             DeviceGroup::TerminalStrip | DeviceGroup::Connector | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => &[],
         }
+    }
+
+    /// Its rating field with word `word`.
+    pub fn rating_field(self, word: &str) -> Option<&'static RatingField> {
+        self.rating_fields().iter().find(|f| f.word == word)
     }
 
     /// The fields its rating line shows by default: the plate and design fields, in order.
@@ -232,18 +232,7 @@ impl DeviceType {
     /// Its set rating fields as shown, each with its field word ([`DeviceGroup::rating_fields`]),
     /// in the order [`DeviceType::rating`] writes them.
     pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        match self {
-            DeviceType::Protection(p) => p.rating_parts(),
-            DeviceType::Switching(s) => s.rating_parts(),
-            DeviceType::Sensor(s) => s.rating_parts(),
-            DeviceType::Motor(m) => m.rating_parts(),
-            DeviceType::Load(l) => l.rating_parts(),
-            DeviceType::Indicator(i) => i.rating_parts(),
-            DeviceType::PowerSupply(p) => p.rating_parts(),
-            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
-                Vec::new()
-            }
-        }
+        self.group().rating_fields().iter().filter_map(|f| (f.get)(self).map(|v| (f.word, v))).collect()
     }
 
     /// Its rating line by a template: the set fields named by `words`, in that order, joined by
@@ -255,17 +244,10 @@ impl DeviceType {
     }
 
     /// Its typed rating as shown (`curve B, 16 A`), when a rating field is set.
+    /// A field that only says how the device is used (an indicator's flashing) is not a rating.
     pub fn rating(&self) -> Option<String> {
-        match self {
-            DeviceType::Protection(p) => (!p.is_unrated()).then(|| p.to_string()),
-            DeviceType::Switching(s) => (!s.is_unrated()).then(|| s.to_string()),
-            DeviceType::Sensor(s) => (!s.is_unrated()).then(|| s.to_string()),
-            DeviceType::Motor(m) => (!m.is_unrated()).then(|| m.to_string()),
-            DeviceType::Load(l) => (!l.is_unrated()).then(|| l.to_string()),
-            DeviceType::Indicator(i) => (!i.is_unrated()).then(|| i.to_string()),
-            DeviceType::PowerSupply(p) => (!p.is_unrated()).then(|| p.to_string()),
-            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
-        }
+        let parts = self.rating_parts();
+        (!parts.is_empty() && *self != self.unrated()).then(|| join_parts(&parts))
     }
 
     /// The same type with its rating fields empty (its kind and contacts kept).
@@ -360,7 +342,38 @@ impl DeviceType {
     }
 }
 
+/// A [`RatingField`] stored in plain fields of a group's data: its word, label, source and value
+/// type, how it shows (the type's own way unless `show` says) and the words it may start with as
+/// shown (`after`), then, per kind of device that has it, the pattern and the field.
+macro_rules! rating_field {
+    ($word:literal, $label:literal, $source:ident, $ty:ty, show $show:expr, after [$($p:literal),*], $($pat:pat => $place:expr),+ $(,)?) => {
+        $crate::objects::devices::RatingField {
+            word: $word,
+            label: $label,
+            source: $crate::objects::devices::FieldSource::$source,
+            ty: <$ty as $crate::objects::devices::fields::FieldValue>::TYPE,
+            get: |t| {
+                $(if let $pat = t {
+                    return $place.map($show);
+                })+
+                None
+            },
+            set: |t, v| {
+                const AFTER: &[&str] = &[$($p),*];
+                $(if let $pat = t {
+                    return $crate::objects::devices::fields::put_after::<$ty>(AFTER, &mut $place, v);
+                })+
+                Err($crate::objects::devices::fields::FieldError::NotHere)
+            },
+        }
+    };
+    ($word:literal, $label:literal, $source:ident, $ty:ty, $($pat:pat => $place:expr),+ $(,)?) => {
+        rating_field!($word, $label, $source, $ty, show <$ty as $crate::objects::devices::fields::FieldValue>::show, after [], $($pat => $place),+)
+    };
+}
+
 pub mod contacts;
+pub mod fields;
 pub mod indicator;
 pub mod load;
 pub mod motor;

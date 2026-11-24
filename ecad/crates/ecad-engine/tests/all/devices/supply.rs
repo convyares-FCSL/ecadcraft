@@ -1,5 +1,5 @@
 //! A motor's rated voltage against the supply typed on its potentials: the Checks row, the offer
-//! on the Device tab, and `setprop rated_voltage`.
+//! on the Device tab, and `setprop rating.voltage`.
 
 use std::collections::BTreeSet;
 
@@ -26,7 +26,7 @@ fn rated_voltage(h: &mut H, m: DeviceId) -> Option<Volts> {
 fn voltage_row(h: &mut H, m: DeviceId) -> (String, Option<(String, String)>) {
     let doc = h.doc();
     let s = ecad_electrical::properties::device_section(&doc, &ecad_drawing_style::REGISTRY, None, &BTreeSet::from([m]), None);
-    let r = s.rows.iter().find(|r| r.key == "rated_voltage").expect("a motor has the row");
+    let r = s.rows.iter().find(|r| r.key == "rating.voltage").expect("a motor has the row");
     (r.value.clone(), r.proposal.clone())
 }
 
@@ -61,14 +61,14 @@ fn a_motor_is_offered_its_supply_voltage_and_never_given_it() {
     assert_eq!(rated_voltage(&mut h, m), None, "never filled in by itself");
     assert!(mismatches(&mut h).is_empty(), "nothing to compare");
     // The offer's link sets the row's key to its value.
-    h.run("setprop", json!({"component": m.hex(), "key": "rated_voltage", "value": "400 V"})).unwrap();
+    h.run("setprop", json!({"component": m.hex(), "key": "rating.voltage", "value": "400 V"})).unwrap();
     assert_eq!(rated_voltage(&mut h, m), Some(Volts(400.0)));
     assert_eq!(voltage_row(&mut h, m), ("400 V".to_string(), None));
     // Empty clears it; text that is no voltage is refused.
-    h.run("setprop", json!({"component": m.hex(), "key": "rated_voltage", "value": ""})).unwrap();
+    h.run("setprop", json!({"component": m.hex(), "key": "rating.voltage", "value": ""})).unwrap();
     assert_eq!(rated_voltage(&mut h, m), None);
-    let e = h.run("setprop", json!({"component": m.hex(), "key": "rated_voltage", "value": "15 A"})).unwrap_err();
-    assert!(e.contains("number of volts"), "{e}");
+    let e = h.run("setprop", json!({"component": m.hex(), "key": "rating.voltage", "value": "15 A"})).unwrap_err();
+    assert!(e.contains("Rated voltage takes a voltage"), "{e}");
 }
 
 /// A rated voltage that differs from the line-to-line voltage is a Checks row; the rating read
@@ -76,7 +76,7 @@ fn a_motor_is_offered_its_supply_voltage_and_never_given_it() {
 #[test]
 fn a_motor_rated_for_another_voltage_is_a_checks_row() {
     let (mut h, m, _, _) = fixture();
-    h.run("setprop", json!({"component": m.hex(), "key": "rated_voltage", "value": "230"})).unwrap();
+    h.run("setprop", json!({"component": m.hex(), "key": "rating.voltage", "value": "230"})).unwrap();
     let rows = mismatches(&mut h);
     assert_eq!(rows.len(), 1, "{rows:?}");
     assert!(rows[0].ends_with("is rated 230 V; its supply gives 400 V line-to-line, L1 (400/230 V 3~ 50 Hz)"), "{rows:?}");
@@ -110,7 +110,7 @@ fn the_row_follows_a_potential_set_on_another_wire_of_the_net() {
     h.cfg(|p| {
         p.checks();
     });
-    h.run("setprop", json!({"component": m.hex(), "key": "rated_voltage", "value": "230"})).unwrap();
+    h.run("setprop", json!({"component": m.hex(), "key": "rating.voltage", "value": "230"})).unwrap();
     let (kept, fresh) = kept_and_fresh(&mut h);
     assert_eq!((kept.len(), &kept), (1, &fresh));
     // A second wire on the net, away from the motor, with no potential; then the motor's wire

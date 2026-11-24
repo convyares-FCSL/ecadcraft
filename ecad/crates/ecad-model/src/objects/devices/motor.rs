@@ -22,6 +22,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::RatingField;
+
 use crate::geometry::units::{Amps, Hertz, Percent, Volts, Watts};
 use crate::objects::devices::switching::motor_power;
 
@@ -161,25 +164,25 @@ impl Motor {
 
 impl fmt::Display for Motor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Motor(self.clone()).rating_parts()))
     }
 }
 
-impl Motor {
-    /// Its set rating fields as shown, each with its field word, in the order [`fmt::Display`]
-    /// writes them.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        [
-            ("power", self.rated_power.map(motor_power)),
-            ("voltage", self.rated_voltage.map(|v| v.to_string())),
-            ("current", self.rated_current.map(|a| a.to_string())),
-            ("frequency", self.rated_frequency.map(|f| f.to_string())),
-            ("power_factor", self.power_factor.map(|p| format!("cos φ {p}"))),
-            ("efficiency", self.efficiency.map(|e| format!("eff {e}"))),
-            ("starting", self.starting.map(|s| s.label().to_string())),
-        ]
-        .into_iter()
-        .filter_map(|(w, v)| v.map(|v| (w, v)))
-        .collect()
-    }
-}
+/// A motor's rating fields, in the rating line's order.
+pub(super) static FIELDS: &[RatingField] = &[
+    rating_field!("power", "Rated power", Plate, Watts, show motor_power, after [], DeviceType::Motor(m) => m.rated_power),
+    rating_field!("voltage", "Rated voltage", Plate, Volts, DeviceType::Motor(m) => m.rated_voltage),
+    rating_field!("current", "Rated current", Plate, Amps, DeviceType::Motor(m) => m.rated_current),
+    rating_field!("frequency", "Rated frequency", Plate, Hertz, DeviceType::Motor(m) => m.rated_frequency),
+    rating_field!(
+        "power_factor",
+        "Power factor",
+        Plate,
+        f64,
+        show |p: f64| format!("cos φ {p}"),
+        after ["cos φ", "cosφ", "cos phi"],
+        DeviceType::Motor(m) => m.power_factor
+    ),
+    rating_field!("efficiency", "Efficiency", Plate, Percent, show |e: Percent| format!("eff {e}"), after ["eff"], DeviceType::Motor(m) => m.efficiency),
+    rating_field!("starting", "Starting", Design, Starting, DeviceType::Motor(m) => m.starting),
+];

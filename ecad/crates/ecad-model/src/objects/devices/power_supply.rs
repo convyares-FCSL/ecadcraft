@@ -21,8 +21,11 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::fields::FieldType;
+use crate::objects::devices::{FieldSource, RatingField};
+
 use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Watts};
-use crate::objects::devices::load::load_power;
 
 /// The largest input or output voltage, in volts (low voltage).
 pub const MAX_VOLTS: f64 = 1000.0;
@@ -172,24 +175,29 @@ fn voltages(input: Option<RatedVoltage>, output: Option<RatedVoltage>, dc_output
 
 impl fmt::Display for PowerSupply {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::PowerSupply(self.clone()).rating_parts()))
     }
 }
 
-impl PowerSupply {
-    /// Its set rating fields as shown, each with its field word (`voltages`: input and output, one
-    /// part), in the order [`fmt::Display`] writes them.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        let fields = match self {
-            PowerSupply::Psu(p) => [
-                ("voltages", voltages(p.input, p.output, true)),
-                ("current", p.output_current.map(|a| a.to_string())),
-                ("power", p.output_power.map(load_power)),
-            ],
-            PowerSupply::Transformer(t) => {
-                [("voltages", voltages(t.input, t.output, false)), ("current", None), ("power", t.rated_power.map(volt_amps))]
+/// A power supply's or transformer's rating fields, in the rating line's order. `voltages` is the
+/// input and output in one part, written through the whole rating; a power supply's power is in
+/// watts, a transformer's in volt-amperes (`apparent_power`), and a transformer has no output current.
+pub(super) static FIELDS: &[RatingField] = &[
+    RatingField {
+        word: "voltages",
+        label: "Voltages",
+        source: FieldSource::Plate,
+        ty: FieldType::Combined,
+        get: |t| {
+            let DeviceType::PowerSupply(x) = t else { return None };
+            match x {
+                PowerSupply::Psu(p) => voltages(p.input, p.output, true),
+                PowerSupply::Transformer(x) => voltages(x.input, x.output, false),
             }
-        };
-        fields.into_iter().filter_map(|(w, v)| v.map(|v| (w, v))).collect()
-    }
-}
+        },
+        set: crate::objects::devices::combined,
+    },
+    rating_field!("current", "Output current", Plate, Amps, DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.output_current),
+    rating_field!("power", "Rated power", Plate, Watts, DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.output_power),
+    rating_field!("apparent_power", "Rated power", Plate, VoltAmps, DeviceType::PowerSupply(PowerSupply::Transformer(x)) => x.rated_power),
+];

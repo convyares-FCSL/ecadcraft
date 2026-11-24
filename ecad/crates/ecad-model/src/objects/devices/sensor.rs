@@ -17,6 +17,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::DeviceType;
+use crate::objects::devices::RatingField;
+
 use crate::geometry::units::RatedVoltage;
 use crate::naming::words::Word;
 
@@ -137,13 +140,9 @@ impl Sensor {
 
 impl fmt::Display for Sensor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&super::join_parts(&self.rating_parts()))
+        f.write_str(&super::join_parts(&DeviceType::Sensor(self.clone()).rating_parts()))
     }
 }
 
-impl Sensor {
-    /// Its set rating fields as shown, each with its field word.
-    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
-        self.supply.map(|v| ("supply", v.to_string())).into_iter().collect()
-    }
-}
+/// A sensor's rating fields.
+pub(super) static FIELDS: &[RatingField] = &[rating_field!("supply", "Supply voltage", Plate, RatedVoltage, DeviceType::Sensor(s) => s.supply)];

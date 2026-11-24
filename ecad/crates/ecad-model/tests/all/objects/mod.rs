@@ -3,6 +3,7 @@ pub(crate) mod cables;
 pub(crate) mod device_types;
 pub(crate) mod devices;
 pub(crate) mod plc;
+pub(crate) mod rating_fields;
 pub(crate) mod style_records;
 pub(crate) mod styles;
 pub(crate) mod symbol_definition;
