@@ -3,12 +3,16 @@
 //! # Semantics
 //! - [`Phases`] says whether it is a single-phase or a three-phase motor. The symbol declares it.
 //! - Its rating is its nameplate: the rated power (kept in watts, shown in kilowatts: `7.5 kW`),
-//!   the rated current (`15.2 A`), the power factor (`cos φ 0.85`), the efficiency (`eff 91 %`)
-//!   and how it is started ([`Starting`]: direct on line, star-delta, soft starter, VFD).
+//!   the rated voltage (`400 V`: line-to-line on three phases, line-to-neutral on one), the rated
+//!   current (`15.2 A`), the rated frequency (`50 Hz`), the power factor (`cos φ 0.85`), the
+//!   efficiency (`eff 91 %`) and how it is started ([`Starting`]: direct on line, star-delta, soft
+//!   starter, VFD).
 //! - Every rating field may be empty (not typed yet); [`Motor::is_unrated`] says when all are.
 //!   [`fmt::Display`] writes the set fields in a fixed order
-//!   (`7.5 kW, 15.2 A, cos φ 0.85, eff 91 %, star-delta`), which is what the drawing and every
-//!   command's answer show.
+//!   (`7.5 kW, 400 V, 15.2 A, 50 Hz, cos φ 0.85, eff 91 %, star-delta`), which is what the drawing
+//!   and every command's answer show.
+//! - The rated voltage is never taken from the circuit: a supply on the motor's potentials only
+//!   suggests it (`ecad-electrical`), and a check compares the two.
 //!
 //! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader) and the
 //! calculations from the rating (full-load and starting current, protection and cable sizing).
@@ -18,13 +22,17 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::geometry::units::{Amps, Percent, Watts};
+use crate::geometry::units::{Amps, Hertz, Percent, Volts, Watts};
 use crate::objects::devices::switching::motor_power;
 
 /// The largest rated power of a motor, in watts (100 MW).
 pub const MAX_POWER_WATTS: f64 = 100_000_000.0;
 /// The largest rated current of a motor, in amperes.
 pub const MAX_CURRENT_AMPS: f64 = 10_000.0;
+/// The largest rated voltage of a motor, in volts.
+pub const MAX_VOLTAGE_VOLTS: f64 = 100_000.0;
+/// The largest rated frequency of a motor, in hertz.
+pub const MAX_FREQUENCY_HERTZ: f64 = 1_000.0;
 
 /// A motor: its phases and its nameplate rating.
 ///
@@ -46,9 +54,15 @@ pub struct Motor {
     /// The rated (shaft) power.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rated_power: Option<Watts>,
+    /// The rated voltage: line-to-line on three phases, line-to-neutral on one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<Volts>,
     /// The rated (full-load) current.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rated_current: Option<Amps>,
+    /// The rated frequency.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_frequency: Option<Hertz>,
     /// The power factor at rated load (cos φ), more than 0 and at most 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power_factor: Option<f64>,
@@ -110,7 +124,16 @@ impl Phases {
 impl Motor {
     /// A motor with `phases`, with nothing rated.
     pub fn empty(phases: Phases) -> Motor {
-        Motor { phases, rated_power: None, rated_current: None, power_factor: None, efficiency: None, starting: None }
+        Motor {
+            phases,
+            rated_power: None,
+            rated_voltage: None,
+            rated_current: None,
+            rated_frequency: None,
+            power_factor: None,
+            efficiency: None,
+            starting: None,
+        }
     }
 
     /// The same motor with nothing rated.
@@ -127,7 +150,9 @@ impl Motor {
     pub fn problem(&self) -> Option<String> {
         let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
         let bad = self.rated_power.is_some_and(|w| !within(w.0, MAX_POWER_WATTS))
+            || self.rated_voltage.is_some_and(|v| !within(v.0, MAX_VOLTAGE_VOLTS))
             || self.rated_current.is_some_and(|a| !within(a.0, MAX_CURRENT_AMPS))
+            || self.rated_frequency.is_some_and(|f| !within(f.0, MAX_FREQUENCY_HERTZ))
             || self.power_factor.is_some_and(|p| !within(p, 1.0))
             || self.efficiency.is_some_and(|e| !within(e.0, 100.0));
         bad.then(|| format!("a rating value of a {} is out of range", self.phases.label()))
@@ -138,7 +163,9 @@ impl fmt::Display for Motor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let parts: Vec<String> = [
             self.rated_power.map(motor_power),
+            self.rated_voltage.map(|v| v.to_string()),
             self.rated_current.map(|a| a.to_string()),
+            self.rated_frequency.map(|f| f.to_string()),
             self.power_factor.map(|p| format!("cos φ {p}")),
             self.efficiency.map(|e| format!("eff {e}")),
             self.starting.map(|s| s.label().to_string()),

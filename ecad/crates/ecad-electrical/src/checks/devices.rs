@@ -59,6 +59,14 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
         };
         out.push(Check { kind: Kind::NoRating, page, at, object: Object::Device(c), which, fix: None });
     }
+    // A motor's rating against the supply typed on its potentials.
+    if let Some(m) = crate::devices::supply::motor_of(doc, c)
+        && let Some(fed) = crate::devices::supply::fed(doc, c)
+        && let Some(which) = crate::devices::supply::motor_mismatch(&crate::devices::tags::tag_words(doc, c), m, &fed)
+    {
+        let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        out.push(Check { kind: Kind::SupplyMismatch, page, at, object: Object::Device(c), which, fix: None });
+    }
     // A connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // A table the user placed over the title block stays there.

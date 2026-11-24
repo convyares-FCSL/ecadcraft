@@ -24,6 +24,10 @@ use crate::objects::devices::Phases;
 
 /// The highest nominal voltage of a supply, in volts (1 MV).
 pub const MAX_VOLTS: f64 = 1_000_000.0;
+/// The three-phase systems named by their two voltages (IEC 60038 and North American practice):
+/// line-to-neutral, line-to-line.
+const SYSTEMS: [(f64, f64); 7] = [(230.0, 400.0), (400.0, 690.0), (120.0, 208.0), (277.0, 480.0), (220.0, 380.0), (240.0, 415.0), (347.0, 600.0)];
+
 /// The highest supply frequency, in hertz (1 kHz).
 const MAX_HERTZ: f64 = 1_000.0;
 
@@ -36,7 +40,7 @@ const MAX_HERTZ: f64 = 1_000.0;
 /// use ecad_model::objects::devices::Phases;
 /// let s = Supply::Ac { nominal: Volts(400.0), phases: Phases::Three, frequency: Some(Hertz(50.0)) };
 /// assert_eq!(s.to_string(), "400 V AC 3~ 50 Hz");
-/// assert_eq!(s.line_to_neutral().map(|v| v.0.round()), Some(231.0));
+/// assert_eq!(s.line_to_neutral(), Some(Volts(230.0)));
 /// assert_eq!(
 ///     serde_json::to_string(&s).unwrap(),
 ///     r#"{"current":"ac","nominal":400.0,"phases":"three","frequency":50.0}"#
@@ -93,12 +97,15 @@ impl Supply {
         }
     }
 
-    /// The voltage between a line and neutral: the nominal of an AC single-phase supply, the
-    /// nominal divided by √3 on three phases; none for DC.
+    /// The voltage between a line and neutral: the nominal of an AC single-phase supply; on three
+    /// phases, the named pair's of a standard system (`400 V` gives `230 V`), else the
+    /// nominal divided by √3; none for DC.
     pub fn line_to_neutral(&self) -> Option<Volts> {
         match self {
             Supply::Ac { nominal, phases: Phases::Single, .. } => Some(*nominal),
-            Supply::Ac { nominal, phases: Phases::Three, .. } => Some(Volts(nominal.0 / 3f64.sqrt())),
+            Supply::Ac { nominal, phases: Phases::Three, .. } => {
+                Some(Volts(SYSTEMS.iter().find(|(_, ll)| (ll - nominal.0).abs() < 0.5).map_or(nominal.0 / 3f64.sqrt(), |(ln, _)| *ln)))
+            }
             Supply::Dc { .. } => None,
         }
     }
@@ -151,6 +158,9 @@ mod tests {
         assert_eq!(three.line_to_line(), Some(Volts(400.0)));
         assert_eq!(one.line_to_line(), None);
         assert_eq!(one.line_to_neutral(), Some(Volts(230.0)));
+        // A system not in the list: √3.
+        let odd = Supply::Ac { nominal: Volts(500.0), phases: Phases::Three, frequency: None };
+        assert_eq!(odd.line_to_neutral().map(|v| v.0.round()), Some(289.0));
         assert_eq!((dc.line_to_line(), dc.line_to_neutral()), (None, None));
         assert_eq!(dc.to_string(), "24 V DC");
         assert_eq!(one.to_string(), "230 V AC 1~ 60 Hz");

@@ -421,6 +421,7 @@ pub fn device_section(
         // A strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::terminal_strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         (true, Some(c)) => {
+            motor_voltage_row(doc, c, &mut rows);
             device_reference_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
@@ -436,6 +437,16 @@ pub fn device_section(
         note: if one { None } else { Some("Tags are one per device.".into()) },
         buttons,
     }
+}
+
+/// A motor's Rated voltage row; an empty one offers its supply's voltage as **Use 400 V**, which
+/// the person takes (never written by itself).
+fn motor_voltage_row(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
+    use crate::devices::supply;
+    let Some(m) = supply::motor_of(doc, c) else { return };
+    let mut r = Row::rw(supply::RATED_VOLTAGE_KEY, "Rated voltage", m.rated_voltage.map(|v| v.to_string()).unwrap_or_default());
+    r.proposal = supply::fed(doc, c).and_then(|f| supply::suggested_voltage(m, &f).map(|v| (v.to_string(), f.source_words())));
+    rows.push(r);
 }
 
 /// The proposal for an unset aspect `a`: the selected symbol's context.

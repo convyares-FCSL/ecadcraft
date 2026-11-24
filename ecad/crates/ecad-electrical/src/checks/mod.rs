@@ -183,6 +183,8 @@ check_kinds! {
     /// A device whose group has typed rating fields, none
     /// set (a rating note does not count).
     NoRating = "no-rating", Warning, "Device with no rating";
+    /// A motor whose rated voltage or frequency differs from the supply typed on its potentials.
+    SupplyMismatch = "supply-mismatch", Warning, "Rating differs from its supply";
     /// A strip with more terminals drawn than it offers.
     TooManyTerminalBlocks = "too-many-terminal-blocks", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.

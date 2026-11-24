@@ -60,6 +60,7 @@ mod strips_contracts;
 mod strips_saved_contracts;
 mod style_contracts;
 mod style_model_contracts;
+mod supply_contracts;
 mod symbol_builder_contracts;
 mod text_contracts;
 mod text_saved_contracts;

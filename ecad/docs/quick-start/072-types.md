@@ -258,8 +258,9 @@ current, power factor (`cos φ 0.85`, also `pf 0.85`), efficiency (`eff 91 %`) a
 (`DOL`, `star-delta` or `Y-D`, `soft start`, `VFD`).
 
 - `7,5kW 15.2A Y-D` reads as **7.5 kW, 15.2 A, star-delta**; `370 W` as **0.37 kW**.
-- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. A voltage (`400 V`) is
-  refused: a motor has no voltage field. Other text (`IE3`, `see datasheet`) is kept as the note.
+- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. Other text (`IE3`,
+  `see datasheet`) is kept as the note. A motor's rated voltage and frequency came later: see
+  [d4-device-data.md](d4-device-data.md).
 - An unrated motor now gets the Checks warning **no-rating** (the demo's `-M01` too).
 
 To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y-D` as its rating

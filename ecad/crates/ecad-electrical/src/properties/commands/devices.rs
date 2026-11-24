@@ -35,6 +35,14 @@ pub(crate) static RULES: &[PropRule] = &[
         build: Build::Record(table_value),
     },
     PropRule {
+        what: "a motor's rated voltage",
+        claims: |doc, o, k| match o {
+            ObjectRef::Device(c) => k == crate::devices::supply::RATED_VOLTAGE_KEY && crate::devices::supply::motor_of(doc, c).is_some(),
+            _ => false,
+        },
+        build: Build::Record(rated_voltage_value),
+    },
+    PropRule {
         what: "device rating (072 B)",
         claims: |doc, o, k| match o {
             ObjectRef::Device(c) => {
@@ -65,6 +73,32 @@ pub(crate) fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Optio
         Some(n) => crate::devices::ratings::with_output_rating(d, &who, &crate::symbols::rules::bank_outputs(doc, c), n, value),
         None => crate::devices::ratings::with_rating(d, &who, value),
     }?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
+
+/// A motor's rated voltage (`400 V` or `400`; empty clears it): one `ModifyDevice`.
+///
+/// # Errors
+/// Not a voltage, or out of range.
+pub(crate) fn rated_voltage_value(doc: &Document, o: ObjectRef, _key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    use ecad_model::geometry::units::Volts;
+    use ecad_model::objects::devices::motor::MAX_VOLTAGE_VOLTS;
+    let (c, d) = device_of(doc, o)?;
+    let ecad_model::DeviceType::Motor(m) = &d.device_type else { return Ok(None) };
+    let refused = || CmdError::refused(format!("A rated voltage is a number of volts, more than 0 and at most {MAX_VOLTAGE_VOLTS} V."));
+    let volts = match value.map(str::trim).filter(|v| !v.is_empty()) {
+        None => None,
+        Some(v) => {
+            let lower = v.to_lowercase();
+            let (x, unit) = crate::devices::ratings::parse::number_unit(&lower).ok_or_else(refused)?;
+            if !matches!(unit.trim(), "" | "v" | "vac") || !(x.is_finite() && x > 0.0 && x <= MAX_VOLTAGE_VOLTS) {
+                return Err(refused());
+            }
+            Some(Volts(x))
+        }
+    };
+    let after =
+        Device { device_type: ecad_model::DeviceType::Motor(ecad_model::objects::devices::Motor { rated_voltage: volts, ..m.clone() }), ..d.clone() };
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 

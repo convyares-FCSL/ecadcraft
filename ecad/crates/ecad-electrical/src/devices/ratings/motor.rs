@@ -1,22 +1,22 @@
-//! Reading a motor's rating: its nameplate power, current, power
-//! factor, efficiency and starting.
+//! Reading a motor's rating: its nameplate power, voltage, current, frequency, power factor,
+//! efficiency and starting.
 //!
 //! # Semantics
-//! - `7.5 kW` and `7500 W` are the rated power; `15.2 A` the rated current; `0,37 kW` reads as
-//!   `0.37 kW` (a decimal comma).
+//! - `7.5 kW` and `7500 W` are the rated power; `400 V` the rated voltage; `15.2 A` the rated
+//!   current; `50 Hz` the rated frequency; `0,37 kW` reads as `0.37 kW` (a decimal comma).
 //! - `cos φ 0.85` (also `cosφ`, `cos phi`, `pf`) is the power factor; `eff 91 %` (also `η`) the
 //!   efficiency.
 //! - `DOL` (or `direct`), `star-delta` (`Y-D`), `soft start` (`soft-start`) and `VFD` (`VSD`) say how
 //!   it is started.
 //! - Ambiguous text is asked about: a number without a unit (kW or A?), a percentage that does not
-//!   say it is the efficiency. A voltage is refused: a motor's rating has no voltage field.
+//!   say it is the efficiency. A DC voltage is refused: a motor here runs on AC.
 //! - Any other word (`IE3`, `see datasheet`) is no rating: the note.
 //!
 //! This module excludes the protection reader (its parent) and the calculations from the rating.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::geometry::units::{Amps, Percent, Watts};
-use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_POWER_WATTS};
+use ecad_model::geometry::units::{Amps, Hertz, Percent, Volts, Watts};
+use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_FREQUENCY_HERTZ, MAX_POWER_WATTS, MAX_VOLTAGE_VOLTS};
 use ecad_model::objects::devices::{Motor, Starting};
 
 use crate::devices::ratings::parse::{number_unit, pieces};
@@ -29,7 +29,9 @@ enum Tok {
     KiloWatts(f64),
     Amps(f64),
     Percent(f64),
-    Volts,
+    Volts(f64),
+    DcVolts,
+    Hertz(f64),
     Bare(f64),
     /// `cos φ`, `pf`: the next number is the power factor.
     PowerFactor,
@@ -47,7 +49,10 @@ fn unit_token(x: f64, unit: &str) -> Option<Tok> {
         "kw" => Some(Tok::KiloWatts(x)),
         "a" => Some(Tok::Amps(x)),
         "%" => Some(Tok::Percent(x)),
-        "v" | "vac" | "vdc" => Some(Tok::Volts),
+        "v" | "vac" => Some(Tok::Volts(x)),
+        "kv" => Some(Tok::Volts(x * 1000.0)),
+        "vdc" => Some(Tok::DcVolts),
+        "hz" => Some(Tok::Hertz(x)),
         _ => None,
     }
 }
@@ -100,7 +105,9 @@ struct Found {
     percent: Option<f64>,
     bare: Option<f64>,
     starting: Option<Starting>,
-    volts: bool,
+    volts: Option<f64>,
+    hertz: Option<f64>,
+    dc: bool,
 }
 
 fn once<T>(slot: &mut Option<T>, v: T, what: &str) -> Result<(), Read<Motor>> {
@@ -124,7 +131,9 @@ fn found(toks: &[Tok]) -> Result<Found, Read<Motor>> {
             Tok::Percent(x) => once(&mut f.percent, x, "percentages")?,
             Tok::Bare(x) => once(&mut f.bare, x, "numbers with no unit")?,
             Tok::Starting(s) => once(&mut f.starting, s, "ways of starting")?,
-            Tok::Volts => f.volts = true,
+            Tok::Volts(x) => once(&mut f.volts, x, "voltages")?,
+            Tok::Hertz(x) => once(&mut f.hertz, x, "frequencies")?,
+            Tok::DcVolts => f.dc = true,
             Tok::PowerFactor => match toks.get(i) {
                 Some(Tok::Bare(x)) => {
                     i += 1;
@@ -179,10 +188,8 @@ pub fn read_motor(motor: &Motor, text: &str) -> Read<Motor> {
 }
 
 fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
-    if f.volts {
-        return Err(Read::Refused(
-            "a motor's rating has no voltage (its supply is its circuit's); give its power and current, for example 7.5 kW, 15.2 A".into(),
-        ));
+    if f.dc {
+        return Err(Read::Refused("a motor here runs on AC; give its voltage without DC, for example 400 V".into()));
     }
     if let Some(x) = f.bare {
         return Err(Read::Ask(format!("a unit for {x}: kW (rated power) or A (rated current)?")));
@@ -192,10 +199,12 @@ fn build(motor: &Motor, f: &Found) -> Result<Motor, Read<Motor>> {
     }
     // Read in watts or kilowatts, kept in watts to the milliwatt (0.37 kW is 370 W).
     let rated_power = f.watts.map(|w| within(w, MAX_POWER_WATTS, "a rated power", " W").map(|w| Watts((w * 1000.0).round() / 1000.0))).transpose()?;
+    let rated_voltage = f.volts.map(|v| within(v, MAX_VOLTAGE_VOLTS, "a rated voltage", " V").map(Volts)).transpose()?;
     let rated_current = f.amps.map(|a| within(a, MAX_CURRENT_AMPS, "a rated current", " A").map(Amps)).transpose()?;
+    let rated_frequency = f.hertz.map(|h| within(h, MAX_FREQUENCY_HERTZ, "a rated frequency", " Hz").map(Hertz)).transpose()?;
     let power_factor = f.power_factor.map(|p| within(p, 1.0, "a power factor", "")).transpose()?;
     let efficiency = f.efficiency.map(|e| within(e, 100.0, "an efficiency", " %").map(Percent)).transpose()?;
-    Ok(Motor { rated_power, rated_current, power_factor, efficiency, starting: f.starting, ..motor.unrated() })
+    Ok(Motor { rated_power, rated_voltage, rated_current, rated_frequency, power_factor, efficiency, starting: f.starting, ..motor.unrated() })
 }
 
 #[cfg(test)]
@@ -234,6 +243,10 @@ mod tests {
             ("soft-start", "soft start"),
             ("VSD", "VFD"),
             ("7.5 kW, 15.2 A, cos φ 0.85, eff 91 %, star-delta", "7.5 kW, 15.2 A, cos φ 0.85, eff 91 %, star-delta"),
+            ("400 V", "400 V"),
+            ("400VAC", "400 V"),
+            ("50 Hz", "50 Hz"),
+            ("7.5 kW 400 V 15.2 A 50 Hz", "7.5 kW, 400 V, 15.2 A, 50 Hz"),
         ] {
             let got = shown(text);
             assert_eq!(got, want, "{text}");
@@ -253,7 +266,9 @@ mod tests {
             ("cos φ", "ask: the power factor"),
             ("eff 0.91", "ask: the efficiency in percent"),
             ("soft", "ask: whether it has a soft starter"),
-            ("7.5 kW 400 V", "refused: a motor's rating has no voltage"),
+            ("7.5 kW 24 VDC", "refused: a motor here runs on AC"),
+            ("400 V 230 V", "refused: '400 V 230 V' does not read: it gives two voltages"),
+            ("0 Hz", "refused: a rated frequency"),
             ("7.5 kW 5 kW", "refused: '7.5 kW 5 kW' does not read: it gives two powers"),
             ("DOL VFD", "refused: 'DOL VFD' does not read: it gives two ways"),
             ("cos φ 1.2", "refused: a power factor is more than 0 and at most 1"),

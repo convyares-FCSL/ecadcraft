@@ -469,11 +469,13 @@ fn a_strip_s_fuse_position_ratings_are_typed() {
 /// refused.
 #[test]
 fn a_motor_s_rating_is_typed() {
-    use ecad_model::geometry::units::{Amps, Percent, Watts};
+    use ecad_model::geometry::units::{Amps, Hertz, Percent, Volts, Watts};
     use ecad_model::objects::devices::{Motor, Phases, RatingNote, Starting};
     let m = Motor {
         rated_power: Some(Watts(7500.0)),
+        rated_voltage: Some(Volts(400.0)),
         rated_current: Some(Amps(15.2)),
+        rated_frequency: Some(Hertz(50.0)),
         power_factor: Some(0.85),
         efficiency: Some(Percent(91.0)),
         starting: Some(Starting::StarDelta),
@@ -483,10 +485,10 @@ fn a_motor_s_rating_is_typed() {
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(
         json,
-        serde_json::json!({"motor": {"phases": "three", "rated_power": 7500.0, "rated_current": 15.2, "power_factor": 0.85, "efficiency": 91.0, "starting": "star_delta"}})
+        serde_json::json!({"motor": {"phases": "three", "rated_power": 7500.0, "rated_voltage": 400.0, "rated_current": 15.2, "rated_frequency": 50.0, "power_factor": 0.85, "efficiency": 91.0, "starting": "star_delta"}})
     );
     assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
-    assert_eq!(d.value("rating").as_deref(), Some("7.5 kW, 15.2 A, cos φ 0.85, eff 91 %, star-delta"));
+    assert_eq!(d.value("rating").as_deref(), Some("7.5 kW, 400 V, 15.2 A, 50 Hz, cos φ 0.85, eff 91 %, star-delta"));
     assert!(!d.has_no_rating());
     for bad in [
         serde_json::json!({"motor": {}}),

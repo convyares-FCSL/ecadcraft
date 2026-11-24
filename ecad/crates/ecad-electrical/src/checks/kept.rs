@@ -243,8 +243,19 @@ impl Checks {
         for t in &scope.connection_points {
             self.set(Key::ConnectionPoint(*t), connection_point_checks(doc, *t));
         }
+        // A motor's supply follows the potentials of its nets: the motors on the nets checked again.
+        let mut devices = scope.devices.clone();
+        for id in &nets {
+            for t in conn.net(*id).into_iter().flat_map(|n| n.connection_points.iter()) {
+                if let Some(c) = doc.connection_points().get(t).and_then(|x| x.device())
+                    && crate::devices::supply::motor_of(doc, c).is_some()
+                {
+                    devices.insert(c);
+                }
+            }
+        }
         let mut places = Places::new(doc);
-        for c in &scope.devices {
+        for c in &devices {
             self.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
         }
         for a in &scope.aids {

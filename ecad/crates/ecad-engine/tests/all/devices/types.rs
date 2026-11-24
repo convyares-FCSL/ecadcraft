@@ -408,7 +408,7 @@ fn a_strip_fuse_position_rating_is_typed() {
 }
 
 /// Step 3, Motor (design 072 §2.2 row 5, "Ratings"): the symbol says a motor's phases;
-/// `setprop rating` reads its nameplate into typed fields; a bare number is asked, a voltage
+/// `setprop rating` reads its nameplate into typed fields; a bare number is asked, a DC voltage
 /// refused, and other text kept as the note; an unrated motor is warned about.
 #[test]
 fn a_motor_rating_is_read_into_typed_fields() {
@@ -438,11 +438,11 @@ fn a_motor_rating_is_read_into_typed_fields() {
     let r = h.run("setprop", json!({"component": m1.hex(), "key": "rating", "value": "0.37 kW"})).unwrap();
     assert_eq!(r["value"], json!("0.37 kW"), "{r}");
     assert!(!no_rating(&mut h));
-    // Ambiguous text is asked, never guessed; a voltage is refused; other text is the note.
+    // Ambiguous text is asked, never guessed; a DC voltage is refused; other text is the note.
     let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5"})).unwrap_err();
     assert!(e.contains("kW (rated power) or A"), "{e}");
-    let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5 kW 400 V"})).unwrap_err();
-    assert!(e.contains("no voltage"), "{e}");
+    let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5 kW 400 VDC"})).unwrap_err();
+    assert!(e.contains("runs on AC"), "{e}");
     let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "IE3"})).unwrap();
     assert_eq!(r["value"], json!("IE3"), "{r}");
     assert!(h.doc().devices()[&m].rating_note.is_some());

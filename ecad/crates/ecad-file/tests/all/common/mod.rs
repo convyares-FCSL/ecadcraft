@@ -340,7 +340,9 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
             DeviceType::Motor(Motor {
                 phases: Phases::Three,
                 rated_power: Some(Watts(7500.0)),
+                rated_voltage: Some(ecad_model::geometry::units::Volts(400.0)),
                 rated_current: Some(Amps(15.2)),
+                rated_frequency: Some(ecad_model::geometry::units::Hertz(50.0)),
                 power_factor: Some(0.85),
                 efficiency: Some(Percent(91.0)),
                 starting: Some(Starting::StarDelta),

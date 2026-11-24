@@ -132,8 +132,8 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 S4 (#37): `NameVersion` names a `PointName` (typed rev or version), revision records are typed.
         // 0.2.3 S6 (#3): a tag, location and function each carry their state in one field (`tag`, `location`, `function`).
         // 0.2.3 #108: the fixture holds one device of each device type, every field set.
-        // 0.2.3 D4: a potential's supply (L1 and 24V in the fixture).
-        ("head", "d8b359e1c684eb423bf22e003b851d8a08aecc7e9b8255aec5cc7b66c6c972a5"),
+        // 0.2.3 D4: a potential's supply (L1 and 24V in the fixture); a motor's rated voltage and frequency.
+        ("head", "c67eb59b369bee2aaaf52ebbea6dd081e964728d77a36ac34a6170f5d7c03b82"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
@@ -150,7 +150,7 @@ fn record_and_definition_hashes_are_pinned() {
 const SCHEMA_PINS: &[(u64, &str)] = &[
     (2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
     (3, "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b"),
-    (4, "d8b359e1c684eb423bf22e003b851d8a08aecc7e9b8255aec5cc7b66c6c972a5"),
+    (4, "c67eb59b369bee2aaaf52ebbea6dd081e964728d77a36ac34a6170f5d7c03b82"),
 ];
 
 #[test]
