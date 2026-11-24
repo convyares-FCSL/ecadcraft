@@ -117,6 +117,7 @@ fn closed_word_sets_are_listed() {
         ("connector", r#"family?: "plain"|"dsub"|"m12"|"rj45"|"usba"|"usbb""#),
         ("connector", r#"layout?: "row"|"pins""#),
         ("agentaccess", r#"mode?: "off"|"read"|"write""#),
+        ("symboledit", r#"update?: "all"|"selected"|"none"|"new""#),
         ("terminalblocks", r#"type?: "Feedthrough"|"PE"|"x2"|"x2B"|"x3"|"LNPE"|"SEN"|"DIS"|"FUSE""#),
     ];
     for (id, words) in rows {
@@ -655,7 +656,11 @@ fn the_symbol_commands_refuse_input_uniformly() {
         ("symbolnew", json!({"from": "zz"}), "`from` must be a hex id, or null"),
         ("symbolimpact", json!({}), "`definition` (hex id) is required"),
         ("symboledit", json!({"definition": "00000000000000000000000000000001", "copies": "x"}), "`copies` must be a list of hex ids, or null"),
-        ("symboledit", json!({"definition": "00000000000000000000000000000001", "update": 5}), "`update` must be text, or null"),
+        (
+            "symboledit",
+            json!({"definition": "00000000000000000000000000000001", "update": 5}),
+            r#"`update` must be one of "all", "selected", "none", "new", or null"#,
+        ),
         ("symbolupdate", json!({"lineage": "zz"}), "`lineage` must be a hex id, or null"),
         ("makesymbol", json!({"at": [1]}), "`at` must be a point [x, y], or null"),
         ("symbolupdate", json!({"colour": 1}), "`colour` is not a parameter of this command; it takes `copies`, `lineage`, `to`"),
@@ -677,7 +682,11 @@ fn the_symbol_commands_keep_their_rule_words() {
         ("symbolnew", json!({"slots": [{"text": "tag"}]}), "The tag slot needs `at` [x, y]."),
         ("symbolnew", json!({"graphics": [{"kind": "nope"}]}), "A shape could not be read: "),
         ("symbolnew", float_switch(json!({"key": "coil"})), "The key coil is a built-in symbol's; choose another."),
-        ("symboledit", json!({"definition": "00000000000000000000000000000001", "update": "x"}), "`update` is all, selected, none or new."),
+        (
+            "symboledit",
+            json!({"definition": "00000000000000000000000000000001", "update": "x"}),
+            r#"`update` must be one of "all", "selected", "none", "new", or null"#,
+        ),
         ("symboledit", json!({"definition": "00000000000000000000000000000001"}), "No such symbol."),
         ("symbolupdate", json!({}), "Name the `copies` or the `lineage` to update."),
         ("symbolupdate", json!({"copies": []}), "Name a placed copy or a lineage."),

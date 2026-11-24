@@ -745,17 +745,23 @@ pub enum Update {
 }
 
 impl Update {
-    /// The choice `word` names (any case; absent: all).
-    ///
-    /// # Errors
-    /// Any other word.
-    pub fn of_word(word: Option<&str>) -> Result<Update, CmdError> {
-        match word.unwrap_or("all").trim().to_ascii_lowercase().as_str() {
-            "all" => Ok(Update::All),
-            "selected" => Ok(Update::Selected),
-            "none" => Ok(Update::None),
-            "new" => Ok(Update::New),
-            _ => Err(CmdError::refused("`update` is all, selected, none or new.")),
+    /// The choice given (absent: all).
+    pub fn or_all(update: Option<Update>) -> Update {
+        update.unwrap_or(Update::All)
+    }
+}
+
+/// An update choice as a call names it (any case).
+impl crate::commands::input::Words for Update {
+    const WORDS: &'static [&'static str] = &["all", "selected", "none", "new"];
+
+    fn read(text: &str) -> Option<Update> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "all" => Some(Update::All),
+            "selected" => Some(Update::Selected),
+            "none" => Some(Update::None),
+            "new" => Some(Update::New),
+            _ => None,
         }
     }
 }

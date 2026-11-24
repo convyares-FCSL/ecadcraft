@@ -245,7 +245,7 @@ pub struct EditParams {
     bridges: Option<Bridges>,
     /// Which placed copies to update: all (default), selected, none, or new (a new symbol).
     #[serde(default)]
-    update: Option<String>,
+    update: Option<crate::commands::input::Said<Update>>,
     /// With `update: selected`: the copies (representation IDs).
     #[serde(default)]
     copies: Option<Copies>,
@@ -338,7 +338,7 @@ impl Generic for EditParams {
             bridges: self.bridges,
         };
         let content = fields.content()?;
-        let update = Update::of_word(self.update.as_deref())?;
+        let update = Update::or_all(self.update.map(|u| u.0));
         let copies = self.copies.map(|c| c.0);
         let builtins = self.builtins.unwrap_or(false);
         let plan = rules::plan_edit(cx.doc, cx.ids, self.definition, &content, update, copies, builtins)?;
