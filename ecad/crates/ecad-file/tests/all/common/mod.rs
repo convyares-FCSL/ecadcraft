@@ -356,6 +356,8 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 colour: Some(IndicatorColour::Green),
                 rated_voltage: v(24.0, Current::Dc),
                 power: Some(Watts(1.2)),
+                rated_current: None,
+                ip_rating: None,
             }),
         ),
         (f.ids.fresh(), DeviceType::TerminalStrip(TerminalStrip { fuses: [(PositionLabel::new("3").unwrap(), fuse())].into_iter().collect() })),

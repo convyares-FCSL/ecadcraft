@@ -1,4 +1,5 @@
-//! An indicator's signal, colour and power: typed fields, never a stored display string.
+//! An indicator's signal, colour, power and datasheet values: typed fields, never a stored display
+//! string.
 //!
 //! # Semantics
 //! - [`SignalType`] says how it signals (a steady or flashing lamp, a rotating beacon, a buzzer, a
@@ -7,6 +8,10 @@
 //! - Its rating is its colour ([`IndicatorColour`], IEC 60073: red, yellow, green, blue, white;
 //!   kept apart from a wire's colour), its rated voltage with AC or DC (a lamp
 //!   is bought by voltage: `24 V DC`) and its power, kept in watts and shown like a load's (`2 W`).
+//! - From its datasheet: its rated current in milliamperes (`20 mA`: what it draws from a PLC
+//!   output or a supply; a pilot light's LED is given in mA, not W) and its degree of protection
+//!   ([`IpCode`]: a door-mounted or outdoor indicator is chosen by it). The rating line shows them
+//!   only when the group's template adds them.
 //! - Every rating field may be empty (not typed yet); [`Indicator::is_unrated`] says when all are.
 //!   [`fmt::Display`] writes the set fields in a fixed order, the signal when it is not steady
 //!   (`red, flashing, 24 V DC, 2 W`).
@@ -23,12 +28,15 @@ use crate::DeviceType;
 use crate::objects::devices::fields::{FieldError, put, shown};
 use crate::objects::devices::{FieldSource, RatingField};
 
-use crate::geometry::units::{RatedVoltage, Watts};
+use crate::geometry::units::{MilliAmps, RatedVoltage, Watts};
+use crate::objects::devices::IpCode;
 
 /// The largest power of an indicator, in watts.
 pub const MAX_POWER_WATTS: f64 = 10_000.0;
 /// The largest rated voltage of an indicator, in volts.
 pub const MAX_VOLTS: f64 = 1000.0;
+/// The largest rated current of an indicator, in milliamperes.
+const MAX_CURRENT_MILLIAMPS: f64 = 10_000.0;
 
 /// An indicator: how it signals, its colour, its rated voltage and its power.
 ///
@@ -57,6 +65,12 @@ pub struct Indicator {
     /// Its rated power.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power: Option<Watts>,
+    /// Its rated current, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_current: Option<MilliAmps>,
+    /// Its degree of protection, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_rating: Option<IpCode>,
 }
 
 crate::word_enum! {
@@ -127,7 +141,7 @@ impl SignalType {
 impl Indicator {
     /// An indicator that signals as `signal`, with nothing rated.
     pub fn empty(signal: SignalType) -> Indicator {
-        Indicator { signal, colour: None, rated_voltage: None, power: None }
+        Indicator { signal, colour: None, rated_voltage: None, power: None, rated_current: None, ip_rating: None }
     }
 
     /// The same indicator with nothing rated.
@@ -143,7 +157,9 @@ impl Indicator {
     /// Why it is not well formed, if it is not: a value out of range or not a number.
     pub fn problem(&self) -> Option<String> {
         let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
-        let bad = self.power.is_some_and(|w| !within(w.0, MAX_POWER_WATTS)) || self.rated_voltage.is_some_and(|v| !within(v.volts.0, MAX_VOLTS));
+        let bad = self.power.is_some_and(|w| !within(w.0, MAX_POWER_WATTS))
+            || self.rated_voltage.is_some_and(|v| !within(v.volts.0, MAX_VOLTS))
+            || self.rated_current.is_some_and(|a| !within(a.0, MAX_CURRENT_MILLIAMPS));
         bad.then(|| format!("a rating value of a {} is out of range", self.signal.label()))
     }
 }
@@ -174,4 +190,6 @@ pub(super) static FIELDS: &[RatingField] = &[
     },
     rating_field!("voltage", "Rated voltage", Plate, RatedVoltage, DeviceType::Indicator(i) => i.rated_voltage),
     rating_field!("power", "Power", Plate, Watts, DeviceType::Indicator(i) => i.power),
+    rating_field!("current", "Rated current", Datasheet, MilliAmps, DeviceType::Indicator(i) => i.rated_current),
+    rating_field!("ip_rating", "IP rating", Datasheet, IpCode, DeviceType::Indicator(i) => i.ip_rating),
 ];

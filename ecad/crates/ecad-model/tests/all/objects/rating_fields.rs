@@ -1,10 +1,11 @@
 //! The rating fields' value types: each reads a number with its unit or a bare number in its own
-//! unit, a voltage with AC or DC, a choice's word or label; every group's field words are unique.
+//! unit, a voltage with AC or DC, an IP code, a choice's word or label; every group's field words
+//! are unique.
 
 use ecad_model::Word;
 use ecad_model::geometry::units::{Amps, Current, MilliAmps, Percent, RatedVoltage, Volts, Watts};
 use ecad_model::objects::devices::fields::{FieldError, FieldValue, put, put_after};
-use ecad_model::objects::devices::{DeviceGroup, Starting};
+use ecad_model::objects::devices::{DeviceGroup, IpCode, Starting};
 
 #[test]
 fn each_type_reads_its_units_and_refuses_the_rest() {
@@ -30,6 +31,19 @@ fn each_type_reads_its_units_and_refuses_the_rest() {
     assert_eq!(RatedVoltage::parse("24 V"), Err(FieldError::Bad("a voltage with AC or DC, such as 24 V DC".to_string())));
     assert_eq!(f64::parse("1.2"), Err(FieldError::Bad("a number more than 0 and at most 1, such as 0.85".to_string())));
     assert!(<Starting as FieldValue>::parse("fast").is_err_and(|e| e == FieldError::Bad("one of direct, star_delta, soft, vfd".into())));
+}
+
+#[test]
+fn an_ip_code_reads_its_two_numerals_and_refuses_the_rest() {
+    for (text, shown) in [("IP65", "IP65"), ("ip 65", "IP65"), ("IPX4", "IPX4"), ("ip2x", "IP2X"), ("IP69", "IP69"), ("IP00", "IP00")] {
+        let ip = <IpCode as FieldValue>::parse(text).unwrap_or_else(|e| panic!("{text}: {e:?}"));
+        assert_eq!(ip.show(), shown, "{text}");
+        assert_eq!(serde_json::from_str::<IpCode>(&serde_json::to_string(&ip).unwrap()).unwrap(), ip, "{text} stored");
+    }
+    for text in ["65", "IP", "IP7", "IP75", "IP6", "IPXX", "IP655", "IP20B", "IP-65", "IP６５", "x"] {
+        assert_eq!(<IpCode as FieldValue>::parse(text), Err(FieldError::Bad("an IP code, such as IP65 or IPX4".into())), "{text}");
+    }
+    assert!(serde_json::from_str::<IpCode>(r#""IP75""#).is_err(), "a stored code out of range is refused");
 }
 
 #[test]

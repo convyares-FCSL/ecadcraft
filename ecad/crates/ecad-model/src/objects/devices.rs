@@ -375,6 +375,7 @@ macro_rules! rating_field {
 pub mod contacts;
 pub mod fields;
 pub mod indicator;
+pub mod ip_code;
 pub mod load;
 pub mod motor;
 pub mod power_supply;
@@ -397,6 +398,8 @@ pub use motor::{Motor, Phases, Starting};
 pub use load::Load;
 
 pub use indicator::{Indicator, IndicatorColour, SignalType};
+
+pub use ip_code::IpCode;
 
 pub use terminal_strip::{PositionLabel, TerminalStrip};
 

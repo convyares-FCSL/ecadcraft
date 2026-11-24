@@ -193,7 +193,7 @@ fn build(indicator: &Indicator, f: &Found) -> Result<Indicator, Read<Indicator>>
     };
     // Read in watts or kilowatts, kept in watts to the milliwatt.
     let power = f.watts.map(|w| within(w, MAX_POWER_WATTS, "a power", "W").map(|w| Watts((w * 1000.0).round() / 1000.0))).transpose()?;
-    Ok(Indicator { signal: f.signal.unwrap_or(indicator.signal), colour, rated_voltage, power })
+    Ok(Indicator { signal: f.signal.unwrap_or(indicator.signal), colour, rated_voltage, power, ..indicator.unrated() })
 }
 
 #[cfg(test)]

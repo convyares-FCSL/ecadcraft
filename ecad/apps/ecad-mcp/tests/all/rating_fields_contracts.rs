@@ -40,3 +40,26 @@ fn a_rating_field_by_the_agent_then_refused_with_writes_off() {
     assert_eq!(c.log(), log, "nothing recorded with writes off");
     assert_eq!(c.exec("deviceprops", json!({"component": motor}))["rating_fields"][2]["value"], json!("15.2 A"), "saved and read back");
 }
+
+/// A datasheet field typed by the agent is one transaction, saved with the project and read back.
+#[test]
+fn a_datasheet_field_by_the_agent_is_saved_and_read_back() {
+    let dir = TempDir::new("d4 indicator fields");
+    let path = dir.file("Lamp.ecad");
+    let lamp = {
+        let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
+        let l = c.exec("place", json!({"symbol": "lamp", "at": [100, 100]}))["component"].clone();
+        let n = c.log().len();
+        c.exec("setprop", json!({"component": l, "key": "rating.ip_rating", "value": "IPX4"}));
+        let log = c.log();
+        assert_eq!(log.len(), n + 1, "one transaction");
+        assert_eq!(log.last().map(|t| t.author.clone()), Some(Author::Agent(AGENT.into())));
+        assert_eq!(c.ok("save", json!({}))["saved"], json!(true));
+        l
+    };
+    let (sess, _) = EcadMcp::open(&path, Options::default()).unwrap();
+    let mut c = Client::new(sess);
+    let fields = c.exec("deviceprops", json!({"component": lamp}))["rating_fields"].clone();
+    let ip = fields.as_array().and_then(|f| f.iter().find(|f| f["key"] == json!("rating.ip_rating"))).cloned().unwrap_or_default();
+    assert_eq!((ip["value"].clone(), ip["source"].clone(), ip["type"].clone()), (json!("IPX4"), json!("datasheet"), json!("ip_code")));
+}

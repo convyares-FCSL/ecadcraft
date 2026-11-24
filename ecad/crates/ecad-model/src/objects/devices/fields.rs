@@ -4,7 +4,8 @@
 //! # Semantics
 //! - [`FieldValue`] is one value type with its own parser: a quantity takes a number with its unit
 //!   or a bare number in its base unit (`7.5 kW`, `7500`), a voltage with its kind needs AC or DC
-//!   (`24 V DC`), a choice takes its word or its label (`star_delta`, `star-delta`). A value is a
+//!   (`24 V DC`), an IP code its two numerals (`IP65`, `IPX4`), a choice takes its word or its label
+//!   (`star_delta`, `star-delta`). A value is a
 //!   finite number more than zero; the upper limits are each group's ([`crate::DeviceType::problem`]).
 //! - [`FieldType`] names a value type for whoever describes a field (the agent's view, a column
 //!   header): its word, its unit and an example it reads.
@@ -17,7 +18,7 @@
 
 use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, VoltAmps, Volts, Watts};
 use crate::naming::words::Word;
-use crate::objects::devices::{FuseClass, IndicatorColour, Poles, SignalType, Starting, TripCurve};
+use crate::objects::devices::{FuseClass, IndicatorColour, IpCode, Poles, SignalType, Starting, TripCurve};
 
 /// What a rating field's value is, for whoever describes the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +35,8 @@ pub enum FieldType {
     Percent,
     /// A number from 0 to 1 (a power factor).
     Ratio,
+    /// A degree of protection (IEC 60529).
+    IpCode,
     /// One of these words.
     Choice(&'static [&'static str]),
     /// Several values in one text, written only through the whole rating (`rating`).
@@ -52,12 +55,13 @@ impl FieldType {
             FieldType::Frequency => "frequency",
             FieldType::Percent => "percent",
             FieldType::Ratio => "ratio",
+            FieldType::IpCode => "ip_code",
             FieldType::Choice(_) => "choice",
             FieldType::Combined => "combined",
         }
     }
 
-    /// The unit a bare number is in (empty for a ratio, a choice or a combined value).
+    /// The unit a bare number is in (empty for a ratio, an IP code, a choice or a combined value).
     pub fn unit(self) -> &'static str {
         match self {
             FieldType::Current => Amps::SYMBOL,
@@ -68,7 +72,7 @@ impl FieldType {
             FieldType::ApparentPower => VoltAmps::SYMBOL,
             FieldType::Frequency => Hertz::SYMBOL,
             FieldType::Percent => Percent::SYMBOL,
-            FieldType::Ratio | FieldType::Choice(_) | FieldType::Combined => "",
+            FieldType::Ratio | FieldType::IpCode | FieldType::Choice(_) | FieldType::Combined => "",
         }
     }
 
@@ -85,6 +89,7 @@ impl FieldType {
             FieldType::Frequency => "50 Hz",
             FieldType::Percent => "91 %",
             FieldType::Ratio => "0.85",
+            FieldType::IpCode => "IP65",
             FieldType::Choice(w) => w.first().copied().unwrap_or_default(),
             FieldType::Combined => "",
         }
@@ -104,6 +109,7 @@ impl FieldType {
             | FieldType::Frequency
             | FieldType::Percent
             | FieldType::Ratio
+            | FieldType::IpCode
             | FieldType::Combined => &[],
         }
     }
@@ -246,6 +252,18 @@ impl FieldValue for RatedVoltage {
         };
         let volts = quantity(rest, &[("", 1.0), ("v", 1.0), ("kv", 1000.0)], reason)?;
         Ok(RatedVoltage { volts: Volts(volts), current })
+    }
+
+    fn show(self) -> String {
+        self.to_string()
+    }
+}
+
+impl FieldValue for IpCode {
+    const TYPE: FieldType = FieldType::IpCode;
+
+    fn parse(text: &str) -> Result<Self, FieldError> {
+        IpCode::parse(text).ok_or_else(|| FieldError::Bad("an IP code, such as IP65 or IPX4".into()))
     }
 
     fn show(self) -> String {

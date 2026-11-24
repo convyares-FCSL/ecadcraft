@@ -129,3 +129,32 @@ fn the_rating_reader_fills_every_nameplate_field() {
         }
     }
 }
+
+/// A datasheet field is set by itself and kept when the whole rating is typed or cleared; it shows
+/// on the rating line only when the group's template adds it.
+#[test]
+fn a_datasheet_field_is_kept_through_the_rating_and_drawn_when_the_template_adds_it() {
+    let mut h = H::new(0x00d4_0404);
+    let lamp: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
+    h.run("setprop", json!({"component": lamp.hex(), "key": "rating.current", "value": "0.02 A"})).unwrap();
+    h.run("setprop", json!({"component": lamp.hex(), "key": "rating.ip_rating", "value": "ip 65"})).unwrap();
+    h.run("setprop", json!({"component": lamp.hex(), "key": "rating", "value": "RD 24VDC 2W"})).unwrap();
+    let line = |h: &mut H| {
+        let doc = h.doc();
+        ecad_electrical::devices::ratings::line(&doc, &doc.devices()[&lamp])
+    };
+    assert_eq!(line(&mut h).as_deref(), Some("red, 24 V DC, 2 W"), "built in, the datasheet fields do not show");
+    let rows = rows(&mut h, lamp);
+    let value = |key: &str| rows.iter().find(|(k, _, _)| k == key).map(|(_, v, _)| v.clone());
+    assert_eq!((value("rating.current"), value("rating.ip_rating")), (Some("20 mA".into()), Some("IP65".into())));
+    // The datasheet rows come after the nameplate and design rows.
+    assert_eq!(rows.iter().map(|(k, _, _)| k.as_str()).collect::<Vec<_>>()[4..], ["rating.current", "rating.ip_rating"]);
+    h.run("setdefault", json!({"key": "rating.template.indicator", "level": "project", "value": "colour, voltage, current, ip_rating"})).unwrap();
+    assert_eq!(line(&mut h).as_deref(), Some("red, 24 V DC, 20 mA, IP65"));
+    h.run("setprop", json!({"component": lamp.hex(), "key": "rating", "value": ""})).unwrap();
+    assert_eq!(line(&mut h).as_deref(), Some("20 mA, IP65"), "clearing the rating keeps the datasheet fields");
+    let e = h.run("setprop", json!({"component": lamp.hex(), "key": "rating.current", "value": "20 A"})).unwrap_err();
+    assert!(e.starts_with("Rated current: ") && e.contains("out of range"), "{e}");
+    let e = h.run("setprop", json!({"component": lamp.hex(), "key": "rating.ip_rating", "value": "IP75"})).unwrap_err();
+    assert_eq!(e, "IP rating takes an IP code, such as IP65 or IPX4.");
+}

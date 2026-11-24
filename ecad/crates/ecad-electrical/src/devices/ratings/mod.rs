@@ -27,7 +27,7 @@ use ecad_model::Word;
 use ecad_model::geometry::units::{Amps, KiloAmps, MilliAmps};
 use ecad_model::objects::devices::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
 use ecad_model::objects::devices::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
-use ecad_model::objects::devices::{DeviceType, Load, RatingNote};
+use ecad_model::objects::devices::{DeviceType, FieldSource, Load, RatingNote};
 
 pub mod dataset;
 pub(crate) mod indicator;
@@ -317,11 +317,23 @@ pub(crate) fn read_fuse(text: &str) -> Read<Fuse> {
 // ---------------------------------------------------------------- on a device
 
 /// What `text` sets on a device of type `t`: its typed rating, or the note (`None` clears both).
+/// The text gives the nameplate and design fields; the datasheet fields are set one at a time
+/// (`rating.<word>`) and kept.
 ///
 /// # Errors
 /// Ambiguous or refused text, in words naming `who` and what is missing; a fuse bank's own rating
 /// (its ratings are per fuse).
 pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceType, Option<RatingNote>), CmdError> {
+    let (mut new, note) = read_rated(t, who, text)?;
+    for f in t.group().rating_fields().iter().filter(|f| f.source == FieldSource::Datasheet) {
+        // The same group's own field: it is either written or not on this kind.
+        let _ = (f.set)(&mut new, (f.get)(t).as_deref());
+    }
+    Ok((new, note))
+}
+
+/// [`rated`] before the datasheet fields are carried over.
+fn read_rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceType, Option<RatingNote>), CmdError> {
     let text = text.map(str::trim).filter(|s| !s.is_empty());
     let note = |s: &str| RatingNote::new(s).map_err(|e| CmdError::refused(note_refusal(&e)));
     match t {

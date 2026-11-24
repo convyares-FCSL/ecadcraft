@@ -203,6 +203,8 @@ shows only when a template adds it. A device with no typed rating draws its note
 | `load` | `power` |
 | `indicator` | `colour`, `signal`, `voltage`, `power` |
 
+Datasheet fields a template may add: an indicator's `current` and `ip_rating`.
+
 `setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
 every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;
 the Properties panel, answers and reports keep every field. A word the group has no field for, or
@@ -226,8 +228,11 @@ Each field in the table above can also be set by itself, without retyping the wh
 - The Device tab of one device shows a row per field its kind has (**Rated power**, **Rated
   voltage**, **Starting**…), the nameplate and design fields first, then the datasheet's. Type a
   value in a row: `7.5 kW` or `7500` (a bare number is in the field's own unit: W, V, A, mA, kA,
-  Hz, %), `24 V DC` for a voltage that needs AC or DC, a word or its label for a choice
+  Hz, %), `24 V DC` for a voltage that needs AC or DC, an IP code by its two numerals (`IP65`,
+  `IPX4`; a code with extra letters such as `IP20B` is refused), a word or its label for a choice
   (`star_delta` or `star-delta`). Empty clears it.
+- A datasheet field is set only this way: typing or clearing the whole rating changes the
+  nameplate and design fields and keeps the datasheet ones.
 - `setprop {"component": …, "key": "rating.<word>", "value": …}` does the same (`rating.voltage`,
   `rating.power_factor`). A value that is not of the field's type is refused with the field's
   name (`Rated voltage takes a voltage, such as 400 V.`), as is one outside the group's range or a
@@ -398,13 +403,21 @@ power.
 - Asked, never guessed: `24 V` (AC or DC?) and a bare `24` (V or W?). Refused: a current (`0.1 A`),
   and a colour that no indicator has (`black`). Other text (`LED`, `amber`) is kept as the note.
 - An unrated lamp now gets the Checks warning **no-rating** (the demo's lamps too).
+- From its datasheet, set one field at a time: its **Rated current** in mA (`rating.current`,
+  `20 mA` or `0.02 A`, up to 10 A: what it draws from a PLC output or a supply) and its **IP
+  rating** (`rating.ip_rating`, `IP65`). They show in the Device tab after the nameplate fields,
+  on the rating line only when `rating.template.indicator` adds them, and in a BOM rating column.
 
 To try it: place an indicator lamp (Checks shows "no rating"), type `RD 24VDC 2W` as its rating
 (shown as `red, 24 V DC, 2 W`, and the warning goes), then `24 V` (refused, asks AC or DC).
 Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
-(`…indicator…`), and `rating::reader::indicator` in ecad-electrical (automated, not tried by hand).
+(`…indicator…`), and `rating::reader::indicator` in ecad-electrical; the datasheet fields:
+`devices::rating_fields::a_datasheet_field_is_kept_through_the_rating_and_drawn_when_the_template_adds_it`
+in ecad-engine, `objects::rating_fields::an_ip_code_reads_its_two_numerals_and_refuses_the_rest` in
+ecad-model and `rating_fields_contracts::a_datasheet_field_by_the_agent_is_saved_and_read_back` in
+ecad-mcp (automated, not tried by hand).
 
 ### Lane B, step 3: power supplies' and transformers' ratings are typed
 
