@@ -195,7 +195,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 
 | Group | Field words (built-in order) |
 | --- | --- |
-| `power_supply` | `voltages`, `current`, `power` (a power supply's, in W), `apparent_power` (a transformer's, in VA) |
+| `power_supply` | `voltages`, `current`, `power` (a power supply's, in W), `apparent_power` (a transformer's, in VA), `frequency` and `impedance_voltage` (a transformer's, `uk 4 %`) |
 | `protection` | `curve`, `current`, `class`, `residual`, `breaking`, `poles`, `outputs` |
 | `switching` | `control`, `ac3_current`, `ac3_power` |
 | `sensor` | `supply` |
@@ -203,7 +203,8 @@ shows only when a template adds it. A device with no typed rating draws its note
 | `load` | `power` |
 | `indicator` | `colour`, `signal`, `voltage`, `power` |
 
-Datasheet fields a template may add: an indicator's `current` and `ip_rating`.
+Datasheet fields a template may add: an indicator's `current` and `ip_rating`; a power supply's
+`input_current` and `efficiency` (shown `eff 90 %`).
 
 `setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
 every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;
@@ -435,14 +436,23 @@ decides which, the rating never does. A power supply's rating is its input and o
   (`see datasheet`) is kept as the note.
 - An unrated power supply or transformer now gets the Checks warning **no-rating** (the demo's
   -G01 too).
+- A transformer's nameplate also gives its **Rated frequency** (`50 Hz`) and its **Impedance
+  voltage** (`uk 4 %`, the percentage that sets the fault current on its secondary):
+  `400/24 V 250 VA 50 Hz uk 4 %` reads as **400 V AC / 24 V AC, 250 VA, 50 Hz, uk 4 %**. A
+  percentage without `uk` is asked about.
+- From a power supply's datasheet, set one field at a time: its **Input current**
+  (`rating.input_current`, `2.1 A`: what sizes the protection and cable before it) and its
+  **Efficiency** (`rating.efficiency`, `90 %`). They show in the Device tab after the nameplate
+  fields, on the rating line only when `rating.template.power_supply` adds them, and in a BOM
+  rating column. A power supply's typed rating with a frequency or a percentage is kept as the note.
 
 To try it: place a power supply (Checks shows "no rating"), type `230VAC/24VDC 5A` as its rating
 (the warning goes), then `230 V AC` (refused: input or output?). Place a transformer and type
 `250 W` (refused: use VA). Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
-(`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical (automated, not tried
-by hand).
+(`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical; the four fields above
+through `devices::rating_fields` in ecad-engine (automated, not tried by hand).
 
 ### Lane B, step 5: user fields and device links
 

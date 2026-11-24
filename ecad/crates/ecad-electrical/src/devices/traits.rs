@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn a_supply_gives_what_its_fields_give_and_no_more() {
         let dc24 = Some(v(24.0, Current::Dc));
-        let psu = |output, output_current, output_power| PowerSupply::Psu(Psu { input: None, output, output_current, output_power });
+        let psu = |output, output_current, output_power| PowerSupply::Psu(Psu { output, output_current, output_power, ..Psu::default() });
         let rows: [(PowerSupply, Option<Watts>, Option<Amps>); 6] = [
             (psu(dc24, Some(Amps(5.0)), Some(Watts(100.0))), Some(Watts(100.0)), Some(Amps(5.0))),
             (psu(dc24, Some(Amps(5.0)), None), Some(Watts(120.0)), Some(Amps(5.0))),
@@ -401,6 +401,7 @@ mod tests {
                     input: Some(v(400.0, Current::Ac)),
                     output: Some(v(24.0, Current::Ac)),
                     rated_power: Some(VoltAmps(240.0)),
+                    ..Transformer::default()
                 }),
                 None,
                 Some(Amps(10.0)),

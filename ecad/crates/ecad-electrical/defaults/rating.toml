@@ -16,7 +16,7 @@
 "rating.system" = "ac3"
 "rating.vd_limit" = 5.0
 "rating.supply_tolerance" = 5.0
-"rating.template.power_supply" = "voltages, current, power, apparent_power"
+"rating.template.power_supply" = "voltages, current, power, apparent_power, frequency, impedance_voltage"
 "rating.template.protection" = "curve, current, class, residual, breaking, poles, outputs"
 "rating.template.switching" = "control, ac3_current, ac3_power"
 "rating.template.sensor" = "supply"

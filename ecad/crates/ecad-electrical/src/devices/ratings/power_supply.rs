@@ -1,6 +1,6 @@
 //! Reading a power supply's or a transformer's rating:
 //! its input and output voltages, a power supply's output current and power, a
-//! transformer's VA.
+//! transformer's VA, rated frequency and impedance voltage.
 //!
 //! # Semantics
 //! - `230 V AC / 24 V DC` (also `230VAC/24VDC`) is input / output, and so is `in 230 V AC out 24 V
@@ -14,14 +14,17 @@
 //!   `1,2 kW`); both may be given, and they are not checked against each other yet. A
 //!   transformer's power is `250 VA` (or `2,5 kVA`); W or a current on a transformer is refused,
 //!   VA on a power supply too. A current or a power on the input side is refused.
+//! - A transformer's rated frequency is `50 Hz` and its impedance voltage `uk 4 %`; a percentage
+//!   without `uk` is asked about. A power supply's rating text has neither (its efficiency is set by
+//!   itself, from the datasheet): text with a frequency or a percentage is its note.
 //! - A bare number is asked about (which unit?). Any other word (`see datasheet`) is no rating: the
 //!   note.
 //!
 //! This module excludes the protection reader (its parent) and the supply calculations.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
-use ecad_model::objects::devices::power_supply::{MAX_AMPS, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
+use ecad_model::geometry::units::{Amps, Current, Hertz, Percent, RatedVoltage, VoltAmps, Volts, Watts};
+use ecad_model::objects::devices::power_supply::{MAX_AMPS, MAX_FREQUENCY_HERTZ, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
 use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
 
 use crate::devices::ratings::parse::{number_unit, pieces};
@@ -51,6 +54,10 @@ enum Tok {
     Amps(f64),
     Watts(f64),
     VoltAmps(f64),
+    Hertz(f64),
+    Percent(f64),
+    /// `uk`: the next percentage is the impedance voltage.
+    Uk,
     Bare(f64),
     Side(Side),
     Slash,
@@ -68,6 +75,8 @@ fn unit_tokens(x: f64, unit: &str) -> Option<Vec<Tok>> {
         "kw" => Some(vec![Tok::Watts(x * 1000.0)]),
         "va" => Some(vec![Tok::VoltAmps(x)]),
         "kva" => Some(vec![Tok::VoltAmps(x * 1000.0)]),
+        "hz" => Some(vec![Tok::Hertz(x)]),
+        "%" => Some(vec![Tok::Percent(x)]),
         _ => None,
     }
 }
@@ -79,6 +88,7 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
         "dc" => Some(Tok::Current(Current::Dc)),
         "in" | "input" => Some(Tok::Side(Side::Input)),
         "out" | "output" => Some(Tok::Side(Side::Output)),
+        "uk" => Some(Tok::Uk),
         "/" => Some(Tok::Slash),
         _ => None,
     };
@@ -127,6 +137,11 @@ struct Found {
     amps: Option<f64>,
     watts: Option<f64>,
     volt_amps: Option<f64>,
+    hertz: Option<f64>,
+    /// After `uk`.
+    impedance: Option<f64>,
+    /// A percentage with no `uk` before it.
+    percent: Option<f64>,
     bare: Option<f64>,
     /// A current or a power given on the input side.
     input_value: bool,
@@ -150,6 +165,9 @@ fn found(toks: &[Tok]) -> Result<Found, Err> {
     let mut slashed = false;
     let mut prev: Option<Tok> = None;
     for t in toks {
+        if prev == Some(Tok::Uk) && !matches!(t, Tok::Percent(_)) {
+            return Err(Read::Ask("the impedance voltage in percent, for example uk 4 %".into()));
+        }
         match *t {
             Tok::Volts(x) => f.voltages.push(Voltage { volts: x, current: None, side }),
             Tok::Current(c) => match (prev, f.voltages.last_mut()) {
@@ -172,6 +190,10 @@ fn found(toks: &[Tok]) -> Result<Found, Err> {
                 f.input_value |= side == Some(Side::Input);
                 once(&mut f.volt_amps, x, "powers")?;
             }
+            Tok::Hertz(x) => once(&mut f.hertz, x, "frequencies")?,
+            Tok::Percent(x) if prev == Some(Tok::Uk) => once(&mut f.impedance, x, "impedance voltages")?,
+            Tok::Percent(x) => once(&mut f.percent, x, "percentages")?,
+            Tok::Uk => {}
             Tok::Bare(x) => once(&mut f.bare, x, "numbers with no unit")?,
             Tok::Side(s) => side = Some(s),
             Tok::Slash => {
@@ -189,6 +211,9 @@ fn found(toks: &[Tok]) -> Result<Found, Err> {
             }
         }
         prev = Some(*t);
+    }
+    if prev == Some(Tok::Uk) {
+        return Err(Read::Ask("the impedance voltage in percent, for example uk 4 %".into()));
     }
     Ok(f)
 }
@@ -212,8 +237,8 @@ fn milli(x: f64) -> f64 {
 /// let Read::Rating(r) = read_power_supply(&psu, "230VAC/24VDC 5A") else { panic!() };
 /// assert_eq!(r.to_string(), "230 V AC / 24 V DC, 5 A");
 /// let trafo = PowerSupply::Transformer(Transformer::default());
-/// let Read::Rating(r) = read_power_supply(&trafo, "400/24 V 250 VA") else { panic!() };
-/// assert_eq!(r.to_string(), "400 V AC / 24 V AC, 250 VA");
+/// let Read::Rating(r) = read_power_supply(&trafo, "400/24 V 250 VA 50 Hz uk 4 %") else { panic!() };
+/// assert_eq!(r.to_string(), "400 V AC / 24 V AC, 250 VA, 50 Hz, uk 4 %");
 /// assert!(matches!(read_power_supply(&psu, "230 V AC"), Read::Ask(_)));
 /// assert_eq!(read_power_supply(&psu, "see datasheet"), Read::NotARating);
 /// ```
@@ -223,6 +248,10 @@ pub fn read_power_supply(supply: &PowerSupply, text: &str) -> Read<PowerSupply> 
         return Read::NotARating;
     }
     let Some(toks) = tokens(t) else { return Read::NotARating };
+    // A power supply's frequency and percentages are no rating words of its own.
+    if matches!(supply, PowerSupply::Psu(_)) && toks.iter().any(|t| matches!(t, Tok::Hertz(_) | Tok::Percent(_) | Tok::Uk)) {
+        return Read::NotARating;
+    }
     let f = match found(&toks) {
         Ok(f) => f,
         Err(Read::Refused(e)) => return Read::Refused(format!("'{t}' does not read: {e}")),
@@ -297,7 +326,13 @@ fn build(supply: &PowerSupply, f: &Found) -> Result<PowerSupply, Err> {
             };
             let output_current = f.amps.map(|a| within(a, MAX_AMPS, "an output current", "A").map(|a| Amps(milli(a)))).transpose()?;
             let output_power = f.watts.map(|w| within(w, MAX_POWER_WATTS, "an output power", "W").map(|w| Watts(milli(w)))).transpose()?;
-            Ok(PowerSupply::Psu(Psu { input: voltage(input, Side::Input)?, output: voltage(output, Side::Output)?, output_current, output_power }))
+            Ok(PowerSupply::Psu(Psu {
+                input: voltage(input, Side::Input)?,
+                output: voltage(output, Side::Output)?,
+                output_current,
+                output_power,
+                ..Psu::default()
+            }))
         }
         PowerSupply::Transformer(_) => {
             if f.watts.is_some() {
@@ -305,6 +340,9 @@ fn build(supply: &PowerSupply, f: &Found) -> Result<PowerSupply, Err> {
             }
             if f.amps.is_some() {
                 return Err(Read::Refused("a transformer's rating has no current; give its voltages and VA, for example 400/24 V 250 VA".into()));
+            }
+            if let Some(x) = f.percent {
+                return Err(Read::Ask(format!("whether {x} % is the impedance voltage; write uk {x} %")));
             }
             let voltage = |v: Option<Voltage>| -> Result<Option<RatedVoltage>, Err> {
                 let Some(v) = v else { return Ok(None) };
@@ -314,7 +352,15 @@ fn build(supply: &PowerSupply, f: &Found) -> Result<PowerSupply, Err> {
                 Ok(Some(RatedVoltage { volts: Volts(within(v.volts, MAX_VOLTS, "a voltage", "V")?), current: Current::Ac }))
             };
             let rated_power = f.volt_amps.map(|va| within(va, MAX_VOLT_AMPS, "a rated power", "VA").map(|va| VoltAmps(milli(va)))).transpose()?;
-            Ok(PowerSupply::Transformer(Transformer { input: voltage(input)?, output: voltage(output)?, rated_power }))
+            let rated_frequency = f.hertz.map(|h| within(h, MAX_FREQUENCY_HERTZ, "a rated frequency", "Hz").map(Hertz)).transpose()?;
+            let impedance_voltage = f.impedance.map(|u| within(u, 100.0, "an impedance voltage", "%").map(Percent)).transpose()?;
+            Ok(PowerSupply::Transformer(Transformer {
+                input: voltage(input)?,
+                output: voltage(output)?,
+                rated_power,
+                rated_frequency,
+                impedance_voltage,
+            }))
         }
     }
 }
@@ -373,6 +419,9 @@ mod tests {
             ("out 24 V", "out 24 V AC"),
             ("2,5 kVA", "2.5 kVA"),
             ("250VA", "250 VA"),
+            ("400/24 V 250 VA 50 Hz uk 4 %", "400 V AC / 24 V AC, 250 VA, 50 Hz, uk 4 %"),
+            ("400/230V 60Hz uk 4,5%", "400 V AC / 230 V AC, 60 Hz, uk 4.5 %"),
+            ("UK 6 %", "uk 6 %"),
         ] {
             let got = trafo(text);
             assert_eq!(got, want, "{text}");
@@ -410,9 +459,18 @@ mod tests {
             ("400/24 V DC", "refused: a transformer is AC on both sides"),
             ("250 W", "refused: a transformer is rated in VA, not W"),
             ("400/24 V 10 A", "refused: a transformer's rating has no current"),
+            ("400/24 V 4 %", "ask: whether 4 % is the impedance voltage; write uk 4 %"),
+            ("400/24 V uk", "ask: the impedance voltage in percent"),
+            ("uk 50 Hz", "ask: the impedance voltage in percent"),
+            ("uk 0 %", "refused: an impedance voltage"),
+            ("50 Hz 60 Hz", "refused: '50 Hz 60 Hz' does not read: it gives two frequencies"),
+            ("5000 Hz", "refused: a rated frequency"),
         ] {
             let got = trafo(text);
             assert!(got.starts_with(start), "{text}: {got}");
+        }
+        for text in ["24 V DC 50 Hz", "24 V DC eff 90 %", "uk 4 %"] {
+            assert_eq!(psu(text), "note", "{text}: a power supply's text has no frequency or percentage");
         }
         for text in ["see datasheet", "SITOP", "", "NaN V", &"1".repeat(70)] {
             assert_eq!(psu(text), "note", "{text}");

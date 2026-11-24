@@ -8,6 +8,13 @@
 //!   and an output power. A transformer has an input and an output voltage (always AC) and a rated
 //!   apparent power in [`VoltAmps`]. A transformer's ratio is worked out from its two voltages
 //!   ([`Transformer::ratio`]), never stored.
+//! - A transformer's nameplate also gives its rated frequency (`50 Hz`: one made for 50 Hz is
+//!   wrong on 60 Hz, and the reverse) and its impedance voltage `uk` in percent (`uk 4 %`: what
+//!   sets the prospective fault current on its secondary).
+//! - From a power supply's datasheet: its input current (what sizes the protection and cable
+//!   upstream; the output side alone does not give it) and its efficiency (`eff 90 %`: the heat it
+//!   leaves in the cabinet and the power it draws). The rating line shows them only when the
+//!   group's template adds them.
 //! - Every field may be empty (not typed yet); [`PowerSupply::is_unrated`] says when all are.
 //!   [`fmt::Display`] writes what the rating reader reads back: both voltages as `in / out`
 //!   (`230 V AC / 24 V DC, 5 A, 120 W`), one alone with `in` or `out` before it, except a power
@@ -25,7 +32,7 @@ use crate::DeviceType;
 use crate::objects::devices::fields::FieldType;
 use crate::objects::devices::{FieldSource, RatingField};
 
-use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Watts};
+use crate::geometry::units::{Amps, Current, Hertz, Percent, RatedVoltage, VoltAmps, Watts};
 
 /// The largest input or output voltage, in volts (low voltage).
 pub const MAX_VOLTS: f64 = 1000.0;
@@ -35,6 +42,8 @@ pub const MAX_AMPS: f64 = 1000.0;
 pub const MAX_POWER_WATTS: f64 = 100_000.0;
 /// The largest rated power of a transformer, in volt-amperes.
 pub const MAX_VOLT_AMPS: f64 = 10_000_000.0;
+/// The largest rated frequency of a transformer, in hertz.
+pub const MAX_FREQUENCY_HERTZ: f64 = 1_000.0;
 
 /// A power supply or a transformer, each with its own fields. Batteries
 /// come later.
@@ -48,7 +57,7 @@ pub const MAX_VOLT_AMPS: f64 = 10_000_000.0;
 /// assert_eq!(psu.to_string(), "24 V DC, 5 A");
 /// assert_eq!(serde_json::to_string(&psu).unwrap(), r#"{"psu":{"output":{"volts":24.0,"current":"dc"},"output_current":5.0}}"#);
 /// let ac = |v| Some(RatedVoltage { volts: Volts(v), current: Current::Ac });
-/// let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)) };
+/// let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)), ..Transformer::default() };
 /// assert_eq!(PowerSupply::Transformer(t).to_string(), "400 V AC / 24 V AC, 250 VA");
 /// assert_eq!(t.ratio(), Some(400.0 / 24.0));
 /// ```
@@ -83,6 +92,12 @@ pub struct Psu {
     /// Its rated output power.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_power: Option<Watts>,
+    /// Its rated input current, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_current: Option<Amps>,
+    /// Its efficiency, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub efficiency: Option<Percent>,
 }
 
 /// A transformer's rating. Both voltages are AC.
@@ -98,6 +113,12 @@ pub struct Transformer {
     /// Its rated apparent power.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rated_power: Option<VoltAmps>,
+    /// Its rated frequency.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_frequency: Option<Hertz>,
+    /// Its impedance voltage (uk), in percent of its rated voltage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub impedance_voltage: Option<Percent>,
 }
 
 impl Transformer {
@@ -147,14 +168,20 @@ impl PowerSupply {
                 let bad = volts_bad(p.input)
                     || volts_bad(p.output)
                     || p.output_current.is_some_and(|a| !within(a.0, MAX_AMPS))
-                    || p.output_power.is_some_and(|w| !within(w.0, MAX_POWER_WATTS));
+                    || p.output_power.is_some_and(|w| !within(w.0, MAX_POWER_WATTS))
+                    || p.input_current.is_some_and(|a| !within(a.0, MAX_AMPS))
+                    || p.efficiency.is_some_and(|e| !within(e.0, 100.0));
                 bad.then(|| "a rating value of a power supply is out of range".to_string())
             }
             PowerSupply::Transformer(t) => {
                 if [t.input, t.output].iter().flatten().any(|v| v.current == Current::Dc) {
                     return Some("a transformer's voltages are AC".to_string());
                 }
-                let bad = volts_bad(t.input) || volts_bad(t.output) || t.rated_power.is_some_and(|va| !within(va.0, MAX_VOLT_AMPS));
+                let bad = volts_bad(t.input)
+                    || volts_bad(t.output)
+                    || t.rated_power.is_some_and(|va| !within(va.0, MAX_VOLT_AMPS))
+                    || t.rated_frequency.is_some_and(|f| !within(f.0, MAX_FREQUENCY_HERTZ))
+                    || t.impedance_voltage.is_some_and(|u| !within(u.0, 100.0));
                 bad.then(|| "a rating value of a transformer is out of range".to_string())
             }
         }
@@ -182,6 +209,8 @@ impl fmt::Display for PowerSupply {
 /// A power supply's or transformer's rating fields, in the rating line's order. `voltages` is the
 /// input and output in one part, written through the whole rating; a power supply's power is in
 /// watts, a transformer's in volt-amperes (`apparent_power`), and a transformer has no output current.
+/// A transformer's frequency and impedance voltage are on its nameplate; a power supply's input
+/// current and efficiency come from its datasheet.
 pub(super) static FIELDS: &[RatingField] = &[
     RatingField {
         word: "voltages",
@@ -200,4 +229,24 @@ pub(super) static FIELDS: &[RatingField] = &[
     rating_field!("current", "Output current", Plate, Amps, DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.output_current),
     rating_field!("power", "Rated power", Plate, Watts, DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.output_power),
     rating_field!("apparent_power", "Rated power", Plate, VoltAmps, DeviceType::PowerSupply(PowerSupply::Transformer(x)) => x.rated_power),
+    rating_field!("frequency", "Rated frequency", Plate, Hertz, DeviceType::PowerSupply(PowerSupply::Transformer(x)) => x.rated_frequency),
+    rating_field!(
+        "impedance_voltage",
+        "Impedance voltage",
+        Plate,
+        Percent,
+        show |u: Percent| format!("uk {u}"),
+        after ["uk"],
+        DeviceType::PowerSupply(PowerSupply::Transformer(x)) => x.impedance_voltage
+    ),
+    rating_field!("input_current", "Input current", Datasheet, Amps, DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.input_current),
+    rating_field!(
+        "efficiency",
+        "Efficiency",
+        Datasheet,
+        Percent,
+        show |e: Percent| format!("eff {e}"),
+        after ["eff"],
+        DeviceType::PowerSupply(PowerSupply::Psu(p)) => p.efficiency
+    ),
 ];

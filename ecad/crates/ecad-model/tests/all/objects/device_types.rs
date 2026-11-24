@@ -617,7 +617,13 @@ fn a_power_supply_s_rating_is_typed() {
     use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
     use ecad_model::objects::devices::{PowerSupply, Psu, RatingNote, Transformer};
     let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
-    let psu = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: Some(Watts(120.0)) };
+    let psu = Psu {
+        input: v(230.0, Current::Ac),
+        output: v(24.0, Current::Dc),
+        output_current: Some(Amps(5.0)),
+        output_power: Some(Watts(120.0)),
+        ..Psu::default()
+    };
     let d = Device { device_type: DeviceType::PowerSupply(PowerSupply::Psu(psu)), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(
@@ -628,7 +634,7 @@ fn a_power_supply_s_rating_is_typed() {
     assert_eq!(serde_json::to_value(DeviceType::of_group(DeviceGroup::PowerSupply)).unwrap(), serde_json::json!({"power_supply": {"psu": {}}}));
     assert_eq!(d.value("rating").as_deref(), Some("230 V AC / 24 V DC, 5 A, 120 W"));
     assert!(!d.has_no_rating());
-    let t = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)) };
+    let t = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)), ..Transformer::default() };
     assert_eq!(t.ratio(), Some(400.0 / 24.0));
     let td = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(t)), ..Device::default() };
     assert_eq!(td.value("rating").as_deref(), Some("400 V AC / 24 V AC, 250 VA"));

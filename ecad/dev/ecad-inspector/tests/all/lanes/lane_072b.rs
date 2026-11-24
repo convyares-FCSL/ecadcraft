@@ -284,7 +284,7 @@ fn a_power_supply_rating_is_shown_raw_and_readable() {
     use ecad_model::objects::devices::{PowerSupply, Transformer};
     let before = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())), ..Device::default() };
     let ac = |v| Some(RatedVoltage { volts: Volts(v), current: Current::Ac });
-    let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)) };
+    let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)), ..Transformer::default() };
     let after = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(t)), ..before.clone() };
     shown_raw_and_readable("072b-trafo", 82, before, after, &["power_supply", "transformer", "input", "output", "rated_power"], "rated_power");
 }

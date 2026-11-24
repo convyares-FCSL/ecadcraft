@@ -278,6 +278,8 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 output: v(24.0, Current::Dc),
                 output_current: Some(Amps(5.0)),
                 output_power: Some(Watts(120.0)),
+                input_current: None,
+                efficiency: None,
             })),
         ),
         (
@@ -286,6 +288,8 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 input: v(400.0, Current::Ac),
                 output: v(230.0, Current::Ac),
                 rated_power: Some(VoltAmps(630.0)),
+                rated_frequency: None,
+                impedance_voltage: None,
             })),
         ),
         (f.ids.fresh(), DeviceType::Protection(Protection::Fuse(fuse()))),

@@ -544,7 +544,7 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
     let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
-    let want = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: None };
+    let want = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), ..Psu::default() };
     assert_eq!(h.doc().devices()[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(want)));
     assert!(!no_rating(&mut h));
     let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "230 V AC"})).unwrap_err();
@@ -557,7 +557,8 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     assert_eq!(h.doc().devices()[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())));
     let r = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V 250 VA"})).unwrap();
     assert_eq!(r["message"], json!("Read: 400 V AC / 24 V AC, 250 VA."), "{r}");
-    let want = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)) };
+    let want =
+        Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)), ..Transformer::default() };
     assert_eq!(h.doc().devices()[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(want)));
     let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "250 W"})).unwrap_err();
     assert!(err.contains("VA, not W"), "{err}");
