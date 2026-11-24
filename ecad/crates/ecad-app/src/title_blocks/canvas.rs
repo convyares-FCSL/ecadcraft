@@ -498,7 +498,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_model::
                     if d.selected.len() == 1 {
                         for hpt in handles(r) {
                             let hr = Rect::from_center_size(hpt, vec2(2.0 * HANDLE, 2.0 * HANDLE));
-                            p.rect(hr, 1.0, Color32::WHITE, Stroke::new(1.5, accent), egui::StrokeKind::Middle);
+                            p.rect(hr, 1.0, c32(s.on_accent), Stroke::new(1.5, accent), egui::StrokeKind::Middle);
                         }
                     }
                 }
@@ -513,7 +513,7 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_model::
             let r = v.rect(&b);
             let tag = Rect::from_min_size(pos2(r.left(), r.top() - 32.0), vec2(tw, 26.0));
             p.rect_filled(tag, 4.0, accent);
-            p.text(tag.center(), Align2::CENTER_CENTER, text, font, Color32::WHITE);
+            p.text(tag.center(), Align2::CENTER_CENTER, text, font, c32(s.on_accent));
         }
     }
     if let Some(sp) = ed.canvas.snapped {

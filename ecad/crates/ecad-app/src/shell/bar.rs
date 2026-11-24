@@ -15,7 +15,7 @@ pub fn font(ui: &egui::Ui, style: TypeStyle) -> egui::FontId {
 
 /// The width `text` takes in `style`.
 pub fn text_width(ui: &egui::Ui, text: &str, style: TypeStyle) -> f32 {
-    ui.painter().layout_no_wrap(text.to_string(), font(ui, style), Color32::WHITE).size().x
+    ui.painter().layout_no_wrap(text.to_string(), font(ui, style), Color32::PLACEHOLDER).size().x
 }
 
 /// A bordered pill: the window ground inside a hairline (every group of the bottom bar,

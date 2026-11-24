@@ -9,6 +9,9 @@ use {crate::tokens::line, crate::tokens::radius, crate::tokens::shadow, crate::t
 
 use {crate::SHELL, crate::color, crate::fonts};
 
+/// The tint that draws an image as it is (egui multiplies every pixel by the tint).
+pub const NO_TINT: egui::Color32 = egui::Color32::WHITE;
+
 /// A radius token as egui's corner radius (rounded to whole px, at most 255).
 pub fn corner(px: f32) -> CornerRadius {
     CornerRadius::same(px.round().clamp(0.0, 255.0) as u8)

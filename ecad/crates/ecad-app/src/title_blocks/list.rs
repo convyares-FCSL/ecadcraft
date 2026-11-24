@@ -183,7 +183,7 @@ fn switch(ui: &mut egui::Ui, label: &str, name: &str, on: &mut bool) {
     let track = Rect::from_min_size(pos2(r.left(), r.center().y - 8.0), vec2(30.0, 16.0));
     ui.painter().rect_filled(track, 8.0, c32(if *on { s.accent } else { s.line_strong }));
     let knob = if *on { track.right() - 8.0 } else { track.left() + 8.0 };
-    ui.painter().circle_filled(pos2(knob, track.center().y), 6.0, Color32::WHITE);
+    ui.painter().circle_filled(pos2(knob, track.center().y), 6.0, c32(s.on_accent));
     bar::text_at(ui, track.right() + 6.0, r.center().y, label, ui_type::BODY, c32(s.text));
 }
 

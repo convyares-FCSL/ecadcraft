@@ -229,7 +229,7 @@ impl crate::inspector::Inspector {
                     ecad_widgets::style::corner(ecad_widgets::tokens::radius::CHECK),
                     ecad_widgets::color(if can { shell.accent } else { shell.text_3 }),
                 );
-                let c = egui::Color32::WHITE;
+                let c = ecad_widgets::color(shell.on_accent);
                 ui.painter().line_segment([b.center() + vec2(-4.0, 0.0), b.center() + vec2(-1.0, 3.0)], egui::Stroke::new(1.6, c));
                 ui.painter().line_segment([b.center() + vec2(-1.0, 3.0), b.center() + vec2(4.0, -3.0)], egui::Stroke::new(1.6, c));
             } else {

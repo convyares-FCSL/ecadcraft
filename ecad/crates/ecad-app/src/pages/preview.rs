@@ -13,12 +13,11 @@
 use std::sync::Arc;
 
 use cadcraft_ui_egui::icons::{self, Icon};
-use cadcraft_ui_egui::theme::Tokens;
 use ecad_engine::ProjectHandle;
 use ecad_engine::cad::Drawing;
 use ecad_engine::pages::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
 use ecad_model::{PageId, Pt};
-use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
+use eframe::egui::{self, Rect, RichText, Sense, Stroke, pos2, vec2};
 
 /// The preview window's egui id (and element name).
 pub(crate) const WINDOW_ID: &str = "ecad.preview";
@@ -179,8 +178,8 @@ impl Preview {
         if self.drawn == Some((self.size, self.view)) && self.texture.is_some() {
             return;
         }
-        let t = Tokens::get();
-        let bg = [t.canvas.r(), t.canvas.g(), t.canvas.b()];
+        let paper = ecad_engine::cables::draw::sheet().sheet;
+        let bg = [paper.r, paper.g, paper.b];
         match rasterise(d, self.view, self.size[0], self.size[1], bg, 96.0 / 25.4) {
             Ok(img) => {
                 let image = egui::ColorImage::from_rgba_premultiplied([img.width as usize, img.height as usize], &img.rgba);
@@ -207,7 +206,9 @@ impl Preview {
 
     /// Show the window. Returns what the user asked for.
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
-        let t = Tokens::get();
+        let s = ecad_widgets::SHELL;
+        let col = ecad_widgets::color;
+        let sheet = ecad_engine::cables::draw::sheet();
         let mut action = None;
         let mut window = egui::Window::new("Preview")
             .id(egui::Id::unique(WINDOW_ID))
@@ -216,7 +217,7 @@ impl Preview {
             .collapsible(false)
             .default_size(vec2(DEFAULT_SIZE[0], DEFAULT_SIZE[1] + 22.0))
             .min_size(vec2(240.0, 160.0))
-            .frame(egui::Frame::NONE.fill(t.chrome_dark).stroke(Stroke::new(1.0, t.border)).corner_radius(0.0));
+            .frame(egui::Frame::NONE.fill(col(s.panel)).stroke(Stroke::new(1.0, col(s.line))).corner_radius(0.0));
         if let Some(at) = self.open_at.take() {
             window = window.current_pos(at);
         }
@@ -228,9 +229,9 @@ impl Preview {
                 ui.set_height(22.0);
                 let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
                 icons::paint(ui.painter(), r, Icon::Lock, true);
-                ui.label(RichText::new("PREVIEW").small().strong().color(t.text_dim));
-                ui.label(RichText::new(&self.title).small().color(t.text));
-                ui.label(RichText::new("read-only").small().color(t.text_dim));
+                ui.label(RichText::new("PREVIEW").small().strong().color(col(s.text_3)));
+                ui.label(RichText::new(&self.title).small().color(col(s.text)));
+                ui.label(RichText::new("read-only").small().color(col(s.text_3)));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let close = ui.small_button("×").on_hover_text(CLOSE);
                     close.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, CLOSE));
@@ -253,17 +254,23 @@ impl Preview {
             let (rect, resp) = ui.allocate_exact_size(avail, Sense::click_and_drag());
             self.redraw(ctx);
             if let Some(tex) = &self.texture {
-                ui.painter().image(tex.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                ui.painter().image(tex.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), ecad_widgets::style::NO_TINT);
             } else {
-                ui.painter().rect_filled(rect, 0.0, t.canvas);
+                ui.painter().rect_filled(rect, 0.0, col(sheet.sheet));
             }
             if let Some(e) = &self.error {
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, e, egui::FontId::proportional(12.0), t.warn);
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    e,
+                    ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::CAPTION.size),
+                    col(s.warning),
+                );
             }
             if let Some(at) = self.ring {
                 let c = self.to_screen(rect, at);
                 if rect.contains(c) {
-                    ui.painter().circle_stroke(c, RING_PX / 2.0, Stroke::new(2.0, REFERENCE_MAGENTA));
+                    ui.painter().circle_stroke(c, RING_PX / 2.0, Stroke::new(2.0, col(sheet.selection)));
                 }
             }
             self.image_rect = Some(rect);
@@ -300,6 +307,3 @@ impl Preview {
         action
     }
 }
-
-/// `ecad.reference` magenta.
-const REFERENCE_MAGENTA: Color32 = Color32::from_rgb(0xff, 0x00, 0xff);

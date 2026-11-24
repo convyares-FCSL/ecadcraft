@@ -137,12 +137,14 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
 ];
 
 /// Styling written in place, which ECAD UI code may no longer use: colours, sizes and fonts come from the tokens of `ecad-widgets`.
-/// `Tokens::get` reads CADCraft's theme colours directly; `from_rgba` covers every RGBA
-/// constructor (`Color32::from_rgba_unmultiplied`, `Rgba::from_rgba_premultiplied`, …).
+/// `Tokens::get` reads CADCraft's theme colours directly; the `from_rgba` entries cover every RGBA
+/// colour constructor (`Color32::from_rgba_unmultiplied`, `Rgba::from_rgba_premultiplied`, …), not an
+/// image's pixels. A plain ban: no file may style locally.
 const LOCAL_STYLE: &[&str] = &[
     "Color32::from_rgb",
     "Color32::from_gray",
-    "from_rgba",
+    "Color32::from_rgba",
+    "Rgba::from_rgba",
     "FontId::new",
     "FontId::proportional",
     "FontId::monospace",
@@ -156,29 +158,13 @@ const LOCAL_STYLE: &[&str] = &[
     "Color32::YELLOW",
 ];
 
-/// ECAD UI files that still style locally: the number of lines that do, and the brief that
-/// restyles the file. The counts only fall: more lines than the count fail `layers`,
-/// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
-/// that styles locally is a violation.
-const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/title_blocks/canvas.rs", 2, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/title_blocks/list.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/pages/preview.rs", 6, "restyled with the page view (U4a)"),
-    ("crates/ecad-app/src/pages/project_panel.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/publish/mod.rs", 5, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
-    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "named egui colour: take it from the ecad-widgets tokens"),
-];
-
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
 /// `ecad_widgets::control` (text entry, number with unit, selector, toggle, value box) instead, so
 /// anything the person can change looks editable and a read value never looks like an input.
 const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 
 /// ECAD UI files that still use raw egui value controls ([`RAW_CONTROL`]): the number of lines
-/// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
+/// that do, and why. The counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
     ("crates/ecad-app/src/developer/mod.rs", 5, "hand-rolled: convert to ecad_widgets::control"),
@@ -201,7 +187,7 @@ const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
 /// (`line::HAIRLINE_PX`, `space::XS`, …). Matched as the call followed directly by a digit.
 const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
 
-/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not
+/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one. The counts only fall, and a file not
 /// listed that has one is a violation.
 const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("crates/ecad-app/src/agent/last_write.rs", 1),
@@ -1017,19 +1003,6 @@ fn places_matching(rel: &str, text: &str, patterns: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// What is wrong with an allowlisted file that has `found` locally styled lines against its
-/// `allowed` count, if anything: more is a violation; fewer means the count must come down.
-fn style_count_problem(path: &str, found: usize, allowed: usize, brief: &str) -> Option<String> {
-    match found.cmp(&allowed) {
-        std::cmp::Ordering::Greater => {
-            Some(format!("{path}: {found} locally styled lines, the allowlist allows {allowed} ({brief}); take the new ones from ecad-widgets"))
-        }
-        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer styles locally; remove its allowlist entry ({brief})")),
-        std::cmp::Ordering::Less => Some(format!("{path}: {found} locally styled lines, fewer than the allowlist's {allowed}; lower the count")),
-        std::cmp::Ordering::Equal => None,
-    }
-}
-
 /// What is wrong with a file in [`RAW_CONTROL_ALLOWLIST`] that has `found` raw-control lines
 /// against its `allowed` count, if anything: more is a violation; fewer means lower the count.
 fn raw_count_problem(path: &str, found: usize, allowed: usize, why: &str) -> Option<String> {
@@ -1168,7 +1141,6 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
-    let mut style_seen: BTreeSet<&str> = BTreeSet::new();
     let mut raw_seen: BTreeSet<&str> = BTreeSet::new();
     let mut size_seen: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
@@ -1192,14 +1164,9 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
             }
             out.extend(dev_file_reads(&root, &dir, &f, &text).into_iter().map(|p| format!("{p} (product code must not read files under dev/)")));
             if matches!(class, Some(Class::App | Class::Programs)) {
-                let places = local_style_places(&rel, &text);
-                match STYLE_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
-                    Some((path, allowed, brief)) => {
-                        style_seen.insert(path);
-                        out.extend(style_count_problem(path, places.len(), *allowed, brief));
-                    }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from the ecad-widgets tokens)"))),
-                }
+                out.extend(
+                    local_style_places(&rel, &text).into_iter().map(|p| format!("{p} (no local styling: take it from the ecad-widgets tokens)")),
+                );
                 let places = raw_control_places(&rel, &text);
                 match RAW_CONTROL_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
                     Some((path, allowed, why)) => {
@@ -1223,11 +1190,6 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                     None => out.extend(places.into_iter().map(|p| format!("{p} (no literal sizes: take them from the ecad-widgets tokens)"))),
                 }
             }
-        }
-    }
-    for (path, _, brief) in STYLE_ALLOWLIST {
-        if !style_seen.contains(path) {
-            out.push(format!("{path}: in the local-styling allowlist ({brief}) but not found; remove the entry"));
         }
     }
     for (path, _, why) in RAW_CONTROL_ALLOWLIST {
@@ -2188,9 +2150,9 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// A UI file not in the allowlist that styles locally fails `layers`; one in it does not.
+    /// A UI file that styles locally fails `layers`, whichever file it is.
     #[test]
-    fn a_new_ui_file_that_styles_locally_fails_layers() {
+    fn a_ui_file_that_styles_locally_fails_layers() {
         let root = std::env::temp_dir().join(format!("ecad-xtask-style-{}", std::process::id()));
         let src = root.join("crates").join("ecad-app").join("src");
         std::fs::create_dir_all(&src).unwrap();
@@ -2217,7 +2179,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(!v.iter().any(|m| m.contains("preview.rs") && m.contains("no local styling")), "allowlisted: {v:?}");
+        assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/pages/preview.rs:1:") && m.contains("no local styling")), "no file is exempt: {v:?}");
     }
 
     /// A UI file not in the raw-control allowlist that uses `egui::TextEdit` or a `ComboBox` fails
@@ -2273,15 +2235,5 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             let meta = serde_json::json!({"packages": [{"name": krate, "manifest_path": if *krate == "ecad-xtask" { "/dev/xtask/Cargo.toml" } else { "" }, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});
             assert_eq!(layer_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
         }
-    }
-
-    /// The allowlist's counts only fall: more fails, fewer asks for a lower count, none asks for
-    /// the entry to go.
-    #[test]
-    fn local_styling_counts_only_fall() {
-        assert_eq!(style_count_problem("a.rs", 3, 3, "U2"), None);
-        assert!(style_count_problem("a.rs", 4, 3, "U2").is_some_and(|m| m.contains("allows 3")));
-        assert!(style_count_problem("a.rs", 2, 3, "U2").is_some_and(|m| m.contains("lower the count")));
-        assert!(style_count_problem("a.rs", 0, 3, "U2").is_some_and(|m| m.contains("remove its allowlist entry")));
     }
 }

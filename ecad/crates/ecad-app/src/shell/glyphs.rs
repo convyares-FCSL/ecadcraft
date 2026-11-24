@@ -46,7 +46,7 @@ pub(crate) fn thumbs(p: &Painter, r: Rect, c: Color32) {
 pub(crate) fn checkbox(p: &Painter, r: Rect, on: bool, accent: Color32, line: Color32, faint: Color32) {
     if on {
         p.rect_filled(r, 2.0, accent);
-        tick(p, r.shrink(2.5), Color32::WHITE);
+        tick(p, r.shrink(2.5), ecad_widgets::color(ecad_widgets::SHELL.on_accent));
     } else {
         p.rect_stroke(r, 2.0, Stroke::new(1.0, line), StrokeKind::Inside);
         tick(p, r.shrink(3.0), faint);

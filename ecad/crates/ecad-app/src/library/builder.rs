@@ -1156,7 +1156,7 @@ pub fn strip(ui: &mut egui::Ui, rect: Rect, b: &mut Builder) {
         let on = if tool.is_draw() { b.tool.is_draw() } else { b.tool == tool };
         let resp = strip_button(ui, r, tool.icon(), words.get(i).copied().unwrap_or(""), sb.name, on);
         if tool.is_draw() {
-            let c = if on { egui::Color32::WHITE } else { c32(shell.text_3) };
+            let c = if on { c32(shell.on_accent) } else { c32(shell.text_3) };
             let (cx, cy) = (r.right() - 3.0, r.bottom() - 3.0);
             ui.painter().add(egui::Shape::convex_polygon(vec![pos2(cx, cy - 4.0), pos2(cx, cy), pos2(cx - 4.0, cy)], c, Stroke::NONE));
         }
@@ -1235,7 +1235,7 @@ fn strip_button(ui: &mut egui::Ui, r: Rect, icon: Icon, text: &str, name: &str, 
         ui.painter().rect_filled(r, ecad_widgets::style::corner(ecad_widgets::tokens::radius::TOOL), c32(f));
     }
     let ink = if on {
-        egui::Color32::WHITE
+        c32(s.on_accent)
     } else if resp.hovered() {
         c32(s.text)
     } else {

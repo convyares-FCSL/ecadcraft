@@ -1499,7 +1499,7 @@ fn in_place<T>(ui: &mut egui::Ui, rect: Rect, id: &str, label: &str, edit: &mut 
 
 /// `text` cut with `…` to fit `width` in `font`.
 fn cut(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32) -> String {
-    let fits = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x) <= width;
+    let fits = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::PLACEHOLDER).size().x) <= width;
     if fits(text) {
         return text.to_string();
     }

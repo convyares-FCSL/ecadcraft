@@ -429,7 +429,7 @@ impl App {
                             }
                             match thumbs.get(id) {
                                 Some(t) => {
-                                    p.image(t.texture.id(), pic, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+                                    p.image(t.texture.id(), pic, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), ecad_widgets::style::NO_TINT);
                                 }
                                 None => {
                                     p.rect_filled(pic, 0.0, c32(sheet.sheet));
@@ -453,8 +453,8 @@ impl App {
                             );
                             if on {
                                 let c = tick.center();
-                                p.line_segment([c + vec2(-4.0, 0.0), c + vec2(-1.0, 3.0)], Stroke::new(1.8, egui::Color32::WHITE));
-                                p.line_segment([c + vec2(-1.0, 3.0), c + vec2(4.5, -3.5)], Stroke::new(1.8, egui::Color32::WHITE));
+                                p.line_segment([c + vec2(-4.0, 0.0), c + vec2(-1.0, 3.0)], Stroke::new(1.8, c32(s.on_accent)));
+                                p.line_segment([c + vec2(-1.0, 3.0), c + vec2(4.5, -3.5)], Stroke::new(1.8, c32(s.on_accent)));
                             }
                             if tr.clicked() {
                                 toggles.push(*id);
@@ -462,7 +462,7 @@ impl App {
                             if let Some(n) = book.position.get(id) {
                                 let at = pos2(pic.right() - 16.0, pic.top() + 16.0);
                                 p.circle_filled(at, 11.0, c32(s.accent));
-                                p.text(at, Align2::CENTER_CENTER, n.to_string(), bar::font(ui, ui_type::CAPTION), egui::Color32::WHITE);
+                                p.text(at, Align2::CENTER_CENTER, n.to_string(), bar::font(ui, ui_type::CAPTION), c32(s.on_accent));
                             }
                             let label_y = pic.bottom() + 14.0;
                             let ink = c32(if on { s.text } else { s.text_3 });
@@ -587,7 +587,7 @@ impl App {
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, PREVIEW));
                         match thumb {
                             Some(t) => {
-                                ui.painter().image(t, r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+                                ui.painter().image(t, r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), ecad_widgets::style::NO_TINT);
                             }
                             None => {
                                 ui.painter().rect_filled(r, 0.0, c32(crate::canvas::Sheet::Paper.tokens().sheet));
