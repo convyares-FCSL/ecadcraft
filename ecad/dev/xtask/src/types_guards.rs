@@ -1,6 +1,5 @@
-//! The typed-object-model guards that `cargo xtask layers` checks textually. Each
-//! starts as a ratchet at its exact count in the lane that adds it; the count only falls, and the
-//! end gate checks every guard at 0 as a plain ban.
+//! The typed-object-model guards that `cargo xtask layers` checks textually. Each is a plain ban:
+//! no place may have one, apart from the stored text fields listed in [`STORED_TEXT_FIELDS`].
 //!
 //! Counted over the product crates' `src/` (Core, Engine, UI kit, App, Programs), outside `//`
 //! comments and outside a file's trailing `#[cfg(test)]` module.
@@ -15,11 +14,10 @@ const WORDS_FILE: &str = "crates/ecad-model/src/naming/words.rs";
 /// The boolean words G2 looks for, as string literals.
 const BOOL_LITERALS: &[&str] = &["\"yes\"", "\"no\"", "\"true\"", "\"false\"", "\"on\"", "\"off\"", "\"y\"", "\"n\""];
 
-/// One guard: its name, what it counts, the count it may not exceed, and the fix.
+/// One guard: its name, what it finds, and the fix.
 pub struct Guard {
     pub name: &'static str,
     pub what: &'static str,
-    pub allowed: usize,
     pub fix: &'static str,
     pub scan: Scan,
 }
@@ -32,18 +30,18 @@ pub enum Scan {
     File(fn(rel: &str, code: &str) -> Vec<usize>),
 }
 
-/// The guards and their counts; each only falls.
+/// The guards; each is a ban.
 #[rustfmt::skip]
 pub const GUARDS: &[Guard] = &[
-    Guard { name: "G2", what: "boolean words compared or matched", allowed: 0, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
-    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 0, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
-    Guard { name: "G7", what: "angle conversions outside units.rs", allowed: 6, fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
-    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 0, fix: "hold a StyleCatalogue (or the typed role)", scan: Scan::Line(g9) },
-    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 0, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
-    Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 0, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
-    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 0, fix: "an unknown word is a read error; type it", scan: Scan::Line(g10) },
-    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 11, fix: "store a Text<N>, LongText<N> or a typed value", scan: Scan::File(g13) },
-    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 0, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
+    Guard { name: "G2", what: "boolean words compared or matched", fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
+    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
+    Guard { name: "G7", what: "angle conversions in Core or Engine outside units.rs", fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
+    Guard { name: "G9", what: "`catalogue` or `role` held as text", fix: "hold a StyleCatalogue (or the typed role)", scan: Scan::Line(g9) },
+    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
+    Guard { name: "G8b", what: "`.word() == \"` comparisons", fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
+    Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", fix: "an unknown word is a read error; type it", scan: Scan::Line(g10) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", fix: "store a Text<N>, LongText<N> or a typed value", scan: Scan::File(g13) },
+    Guard { name: "G14", what: "hidden-character checks outside words.rs", fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
 fn g2(rel: &str, line: &str) -> bool {
@@ -62,8 +60,20 @@ fn g3(rel: &str, line: &str) -> bool {
 /// The one file where angles change unit.
 const UNITS_FILE: &str = "crates/ecad-model/src/geometry/units.rs";
 
+/// The crates whose angles are drawing angles, so they convert only through the units: the Core
+/// crates and the Engine. A UI crate's screen angles (an icon's arc, a wheel's slots, in pixels) are
+/// not drawing angles.
+const DRAWING_ANGLE_CRATES: &[&str] = &[
+    "crates/ecad-model/",
+    "crates/ecad-store/",
+    "crates/ecad-file/",
+    "crates/ecad-electrical/",
+    "crates/ecad-drawing-style/",
+    "crates/ecad-engine/",
+];
+
 fn g7(rel: &str, line: &str) -> bool {
-    rel != UNITS_FILE && (line.contains(".to_radians()") || line.contains(".to_degrees()"))
+    rel != UNITS_FILE && DRAWING_ANGLE_CRATES.iter().any(|c| rel.starts_with(c)) && (line.contains(".to_radians()") || line.contains(".to_degrees()"))
 }
 
 /// The text types G9 looks for after `catalogue: ` or `role: `.
@@ -107,9 +117,43 @@ fn g14(rel: &str, line: &str) -> bool {
 /// The crate whose structs are stored: stored structs live in ecad-model.
 const STORED_CRATE: &str = "crates/ecad-model/src/";
 
+/// The stored fields G13 leaves alone, as (file, field), and why. One entry, no count: a listed
+/// field that is no longer text fails until it is removed.
+pub const STORED_TEXT_FIELDS: (&[(&str, &str)], &str) = (
+    &[
+        ("crates/ecad-model/src/connectivity/wiring.rs", "name"),
+        ("crates/ecad-model/src/connectivity/wiring.rs", "prefix"),
+        ("crates/ecad-model/src/connectivity/wiring.rs", "unclassified_prefix"),
+        ("crates/ecad-model/src/connectivity/wiring.rs", "label_rule"),
+        ("crates/ecad-model/src/document/doc/definition.rs", "name"),
+        ("crates/ecad-model/src/document/doc/device.rs", "label"),
+        ("crates/ecad-model/src/document/doc/drawing.rs", "name"),
+        ("crates/ecad-model/src/document/doc/drawing.rs", "linetype"),
+        ("crates/ecad-model/src/document/ledger/types.rs", "label"),
+    ],
+    "free names and labels stored before the text types; typed with the next format change",
+);
+
 /// G13: in ecad-model, the fields of a struct deriving `Serialize` typed with `String` or `&str`
-/// (also inside `Option`, `Vec` or a map), and tuple structs over them.
+/// (also inside `Option`, `Vec` or a map), and tuple structs over them, apart from
+/// [`STORED_TEXT_FIELDS`].
 fn g13(rel: &str, code: &str) -> Vec<usize> {
+    let lines: Vec<&str> = code.lines().collect();
+    g13_all(rel, code)
+        .into_iter()
+        .filter(|i| !STORED_TEXT_FIELDS.0.contains(&(rel, field_name(lines.get(*i).copied().unwrap_or_default()))))
+        .collect()
+}
+
+/// The field a struct line declares: `pub name: String` gives `name`.
+fn field_name(line: &str) -> &str {
+    let t = line.trim();
+    let t = t.strip_prefix("pub(crate) ").or_else(|| t.strip_prefix("pub ")).unwrap_or(t);
+    t.split_once(':').map_or("", |(name, _)| name.trim())
+}
+
+/// Every G13 place in `rel`, listed fields included.
+fn g13_all(rel: &str, code: &str) -> Vec<usize> {
     let mut out = Vec::new();
     if !rel.starts_with(STORED_CRATE) {
         return out;
@@ -174,8 +218,8 @@ pub fn places(guard: &Guard, rel: &str, text: &str) -> Vec<String> {
     lines.into_iter().map(|i| format!("{rel}:{}: {}", i + 1, product.lines().nth(i).unwrap_or_default().trim())).collect()
 }
 
-/// Every guard's count over the product crates in `meta`, against [`GUARDS`]: a count that rose
-/// (with its places) or fell (lower it).
+/// Every guard's places over the product crates in `meta` (each must have none), and the entries of
+/// [`STORED_TEXT_FIELDS`] that are no longer stored text.
 pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut files: Vec<(String, String)> = Vec::new();
@@ -195,12 +239,19 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     for g in GUARDS {
         let found: Vec<String> = files.iter().flat_map(|(rel, text)| places(g, rel, text)).collect();
-        let what = format!("{} ({})", g.what, g.name);
-        if let Some(p) = super::ratchet_problem(g.name, found.len(), g.allowed, &what, g.fix) {
-            out.push(p);
-            if found.len() > g.allowed {
-                out.extend(found.into_iter().map(|f| format!("    {f}")));
-            }
+        if !found.is_empty() {
+            out.push(format!("{}: {} {}; {}", g.name, found.len(), g.what, g.fix));
+            out.extend(found.into_iter().map(|f| format!("    {f}")));
+        }
+    }
+    for (file, field) in STORED_TEXT_FIELDS.0 {
+        let still = files.iter().filter(|(rel, _)| rel == file).any(|(rel, text)| {
+            let code = super::strip_line_comments(product_part(text));
+            let lines: Vec<&str> = code.lines().collect();
+            g13_all(rel, &code).into_iter().any(|i| field_name(lines.get(i).copied().unwrap_or_default()) == *field)
+        });
+        if !still {
+            out.push(format!("{file}: `{field}` is in STORED_TEXT_FIELDS ({}) but no longer stored text; remove the entry", STORED_TEXT_FIELDS.1));
         }
     }
     Ok(out)
@@ -232,7 +283,8 @@ mod tests {
             ("G2", "crates/c/src/a.rs", "// v == \"yes\"", 0),
             ("G3", "crates/c/src/a.rs", "t.bytes().all(|b| b.is_ascii_digit())", 1),
             ("G3", "crates/c/src/a.rs", "t.chars().take_while(char::is_ascii_digit)", 0),
-            ("G7", "crates/c/src/a.rs", "let r = degrees.to_radians();", 1),
+            ("G7", "crates/ecad-engine/src/a.rs", "let r = degrees.to_radians();", 1),
+            ("G7", "crates/ecad-widgets/src/wheel.rs", "let a = (i as f32 * 45.0).to_radians();", 0),
             ("G7", UNITS_FILE, "Radians(d.0.to_radians())", 0),
             ("G9", "crates/c/src/a.rs", "    catalogue: String,", 1),
             ("G9", "crates/c/src/a.rs", "fn f(role: &str) {}", 1),
@@ -243,6 +295,8 @@ mod tests {
             ("G10", "crates/c/src/a.rs", "    Unknown(String),", 1),
             ("G10", "crates/c/src/a.rs", "pub other: BTreeMap<String, Raw>,", 1),
             ("G10", "crates/c/src/a.rs", "Source::Unknown(_) => false,", 0),
+            ("G13", "crates/ecad-model/src/a.rs", "#[derive(Serialize)]\npub struct A {\n    pub text: String,\n}\n", 1),
+            ("G13", "crates/ecad-model/src/document/ledger/types.rs", "#[derive(Serialize)]\npub struct A {\n    pub label: String,\n}\n", 0),
             ("G2", "crates/c/src/a.rs", "fn f() {}\n#[cfg(test)]\nmod tests {\n    fn t() { assert!(v == \"yes\"); }\n}\n", 0),
         ];
         for (name, rel, text, want) in table {
