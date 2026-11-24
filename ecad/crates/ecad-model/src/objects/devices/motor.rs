@@ -244,6 +244,14 @@ impl EfficiencyClass {
 }
 
 impl Phases {
+    /// As written on a drawing: `1~`, `3~`.
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Phases::Single => "1~",
+            Phases::Three => "3~",
+        }
+    }
+
     /// The motor as a person reads it (`three-phase motor`).
     pub fn label(self) -> &'static str {
         match self {

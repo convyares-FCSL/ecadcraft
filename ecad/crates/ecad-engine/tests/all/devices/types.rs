@@ -468,16 +468,16 @@ fn a_load_rating_is_read_into_typed_fields() {
     assert_eq!(r["value"], json!("3 kW"));
     let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
     assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
-    assert_eq!(h.doc().devices()[&e].device_type, DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }));
+    assert_eq!(h.doc().devices()[&e].device_type, DeviceType::Load(Load { rated_power: Some(Watts(3000.0)), ..Load::default() }));
     assert!(h.doc().devices()[&e].properties.is_empty());
     let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "5W"})).unwrap();
     assert_eq!(r["value"], json!("5 W"), "{r}");
     assert!(!no_rating(&mut h));
-    // Ambiguous text is asked, never guessed; a voltage is refused; other text is the note.
+    // Ambiguous text is asked, never guessed; a voltage needs AC or DC; other text is the note.
     let err = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "5"})).unwrap_err();
     assert!(err.contains("W or kW"), "{err}");
-    let err = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "24 V DC"})).unwrap_err();
-    assert!(err.contains("no voltage"), "{err}");
+    let err = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
+    assert!(err.contains("AC or DC"), "{err}");
     let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
     assert_eq!(r["value"], json!("see datasheet"), "{r}");
     assert!(h.doc().devices()[&v].rating_note.is_some());

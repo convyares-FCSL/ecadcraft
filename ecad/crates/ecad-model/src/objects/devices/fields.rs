@@ -19,8 +19,8 @@
 use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, Rpm, VoltAmps, Volts, Watts};
 use crate::naming::words::Word;
 use crate::objects::devices::{
-    DutyType, EfficiencyClass, FuseClass, FuseSize, IndicatorColour, InsulationClass, IpCode, Poles, ResidualType, SignalType, Starting, TripCurve,
-    WindingConnection,
+    DutyType, EfficiencyClass, FuseClass, FuseSize, IndicatorColour, InsulationClass, IpCode, Phases, Poles, ResidualType, SignalType, Starting,
+    TripCurve, WindingConnection,
 };
 
 /// What a rating field's value is, for whoever describes the field.
@@ -314,3 +314,4 @@ choice_value!(WindingConnection, WindingConnection::label);
 choice_value!(DutyType, DutyType::label);
 choice_value!(InsulationClass, InsulationClass::letter);
 choice_value!(EfficiencyClass, EfficiencyClass::label);
+choice_value!(Phases, Phases::symbol);

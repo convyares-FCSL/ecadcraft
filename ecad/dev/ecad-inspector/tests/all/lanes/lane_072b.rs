@@ -256,7 +256,7 @@ fn a_load_rating_is_shown_raw_and_readable() {
     use ecad_model::geometry::units::Watts;
     use ecad_model::objects::devices::Load;
     let before = Device { device_type: DeviceType::Load(Load::default()), ..Device::default() };
-    let after = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..before.clone() };
+    let after = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)), ..Load::default() }), ..before.clone() };
     shown_raw_and_readable("072b-load", 80, before, after, &["load", "rated_power"], "rated_power");
 }
 

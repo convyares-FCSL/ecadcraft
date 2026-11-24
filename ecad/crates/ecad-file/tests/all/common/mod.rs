@@ -376,7 +376,7 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 starting: Some(Starting::StarDelta),
             }),
         ),
-        (f.ids.fresh(), DeviceType::Load(Load { rated_power: Some(Watts(2000.0)) })),
+        (f.ids.fresh(), DeviceType::Load(Load { rated_power: Some(Watts(2000.0)), rated_voltage: None, rated_current: None, phases: None })),
         (
             f.ids.fresh(),
             DeviceType::Indicator(Indicator {

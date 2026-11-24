@@ -212,7 +212,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 | `switching` | `control`, `ac3_current`, `ac3_power`, `operational_voltage`, `thermal_current`, `insulation_voltage` |
 | `sensor` | `supply` |
 | `motor` | `power`, `voltage`, `current`, `frequency`, `speed`, `power_factor`, `efficiency`, `efficiency_class`, `connection`, `duty`, `insulation_class`, `ip_rating`, `starting` |
-| `load` | `power` |
+| `load` | `power`, `voltage`, `current`, `phases` |
 | `indicator` | `colour`, `signal`, `voltage`, `power` |
 
 Datasheet fields a template may add: an indicator's `current` and `ip_rating`; a power supply's
@@ -414,12 +414,16 @@ Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspecto
 
 ### Lane B, step 3: loads' ratings are typed
 
-Heaters and valves are **loads**. A load's rating is its rated power, in one typed field: shown in
-W below 1 kW (`5 W`) and in kW from it (`3 kW`).
+Heaters and valves are **loads**. A load's rating is its nameplate, in typed fields: its rated
+power, shown in W below 1 kW (`5 W`) and in kW from it (`3 kW`); its rated voltage with AC or DC
+(a heater or a valve coil is chosen for its supply); its rated current (for protection and cable
+sizing without guessing a power factor); and its phases, `1~` or `3~` (a three-phase heater is
+wired and protected differently).
 
-- `3000 W` reads as **3 kW**, `0,5 kW` as **500 W**.
-- Asked, never guessed: a bare `3` (W or kW?). A voltage (`24 V DC`) or a current is refused: a
-  load has only a power field. Other text (`see datasheet`) is kept as the note.
+- `3000 W` reads as **3 kW**, `0,5 kW` as **500 W**; `9 kW 400VAC 13A 3ph` as **9 kW, 400 V AC,
+  13 A, 3~**. Each is also a row of its own (`rating.voltage`, `rating.current`, `rating.phases`).
+- Asked, never guessed: a bare `3` (which unit?), a voltage without AC or DC (`24 V`). Other text
+  (`see datasheet`) is kept as the note.
 - An unrated load now gets the Checks warning **no-rating**.
 
 To try it: place a heater (Checks shows "no rating"), type `3000 W` as its rating (shown as `3 kW`,

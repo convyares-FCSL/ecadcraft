@@ -21,5 +21,5 @@
 "rating.template.switching" = "control, ac3_current, ac3_power, operational_voltage, thermal_current, insulation_voltage"
 "rating.template.sensor" = "supply"
 "rating.template.motor" = "power, voltage, current, frequency, speed, power_factor, efficiency, efficiency_class, connection, duty, insulation_class, ip_rating, starting"
-"rating.template.load" = "power"
+"rating.template.load" = "power, voltage, current, phases"
 "rating.template.indicator" = "colour, signal, voltage, power"
