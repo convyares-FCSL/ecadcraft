@@ -75,6 +75,18 @@ started.
 - **Not built until** a parts library with ratings exists: no stub and no override handling now.
   Until then the typed rating fields are stored plainly (lane 072 B's rating step).
 
+## Catalogue-part ratings: with the parts library (owner, 2026-11-24)
+
+- **What:** terminal block types (6 fields: largest and smallest cross-section, rated current,
+  rated voltage, pitch, connection screw/spring/push-in) and PLC channel groups (a digital
+  output's output current, an analog channel's resolution in bits), with the parts library,
+  through the descriptor route.
+- **Why deferred:** these are ratings of a catalogue part (a terminal block type, a PLC module's
+  channel group), not of the device. One set per strip or per module would store wrong data for
+  a strip or module that mixes them; a map per block code or keys per channel group would be a
+  workaround to migrate later. The other D4 fields of terminal strips' neighbours, PLC stations
+  and modules (supply, backplane current supplied and drawn, power, power loss) are built.
+
 ## Company standard file and later defaults-to-data moves (brief 066, owner 2026-11-15)
 
 - **Company standard file** (design 066 §4): loading a house standard from a TOML file into the
