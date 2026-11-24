@@ -273,6 +273,8 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 attributes: ModuleAttributes { safety_rated: true, intrinsically_safe: true, calibration_certificate: true },
                 address: AddressPin { start: Some(4), size: Some(8) },
                 supply: v(24.0, Current::Dc),
+                backplane_current: None,
+                power_loss: None,
             }),
         ),
         (

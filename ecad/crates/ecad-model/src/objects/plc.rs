@@ -43,6 +43,10 @@ const MAX_SUPPLY_VOLTS: f64 = 1000.0;
 const MAX_BACKPLANE_MILLIAMPS: f64 = 100_000.0;
 /// The largest power a station's head takes, in watts.
 const MAX_HEAD_WATTS: f64 = 10_000.0;
+/// The largest backplane current a module draws, in milliamperes (10 A).
+const MAX_MODULE_MILLIAMPS: f64 = 10_000.0;
+/// The largest power a module loses as heat, in watts.
+const MAX_MODULE_WATTS: f64 = 10_000.0;
 
 /// A channel description.
 pub type ChannelText = Text<80>;
@@ -272,6 +276,13 @@ pub struct PlcModule {
     /// The supply it takes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supply: Option<RatedVoltage>,
+    /// The current it draws from the backplane, from its datasheet: checked against its
+    /// station's supplied current.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backplane_current: Option<MilliAmps>,
+    /// The power it loses as heat, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub power_loss: Option<Watts>,
 }
 
 impl Default for PlcModule {
@@ -709,7 +720,25 @@ impl crate::Document {
 impl PlcModule {
     /// A module doing `function`, in no station, with nothing pinned.
     pub fn new(function: ModuleFunction) -> PlcModule {
-        PlcModule { rack: None, slot: None, function, attributes: ModuleAttributes::default(), address: AddressPin::default(), supply: None }
+        PlcModule {
+            rack: None,
+            slot: None,
+            function,
+            attributes: ModuleAttributes::default(),
+            address: AddressPin::default(),
+            supply: None,
+            backplane_current: None,
+            power_loss: None,
+        }
+    }
+
+    /// Why its datasheet values are not well formed, if they are not: out of range or not a
+    /// number.
+    pub fn problem(&self) -> Option<String> {
+        let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
+        let bad = self.backplane_current.is_some_and(|a| !within(a.0, MAX_MODULE_MILLIAMPS))
+            || self.power_loss.is_some_and(|w| !within(w.0, MAX_MODULE_WATTS));
+        bad.then(|| "a datasheet value of a PLC module is out of range".to_string())
     }
 
     /// How many channels it has, over all its groups.

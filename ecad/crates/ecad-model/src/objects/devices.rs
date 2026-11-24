@@ -100,7 +100,8 @@ impl DeviceGroup {
             DeviceGroup::Indicator => indicator::FIELDS,
             DeviceGroup::Connector => CONNECTOR_FIELDS,
             DeviceGroup::PlcRack => PLC_RACK_FIELDS,
-            DeviceGroup::TerminalStrip | DeviceGroup::PlcModule | DeviceGroup::General => &[],
+            DeviceGroup::PlcModule => PLC_MODULE_FIELDS,
+            DeviceGroup::TerminalStrip | DeviceGroup::General => &[],
         }
     }
 
@@ -281,7 +282,8 @@ impl DeviceType {
             DeviceType::Indicator(i) => i.problem(),
             DeviceType::PowerSupply(p) => p.problem(),
             DeviceType::PlcRack(r) => r.problem(),
-            DeviceType::PlcModule(_) | DeviceType::General => None,
+            DeviceType::PlcModule(m) => m.problem(),
+            DeviceType::General => None,
         }
     }
 
@@ -550,6 +552,18 @@ static PLC_RACK_FIELDS: &[RatingField] = &[
         DeviceType::PlcRack(r) => r.backplane_budget
     ),
     rating_field!("power", "Power", Datasheet, crate::geometry::units::Watts, DeviceType::PlcRack(r) => r.power),
+];
+
+/// A PLC module's rating fields, from its datasheet: it has no rating line.
+static PLC_MODULE_FIELDS: &[RatingField] = &[
+    rating_field!(
+        "backplane_current",
+        "Backplane current",
+        Datasheet,
+        crate::geometry::units::MilliAmps,
+        DeviceType::PlcModule(m) => m.backplane_current
+    ),
+    rating_field!("power_loss", "Power loss", Datasheet, crate::geometry::units::Watts, DeviceType::PlcModule(m) => m.power_loss),
 ];
 
 static CONNECTOR_FIELDS: &[RatingField] = &[

@@ -120,6 +120,19 @@ pub(super) fn merge_device_type(
                 supply: field(ctx, obj, "plc.supply", format!("{what} · supply"), &a.supply, &t.supply, &s.supply, &|x| {
                     words(&|| x.map(|v| v.to_string()))
                 }),
+                backplane_current: field(
+                    ctx,
+                    obj,
+                    "plc.backplane_current",
+                    format!("{what} · backplane current"),
+                    &a.backplane_current,
+                    &t.backplane_current,
+                    &s.backplane_current,
+                    &|x| words(&|| x.map(|v| v.to_string())),
+                ),
+                power_loss: field(ctx, obj, "plc.power_loss", format!("{what} · power loss"), &a.power_loss, &t.power_loss, &s.power_loss, &|x| {
+                    words(&|| x.map(|v| v.to_string()))
+                }),
             })
         }
         (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::objects::plc::PlcRack {
