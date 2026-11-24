@@ -17,7 +17,7 @@ What changed, and how to try it by clicking. (Written by the agent; nothing here
 - **Edits that touched a device, a layer, a definition or a link are fast again on big projects.**
   The references view now says exactly which cables an edit can reach (`cables_touched_by` returns
   `Touch::Cables` or `Touch::All(reason)`); a device, strip or connector name reaches none.
-  `cargo xtask layers` counts every "everything" fallback (`WIDE` in `views_guards.rs`).
+  Each "everything" case carries its reason in the code.
 - **Files of another format version open read-only and say so** ("older format version (file 1,
   this build 2)"); "damaged" is only for corruption at this build's version. `SCHEMA_VERSION` is 2;
   every format change bumps it (a golden-hash pin fails otherwise). Files written before this

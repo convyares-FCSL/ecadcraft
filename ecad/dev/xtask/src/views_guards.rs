@@ -1,16 +1,20 @@
-//! Every derived view has one way in, the project's `Views`. This guard counts
-//! direct full builds of a view type (`ReportModels::build(`, `RefIndex::build(`, …) outside `Views`
-//! and the view's own module; the count only falls.
+//! Every derived view has one way in, the project's `Views`. This guard refuses direct full
+//! builds of a view type (`ReportModels::build(`, `RefIndex::build(`, …) outside `Views` and the
+//! view's own module.
 //!
-//! Counted over `src/` of every product and Dev crate (the bench included), outside `//` comments
-//! and outside a file's trailing `#[cfg(test)]` module. A view's own module may build the view and
-//! its parts ([`OWN_MODULES`]: an update that rebuilds, the report models building their strips),
-//! and so may `Views` itself (ecad-electrical's `derived/`); each such build outside `derived/` is
-//! listed with its reason ([`OWN_BUILDS`]).
+//! Read over `src/` of every product and Dev crate (the bench included), outside `//` comments and
+//! outside a file's trailing `#[cfg(test)]` module. A view's own module may build the view and its
+//! parts ([`OWN_MODULES`]: an update that rebuilds, the report models building their strips), and so
+//! may `Views` itself (ecad-electrical's `views/`); every own-module file that does, outside `Views`
+//! and the view notes, is listed with its reason ([`OWN_BUILDS`]). Working views out from scratch
+//! (`.detached(`, …) happens only in the files [`FRESH_BUILDS`] lists, and the bench's probes
+//! ([`PROBES`]) time full rebuilds on purpose. The lists have no counts: a listed file that no
+//! longer does it fails until it is removed.
 //!
 //! In ecad-electrical, no match over `Effect`/`EffectKind` ends in a wildcard arm, so a new effect
-//! kind needs a decision in every view's note; and view notes route property keys by prefix only
-//! where [`KEY_PREFIXES`] says why.
+//! kind needs a decision in every view's note, and no view note routes a property key by its prefix
+//! (`.starts_with("`): a key's meaning belongs in its definition. Both are bans. Clippy's
+//! `wildcard_enum_match_arm` cannot replace the first: it flags a wildcard over any enum.
 
 use std::path::PathBuf;
 
@@ -45,47 +49,44 @@ const OWN_MODULES: &[&str] = &[
     "crates/ecad-electrical/src/pages/front.rs",
 ];
 
-/// Probe files whose direct builds are not counted, each with its reason: they time a full rebuild
-/// on purpose (the reference point for deciding which views keep an update map). Listed by file;
-/// a file not listed is counted.
-const PROBES: &[(&str, &str)] = &[("dev/ecad-bench/src/views.rs", "bench probe timing each view's full rebuild on purpose (D1, 2026-11-22)")];
-
-/// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land.
-const ALLOWED: usize = 3;
+/// Bench files that build views directly on purpose, each with its reason: they time a full rebuild
+/// (the reference point for deciding which views keep an update map).
+const PROBES: &[(&str, &str)] = &[
+    ("dev/ecad-bench/src/views.rs", "times each view's full rebuild"),
+    ("dev/ecad-bench/src/plc.rs", "times the PLC model's full rebuild"),
+    ("dev/ecad-bench/src/strips.rs", "times the strip model's and the strip pages' full rebuild"),
+];
 
 /// The calls that work out views of a state from scratch, outside `Views` (`.detached(`,
 /// `.report_models(`, and `Detached::build(` for a build moved off the UI thread).
 const FRESH_CALLS: &[&str] = &[".detached(", ".report_models(", "Detached::build("];
 
-/// Every file allowed to work out views from scratch, how many times, and why: a state the
-/// project does not keep, or a check that must not trust the kept views. A
-/// file not listed may not; a listed count is exact, so it only falls.
-const FRESH_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-engine/src/dev/checks.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
-    ("crates/ecad-engine/src/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
-    ("crates/ecad-engine/src/pages/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
-    ("crates/ecad-engine/src/project/changes.rs", 1, "recovery check of a rebuilt page, must not trust the kept models"),
-    ("crates/ecad-engine/src/project/mod.rs", 1, "live facts: an open page against a fresh projection"),
-    ("crates/ecad-engine/src/releases/release.rs", 3, "release: the issued and the finalised states, not kept"),
-    ("dev/ecad-bench/src/bom.rs", 1, "bench verify mode: the kept BOM model against a rebuild"),
+/// Every file allowed to work out views from scratch, and why: a state the project does not keep,
+/// or a check that must not trust the kept views. A file not listed may not.
+const FRESH_BUILDS: &[(&str, &str)] = &[
+    ("crates/ecad-engine/src/dev/checks.rs", "debugger projection check, on a copy, must not trust the kept models"),
+    ("crates/ecad-engine/src/checks.rs", "the `checks` command's from-scratch pass, on request"),
+    ("crates/ecad-engine/src/pages/preview.rs", "previews: a page outside its window, and an issued revision's state"),
+    ("crates/ecad-engine/src/project/changes.rs", "recovery check of a rebuilt page, must not trust the kept models"),
+    ("crates/ecad-engine/src/project/mod.rs", "live facts: an open page against a fresh projection"),
+    ("crates/ecad-engine/src/releases/release.rs", "release: the issued and the finalised states, not kept"),
+    ("dev/ecad-bench/src/bom.rs", "bench verify mode: the kept BOM model against a rebuild"),
 ];
 
-/// Every direct build inside a view's own module (not `Views`), how many, and why: each must be a
-/// view rebuilding itself or its parts, or a verify pass against a rebuild. A count is
-/// exact, so a new build needs a reason here.
-const OWN_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-electrical/src/pages/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
-    ("crates/ecad-electrical/src/reports/kept/mod.rs", 2, "The report models build their strips and strip pages on first show"),
-    ("crates/ecad-electrical/src/reports/kept/update.rs", 2, "The verify pass compares the strips with a rebuild and the strip pages follow"),
+/// Every own-module file (not `Views` or a view note) with a direct build, and why: each must be a
+/// view rebuilding itself or its parts, or a verify pass against a rebuild.
+const OWN_BUILDS: &[(&str, &str)] = &[
+    ("crates/ecad-electrical/src/pages/front.rs", "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
+    ("crates/ecad-electrical/src/reports/kept/mod.rs", "The report models build their strips and strip pages on first show"),
+    ("crates/ecad-electrical/src/reports/kept/update.rs", "The verify pass compares the strips with a rebuild and the strip pages follow"),
     (
         "crates/ecad-electrical/src/terminal_strips/pages.rs",
-        1,
         "StripPages builds itself again after every commit (no update map, decision 7: 0.5 ms on large)",
     ),
-    ("crates/ecad-electrical/src/references/devices/index.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
+    ("crates/ecad-electrical/src/references/devices/index.rs", "RefIndex::verify compares the kept index with a rebuild"),
 ];
 
-/// `Views` and every feature's view module: all of them count as view notes for [`KEY_PREFIXES`].
+/// `Views` and every feature's view module: the view notes, where no key is routed by prefix.
 const DERIVED: &[&str] = &[
     "crates/ecad-electrical/src/views/",
     "crates/ecad-electrical/src/checks/view.rs",
@@ -107,37 +108,6 @@ fn is_view_module(rel: &str) -> bool {
 
 /// The crate whose matches over effects and view notes are checked.
 const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
-
-/// Files whose view notes (all of `derived/`, and every fn taking an `Effect` elsewhere) route a
-/// property key by its prefix (`.starts_with("`), how many, and why.
-/// A key's meaning belongs in data (its definition), not its spelling; the count only falls.
-const KEY_PREFIXES: &[(&str, usize, &str)] = &[];
-
-/// Every place a view widens a change to "everything" (an unclassified or project-wide change
-/// rebuilds all it keeps), per file, how many, and why (no "unknown means everything" path; each wide case is a named kind of change with its reason, and
-/// the count only falls). The cable references' `Touch::All` arms each carry
-/// their reason in the code.
-const WIDE: &[(&str, usize, &str)] = &[
-    (
-        "crates/ecad-electrical/src/references/cables.rs",
-        8,
-        "Touch::All arms: frame or standard, a wire made again, other style catalogues, a standard, settings, the project record, an aid; each carries its reason",
-    ),
-    (
-        "crates/ecad-electrical/src/references/devices/watch.rs",
-        11,
-        "project-wide table, style, sheet and frame settings reach every device or arrow page; the cable scope's all_cables",
-    ),
-    ("crates/ecad-electrical/src/pages/front.rs", 5, "the cover's uses: wire style, potentials and standards reach every wire"),
-    ("crates/ecad-electrical/src/title_blocks/mod.rs", 3, "a frame or standard change moves every page's grid"),
-    ("crates/ecad-electrical/src/devices/view.rs", 1, "a wide frame change marks the pages list"),
-    ("crates/ecad-electrical/src/checks/mod.rs", 1, "wiring scheme, digits or potentials renumber every wire's check"),
-];
-
-/// Whether `line` widens a view's work to everything (see [`WIDE`]).
-fn is_wide(line: &str) -> bool {
-    ["Touch::All(\"", ".wide = true", "arrows_wide = true", "all_cables = true", "self.all = true", "Reach::Wide"].iter().any(|p| line.contains(p))
-}
 
 /// Whether `rel` is a view's own module, or `Views`.
 fn is_own_module(rel: &str) -> bool {
@@ -293,18 +263,18 @@ fn effect_routing(rel: &str, text: &str, whole: bool) -> (Vec<String>, Vec<Strin
     (wild, prefix)
 }
 
-/// The problems of one exact-count table: every file found or listed, against its count.
-fn ratchet(table: &[(&str, usize, &str)], mut found: Vec<(String, Vec<String>)>, what: &str, fix: &str) -> Vec<String> {
-    for (p, _, _) in table {
-        if !found.iter().any(|(f, _)| f == p) {
-            found.push(((*p).to_string(), Vec::new()));
+/// The problems of one list of files with reasons: every file found that is not listed (with its
+/// places), and every listed file that was not found.
+fn listed(table: &[(&str, &str)], found: Vec<(String, Vec<String>)>, what: &str, fix: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (p, why) in table {
+        if !found.iter().any(|(f, sites)| f == p && !sites.is_empty()) {
+            out.push(format!("{p}: listed ({why}) but has no {what} left; remove the entry"));
         }
     }
-    let mut out = Vec::new();
     for (rel, sites) in found {
-        let allowed = table.iter().find(|(p, _, _)| *p == rel).map_or(0, |(_, n, _)| *n);
-        if let Some(p) = super::ratchet_problem(&rel, sites.len(), allowed, what, fix) {
-            out.push(p);
+        if !sites.is_empty() && !table.iter().any(|(p, _)| *p == rel) {
+            out.push(format!("{rel}: {} {what}; {fix}", sites.len()));
             out.extend(sites.into_iter().map(|f| format!("    {f}")));
         }
     }
@@ -317,7 +287,6 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut found = Vec::new();
     let mut fresh_found: Vec<(String, Vec<String>)> = Vec::new();
     let (mut own_found, mut wild_found, mut prefix_found) = (Vec::new(), Vec::new(), Vec::new());
-    let mut wide_found: Vec<(String, Vec<String>)> = Vec::new();
     for (_, class, dir, _) in super::classed_packages(meta)? {
         let (false, Some(dir)) = (matches!(class, super::Class::Exempt), dir) else {
             continue;
@@ -335,10 +304,6 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
                 if !prefix.is_empty() {
                     prefix_found.push((rel.clone(), prefix));
                 }
-                let wide = lines_where(&rel, &text, is_wide);
-                if !wide.is_empty() {
-                    wide_found.push((rel.clone(), wide));
-                }
             }
             if is_own_module(&rel) {
                 let own = places(&rel, &text);
@@ -352,36 +317,23 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             }
             found.extend(places(&rel, &text));
             let f = fresh(&rel, &text);
-            if !f.is_empty() || FRESH_BUILDS.iter().any(|(p, _, _)| *p == rel) {
+            if !f.is_empty() {
                 fresh_found.push((rel, f));
             }
         }
     }
     let mut out = Vec::new();
-    let what = "direct builds of a derived view outside Views";
-    if let Some(p) = super::ratchet_problem("views", found.len(), ALLOWED, what, "read the view through the project's Views") {
-        out.push(p);
-        if found.len() > ALLOWED {
-            out.extend(found.into_iter().map(|f| format!("    {f}")));
-        }
+    if !found.is_empty() {
+        out.push(format!("views: {} direct builds of a derived view outside Views; read the view through the project's Views", found.len()));
+        out.extend(found.into_iter().map(|f| format!("    {f}")));
     }
     let what = "from-scratch view calls (`.detached(`, `.report_models(`, `Detached::build(`)";
-    for (rel, sites) in fresh_found {
-        let allowed = FRESH_BUILDS.iter().find(|(p, _, _)| *p == rel).map_or(0, |(_, n, _)| *n);
-        let fix = "read the kept view, or add the file to FRESH_BUILDS with its reason";
-        if let Some(p) = super::ratchet_problem(&rel, sites.len(), allowed, what, fix) {
-            out.push(p);
-            out.extend(sites.into_iter().map(|f| format!("    {f}")));
-        }
-    }
+    out.extend(listed(FRESH_BUILDS, fresh_found, what, "read the kept view, or add the file to FRESH_BUILDS with its reason"));
     let fix = "rebuild only the view itself, or verify; else add it to OWN_BUILDS with its reason";
-    out.extend(ratchet(OWN_BUILDS, own_found, "view builds inside a view's own module", fix));
-    let fix = "name every effect the match passes over";
-    out.extend(ratchet(&[], wild_found, "wildcard arms in matches over effects", fix));
+    out.extend(listed(OWN_BUILDS, own_found, "view builds inside a view's own module", fix));
+    out.extend(listed(&[], wild_found, "wildcard arms in matches over effects", "name every effect the match passes over"));
     let fix = "say what the key is in its definition and route on that";
-    out.extend(ratchet(KEY_PREFIXES, prefix_found, "property keys routed by prefix in a view's note", fix));
-    let fix = "decide what the change reaches and name it; a project-wide case needs its reason in WIDE";
-    out.extend(ratchet(WIDE, wide_found, "places a view widens a change to everything", fix));
+    out.extend(listed(&[], prefix_found, "property keys routed by prefix in a view's note", fix));
     Ok(out)
 }
 
@@ -419,9 +371,9 @@ mod tests {
     }
 
     #[test]
-    fn every_fresh_build_has_a_reason() {
-        for (path, n, why) in FRESH_BUILDS.iter().chain(OWN_BUILDS).chain(KEY_PREFIXES).chain(WIDE) {
-            assert!(*n > 0 && !why.trim().is_empty(), "{path}");
+    fn every_listed_file_has_a_reason() {
+        for (path, why) in FRESH_BUILDS.iter().chain(OWN_BUILDS).chain(PROBES) {
+            assert!(!why.trim().is_empty(), "{path}");
         }
     }
 
@@ -452,20 +404,6 @@ mod tests {
         for (text, whole, wild, prefix) in rows {
             let (w, p) = effect_routing("f.rs", text, *whole);
             assert_eq!((w.len(), p.len()), (*wild, *prefix), "{text}");
-        }
-    }
-
-    #[test]
-    fn wide_fallbacks_are_found() {
-        let rows: &[(&str, bool)] = &[
-            ("Effect::Aid { .. } => return Touch::All(\"an aid\"),", true),
-            ("self.wide = true;", true),
-            ("self.all_cables = true;", true),
-            ("matches!(touched, Touch::All(_))", false),
-            ("let wide = false;", false),
-        ];
-        for (text, want) in rows {
-            assert_eq!(is_wide(text), *want, "{text}");
         }
     }
 
