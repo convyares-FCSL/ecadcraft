@@ -347,7 +347,15 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
         ),
         (
             f.ids.fresh(),
-            DeviceType::Sensor(Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: v(24.0, Current::Dc), contacts: contacts() }),
+            DeviceType::Sensor(Sensor {
+                sensing: Sensing::Proximity,
+                output: Output::Pnp,
+                supply: v(24.0, Current::Dc),
+                contacts: contacts(),
+                output_current: None,
+                no_load_current: None,
+                ip_rating: None,
+            }),
         ),
         (
             f.ids.fresh(),

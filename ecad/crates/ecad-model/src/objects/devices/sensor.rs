@@ -6,8 +6,13 @@
 //!   thermocouple's signal). The symbol declares both.
 //! - A PNP or NPN sensor is powered: its rating is its supply voltage (`24 V DC`). A contact or a
 //!   thermocouple has no supply and no typed rating; text typed on it is the device's note.
-//! - [`Sensor::is_unrated`] says when the supply is empty; [`fmt::Display`] writes it (`24 V DC`),
-//!   which is what the drawing and every command's answer show.
+//! - From its datasheet: the current its output may drive (a PNP, NPN or contact output: what the
+//!   PLC input or relay it feeds is checked against), a powered sensor's no-load current (`10 mA`:
+//!   the supply budget for a field of sensors) and its degree of protection ([`IpCode`]: washdown
+//!   or outdoor needs IP67 or above). The rating line shows them only when the group's template
+//!   adds them.
+//! - [`Sensor::is_unrated`] says when the supply is empty; [`fmt::Display`] writes the set fields
+//!   (`24 V DC`), which is what the drawing and every command's answer show.
 //!
 //! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader) and the
 //! check that a sensor's output suits its PLC channel.
@@ -20,11 +25,16 @@ use serde::{Deserialize, Serialize};
 use crate::DeviceType;
 use crate::objects::devices::RatingField;
 
-use crate::geometry::units::RatedVoltage;
+use crate::geometry::units::{Amps, MilliAmps, RatedVoltage};
 use crate::naming::words::Word;
+use crate::objects::devices::IpCode;
 
 /// The largest supply voltage of a sensor, in volts.
 pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
+/// The largest current a sensor's output may drive, in amperes.
+const MAX_OUTPUT_AMPS: f64 = 100.0;
+/// The largest no-load current of a sensor, in milliamperes.
+const MAX_NO_LOAD_MILLIAMPS: f64 = 10_000.0;
 
 /// A sensor: what it senses, what it outputs and its supply.
 ///
@@ -50,6 +60,15 @@ pub struct Sensor {
     /// The contacts a switching sensor offers (limit, pressure and float switches).
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
+    /// The current its output may drive, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_current: Option<Amps>,
+    /// A powered sensor's no-load current, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_load_current: Option<MilliAmps>,
+    /// Its degree of protection, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_rating: Option<IpCode>,
 }
 
 crate::word_enum! {
@@ -110,7 +129,15 @@ impl Sensing {
 impl Sensor {
     /// A sensor sensing `sensing` with `output`, with nothing rated.
     pub fn empty(sensing: Sensing, output: Output) -> Sensor {
-        Sensor { sensing, output, supply: None, contacts: crate::objects::devices::ContactSet::default() }
+        Sensor {
+            sensing,
+            output,
+            supply: None,
+            contacts: crate::objects::devices::ContactSet::default(),
+            output_current: None,
+            no_load_current: None,
+            ip_rating: None,
+        }
     }
 
     /// The same sensor with nothing rated (its contacts kept).
@@ -123,18 +150,23 @@ impl Sensor {
         self.supply.is_none()
     }
 
-    /// Why it is not well formed, if it is not: a supply on an unpowered sensor, or a value out of
-    /// range or not a number.
+    /// Why it is not well formed, if it is not: a supply or a no-load current on an unpowered
+    /// sensor, or a value out of range or not a number.
     pub fn problem(&self) -> Option<String> {
         if let Some(p) = self.contacts.problem() {
             return Some(p);
         }
-        let v = self.supply?;
-        if !self.output.is_powered() {
+        let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
+        if !self.output.is_powered() && (self.supply.is_some() || self.no_load_current.is_some()) {
             return Some(format!("a {} with a {} output has no supply", self.sensing.label(), self.output.word()));
         }
-        let ok = v.volts.0.is_finite() && v.volts.0 > 0.0 && v.volts.0 <= MAX_SUPPLY_VOLTS;
-        (!ok).then(|| format!("the supply of a {} is out of range", self.sensing.label()))
+        if self.output_current.is_some_and(|a| !within(a.0, MAX_OUTPUT_AMPS))
+            || self.no_load_current.is_some_and(|m| !within(m.0, MAX_NO_LOAD_MILLIAMPS))
+        {
+            return Some(format!("a rating value of a {} is out of range", self.sensing.label()));
+        }
+        let v = self.supply?;
+        (!within(v.volts.0, MAX_SUPPLY_VOLTS)).then(|| format!("the supply of a {} is out of range", self.sensing.label()))
     }
 }
 
@@ -144,5 +176,10 @@ impl fmt::Display for Sensor {
     }
 }
 
-/// A sensor's rating fields.
-pub(super) static FIELDS: &[RatingField] = &[rating_field!("supply", "Supply voltage", Plate, RatedVoltage, DeviceType::Sensor(s) => s.supply)];
+/// A sensor's rating fields: its supply from the nameplate, the rest from its datasheet.
+pub(super) static FIELDS: &[RatingField] = &[
+    rating_field!("supply", "Supply voltage", Plate, RatedVoltage, DeviceType::Sensor(s) => s.supply),
+    rating_field!("output_current", "Output current", Datasheet, Amps, DeviceType::Sensor(s) => s.output_current),
+    rating_field!("no_load_current", "No-load current", Datasheet, MilliAmps, DeviceType::Sensor(s) => s.no_load_current),
+    rating_field!("ip_rating", "IP rating", Datasheet, IpCode, DeviceType::Sensor(s) => s.ip_rating),
+];

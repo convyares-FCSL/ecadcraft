@@ -216,7 +216,8 @@ shows only when a template adds it. A device with no typed rating draws its note
 | `indicator` | `colour`, `signal`, `voltage`, `power` |
 
 Datasheet fields a template may add: an indicator's `current` and `ip_rating`; a power supply's
-`input_current` and `efficiency` (shown `eff 90 %`).
+`input_current` and `efficiency` (shown `eff 90 %`); a sensor's `output_current`,
+`no_load_current` and `ip_rating`.
 
 `setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
 every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;
@@ -305,13 +306,20 @@ rating is its supply voltage, a typed field.
   bare `24` (which unit?). `10-30 V DC` and other text that does not read are kept as the note.
 - A contact or a thermocouple has no supply: what you type on it (`250 V AC 5 A`, `K`) is kept as
   the note, and an unrated one gets no **no-rating** warning. An unrated proximity switch does.
+- From its datasheet, set one field at a time: the **Output current** its output may drive
+  (`rating.output_current`, `0.2 A`; a contact's too), a powered sensor's **No-load current**
+  (`rating.no_load_current`, `10 mA`: refused on a contact or a thermocouple, which draw none)
+  and its **IP rating** (`rating.ip_rating`, `IP67`). They show in the Device tab after the
+  supply, on the rating line only when `rating.template.sensor` adds them, and in a BOM rating
+  column.
 
 To try it: place a proximity switch (Checks shows "no rating"), type `24VDC` as its rating (shown
 as `24 V DC`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a float switch:
 no warning, and `250 V AC 5 A` is kept as typed. Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
-(`…sensor…`), and `rating::reader::sensor` in ecad-electrical (automated, not tried by hand).
+(`…sensor…`), and `rating::reader::sensor` in ecad-electrical; the datasheet fields through
+`devices::rating_fields` in ecad-engine (automated, not tried by hand).
 
 ### Lane B, step 3: a strip's fuse position ratings are typed
 
