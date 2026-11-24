@@ -122,6 +122,20 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     h.run_steps(3);
     let v = h.state().dialogs.release.as_ref().and_then(|d| d.view.clone()).expect("the view landed");
     assert_eq!((v.rev.as_str(), v.issued.as_deref()), ("A", Some("A")));
+    // The pending revision's rows are sorted and grouped on the pool too; only the shown rows
+    // are kept, each with its place in words.
+    h.state_mut().dialogs.release = None;
+    h.state_mut().open_release(None);
+    assert!(h.state().dialogs.release.as_ref().is_some_and(|d| d.view.is_none() && d.error.is_none()), "Running… first");
+    assert!(h.state_mut().release_build.wait(std::time::Duration::from_secs(60)), "the build ends");
+    h.run_steps(3);
+    let v = h.state().dialogs.release.as_ref().and_then(|d| d.view.clone()).expect("the view landed");
+    assert!(v.issued.is_none() && v.rev != "A", "{}", v.rev);
+    for (g, total, rows) in &v.groups {
+        // The dialog shows 5 rows a group.
+        assert!(rows.len() <= (*total).min(5), "{g:?}");
+        assert!(rows.iter().all(|(c, place)| c.page.is_none() || !place.is_empty()), "the shown rows are worded");
+    }
     h.state_mut().warm.set_inline(true);
     let _ = std::fs::remove_dir_all(&dir);
 }

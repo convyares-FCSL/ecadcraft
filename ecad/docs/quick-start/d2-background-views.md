@@ -9,7 +9,11 @@ What changed, and how to try it by clicking. (Written by the agent; nothing here
   result; the build starts again for the new state. The Release dialog for an issued revision
   (Revisions ▸ Release on an issued row) reads that revision's state on the spot (about 50 ms on
   the large project) and works out its report models and check on the pool, saying "Running…"
-  meanwhile (about 4.5 s on the large project, formerly a freeze of that length).
+  meanwhile (about 2 s on the large project, formerly a freeze of that length). The pending
+  revision's dialog (Publish ▸ Release) sorts and groups its rows on the pool too, keeps only the
+  rows it shows (5 a group, with the group's count) and works out their places in words when the
+  result lands: on the large project (about 30 000 rows) the UI thread spends about 11 ms, formerly
+  a 2.7 s freeze. After an edit the dialog keeps the last view until the new one lands.
 - **Edits that touched a device, a layer, a definition or a link are fast again on big projects.**
   The references view now says exactly which cables an edit can reach (`cables_touched_by` returns
   `Touch::Cables` or `Touch::All(reason)`); a device, strip or connector name reaches none.

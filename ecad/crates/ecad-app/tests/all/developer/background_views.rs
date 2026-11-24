@@ -81,5 +81,14 @@ fn the_pre_release_check_waits_for_its_first_build_and_drops_a_result_a_commit_o
     let mut t = new_app();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
     t.open_release(None);
-    drive(&mut t, &mut |t| t.refresh_release(), &|t| t.dialogs.release.as_ref().is_some_and(|d| d.view.is_none()));
+    // Once the kept lists are applied, the dialog's own view (its rows sorted and grouped) is
+    // built on the pool too: a refresh that started it waits for it and takes it.
+    let mut refresh = |t: &mut App| {
+        t.refresh_release();
+        if t.release_build.running() > 0 {
+            assert!(t.release_build.wait(WAIT));
+            t.refresh_release();
+        }
+    };
+    drive(&mut t, &mut refresh, &|t| t.dialogs.release.as_ref().is_some_and(|d| d.view.is_none()));
 }

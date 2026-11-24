@@ -419,7 +419,7 @@ PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.
         ));
         // The PLC drawing rows.
         out.push_str(&format!(
-            "PLC look on {} {}: plcframe {:.2} ms (< 8), plcframe upd {:.2} ms (< 4), plcstrip {:.2} ms (< 10), plcrack {:.2} ms (< 30)
+            "PLC look on {} {}: plcframe {:.2} ms (< 8), plcframe upd {:.2} ms (< 4, accepted ~8), plcstrip {:.2} ms (< 10), plcrack {:.2} ms (< 30)
 ",
             r.tier, r.variant, t.plcframe_ms, t.plcframeupd_ms, t.plcstrip_ms, t.plcrack_ms
         ));
@@ -432,9 +432,9 @@ PLC on {} {} ({} racks, {} cards): plcbuild {:.2} ms (target < 30), slotmove {:.
     for r in rows {
         let Some(o) = &r.release else { continue };
         out.push_str(&format!(
-            "\nRelease check on {} {} ({} check rows): prerelease {:.2} ms, orphanupd {:.2} ms (orphan work {:.3} ms), \
+            "\nRelease check on {} {} ({} check rows): prerelease {:.2} ms ({:.2} ms on the UI thread), orphanupd {:.2} ms (orphan work {:.3} ms), \
              prerelrev {:.2} ms (off the UI thread; {:.2} ms on it)\n",
-            r.tier, r.variant, o.rows, o.prerelease_ms, o.orphanupd_ms, o.orphanwork_ms, o.prerelrev_ms, o.prerelrevui_ms
+            r.tier, r.variant, o.rows, o.prerelease_ms, o.prereleaseui_ms, o.orphanupd_ms, o.orphanwork_ms, o.prerelrev_ms, o.prerelrevui_ms
         ));
     }
     if let Some(p) = print {
@@ -614,7 +614,7 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                     "work": o.work, "devices": o.devices, "inside": o.inside,
                 })),
                 "release": r.release.as_ref().map(|o| json!({
-                    "prerelease_ms": o.prerelease_ms, "orphanupd_ms": o.orphanupd_ms, "orphanwork_ms": o.orphanwork_ms, "prerelrev_ms": o.prerelrev_ms, "prerelrevui_ms": o.prerelrevui_ms,
+                    "prerelease_ms": o.prerelease_ms, "prereleaseui_ms": o.prereleaseui_ms, "orphanupd_ms": o.orphanupd_ms, "orphanwork_ms": o.orphanwork_ms, "prerelrev_ms": o.prerelrev_ms, "prerelrevui_ms": o.prerelrevui_ms,
                     "rows": o.rows,
                 })),
                 "strips": r.strips.as_ref().map(|t| json!({

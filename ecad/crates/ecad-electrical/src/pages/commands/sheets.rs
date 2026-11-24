@@ -1034,11 +1034,16 @@ pub fn plan_issue(
     if head == 0 {
         return Err(CmdError::refused("Nothing to issue yet."));
     }
-    let base = ledger.preview(before)?;
+    // A preview copies the whole document; with no ops it is the document itself (the Release
+    // dialog plans the issue with none, on every view of a large project).
+    let preview = |ops: &[Op]| -> Result<std::borrow::Cow<'_, Document>, CmdError> {
+        Ok(if ops.is_empty() { std::borrow::Cow::Borrowed(ledger.document()) } else { std::borrow::Cow::Owned(ledger.preview(ops)?) })
+    };
+    let base = preview(before)?;
     let mut ops = revision_ops(&base, f)?;
     // The pending row as it will be after those writes.
     let all: Vec<Op> = before.iter().chain(&ops).cloned().collect();
-    let doc = ledger.preview(&all)?;
+    let doc = preview(&all)?;
     let n = revisions::pending_n(&doc);
     let row = revisions::pending(&doc).unwrap_or_default();
     if revisions::NEEDED.iter().any(|f| row.get(f).trim().is_empty()) {

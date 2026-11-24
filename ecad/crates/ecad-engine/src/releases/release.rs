@@ -30,10 +30,10 @@
 //! Excluded: approval and signatures, transmittals, zip or upload, DWG/DXF and XLSX outputs, a
 //! folder per branch, page-by-page diffs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use ecad_model::{Document, Op};
+use ecad_model::{Document, Op, PageId};
 use ecad_store::disk::{lexical, same_or_below, same_path};
 use serde_json::{Map, Value, json};
 
@@ -703,16 +703,8 @@ pub(crate) fn now_utc() -> Option<String> {
 /// Why the pending revision cannot be released now, with the way out; `None`
 /// when it can.
 pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
-    if p.path.is_none() {
-        return Some(SAVE_FIRST.into());
-    }
-    if let Some(why) = read_only(p) {
-        return Some(format!(
-            "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
-        ));
-    }
-    if let Err(e) = crate::pages::commands::sheets::plan_issue(p, &[]) {
-        return Some(e.to_string());
+    if let Some(r) = refusal_before_errors(p) {
+        return Some(r);
     }
     // With Finalise chosen, the errors that count are those of the finalised state, the rows the
     // folder ships: checked by `release_pending` once it has them.
@@ -723,6 +715,19 @@ pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Op
         return Some(r);
     }
     numbering_seam::refusal(p, rows, params)
+}
+
+/// The refusals [`pending_refusal`] tries before the errors: never saved, read-only, the branch.
+fn refusal_before_errors(p: &Project) -> Option<String> {
+    if p.path.is_none() {
+        return Some(SAVE_FIRST.into());
+    }
+    if let Some(why) = read_only(p) {
+        return Some(format!(
+            "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
+        ));
+    }
+    crate::pages::commands::sheets::plan_issue(p, &[]).err().map(|e| e.to_string())
 }
 
 /// Why the project cannot be written, if it cannot.
@@ -756,8 +761,11 @@ pub struct View {
     pub rev: String,
     /// `None` for the pending revision; the issued rev written again otherwise.
     pub issued: Option<String>,
-    /// Each group with rows, in [`Group::ALL`] order: its rows and their `where` texts.
-    pub groups: Vec<(Group, Vec<(Check, String)>)>,
+    /// Each group with rows, in [`Group::ALL`] order: the group, how many rows it has, and its
+    /// first rows (as many as the view shows) in book order, each with its `where` text. Only the
+    /// shown rows are kept and worded: a large project has tens of thousands of rows, and placing
+    /// each in words is most of the time.
+    pub groups: Vec<(Group, usize, Vec<(Check, String)>)>,
     pub errors: usize,
     pub warnings: usize,
     pub info: usize,
@@ -776,29 +784,45 @@ pub struct View {
     pub since: Option<String>,
     /// The pending revision's fields (`revisions::FIELDS` order).
     pub fields: [String; 6],
-    /// The rows as JSON (`checks`' form), for `prerelease`.
+    /// The shown rows as JSON (`checks`' form), for `prerelease`.
     json_rows: Vec<Vec<Value>>,
+    /// The pending revision's refusal still to be worked out from the rows ([`View::finish`]).
+    pending: Option<PendingRefusal>,
+    /// The kept rows' words are still to be built ([`View::finish`]).
+    unfinished: bool,
 }
 
-/// The groups, counts and JSON rows of `rows` (checks of state `doc`), `limit` JSON rows a group.
-fn fill_rows(doc: &Document, rows: &[Check], limit: usize, v: &mut View) {
+/// The pending revision's refusals around the errors one: that one reads the rows, which are
+/// sorted off the UI thread, so it is worked out last.
+#[derive(Debug, Clone, Default)]
+struct PendingRefusal {
+    before: Option<String>,
+    after: Option<String>,
+    /// Errors refuse (the tick is off).
+    errors_refuse: bool,
+}
+
+/// The groups and counts of `rows` (in book order), keeping `limit` rows a group, not yet worded.
+fn fill_rows(rows: &[Check], limit: usize, v: &mut View) {
     let groups = grouped(rows);
     for g in Group::ALL {
         if let Some(r) = groups.get(&g) {
-            v.groups.push((g, r.iter().map(|c| ((*c).clone(), c.locator(doc))).collect()));
-            v.json_rows.push(r.iter().take(limit).map(|c| c.to_json(doc)).collect());
+            let rows = r.iter().take(limit).map(|c| ((*c).clone(), String::new())).collect();
+            v.groups.push((g, r.len(), rows));
         }
     }
     (v.errors, v.warnings, v.info) = counts(rows);
     v.provisional = ecad_electrical::releases::release::provisional_count(rows);
+    v.unfinished = true;
 }
 
 /// The [`View`] of `rev` (an issued rev, or `None` for the pending one); `accept` as the dialog's
-/// tick. Read under the project lock, it returns what builds the view: the pending revision reads
-/// the kept Checks and report models (no rescan) and is done; an issued revision's state is read
-/// and copied, and the returned build works out its report models and check from that copy
-/// (seconds on a large project, so the app runs it on the background pool). The build reads no
-/// project.
+/// tick; `limit` rows kept and worded a group. Read under the project lock, it returns what builds
+/// the view, which reads no project, so the app runs it on the background pool:
+/// - the pending revision: the kept Checks' and report models' rows are copied (no rescan); the
+///   build sorts and groups them, and [`View::finish`] words the kept rows from the same state;
+/// - an issued revision: its state is read and copied; the build works out its report models and
+///   check from that copy (seconds on a large project) and words its rows from it.
 ///
 /// # Errors
 /// An issued `rev` that is not on this line, or its state could not be read.
@@ -806,6 +830,7 @@ pub fn prepare(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -
     let issued_rev = rev.map(|r| issued_row(p, r)).transpose()?;
     let mut v = View::default();
     let mut then = None;
+    let mut pending = None;
     match &issued_rev {
         Some(row) => {
             then = Some(crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?.2);
@@ -815,13 +840,17 @@ pub fn prepare(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -
             v.folder = row.released.as_deref().and_then(|x| from_recorded(p, x)).or_else(|| default_folder(p, &v.rev));
         }
         None => {
-            let rows = check_rows(p);
-            let params = if accept { json!({"accept": "errors"}) } else { json!({}) };
-            v.refusal = pending_refusal(p, &rows, &params);
+            p.reports();
+            p.checks();
+            let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
+            rows.extend(p.kept_reports().map(ReportModels::checks).unwrap_or_default());
+            let order: HashMap<PageId, usize> = p.ledger.document().page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
+            pending = Some((rows, order));
+            v.pending =
+                Some(PendingRefusal { before: refusal_before_errors(p), after: numbering_seam::refusal(p, &[], &json!({})), errors_refuse: !accept });
             v.warning = nothing_changed(p);
             v.since = unchanged_since(p);
             let doc = p.ledger.document();
-            fill_rows(doc, &rows, limit, &mut v);
             v.rev = revisions::pending_rev(doc);
             v.fields = revisions::pending(doc).map(|r| r.six()).unwrap_or_default();
             if v.fields[0].is_empty() {
@@ -848,19 +877,46 @@ pub fn prepare(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -
         if let Some(then) = then {
             let detached = ecad_electrical::views::Detached::build(inputs, &then);
             let rows = crate::checks::all_with(&then, tolerance, detached.reports());
-            fill_rows(&then, &rows, limit, &mut v);
+            fill_rows(&rows, limit, &mut v);
+            v = v.finish(&then);
+        } else if let Some((mut rows, order)) = pending {
+            rows.sort_by_key(|c| c.order_key(&order));
+            fill_rows(&rows, limit, &mut v);
         }
         v
     })
 }
 
 impl View {
+    /// Word the kept rows and settle the pending revision's refusal, reading `doc`: the state
+    /// [`prepare`] read (the app takes a pool result only while the project has not moved on). An
+    /// issued revision's view comes finished, and this does nothing to it.
+    #[must_use]
+    pub fn finish(mut self, doc: &Document) -> View {
+        if !self.unfinished {
+            return self;
+        }
+        self.unfinished = false;
+        self.json_rows = self.groups.iter().map(|(_, _, rows)| rows.iter().map(|(c, _)| c.to_json(doc)).collect()).collect();
+        for (_, _, rows) in &mut self.groups {
+            for (c, place) in rows {
+                *place = c.locator(doc);
+            }
+        }
+        if let Some(r) = self.pending.take() {
+            let first = self.groups.iter().find(|(g, _, _)| *g == Group::Errors).and_then(|(_, _, rows)| rows.first()).map(|(c, _)| c);
+            let errors = if r.errors_refuse { ecad_electrical::releases::release::errors_refusal_of(doc, self.errors, first) } else { None };
+            self.refusal = r.before.or(errors).or(r.after);
+        }
+        self
+    }
+
     /// `prerelease`'s JSON.
     pub fn json(&self) -> Value {
         let mut v = json!({
             "rev": self.rev, "state": if self.issued.is_some() { "issued" } else { "pending" },
-            "groups": self.groups.iter().zip(&self.json_rows).map(|((g, r), rows)| json!({
-                "group": g.id(), "words": g.words(), "count": r.len(), "rows": rows})).collect::<Vec<_>>(),
+            "groups": self.groups.iter().zip(&self.json_rows).map(|((g, count, _), rows)| json!({
+                "group": g.id(), "words": g.words(), "count": count, "rows": rows})).collect::<Vec<_>>(),
             "errors": self.errors, "warnings": self.warnings, "info": self.info,
             "provisional": self.provisional,
             "folder": self.folder.as_deref().map(shown),
@@ -901,7 +957,8 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
     let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)?.map_or(DEFAULT_ROWS, |n| n as usize).clamp(1, MAX_ROWS);
     let want = opt_typed(params, "rev", "text such as \"A\"", |v| v.as_str().map(str::to_string))?;
     let accept = params.get("accept").and_then(Value::as_str) == Some("errors");
-    Ok(prepare(p, want.as_deref(), accept, limit)?().json())
+    let v = prepare(p, want.as_deref(), accept, limit)?();
+    Ok(v.finish(p.ledger.document()).json())
 }
 
 /// What the Release dialog's view of the pending revision depends on:

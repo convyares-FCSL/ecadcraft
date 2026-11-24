@@ -3,7 +3,9 @@
 //!
 //! # Semantics
 //! - **prerelease**: the Release dialog's check of the pending revision (`prerelease {}`), the
-//!   kept lists warm. Target ≤ 100 ms on large.
+//!   kept lists warm. Target ≤ 100 ms on large. **prereleaseui**: of the dialog's view of it, what
+//!   stays on the UI thread under the project lock (the rows copied, `release::prepare`, and the
+//!   shown rows worded, `View::finish`); the sort and grouping run on the background pool.
 //! - **orphanupd**: one cable reference end erased (its partner becomes an orphan), committed with
 //!   the Checks kept, then undone; **orphanwork**: of that, the orphan rows re-derived for the
 //!   cable (`checks::cables::reference_checks`), the only work the release check adds to the edit (target: under 1 ms
@@ -32,11 +34,14 @@ use serde_json::json;
 use crate::measure::{median, path_text, remove};
 
 const OPEN_SEED: u64 = 0x0027_0000;
+/// Rows a group the Release dialog shows (and words).
+const PENDING_SHOWN: usize = 5;
 
 /// What the release timings measured on a tier, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MeasuredRelease {
     pub prerelease_ms: f64,
+    pub prereleaseui_ms: f64,
     pub orphanupd_ms: f64,
     pub orphanwork_ms: f64,
     pub prerelrev_ms: f64,
@@ -97,6 +102,19 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
             out.rows = v["groups"].as_array().map_or(0, |g| g.iter().filter_map(|x| x["count"].as_u64()).sum::<u64>() as usize);
         }
         out.prerelease_ms = median(&mut pre);
+        let mut pre_ui = Vec::new();
+        for _ in 0..runs {
+            pre_ui.push(project.configure(&mut s, |p| {
+                let t = Instant::now();
+                let Ok(build) = ecad_engine::releases::release::prepare(p, None, false, PENDING_SHOWN) else { return f64::NAN };
+                let took = ms(t);
+                let v = build();
+                let t = Instant::now();
+                std::hint::black_box(v.finish(p.ledger.document()));
+                took + ms(t)
+            })?);
+        }
+        out.prereleaseui_ms = median(&mut pre_ui);
         // A reference end of a continued cable, on its page.
         let found = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();

@@ -225,11 +225,11 @@ impl ReleaseDialog {
                 prim::note(ui, NOTHING_OPEN, Tone::Ok);
             }
             egui::ScrollArea::vertical().id_salt("ecad.release.rows").max_height(ROWS_HEIGHT).show(ui, |ui| {
-                for (g, rows) in &v.groups {
+                for (g, total, rows) in &v.groups {
                     let glyph = rows.first().map_or(Severity::Info, |(c, _)| c.severity());
                     let mut open = !self.collapsed.contains(g);
                     let title = format!("{} {}", severity_glyph(glyph), g.words());
-                    let count = rows.len().to_string();
+                    let count = total.to_string();
                     let name = format!("ecad.release.group.{}", g.id());
                     if prim::SectionHeader::new(&mut open, &title).summary(&count).name(&name).show(ui).clicked() {
                         if open {
@@ -261,9 +261,7 @@ impl ReleaseDialog {
                             out = Some(Out::GoTo(Box::new(c.clone())));
                         }
                     }
-                    if rows.len() > ROWS_SHOWN
-                        && ui.add(Button::new(&format!("Show all {} in Checks", rows.len())).kind(Kind::Quiet).small()).clicked()
-                    {
+                    if *total > ROWS_SHOWN && ui.add(Button::new(&format!("Show all {total} in Checks")).kind(Kind::Quiet).small()).clicked() {
                         out = Some(Out::ShowChecks);
                     }
                 }

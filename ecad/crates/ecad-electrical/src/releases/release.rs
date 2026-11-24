@@ -179,10 +179,14 @@ pub fn finalising(params: &Value) -> bool {
 /// The refusal for errors in `rows` without `accept: "errors"`, placed in `doc`.
 pub fn errors_refusal(doc: &Document, rows: &[Check]) -> Option<String> {
     let (errors, _, _) = counts(rows);
+    errors_refusal_of(doc, errors, rows.iter().find(|c| c.severity() == Severity::Error))
+}
+
+/// [`errors_refusal`] from the error count and the first error row in book order.
+pub fn errors_refusal_of(doc: &Document, errors: usize, first: Option<&Check>) -> Option<String> {
     if errors == 0 {
         return None;
     }
-    let first = rows.iter().find(|c| c.severity() == Severity::Error);
     let what = first.map(|c| format!(" ({}, {})", c.kind.words(), c.locator(doc))).unwrap_or_default();
     let open = if errors == 1 { "1 error is open".to_string() } else { format!("{errors} errors are open") };
     let it = if errors == 1 { "it" } else { "them" };
