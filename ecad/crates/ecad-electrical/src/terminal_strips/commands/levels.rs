@@ -306,6 +306,7 @@ pub(crate) fn plan_toposition(
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
             accepts: Default::default(),
+            protective_earth: false,
         },
     });
     ops.push(Op::AddConnectionPoint {
@@ -315,6 +316,7 @@ pub(crate) fn plan_toposition(
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
             accepts: Default::default(),
+            protective_earth: false,
         },
     });
     // The device's points by key: `1` → in, `2` → out.

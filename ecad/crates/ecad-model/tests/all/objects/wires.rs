@@ -152,8 +152,13 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
     use ecad_model::{ConnectionPoint, Device, DeviceId, Page, PageId};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t =
-        |label: &str| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
+    let t = |label: &str| ConnectionPoint {
+        owner: d.into(),
+        label: Some(label.into()),
+        key: Some(label.parse().unwrap()),
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     l.commit(
         Author::User,
         "setup",
@@ -561,7 +566,7 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
         assert!(e.is_err(), "{hostile} must not read: {e:?}");
     }
     assert!(read(&format!(r#"{base},"accepts":0}}"#)).unwrap_err().contains("1 to 64"));
-    let t = ConnectionPoint { owner: ecad_model::DeviceId(1).into(), label: None, key: None, accepts: Accepts::TWO };
+    let t = ConnectionPoint { owner: ecad_model::DeviceId(1).into(), label: None, key: None, accepts: Accepts::TWO, protective_earth: false };
     assert!(!serde_json::to_string(&t).unwrap().contains("accepts"), "two is left out");
 }
 
@@ -569,7 +574,13 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
 fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
     use ecad_model::{Accepts, ConnectionPoint, Device, DeviceId, Page, PageId};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str, accepts| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
+    let t = |label: &str, accepts| ConnectionPoint {
+        owner: d.into(),
+        label: Some(label.into()),
+        key: Some(label.parse().unwrap()),
+        accepts,
+        protective_earth: false,
+    };
     l.commit(
         Author::User,
         "setup",

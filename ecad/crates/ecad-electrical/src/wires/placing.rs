@@ -37,7 +37,13 @@ pub fn plan_tagless(
     ops.push(Op::CreateAid { id, aid });
     ops.push(Op::AddConnectionPoint {
         id: connection_point,
-        connection_point: ConnectionPoint { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+        connection_point: ConnectionPoint {
+            owner: id.into(),
+            label: None,
+            key: Some(ecad_model::PointKey::def("1")),
+            accepts: Default::default(),
+            protective_earth: false,
+        },
     });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {

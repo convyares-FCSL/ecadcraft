@@ -180,7 +180,13 @@ shown back from them:
   How many ways it has is stored from its symbol when it is placed (`fusebank8`: 8) and its outputs
   are read from there, also once the bank symbol is erased. A bank whose symbol now draws another
   number of ways is a Checks row, **symbol-mismatch** (`-F1 has 6 ways; its symbol draws 4`); the
-  stored ways are never changed by themselves. Tests: `devices::fuse_bank` in ecad-engine.
+  stored ways are never changed by themselves. Every fuse bank stores its ways: a file without
+  them does not open. Tests: `devices::fuse_bank` in ecad-engine.
+- A connection point stores whether it is a **protective earth** point, set from its symbol when it
+  is placed: every point of a PE terminal (`terminal_block_pe`) and a terminal keyed `PE` (a
+  motor's, a power supply's). Strips, hover and the rules read the point, never the symbol again.
+  A point whose symbol now says otherwise is a **symbol-mismatch** row (`-M1:U1 is a protective
+  earth point; its symbol draws none`). Tests: `devices::protective_earth` in ecad-engine.
 - Other groups (power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.

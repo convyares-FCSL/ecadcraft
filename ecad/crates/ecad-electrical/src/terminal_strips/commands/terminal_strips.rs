@@ -48,17 +48,24 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 
 /// Plan one terminal symbol of `strip` labelled `label` at `at` (a join: its own connection
 /// point keyed by its label, as joins are). `first`: a new strip's first symbol, which shows
-/// the definition's own point. Every symbol's role is its starter's part.
+/// the definition's own point. Every symbol's role is its starter's part; `pe`: its point is a
+/// protective earth point (a PE terminal block).
 #[allow(clippy::too_many_arguments)]
 fn terminal_block_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: ecad_model::Role,
-    ops: &mut Vec<Op>,
+    pe: bool, ops: &mut Vec<Op>,
 ) -> ConnectionPointId {
     let (t, item, rep): (ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
     ops.push(Op::AddConnectionPoint {
         id: t,
-        connection_point: ConnectionPoint { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
+        connection_point: ConnectionPoint {
+            owner: strip.into(),
+            label: Some(label.to_string()),
+            key: Some(key),
+            accepts: Default::default(),
+            protective_earth: pe,
+        },
     });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
@@ -189,6 +196,7 @@ pub(crate) fn plan_fence_typed(
                 m.at,
                 first_main,
                 ecad_model::Role::Part(starter.part_role()),
+                starter.key == crate::terminal_strips::PE_KEY,
                 &mut ops,
             );
             first_main = false;
@@ -233,6 +241,7 @@ pub fn level_symbol(
                 label: Some(position.to_string()),
                 key: Some(td.key.clone()),
                 accepts: td.accepts,
+                protective_earth: crate::symbols::seeds_pe(d, &td.key),
             },
         });
         cps.insert(t, td.at);

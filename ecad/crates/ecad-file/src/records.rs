@@ -224,6 +224,9 @@ pub struct ConnectionPoint {
     /// How many conductors it accepts, 1 to 64; left out at two.
     #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
     pub accepts: m::Accepts,
+    /// Whether it is a protective earth point; left out when not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub protective_earth: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -1093,7 +1096,7 @@ impl From<&m::Device> for Device {
 
 impl From<&m::ConnectionPoint> for ConnectionPoint {
     fn from(t: &m::ConnectionPoint) -> Self {
-        ConnectionPoint { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
+        ConnectionPoint { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts, protective_earth: t.protective_earth }
     }
 }
 
@@ -1486,7 +1489,7 @@ impl From<Device> for m::Device {
 
 impl From<ConnectionPoint> for m::ConnectionPoint {
     fn from(t: ConnectionPoint) -> Self {
-        m::ConnectionPoint { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts }
+        m::ConnectionPoint { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts, protective_earth: t.protective_earth }
     }
 }
 

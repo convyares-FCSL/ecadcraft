@@ -65,21 +65,17 @@ pub(crate) fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<
 }
 
 /// The output labels of device `c` when it is a fuse bank (its typed `device_type`): `1` to its
-/// stored ways; empty for any other device. A bank with no stored ways (saved before they were
-/// stored) takes them from its head symbol.
+/// stored ways; empty for any other device.
 pub(crate) fn bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     use ecad_model::objects::devices::{DeviceType, Protection};
-    let Some(DeviceType::Protection(Protection::FuseBank(bank))) = doc.devices().get(&c).map(|d| &d.device_type) else {
-        return Vec::new();
-    };
-    if let Some(w) = bank.ways {
-        return (1..=w).map(|i| i.to_string()).collect();
+    match doc.devices().get(&c).map(|d| &d.device_type) {
+        Some(DeviceType::Protection(Protection::FuseBank(bank))) => (1..=bank.ways).map(|i| i.to_string()).collect(),
+        _ => Vec::new(),
     }
-    head_bank_labels(doc, c)
 }
 
 /// The output labels device `c`'s fuse bank head symbol draws, in its order; empty when its head
-/// is not a fuse bank symbol.
+/// is not a fuse bank symbol (only to check it against the stored ways).
 fn head_bank_labels(doc: &Document, c: ecad_model::DeviceId) -> Vec<String> {
     doc.representations_of(Subject::Device(c))
         .filter(|(_, r)| reps::rep_type(doc, r) == ecad_model::PartRole::Head)
@@ -110,9 +106,26 @@ pub(crate) fn bank_ways_mismatch(doc: &Document, c: ecad_model::DeviceId) -> Opt
     let Some(DeviceType::Protection(Protection::FuseBank(bank))) = doc.devices().get(&c).map(|d| &d.device_type) else {
         return None;
     };
-    let stored = bank.ways?;
+    let stored = bank.ways;
     let drawn = head_bank_labels(doc, c).len();
     (drawn > 0 && drawn != usize::from(stored)).then_some((stored, drawn))
+}
+
+/// The points of device `c` whose stored protective earth differs from what the symbol showing
+/// them now says ([`crate::symbols::seeds_pe`]): each point and its stored value.
+pub(crate) fn pe_mismatches(doc: &Document, c: ecad_model::DeviceId) -> Vec<(ecad_model::ConnectionPointId, bool)> {
+    let mut out = Vec::new();
+    for (_, r) in doc.representations_of(Subject::Device(c)) {
+        let Some((def, _)) = crate::devices::tags::rep_definition(doc, r) else { continue };
+        for (t, at) in crate::devices::merge::shown_connection_points(doc, c, r) {
+            let Some(td) = def.connection_points.iter().find(|td| td.at.near(at, 1e-9)) else { continue };
+            let Some(stored) = doc.connection_points().get(&t).map(|p| p.protective_earth) else { continue };
+            if stored != crate::symbols::seeds_pe(def, &td.key) && !out.iter().any(|(x, _)| *x == t) {
+                out.push((t, stored));
+            }
+        }
+    }
+    out
 }
 
 pub(crate) fn is_fuse_bank(s: &Starter) -> bool {

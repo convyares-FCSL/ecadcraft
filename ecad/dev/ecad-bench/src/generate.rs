@@ -400,7 +400,13 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 let t: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: t,
-                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint {
+                        owner: c.into(),
+                        label: td.label.clone(),
+                        key: Some(td.key.clone()),
+                        accepts: td.accepts,
+                        protective_earth: false,
+                    },
                 });
                 keyed.push(t);
             }

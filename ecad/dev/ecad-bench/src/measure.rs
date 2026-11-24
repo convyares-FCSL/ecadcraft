@@ -389,7 +389,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddConnectionPoint {
             id: hub,
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
     ];
     let mut leaves = Vec::with_capacity(wires);
@@ -398,7 +398,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
         let (t, c, k): (ConnectionPointId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
         ops.push(Op::AddConnectionPoint {
             id: t,
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
         let wire = Wire { potential: ecad_model::naming::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };

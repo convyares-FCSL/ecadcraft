@@ -29,15 +29,15 @@ fn ledger() -> Ledger {
             Op::CreateDevice { id: c, device: Device::default() },
             Op::AddConnectionPoint {
                 id: ConnectionPointId(4),
-                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
             },
             Op::AddConnectionPoint {
                 id: ConnectionPointId(5),
-                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
             },
             Op::AddConnectionPoint {
                 id: ConnectionPointId(10),
-                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: c.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
             },
             Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), ConnectionPointId(4), ConnectionPointId(10)) },
             Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
@@ -140,7 +140,13 @@ fn a_failed_revert_on_a_damaged_file_opens_at_the_last_good_transaction() {
         Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
         Op::RemoveConnectionPoint {
             id: ConnectionPointId(5),
-            connection_point: ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint {
+                owner: DeviceId(3).into(),
+                label: None,
+                key: None,
+                accepts: Default::default(),
+                protective_earth: false,
+            },
         },
     ];
     log.push(bad);
@@ -263,9 +269,10 @@ fn with_applied_runs_the_full_check_in_verify_mode() {
     // A terminal written straight into the map: the full check passes, the index check does
     // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
     let mut l = ledger();
-    l.doc
-        .connection_points
-        .insert(ConnectionPointId(50), ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
+    l.doc.connection_points.insert(
+        ConnectionPointId(50),
+        ConnectionPoint { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
+    );
     let doc = json(l.document());
     let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
     match r {

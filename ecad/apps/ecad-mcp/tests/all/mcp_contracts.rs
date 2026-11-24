@@ -117,6 +117,7 @@ impl Client {
                                 label: Some((i + 1).to_string()),
                                 key: None,
                                 accepts: Default::default(),
+                                protective_earth: false,
                             },
                         });
                         cps.insert(t, Pt::new(*x, *y));

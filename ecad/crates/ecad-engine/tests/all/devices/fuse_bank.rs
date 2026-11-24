@@ -9,7 +9,7 @@ use crate::common::{H, id};
 
 fn ways(h: &mut H, c: DeviceId) -> Option<u8> {
     match &h.doc().devices()[&c].device_type {
-        DeviceType::Protection(Protection::FuseBank(b)) => b.ways,
+        DeviceType::Protection(Protection::FuseBank(b)) => Some(b.ways),
         _ => None,
     }
 }
@@ -33,7 +33,7 @@ fn a_fuse_bank_stores_its_ways_and_a_symbol_that_disagrees_is_a_check() {
     let before = h.doc().devices()[&f].clone();
     let mut after = before.clone();
     let DeviceType::Protection(Protection::FuseBank(b)) = &mut after.device_type else { panic!("not a fuse bank") };
-    b.ways = Some(6);
+    b.ways = 6;
     h.cfg(|p| p.ledger.commit(ecad_model::Author::User, "hand-made", vec![ecad_model::Op::ModifyDevice { id: f, before, after }])).unwrap();
     let rows = mismatches(&mut h);
     assert_eq!(rows.len(), 1, "{rows:?}");

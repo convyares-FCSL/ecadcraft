@@ -639,7 +639,13 @@ pub fn symbol_ops(
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
         ops.push(Op::AddConnectionPoint {
             id: t,
-            connection_point: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts },
+            connection_point: ConnectionPoint {
+                owner: c.into(),
+                label: Some(name.clone()),
+                key: Some(key),
+                accepts: td.accepts,
+                protective_earth: false,
+            },
         });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), connection_point: t, local: td.at });

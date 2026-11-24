@@ -95,7 +95,13 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     let dir = TempDir::new("072d-accepts");
     let mut f = fixture();
     let (d, t): (DeviceId, ConnectionPointId) = (f.ids.fresh(), f.ids.fresh());
-    let bar = ConnectionPoint { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
+    let bar = ConnectionPoint {
+        owner: d.into(),
+        label: Some("PE".into()),
+        key: Some("PE".parse().unwrap()),
+        accepts: Accepts::new(12).unwrap(),
+        protective_earth: false,
+    };
     f.ledger
         .commit(
             Author::User,

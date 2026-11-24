@@ -230,7 +230,13 @@ mod tests {
         let (k, a, b, c): (DeviceId, ConnectionPointId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-        let point = |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+        let point = |label: &str| ConnectionPoint {
+            owner: k.into(),
+            label: Some(label.into()),
+            key: None,
+            accepts: Default::default(),
+            protective_earth: false,
+        };
         let number = |n: &str| ecad_model::naming::text::Text::new(n).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1"), ecad_model::naming::tag::TagState::Automatic) },

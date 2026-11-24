@@ -246,6 +246,7 @@ pub fn plan_cell(
                 label: Some(pin.clone()),
                 key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
                 accepts: Default::default(),
+                protective_earth: false,
             },
         });
         cps.insert(t, at);

@@ -191,7 +191,13 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Conne
             let t: ConnectionPointId = p.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                connection_point: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: device.into(),
+                    label: Some((i + 1).to_string()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
             });
             cps.insert(t, Pt::new(*x, *y));
             out.push(t);

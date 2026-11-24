@@ -139,7 +139,13 @@ pub fn plan_place(
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    connection_point: ConnectionPoint {
+                        owner: c.into(),
+                        label: td.label.clone(),
+                        key: Some(td.key.clone()),
+                        accepts: td.accepts,
+                        protective_earth: crate::symbols::seeds_pe(def, &td.key),
+                    },
                 });
                 connection_points.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
@@ -182,6 +188,7 @@ pub fn plan_place(
                         label: Some(label.clone()),
                         key: Some(PointKey::Def(label.clone())),
                         accepts: td.accepts,
+                        protective_earth: crate::symbols::seeds_pe(def, &td.key),
                     },
                 });
                 cps.insert(tid, td.at);

@@ -357,6 +357,10 @@ pub struct ConnectionPoint {
     /// How many conductors it accepts, copied from its definition terminal when it is made.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
     pub accepts: Accepts,
+    /// Whether it is a protective earth (PE) point: set from its symbol when it is made (a PE
+    /// terminal block, a definition terminal keyed `PE`), never re-read from the symbol.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub protective_earth: bool,
 }
 
 impl ConnectionPoint {

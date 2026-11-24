@@ -74,6 +74,16 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
         let which = format!("{} has {stored} ways; its symbol draws {drawn}", crate::devices::tags::tag_words(doc, c));
         out.push(Check { kind: Kind::SymbolMismatch, page, at, object: Object::Device(c), which, fix: None });
     }
+    for (t, stored) in crate::symbols::rules::pe_mismatches(doc, c) {
+        let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        let point = format!("{}:{}", crate::devices::tags::tag_words(doc, c), crate::devices::merge::label_of(doc, t));
+        let which = if stored {
+            format!("{point} is a protective earth point; its symbol draws none")
+        } else {
+            format!("{point} is not a protective earth point; its symbol draws one")
+        };
+        out.push(Check { kind: Kind::SymbolMismatch, page, at, object: Object::Device(c), which, fix: None });
+    }
     // A connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // A table the user placed over the title block stays there.

@@ -206,7 +206,13 @@ fn device(d: &mut Document, c: u128, tag_text: &str, connection_points: &[u128])
     for t in connection_points {
         d.connection_points.insert(
             ConnectionPointId(*t),
-            ConnectionPoint { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() },
+            ConnectionPoint {
+                owner: DeviceId(c).into(),
+                label: Some(format!("A{t}")),
+                key: None,
+                accepts: Default::default(),
+                protective_earth: false,
+            },
         );
     }
 }

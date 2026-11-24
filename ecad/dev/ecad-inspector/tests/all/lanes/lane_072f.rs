@@ -58,7 +58,13 @@ fn a_points_owner_is_shown_raw_and_readable() {
     let (a, d): (AidId, DeviceId) = (ids.fresh(), ids.fresh());
     let (ta, td): (ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh());
     let arrow = Aid::Continuation { name: Some(ContinuationName::new("24V").unwrap()), caption: None };
-    let point = |owner: ecad_model::ConnectionPointOwner| ConnectionPoint { owner, label: None, key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner| ConnectionPoint {
+        owner,
+        label: None,
+        key: None,
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     l.commit(
         Author::User,
         "points",
@@ -111,7 +117,7 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
             Op::CreateAid { id: a, aid: named("24V") },
             Op::AddConnectionPoint {
                 id: t,
-                connection_point: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
             },
             Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
             Op::LinkRepresentation {

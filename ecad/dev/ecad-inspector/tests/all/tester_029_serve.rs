@@ -446,11 +446,23 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             },
             Op::AddConnectionPoint {
                 id: a,
-                connection_point: ConnectionPoint { owner: k.into(), label: Some(X.into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: k.into(),
+                    label: Some(X.into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
             },
             Op::AddConnectionPoint {
                 id: b,
-                connection_point: ConnectionPoint { owner: k.into(), label: Some("2".into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: k.into(),
+                    label: Some("2".into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
             },
             Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {

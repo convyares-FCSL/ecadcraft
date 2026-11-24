@@ -88,11 +88,23 @@ fn every_op_ledger() -> Ledger {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::ConnectionPointId = ids.fresh();
-    let point_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let point_v = ConnectionPoint {
+        owner: comp.into(),
+        label: Some("1".into()),
+        key: Some("1".parse().unwrap()),
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) =
         (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| ConnectionPoint {
+        owner: comp.into(),
+        label: Some(label.into()),
+        key: None,
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item: ecad_model::ItemId = ids.fresh();
@@ -212,7 +224,7 @@ fn every_op_ledger() -> Ledger {
         },
         Op::AddConnectionPoint {
             id: ids.fresh(),
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
         Op::RemoveConnectionPoint { id: term, connection_point: point_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },

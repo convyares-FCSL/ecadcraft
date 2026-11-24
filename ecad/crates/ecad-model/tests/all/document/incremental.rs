@@ -133,10 +133,22 @@ pub(crate) fn base() -> Base {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let point_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let point_v = ConnectionPoint {
+        owner: comp.into(),
+        label: Some("1".into()),
+        key: Some("1".parse().unwrap()),
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| ConnectionPoint {
+        owner: comp.into(),
+        label: Some(label.into()),
+        key: None,
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -295,7 +307,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         },
         Op::AddConnectionPoint {
             id: b.ids.fresh(),
-            connection_point: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
         Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
@@ -566,7 +578,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddConnectionPoint {
             id: term,
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::ModifyCable {
@@ -939,7 +951,13 @@ impl Gen {
                 let component = if self.rng.chance(85) { self.rng.pick_key(doc.devices()).unwrap_or_else(|| self.comp()) } else { self.comp() };
                 Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
-                    connection_point: ConnectionPoint { owner: component.into(), label: None, key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint {
+                        owner: component.into(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                        protective_earth: false,
+                    },
                 }
             }
             18 => match self.rng.pick_key(doc.connection_points()) {
@@ -950,11 +968,18 @@ impl Gen {
                         label: None,
                         key: None,
                         accepts: Default::default(),
+                        protective_earth: false,
                     }),
                 },
                 None => Op::AddConnectionPoint {
                     id: fresh_in!(self, terms),
-                    connection_point: ConnectionPoint { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
+                    connection_point: ConnectionPoint {
+                        owner: self.comp().into(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                        protective_earth: false,
+                    },
                 },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },

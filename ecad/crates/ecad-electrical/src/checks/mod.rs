@@ -185,7 +185,8 @@ check_kinds! {
     NoRating = "no-rating", Warning, "Device with no rating";
     /// A motor whose rated voltage or frequency differs from the supply typed on its potentials.
     SupplyMismatch = "supply-mismatch", Warning, "Rating differs from its supply";
-    /// A device whose stored data differs from what its symbol draws (a fuse bank's ways).
+    /// A device whose stored data differs from what its symbol draws (a fuse bank's ways, a
+    /// protective earth point).
     SymbolMismatch = "symbol-mismatch", Warning, "Data differs from its symbol";
     /// A strip with more terminals drawn than it offers.
     TooManyTerminalBlocks = "too-many-terminal-blocks", Warning, "More terminals than the strip offers";

@@ -50,11 +50,11 @@ fn every_op_inverts_to_the_previous_state() {
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddConnectionPoint {
             id: term,
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
         Op::AddConnectionPoint {
             id: term2,
-            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
         },
         Op::LinkRepresentation {
             id: rep,
@@ -144,7 +144,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     let (term, term2) = (f.ids.fresh(), f.ids.fresh());
     let cond = f.ids.fresh();
     let cable = f.ids.fresh();
-    let t = ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() };
+    let t = ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false };
     let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
     let with_member = ecad_model::Cable { cores: vec![Core::on_wire(cond, None)], ..Default::default() };
     f.ledger

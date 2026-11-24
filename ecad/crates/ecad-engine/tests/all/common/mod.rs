@@ -375,6 +375,7 @@ impl H {
                         label: Some((i + 1).to_string()),
                         key: None,
                         accepts: Default::default(),
+                        protective_earth: false,
                     },
                 });
                 cps.insert(t, Pt::new(*x, *y));
@@ -509,7 +510,13 @@ pub fn wired_lines(
         for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                connection_point: ConnectionPoint { owner: device.into(), label: Some(k.to_string()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: device.into(),
+                    label: Some(k.to_string()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
             });
             cps.insert(t, at);
         }

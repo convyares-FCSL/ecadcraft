@@ -55,6 +55,7 @@ impl P {
                     label: Some(k.to_string()),
                     key: Some(k.to_string().parse().unwrap()),
                     accepts: Default::default(),
+                    protective_earth: false,
                 },
             });
             ts.push(t);
@@ -68,7 +69,7 @@ impl P {
         let a: AidId = self.ids.fresh();
         let t: ConnectionPointId = self.ids.fresh();
         let aid = Aid::Continuation { name: Some(ContinuationName::new(name).unwrap()), caption: None };
-        let connection_point = ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default() };
+        let connection_point = ConnectionPoint { owner: a.into(), label: None, key: None, accepts: Default::default(), protective_earth: false };
         self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddConnectionPoint { id: t, connection_point }]);
         (a, t)
     }

@@ -128,7 +128,13 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         device_type: DeviceType::PlcModule(PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)))),
         ..Device::default()
     };
-    let point = |k: &str| ConnectionPoint { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
+    let point = |k: &str| ConnectionPoint {
+        owner: c.into(),
+        label: Some("1".into()),
+        key: Some(k.parse().unwrap()),
+        accepts: Default::default(),
+        protective_earth: false,
+    };
     l.commit(
         Author::User,
         "card",

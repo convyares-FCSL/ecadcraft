@@ -1458,6 +1458,7 @@ fn r12_hand_made_connectors_never_panic() {
                 label: label.map(str::to_string),
                 key: key.and_then(|k| k.parse().ok()),
                 accepts: Default::default(),
+                protective_earth: false,
             },
         });
     }
@@ -1469,6 +1470,7 @@ fn r12_hand_made_connectors_never_panic() {
                 label: Some(format!("{}", 100 + i)),
                 key: Some(".p".parse().unwrap()),
                 accepts: Default::default(),
+                protective_earth: false,
             },
         });
     }

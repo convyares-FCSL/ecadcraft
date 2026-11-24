@@ -496,6 +496,16 @@ impl std::fmt::Display for StarterKey {
     }
 }
 
+/// The definition key of a device's protective earth terminal (a motor's, a power supply's).
+pub(crate) const PE_POINT: &str = "PE";
+
+/// Whether a connection point made from terminal `key` of definition `def` is a protective earth
+/// point: every point of the PE terminal block, and a terminal keyed `PE`. Read from the
+/// symbol once, when the point is made; afterwards the point's own `protective_earth` is the data.
+pub fn seeds_pe(def: &ecad_model::Definition, key: &ecad_model::PointKey) -> bool {
+    key.as_def() == Some(PE_POINT) || catalogue::of_definition(def).is_some_and(|s| s.key == StarterKey::TerminalBlockPe)
+}
+
 /// One starter symbol in the catalogue.
 #[derive(Debug, Clone)]
 pub struct Starter {
@@ -635,8 +645,7 @@ impl Starter {
                 P::Fuse
             };
             // A fuse bank stores its ways, from its symbol, when it is placed.
-            if let (P::FuseBank, Some(n)) = (kind, self.key.fuse_bank_ways()) {
-                let ways = u8::try_from(n).ok();
+            if let (P::FuseBank, Some(ways)) = (kind, self.key.fuse_bank_ways().and_then(|n| u8::try_from(n).ok())) {
                 return DeviceType::Protection(ecad_model::objects::devices::Protection::FuseBank(ecad_model::objects::devices::FuseBank {
                     ways,
                     ..Default::default()

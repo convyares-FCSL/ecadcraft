@@ -105,7 +105,13 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
             let t: ConnectionPointId = ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                connection_point: ConnectionPoint { owner: c.into(), label: Some((*p).into()), key: None, accepts: Default::default() },
+                connection_point: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some((*p).into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
             });
             ts.push(t);
         }

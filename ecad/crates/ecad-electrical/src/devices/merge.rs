@@ -79,7 +79,13 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         let nt: ConnectionPointId = ids.fresh();
         ops.push(Op::AddConnectionPoint {
             id: nt,
-            connection_point: ConnectionPoint { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+            connection_point: ConnectionPoint {
+                owner: into.into(),
+                label,
+                key: Some(PointKey::Def(name)),
+                accepts: Default::default(),
+                protective_earth: doc.connection_points().get(&old).is_some_and(|p| p.protective_earth),
+            },
         });
         map.insert(old, nt);
         nt

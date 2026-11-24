@@ -26,7 +26,8 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         potential: Text::new("24V").ok(),
         ..Wire::new(net, conductor, a, b)
     };
-    let point = |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
+    let point =
+        |label: &str| ConnectionPoint { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default(), protective_earth: false };
     l.commit(
         Author::User,
         "wire",
@@ -163,6 +164,7 @@ fn core_positions_are_shown_raw_and_readable() {
                     label: Some("1".into()),
                     key: Some("1".parse().unwrap()),
                     accepts: Default::default(),
+                    protective_earth: false,
                 },
             },
             Op::AddRoute { id: r, route: loose },
@@ -223,6 +225,7 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
         label: Some("PE".into()),
         key: Some("PE".parse().unwrap()),
         accepts: ecad_model::Accepts::new(12).unwrap(),
+        protective_earth: false,
     };
     l.commit(
         Author::User,
@@ -363,6 +366,7 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
         label: Some(label.into()),
         key: None,
         accepts: Default::default(),
+        protective_earth: false,
     };
     // Design 072 §6.2: a continuation is a drawing aid.
     let arrow = || ecad_model::Aid::Continuation { name: Some(ecad_model::objects::aid::ContinuationName::new("A1").unwrap()), caption: None };

@@ -258,7 +258,10 @@ pub fn plan_addconnectionpoint(
     let mut after = r.clone();
     after.connection_points.insert(t, at);
     let ops = vec![
-        Op::AddConnectionPoint { id: t, connection_point: ConnectionPoint { owner: c.into(), label, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint {
+            id: t,
+            connection_point: ConnectionPoint { owner: c.into(), label, key: None, accepts: Default::default(), protective_earth: false },
+        },
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))

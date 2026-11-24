@@ -134,11 +134,14 @@ impl Protection {
         *self == self.unrated()
     }
 
-    /// The same device with nothing rated: its kind and contacts kept.
+    /// The same device with nothing rated: its kind, contacts and a fuse bank's ways kept.
     pub fn unrated(&self) -> Protection {
         let mut out = self.kind().empty();
         if let (Some(c), Some(to)) = (self.contacts(), out.contacts_mut()) {
             *to = c.clone();
+        }
+        if let (Protection::FuseBank(b), Protection::FuseBank(o)) = (self, &mut out) {
+            o.ways = b.ways;
         }
         out
     }
@@ -189,13 +192,11 @@ impl Protection {
             Protection::Rcd(r) => amps(r.rated_current) || ma(r.residual) || ka(r.conditional_short_circuit) || volts(r.rated_voltage),
             Protection::Rcbo(r) => amps(r.rated_current) || ka(r.breaking) || ma(r.residual) || volts(r.rated_voltage),
             Protection::FuseBank(b) => {
-                if b.outputs.keys().any(|n| *n == 0 || *n > MAX_OUTPUT) || b.ways.is_some_and(|w| w == 0 || w > MAX_OUTPUT) {
+                if b.ways == 0 || b.ways > MAX_OUTPUT || b.outputs.keys().any(|n| *n == 0 || *n > MAX_OUTPUT) {
                     return Some(format!("a fuse bank's outputs are 1 to {MAX_OUTPUT}"));
                 }
-                if let Some(w) = b.ways
-                    && b.outputs.keys().any(|n| *n > w)
-                {
-                    return Some(format!("a fuse bank of {w} ways rates an output past its last"));
+                if b.outputs.keys().any(|n| *n > b.ways) {
+                    return Some(format!("a fuse bank of {} ways rates an output past its last", b.ways));
                 }
                 b.outputs.values().any(fuse)
             }
@@ -383,14 +384,14 @@ impl fmt::Display for Rcbo {
 /// (`1`…).
 ///
 /// # Semantics
-/// - `ways` is taken from the head symbol when the bank is placed and read from here afterwards;
-///   a head symbol that draws another count is a Checks row, never a silent change. `None` (a
-///   project saved before it was stored) falls back to the head symbol.
+/// - `ways` (1 to 99) is taken from the head symbol when the bank is placed and read from here
+///   afterwards; a head symbol that draws another count is a Checks row, never a silent change.
+///   Every fuse bank stores it: a file without it does not read. `0` is only the placeholder of
+///   [`ProtectionKind::empty`], never well formed.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FuseBank {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ways: Option<u8>,
+    pub ways: u8,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub outputs: BTreeMap<u8, Fuse>,
 }

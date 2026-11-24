@@ -3,8 +3,9 @@
 //!
 //! # Semantics
 //! - A **strip** is a device whose definition is a terminal starter (`connection_point`, `terminal_block_pe`);
-//!   each terminal is one symbol with one connection point. Its
-//!   **type** is its symbol's: `terminal_block_pe` is PE, anything else feed-through.
+//!   each terminal is one symbol with one connection point. A terminal is PE when its connection
+//!   point is a protective earth point (stored on the point, set from `terminal_block_pe` when it
+//!   is placed); anything else is feed-through.
 //! - The strip's **offer** is its `connection_points` property, `12` or `12+2PE`: feed-through positions,
 //!   then PE positions (`12+2PE` is 14 positions; a
 //!   BOM of 12 feed-through and 2 PE). Positions with no drawn terminal are **spare**.
@@ -80,9 +81,11 @@ pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::objects::dev
     doc.devices().get(&c)?.device_type.as_strip()
 }
 
-/// Whether representation `r` draws a PE terminal.
+/// Whether representation `r` draws a PE terminal: a point it shows is a protective earth point
+/// (the point's own data, set from its symbol when it was made).
 pub(crate) fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool {
-    crate::devices::tags::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
+    let ecad_model::Subject::Device(c) = r.subject else { return false };
+    crate::devices::merge::shown_connection_points(doc, c, r).iter().any(|(t, _)| doc.connection_points().get(t).is_some_and(|p| p.protective_earth))
 }
 
 /// A strip's drawn terminal blocks: (its connection point, its representation, whether PE).

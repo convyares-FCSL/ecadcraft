@@ -73,6 +73,7 @@ impl Fixture {
                     label: Some("A1".into()),
                     key: Some("A1".parse().unwrap()),
                     accepts: Default::default(),
+                    protective_earth: false,
                 },
             },
             Op::AddConnectionPoint {
@@ -82,6 +83,7 @@ impl Fixture {
                     label: Some("A2".into()),
                     key: Some("A2".parse().unwrap()),
                     accepts: Default::default(),
+                    protective_earth: false,
                 },
             },
             Op::AddItem {
@@ -338,7 +340,7 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
         ),
         (
             f.ids.fresh(),
-            DeviceType::Protection(Protection::FuseBank(FuseBank { ways: None, outputs: [(1, fuse()), (2, fuse())].into_iter().collect() })),
+            DeviceType::Protection(Protection::FuseBank(FuseBank { ways: 2, outputs: [(1, fuse()), (2, fuse())].into_iter().collect() })),
         ),
         (
             f.ids.fresh(),

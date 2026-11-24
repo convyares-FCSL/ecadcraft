@@ -285,7 +285,13 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
             let t: ConnectionPointId = p.ids.fresh();
             ops.push(Op::AddConnectionPoint {
                 id: t,
-                connection_point: ConnectionPoint { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                connection_point: ConnectionPoint {
+                    owner: c.into(),
+                    label: td.label.clone(),
+                    key: Some(td.key.clone()),
+                    accepts: td.accepts,
+                    protective_earth: ecad_electrical::symbols::seeds_pe(&def, &td.key),
+                },
             });
             connection_points.push(json!({"key": td.key, "connection_point": t.hex()}));
         }
