@@ -558,11 +558,11 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
     for shown in [plan_page, cables_page, t.page] {
         t.h.activate(shown);
         let sorts = t.h.p(|p| p.kept_reports().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
-        let builds = t.h.p(|p| p.frame_builds);
+        let builds = t.h.p(|p| p.counts.frame_builds);
         t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": format!("K-{}", shown.hex())})).unwrap();
         t.h.activate(shown);
         assert_eq!(t.h.p(|p| p.kept_reports().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
-        assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
+        assert_eq!(t.h.p(|p| p.counts.frame_builds), builds, "no frame rebuilt");
     }
     let (kept, doc) = t.h.cfg(|p| (p.reports().clone(), p.ledger.document().clone()));
     let built = ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK);

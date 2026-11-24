@@ -28,11 +28,12 @@ pub(crate) fn terminal_blocks(s: &Session) -> R<Box<dyn Interactive>> {
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
         let strip = p
+            .defaults
             .last_placed
             .map(|l| l.device)
             .filter(|c| terminal_strips::strip_of(doc, *c).is_some())
             .map(|c| (c, ecad_electrical::devices::tags::tag_words(doc, c)));
-        let ty = p.last_placed.and_then(|l| tt::of_starter(l.starter?)).map(|(t, _)| t);
+        let ty = p.defaults.last_placed.and_then(|l| tt::of_starter(l.starter?)).map(|(t, _)| t);
         Ok((strip, ty))
     })
     .unwrap_or((None, None));

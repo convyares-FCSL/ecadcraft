@@ -108,7 +108,7 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
         page,
         &base_drawing(),
         &HandleMap::default(),
-        &p.views,
+        &p.display.views,
         p.tolerance,
         crate::project::engine_views().report_models(doc).as_ref(),
     )

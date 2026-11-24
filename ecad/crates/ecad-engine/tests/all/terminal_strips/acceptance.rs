@@ -117,7 +117,7 @@ fn k_save_reopen_and_replay_keep_every_new_property() {
     assert!(pe_row.as_ref().is_some_and(|r| r.to_string().contains("PE-2.5")), "PE BOM row carries part_number.pe: {pe_row:?}");
     assert_eq!(before_reads["cablecores"]["source"], "cores");
 
-    t.h.cfg(|p| p.persistence = Persistence::File);
+    t.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("Plan -X01 (Rev A).ecad").display().to_string();
     t.h.run("saveas", json!({"path": path})).unwrap();
     let bytes = std::fs::read(&path).unwrap();
@@ -327,9 +327,9 @@ fn generated_pages_and_strips_follow_only_related_edits() {
     });
     let plan_page: PageId = id(&t.h.run("newpage", json!({"generated": "terminal_blocks"})).unwrap(), "page");
     t.h.activate(plan_page);
-    let builds = t.h.p(|p| p.frame_builds);
+    let builds = t.h.p(|p| p.counts.frame_builds);
     t.h.activate(plan_page);
-    assert_eq!(t.h.p(|p| p.frame_builds), builds, "control: showing the page again with no edit rebuilds nothing");
+    assert_eq!(t.h.p(|p| p.counts.frame_builds), builds, "control: showing the page again with no edit rebuilds nothing");
     let x2_plan = |h: &mut H| h.run("stripplan", json!({"strip": x2.hex()})).unwrap();
     let x2_before = x2_plan(&mut t.h);
 
@@ -338,14 +338,14 @@ fn generated_pages_and_strips_follow_only_related_edits() {
     let strips_work = t.h.p(|p| p.kept_reports().unwrap().strips.last_work);
     assert_eq!(strips_work, 0, "an unrelated edit recomputes no strip");
     t.h.activate(plan_page);
-    let unrelated = t.h.p(|p| p.frame_builds) - builds;
+    let unrelated = t.h.p(|p| p.counts.frame_builds) - builds;
 
     // Related: the strip's offer adds spare rows on the page.
-    let builds = t.h.p(|p| p.frame_builds);
+    let builds = t.h.p(|p| p.counts.frame_builds);
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": "10"})).unwrap();
     assert_eq!(t.h.p(|p| p.kept_reports().unwrap().strips.last_work), 1, "only -X01");
     t.h.activate(plan_page);
-    assert_eq!(t.h.p(|p| p.frame_builds) - builds, 1, "the plan page rebuilds once for its strip");
+    assert_eq!(t.h.p(|p| p.counts.frame_builds) - builds, 1, "the plan page rebuilds once for its strip");
 
     // A cable change: only -X01 (on -W01's wires), never -X02.
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4G"})).unwrap();
@@ -367,16 +367,16 @@ fn the_cable_schedule_page_follows_only_cable_edits() {
     });
     let page: PageId = id(&t.h.run("newpage", json!({"generated": "cables"})).unwrap(), "page");
     t.h.activate(page);
-    let builds = t.h.p(|p| p.frame_builds);
+    let builds = t.h.p(|p| p.counts.frame_builds);
     t.h.activate(page);
-    assert_eq!(t.h.p(|p| p.frame_builds), builds, "control: no edit, no rebuild");
+    assert_eq!(t.h.p(|p| p.counts.frame_builds), builds, "control: no edit, no rebuild");
     t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": "K-99"})).unwrap();
     t.h.activate(page);
-    let unrelated = t.h.p(|p| p.frame_builds) - builds;
-    let builds = t.h.p(|p| p.frame_builds);
+    let unrelated = t.h.p(|p| p.counts.frame_builds) - builds;
+    let builds = t.h.p(|p| p.counts.frame_builds);
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4G"})).unwrap();
     t.h.activate(page);
-    assert_eq!(t.h.p(|p| p.frame_builds) - builds, 1, "a core change rebuilds the schedule page once");
+    assert_eq!(t.h.p(|p| p.counts.frame_builds) - builds, 1, "a core change rebuilds the schedule page once");
     t.h.check();
     assert_eq!(unrelated, 0, "an unrelated edit rebuilt the cable schedule page {unrelated} time(s)");
 }
@@ -392,7 +392,7 @@ fn an_old_project_opens_unchanged_and_shows_its_strips() {
     h.run("place", json!({"symbol": "terminal_block", "at": [310, 250], "device": x1.hex()})).unwrap();
     let k: DeviceId = id(&place(&mut h, "coil", (300.0, 200.0)), "component");
     let _ = k;
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("old 018.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     let d = h.doc();

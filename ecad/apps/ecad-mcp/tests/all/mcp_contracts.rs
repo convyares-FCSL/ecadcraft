@@ -40,7 +40,7 @@ impl Client {
 
     /// Cable views are remembered nowhere in these tests.
     fn no_settings(&mut self) {
-        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
+        self.s.with_session(|s, p| p.configure(s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
     }
 
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -178,7 +178,7 @@ impl Direct {
         ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "mcp", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_engine::cables::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {

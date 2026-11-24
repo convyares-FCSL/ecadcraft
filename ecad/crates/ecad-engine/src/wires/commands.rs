@@ -145,7 +145,7 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
 /// from the document, not from what is on screen; only a page with a
 /// cable reference has any, so other pages cost nothing.
 pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
-    crate::wires::draw::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
+    crate::wires::draw::quiet_ends_of(p.ledger.document(), page, &p.display.views, p.tolerance)
 }
 
 // ---------------------------------------------------------------- place (the continuation form)
@@ -167,7 +167,7 @@ pub(crate) fn place_tagless(
         let t = ecad_electrical::wires::placing::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
         p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
-            p.last_continuation = Some(n.clone());
+            p.defaults.last_continuation = Some(n.clone());
         }
         Ok(json!({
             "aid": t.aid.hex(),

@@ -356,7 +356,7 @@ impl Drop for TempDir {
 fn tester_025_branch_switch_merge_and_update_keep_the_index() {
     let dir = TempDir::new("branch");
     let mut x = fixture(2501);
-    x.h.cfg(|p| p.persistence = Persistence::File);
+    x.h.cfg(|p| p.storage.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": dir.path("b.ecad")})).unwrap();
     raw(&mut x.h, "branch", json!({"name": "B"})).unwrap();
     // On B: an offer, a moved table, a new contact on 110, page 105 renumbered.
@@ -408,7 +408,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     let dir = TempDir::new("reopen");
     let path = dir.path("x.ecad");
     let mut x = fixture(2502);
-    x.h.cfg(|p| p.persistence = Persistence::File);
+    x.h.cfg(|p| p.storage.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": path})).unwrap();
     let parts_before = parts(&mut x.h);
     let idx_before = x.h.p(|p| p.reference().clone());
@@ -433,7 +433,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     let settings = serde_json::to_value(doc.settings()).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
-    h2.cfg(|p| p.persistence = Persistence::File);
+    h2.cfg(|p| p.storage.persistence = Persistence::File);
     h2.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+3NO+1NC"})).unwrap();
     h2.run("mirrormove", json!({"component": x.k1.hex(), "at": [60, 120]})).unwrap();
     h2.run("projectprops", json!({"contact_mirror": "below"})).unwrap();

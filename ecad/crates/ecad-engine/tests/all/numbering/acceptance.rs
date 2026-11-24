@@ -362,7 +362,7 @@ fn a_deleted_tag_is_never_given_again_without_a_reset_also_after_reopen() {
     let (mut h, page, ..) = three_and_a_deleted_fourth(0x0260_0004);
     h.run("u", Value::Null).unwrap();
     h.run("redo", Value::Null).unwrap();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("hw.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     while !h.s.docs.is_empty() {
@@ -585,7 +585,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     let dir = std::env::temp_dir().join(format!("ecad-t026-cab-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut h = H::new(0x0260_000A);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     for y in [0.0, 10.0, 30.0, 40.0, 60.0, 70.0] {
         h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
     }

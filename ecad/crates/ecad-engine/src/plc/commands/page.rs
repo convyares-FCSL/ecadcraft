@@ -68,7 +68,7 @@ impl Command for PlcpageParams {
             let id: PageId = p.ids.fresh();
             let mut ops = vec![Op::AddPage { id, page: new_page, index }];
             let style = plain_style(p);
-            rules::plan_page_contents(&p.ledger, &mut p.ids, &mut p.tag_high, id, style, &pc, &mut ops)?;
+            rules::plan_page_contents(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, id, style, &pc, &mut ops)?;
             p.apply_edit(pg, "plcpage", "Make card page", ops)?;
             p.pages.entry(id).or_default();
             let first = first_number(p.ledger.document(), pc.card);

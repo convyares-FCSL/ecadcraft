@@ -295,10 +295,10 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 *page,
                 &st.doc,
                 &view.map,
-                &p.views,
+                &p.display.views,
                 p.tolerance,
-                p.show_hidden_text,
-                p.pending,
+                p.display.show_hidden_text,
+                p.frame.pending,
                 reports.as_ref(),
             )
             .unwrap();

@@ -34,6 +34,7 @@ mod handle_map;
 mod open;
 mod owner;
 mod page_tree;
+mod parts;
 mod persistence;
 
 pub use changes::Change;
@@ -41,7 +42,8 @@ use changes::Path;
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
 pub use page_tree::{PageRow, PageView, TreeRow, tree_rows};
-pub use persistence::{ClipSnapshot, Faults, MemoryStore};
+pub(crate) use persistence::ClipSnapshot;
+pub use persistence::{Faults, MemoryStore};
 pub use persistence::{Persistence, SAVE_UNAVAILABLE};
 
 /// An ECAD project attached to a CADCraft session.
@@ -54,126 +56,41 @@ pub struct Project {
     pub ids: IdAllocator,
     /// The project's stable identity (the file header records it).
     pub id: ProjectId,
-    /// The test-only project file in memory (`Persistence::TestStore`).
-    pub store: MemoryStore,
-    /// The project's file on disk (`Persistence::File`).
-    pub file: ecad_file::binding::Binding,
-    /// What opening reported, when the project was opened from a file on disk or from the test
-    /// store.
-    pub open_report: Option<ecad_file::Report>,
     pub pages: BTreeMap<PageId, PageView>,
     pub events: EventLog,
-    pub clips: BTreeMap<u64, ClipSnapshot>,
+    pub(crate) clips: BTreeMap<u64, ClipSnapshot>,
     pub faults: Faults,
-    /// How Save behaves; see [`Persistence`].
-    pub persistence: Persistence,
-    /// The head right after the project was created or opened: with no persistence, the project
-    /// has unsaved design exactly when the head has moved from here.
-    baseline: u64,
     /// Distance within which a point lands on a terminal.
     pub tolerance: f64,
     /// Layer used for new ECAD-drawn geometry.
     pub default_layer: LayerId,
     me: Weak<Mutex<Project>>,
-    /// Points `DocState::saved` away from the drawing while the project is unsaved.
-    unsaved_marker: Arc<Drawing>,
-    /// Cables shown in fan view; every other cable is traditional. Presentation only:
-    /// never in the ledger, never a transaction, never the unsaved state.
-    pub views: BTreeSet<CableId>,
-    /// Show Hidden Text: pages also draw their hidden derived texts,
-    /// dimmed. A session display state like `views`: never in the ledger or the file, not
-    /// undoable, never printed. Off when a project is opened.
-    pub show_hidden_text: bool,
-    /// Where this user's cable views are remembered ([`crate::cables::views::Settings`]).
-    pub settings: crate::cables::views::Settings,
-    /// Whether [`crate::cables::views::NOT_REMEMBERED`] was said in this session.
-    pub(crate) said_not_remembered: bool,
-    /// Who the project's edits, undos and redos are recorded as: [`Author::User`] by
-    /// default, `Author::Agent(<client name>)` when an agent drives the session. A
-    /// session setting, not part of the design: set it through [`ProjectHandle::configure`].
-    pub author: Author,
-    /// Closing the page window leaves the project open with no active page
-    /// instead of closing the project. Off by default (tests, MCP); the desktop app turns it on and off
-    /// again while it closes the project or quits, so unsaved work is always asked about.
-    pub keep_open: bool,
-    /// The page shown in the page window, if any.
-    active: Option<PageId>,
-    /// Each page's views as the user left them, for this session only.
-    page_views: HashMap<PageId, Vec<(cadcraft_engine::doc::Space, cadcraft_engine::View)>>,
-    /// The last [`CHANGE_LOG`] changes, oldest first.
-    changes: std::collections::VecDeque<Change>,
-    /// Number of the last change (0: none yet).
-    change_count: u64,
-    /// The highest number each tag prefix has had, read from the log as it grows.
-    pub(crate) tag_high: ecad_electrical::devices::tags::TagHigh,
-    /// The use index of the project's list of functions and
-    /// locations, read from the log as it grows; rebuilt on a branch switch.
-    pub(crate) designation_uses: ecad_electrical::locations::designations::Uses,
     /// The devices whose stored value differs from what the last
     /// placement, move or box proposed, waiting for Move or Leave (Leave by default; any other
     /// edit leaves them).
     pub conflicts: Vec<ecad_electrical::symbols::proposals::Conflict>,
-    /// Bumped whenever a page row could differ ([`Project::page_list_version`]).
-    page_list_version: u64,
     /// What OOPS may bring back on each page document ([`crate::translate::oops`]).
     oops: crate::translate::oops::Records,
-    /// What the last placement in this session placed (starter, device), for the prompts'
-    /// defaults.
-    pub(crate) last_placed: Option<ecad_electrical::commands::run::LastPlaced>,
-    /// The last continuation name placed in this session, the prompt's default.
-    pub(crate) last_continuation: Option<String>,
-    /// The last caption given in this session, Caption Continuations' default.
-    pub(crate) last_caption: Option<String>,
-    /// The Wire tool's potential for new wires in this session; `None` is `auto`.
-    pub wire_potential: Option<String>,
-    /// `reports` asked for the Reports window (the desktop app opens it and clears this).
-    pub open_reports: bool,
-    /// `agentaccess` asked for this agent access preference (the desktop app applies it and
-    /// clears this).
-    pub agent_access_request: Option<crate::agent::access::Preference>,
-    /// The desktop app's agent access state as `agentaccess` reports it (set by the desktop app).
-    pub agent_access_status: Option<crate::agent::access::Status>,
-    /// The Checks tab's go-to ring: page, point and the row's severity, until the
-    /// next change. Display only, never recorded.
-    pub goto_ring: Option<(PageId, Pt, ecad_electrical::checks::Severity)>,
-    /// The active page's frame as last drawn: page and parts. What it showed is the
-    /// frame view's (`ecad_electrical::views::FrameView`), whose update map sets `frame_stale`.
-    frame: Option<(PageId, Arc<Vec<crate::pages::frame::Part>>)>,
-    /// An effect of the frame's update map was committed since the frame was drawn.
-    frame_stale: bool,
-    /// The wire categories in use, kept while the project has a cover.
-    /// The drawing changed since the newest issued revision, as the
-    /// title block shows it; worked out on first use and after every change.
-    pub pending: bool,
-    pending_known: bool,
-    /// How many times a frame was worked out again (tests and bench: only when it can differ).
-    pub frame_builds: u64,
-    /// How many times a page in the window was projected again after a change or a view switch
-    /// ([`Project::refresh_page`]; tests: a commit that touched another page projects nothing).
-    pub projections: u64,
-    /// The revision opened read-only: session only, never recorded.
-    pub revision_view: Option<crate::pages::commands::sheets::RevisionView>,
-    /// How many transactions the command now running may record, when its caller caps them (an
-    /// agent's call through MCP); `None` for no cap. Commands that write files check it before
-    /// they write (a release), so nothing reaches the disk that the cap would take back.
-    pub tx_budget: Option<usize>,
-    /// Plain `u` across an issued revision stops and asks: set by the desktop app's
-    /// confirmation, used by the next undo only.
-    pub confirm_issue_undo: bool,
-    /// The question an undo across an issue is waiting on, for the desktop app's popup.
-    pub issue_undo_question: Option<String>,
-    /// Plain `u` across a merge stops and asks: set by `undomerge`, used by
-    /// the next undo only.
-    pub confirm_merge_undo: bool,
-    /// The question an undo across a merge is waiting on, for the desktop app's popup.
-    pub merge_undo_question: Option<String>,
     /// The merge last prepared (its states and scope), kept while nothing it read changes
-    pub merge_cache: Option<Arc<crate::history::merging::Prepared>>,
-    /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
-    /// what shows the branch (title, bar, Revisions, History) refreshes when it moves.
-    branch_gen: u64,
+    pub(crate) merge_cache: Option<Arc<crate::history::merging::Prepared>>,
     /// Every derived view, updated by the one commit pipeline.
     pub(crate) derived: ecad_electrical::views::Views,
+    /// The file side: where the project is saved and what opening reported.
+    pub storage: parts::Storage,
+    /// What this session shows (never in the ledger or the file).
+    pub display: parts::Display,
+    /// The change log and the counts that say what could differ.
+    pub counts: parts::Counts,
+    /// The active page's frame as last drawn.
+    pub frame: parts::FrameCache,
+    /// What is read from the log as it grows.
+    pub(crate) indexes: parts::Indexes,
+    /// This session's prompt defaults.
+    pub defaults: parts::Defaults,
+    /// What a command asks of the desktop app, and its answers.
+    pub asks: parts::AppAsks,
+    /// Who is calling, and what the call may record.
+    pub caller: parts::Caller,
 }
 
 /// The derived views of `doc`, built with this engine's inputs.
@@ -689,14 +606,14 @@ impl Project {
             self.reports();
         }
         let plc = self.kept_reports().map(|o| &o.plc);
-        project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
+        project_page_kept(self.ledger.document(), page, base, prev, &self.display.views, self.tolerance, &parts, self.display.show_hidden_text, plc)
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
     fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::pages::frame::Part>> {
-        if let Some((p, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame.drawn
             && *p == page
-            && !self.frame_stale
+            && !self.frame.stale
         {
             return parts.clone();
         }
@@ -705,63 +622,63 @@ impl Project {
         if self.kept_reports().is_none() && ecad_electrical::pages::generated::has_bom_page(self.ledger.document()) {
             self.reports();
         }
-        if !self.pending_known {
+        if !self.frame.pending_known {
             self.refresh_pending();
         }
         let doc = self.ledger.document();
         let (input, total) = crate::pages::generated::input_of(doc, page, self.kept_reports());
-        let input = input.with_pending(doc, self.pending);
-        self.frame_stale = false;
+        let input = input.with_pending(doc, self.frame.pending);
+        self.frame.stale = false;
         let generated = ecad_electrical::pages::generated::kind_of(doc, page).is_some();
-        if let Some((p, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame.drawn
             && *p == page
             && self.derived.frame().shown().is_some_and(|(q, old)| q == page && *old == input.0)
             && !generated
         {
             return parts.clone();
         }
-        self.frame_builds += 1;
+        self.counts.frame_builds += 1;
         let parts = Arc::new(crate::pages::generated::page_parts(doc, page, &input, self.kept_reports(), total));
-        self.frame = Some((page, parts.clone()));
+        self.frame.drawn = Some((page, parts.clone()));
         self.derived.frame_mut().show(page, input.0);
         parts
     }
 
     /// The view `cable` is shown in.
     pub fn view_of(&self, cable: CableId) -> View {
-        if self.views.contains(&cable) { View::Fan } else { View::Traditional }
+        if self.display.views.contains(&cable) { View::Fan } else { View::Traditional }
     }
 
     /// Show `cable` in `view`: presentation only, so no transaction, no head move, no
     /// unsaved change. Every open page is redrawn through the same path as after an undo, and the
-    /// fan-view set is remembered in [`Project::settings`]. Returns whether the view changed and,
+    /// fan-view set is remembered in the display's `view_settings` ([`Project::display`]). Returns whether the view changed and,
     /// when it changed, whether it was remembered (else why not).
     pub(crate) fn set_view(&mut self, pg: &mut Pages<'_>, cable: CableId, view: View) -> (bool, Result<(), String>) {
         let changed = match view {
-            View::Fan => self.views.insert(cable),
-            View::Traditional => self.views.remove(&cable),
+            View::Fan => self.display.views.insert(cable),
+            View::Traditional => self.display.views.remove(&cable),
         };
         if !changed {
             return (false, Ok(()));
         }
         // IDs no longer at the head are dropped from what is remembered.
         let doc = self.ledger.document();
-        self.views.retain(|k| doc.cables().contains_key(k));
+        self.display.views.retain(|k| doc.cables().contains_key(k));
         // A view is drawn on every page showing the cable: the active page is redrawn, every
         // other page when it becomes active.
         self.record_change(None, ecad_electrical::devices::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
         self.redraw_window(pg, Some("cableview"));
-        (true, self.settings.store(self.id, &self.views))
+        (true, self.display.view_settings.store(self.id, &self.display.views))
     }
 
     /// Turn Show Hidden Text on or off: display only, like a cable view:
     /// no transaction, no head move, no unsaved change. The open page is redrawn now, the others
     /// when they become active. Returns whether it changed.
     pub(crate) fn set_hidden_text(&mut self, pg: &mut Pages<'_>, on: bool) -> bool {
-        if self.show_hidden_text == on {
+        if self.display.show_hidden_text == on {
             return false;
         }
-        self.show_hidden_text = on;
+        self.display.show_hidden_text = on;
         self.record_change(None, ecad_electrical::devices::device_list::DeviceTouch::default(), Some(BTreeSet::new()), false);
         self.redraw_window(pg, Some("hiddentext"));
         true
@@ -783,11 +700,11 @@ impl Project {
 
     /// How many transactions the unsaved state covers (0 when nothing is unsaved).
     pub fn unsaved_transactions(&self) -> u64 {
-        let from = match self.persistence {
+        let from = match self.storage.persistence {
             Persistence::TestStore => self.ledger.persisted(),
-            Persistence::File if self.file.bound() => self.ledger.persisted(),
-            Persistence::File => self.ledger.persisted().max(self.baseline),
-            Persistence::Unavailable => self.baseline,
+            Persistence::File if self.storage.file.bound() => self.ledger.persisted(),
+            Persistence::File => self.ledger.persisted().max(self.storage.baseline),
+            Persistence::Unavailable => self.storage.baseline,
         };
         self.ledger.head().saturating_sub(from)
     }
@@ -801,8 +718,8 @@ impl Project {
     /// The functions and locations list with its counts, as `designations` answers (Settings ▸
     /// Project info). Catches the use index up first.
     pub fn designation_rows(&mut self) -> serde_json::Value {
-        self.designation_uses.catch_up(&self.ledger);
-        ecad_electrical::locations::commands::designations::rows(self.ledger.document(), &self.designation_uses, None)
+        self.indexes.designation_uses.catch_up(&self.ledger);
+        ecad_electrical::locations::commands::designations::rows(self.ledger.document(), &self.indexes.designation_uses, None)
     }
 
     pub fn open_pages(&self) -> usize {
@@ -818,7 +735,7 @@ impl Project {
 
     /// The page shown in the page window (the active page), if the window is open.
     pub fn active_page(&self) -> Option<PageId> {
-        self.active.filter(|p| self.pages.get(p).is_some_and(|v| v.uid.is_some()))
+        self.display.active.filter(|p| self.pages.get(p).is_some_and(|v| v.uid.is_some()))
     }
 
     /// The page window: the active page and the engine document showing it.
@@ -848,7 +765,7 @@ impl Project {
 
     /// Bring the tag numbering up to date with the log.
     fn catch_up_tags(&mut self) {
-        self.tag_high.catch_up(&self.ledger);
+        self.indexes.tag_high.catch_up(&self.ledger);
     }
 
     /// Record one change and the pages it could change.
@@ -860,11 +777,11 @@ impl Project {
     /// stops at the first decisive transaction. A flip redraws the frame.
     pub(crate) fn refresh_pending(&mut self) {
         let now = ecad_electrical::releases::revisions::is_pending(&self.ledger);
-        if self.pending_known && now != self.pending {
-            self.frame_stale = true;
+        if self.frame.pending_known && now != self.frame.pending {
+            self.frame.stale = true;
         }
-        self.pending = now;
-        self.pending_known = true;
+        self.frame.pending = now;
+        self.frame.pending_known = true;
     }
 
     /// Make `page` the active page: it is projected into the project's one page window,
@@ -902,7 +819,7 @@ impl Project {
                 st.redo.clear();
                 st.block_edit = None;
                 st.revision += 1;
-                self.page_views.insert(old, left);
+                self.display.page_views.insert(old, left);
                 // What OOPS kept belongs to the page drawn there before.
                 self.oops.stale_doc(uid);
                 if let Some(v) = self.pages.get_mut(&old) {
@@ -916,7 +833,7 @@ impl Project {
                 pg.open(d, &title, self.path.clone(), owner).ok_or("no document")?
             }
         };
-        let remembered = self.page_views.get(&page).cloned();
+        let remembered = self.display.page_views.get(&page).cloned();
         let has_view = remembered.is_some();
         let last = match pg.doc_mut(uid) {
             Some(st) => {
@@ -932,9 +849,9 @@ impl Project {
         }
         let was = self.pages.insert(page, PageView { uid: Some(uid), map, last, unavailable: false });
         if was.is_some_and(|v| v.unavailable) {
-            self.page_list_version += 1;
+            self.counts.page_list_version += 1;
         }
-        self.active = Some(page);
+        self.display.active = Some(page);
         self.events.record(EventKind::PageOpened, None, self.ledger.head(), Some(page), title);
         self.sync_saved(pg);
         Ok(uid)
@@ -1010,10 +927,10 @@ impl Project {
                             *p,
                             &st.doc,
                             &v.map,
-                            &self.views,
+                            &self.display.views,
                             self.tolerance,
-                            self.show_hidden_text,
-                            self.pending,
+                            self.display.show_hidden_text,
+                            self.frame.pending,
                             reports.as_ref(),
                         )
                         .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())

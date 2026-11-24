@@ -175,13 +175,13 @@ impl App {
                     // The prepared states are dropped with the dialog.
                     self.merge = None;
                     if let Some(p) = self.project.clone() {
-                        let _ = p.configure(&mut self.cad.session, |p| p.merge_cache = None);
+                        let _ = p.configure(&mut self.cad.session, ecad_engine::Project::forget_merge);
                     }
                 }
                 None => {}
             }
         }
-        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.merge_undo_question.clone()).ok().flatten());
+        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.asks.merge_undo_question.clone()).ok().flatten());
         if let Some(q) = question {
             match crate::history::merge_dialog::undo_merge(ctx, &q) {
                 Some(true) => {
@@ -190,7 +190,7 @@ impl App {
                 }
                 Some(false) => {
                     if let Some(p) = self.project.clone() {
-                        let _ = p.configure(&mut self.cad.session, |p| p.merge_undo_question = None);
+                        let _ = p.configure(&mut self.cad.session, |p| p.asks.merge_undo_question = None);
                     }
                 }
                 None => {}

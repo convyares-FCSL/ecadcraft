@@ -94,7 +94,7 @@ impl State {
             let open = self.opener.as_mut().ok_or(NO_LOCAL)?;
             let (mut headless, project) = open()?;
             let name = self.agent.clone();
-            project.configure(&mut headless.session, |p| p.author = Author::Agent(name))?;
+            project.configure(&mut headless.session, |p| p.caller.author = Author::Agent(name))?;
             self.local = Some(Local { headless, project });
         }
         self.local.as_mut().ok_or_else(|| NO_LOCAL.to_string())
@@ -163,7 +163,7 @@ impl State {
     pub(crate) fn set_agent(&mut self, name: &str) -> Result<(), String> {
         let name = agent_name(name);
         if let Some(l) = self.local.as_mut() {
-            l.project.configure(&mut l.headless.session, |p| p.author = Author::Agent(name.clone()))?;
+            l.project.configure(&mut l.headless.session, |p| p.caller.author = Author::Agent(name.clone()))?;
         }
         self.agent = name;
         Ok(())

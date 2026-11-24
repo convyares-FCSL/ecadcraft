@@ -98,7 +98,7 @@ impl Command for HiddentextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let on = self.on;
         on_any_page(s, |p, pg| {
-            let want = on.unwrap_or(!p.show_hidden_text);
+            let want = on.unwrap_or(!p.display.show_hidden_text);
             let changed = p.set_hidden_text(pg, want);
             Ok(json!({"on": want, "changed": changed}))
         })

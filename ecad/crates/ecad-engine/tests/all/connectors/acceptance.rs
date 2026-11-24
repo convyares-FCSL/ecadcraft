@@ -263,7 +263,7 @@ fn page_no(d: &Document, p: PageId) -> String {
 fn reload(mut h: H, tag: &str, seed: u64) -> (H, String) {
     let dir = tmp_dir(tag);
     let path = dir.join("Stecker -X01 (S P).ecad").display().to_string();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     h.close_all();
     drop(h);

@@ -21,7 +21,7 @@ fn save_from_either_page_saves_the_whole_project() {
     h.run("qsave", Value::Null).unwrap();
     let (head, persisted, len) = h.p(|p| (p.ledger.head(), p.ledger.persisted(), p.ledger.log().len()));
     assert_eq!(persisted, head);
-    let (stored, id) = h.p(|p| (p.store.bytes(), p.id));
+    let (stored, id) = h.p(|p| (p.storage.store.bytes(), p.id));
     let rows = ecad_file::Store::from_bytes(stored).unwrap().reader().unwrap().tx_count(ecad_file::schema::BranchId::main_of(id.0)).unwrap();
     assert_eq!(rows, len as u64, "every transaction, including page 1's edit");
     let i = h.page_index(p2).unwrap();
@@ -59,7 +59,7 @@ fn save_as_updates_the_page_window_path() {
     assert_eq!(h.s.docs.len(), 1, "one page window");
     // A page window opened again later carries the project's path as well.
     let i = h.page_index(p2).unwrap();
-    h.cfg(|p| p.keep_open = true);
+    h.cfg(|p| p.display.keep_open = true);
     h.run("close", json!({"index": i})).unwrap();
     assert!(h.s.docs.is_empty() && h.project.is_attached(&h.s), "the project stays open without a page");
     h.project.open_page(&mut h.s, p1).unwrap();
@@ -142,7 +142,7 @@ fn without_persistence_save_reports_unavailable_and_changes_nothing() {
     }
     assert!(!target.exists() && !dir.exists(), "no file or folder was written");
     let (persisted, stored, events) =
-        project.read(&mut s, |p, _| (p.ledger.persisted(), p.store.byte_len(), p.events.count(EventKind::SaveUnavailable))).unwrap();
+        project.read(&mut s, |p, _| (p.ledger.persisted(), p.storage.store.byte_len(), p.events.count(EventKind::SaveUnavailable))).unwrap();
     assert_eq!((persisted, stored, events), (0, 0, 2), "not persisted, nothing stored, both reported");
     // Undo back to the start still counts as changed: the history moved.
     s.execute("u", &Value::Null).unwrap();

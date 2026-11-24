@@ -520,7 +520,7 @@ fn an_agent_author_found_between_frames_is_reset_and_access_stays_on() {
     {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.configure(&mut t.cad.session, |p| p.author = Author::Agent("stray".into())).unwrap();
+        p.configure(&mut t.cad.session, |p| p.caller.author = Author::Agent("stray".into())).unwrap();
     }
     h.run_steps(1);
     assert_eq!(h.state().agent.frame_fixes, 1);

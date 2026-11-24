@@ -231,7 +231,7 @@ fn centre(b: Bx) -> (f64, f64) {
 
 fn save_and_reopen(h: H, dir: &std::path::Path, name: &str, seed: u64) -> H {
     let mut h = h;
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join(name).display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     h.close_all();

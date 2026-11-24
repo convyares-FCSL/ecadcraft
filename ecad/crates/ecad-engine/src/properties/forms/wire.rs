@@ -43,7 +43,7 @@ fn quiet_on(p: &crate::project::Project, page: ecad_model::PageId) -> Vec<Pt> {
 
 /// The Wire tool's potential for this session (`None`: auto).
 fn wire_potential(s: &Session) -> Option<String> {
-    read(s, |p, _| Ok(p.wire_potential.clone())).ok().flatten()
+    read(s, |p, _| Ok(p.defaults.wire_potential.clone())).ok().flatten()
 }
 
 impl Wire {
@@ -163,7 +163,7 @@ impl Wire {
             on_project(s, |p, _, _| {
                 // A table name is written as the table spells it.
                 let v = value.map(|v| p.ledger.document().settings().wiring.potential(&v).map_or(v, |r| r.name.clone()));
-                p.wire_potential = v;
+                p.defaults.wire_potential = v;
                 Ok(())
             })?;
             self.asking_potential = false;

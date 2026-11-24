@@ -235,7 +235,7 @@ fn project(seed: u64, height: Option<f64>) -> H {
 
 /// Save `h` as a file and open it in a fresh session.
 fn save_and_reopen(mut h: H, tag: &str, seed: u64) -> H {
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let dir = tmp_dir(tag);
     let path = dir.join("p066").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
@@ -307,7 +307,7 @@ fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
     for (i, files) in [&[][..], &["company.toml", "defaults.toml"][..], &["text.toml", "standard.toml"][..]].into_iter().enumerate() {
         let seed = 0x66_b6 + i as u64;
         let mut h = project(seed, None);
-        h.cfg(|p| p.persistence = Persistence::File);
+        h.cfg(|p| p.storage.persistence = Persistence::File);
         let dir = tmp_dir("066 machines");
         for f in files {
             std::fs::write(dir.join(f), company).unwrap();

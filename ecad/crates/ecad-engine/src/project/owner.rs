@@ -63,9 +63,9 @@ impl DocumentOwner for Project {
             return Verdict::Refuse(crate::translate::oops::REFUSED.into());
         }
         let stash = crate::translate::oops::STASH_COMMANDS.contains(&c.command);
-        self.tag_high.catch_up(&self.ledger);
+        self.indexes.tag_high.catch_up(&self.ledger);
         let t = translate::translate(&mut translate::Ctx {
-            tags: &mut self.tag_high,
+            tags: &mut self.indexes.tag_high,
             ledger: &mut self.ledger,
             page,
             map: &view.map,
@@ -115,7 +115,7 @@ impl DocumentOwner for Project {
         let moved = ecad_electrical::symbols::proposals::before_move(self.ledger.document(), &t.ops);
         let pending = self.derived.begin(self.ledger.document(), &t.ops);
         // The numbering pass extends the same transaction.
-        if let Err(e) = self.ledger.commit_extended(self.author.clone(), &label, t.ops, now_ms(), ecad_model::connectivity::wiring::assign) {
+        if let Err(e) = self.ledger.commit_extended(self.caller.author.clone(), &label, t.ops, now_ms(), ecad_model::connectivity::wiring::assign) {
             self.restore(pg, c.uid, page);
             let m = format!("not recorded: {e}");
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
@@ -153,10 +153,10 @@ impl DocumentOwner for Project {
     fn save(&mut self, s: &mut Session, _uid: u64, path: Option<&str>, save_as: bool) -> cadcraft_engine::Result<Value> {
         let pg = &mut Pages(s);
         let head = self.ledger.head();
-        if self.persistence == Persistence::File {
+        if self.storage.persistence == Persistence::File {
             return self.save_file(pg, path, save_as);
         }
-        if self.persistence == Persistence::Unavailable {
+        if self.storage.persistence == Persistence::Unavailable {
             // Nothing is recorded as saved: no path, no store, no clean state.
             let what = if save_as { "saveas" } else { "qsave" };
             self.events.record(EventKind::SaveUnavailable, Some(what), head, None, SAVE_UNAVAILABLE);
@@ -165,7 +165,7 @@ impl DocumentOwner for Project {
         }
         // The test store is in memory; the path is only recorded (no file is written), and only
         // once the save succeeded, so a failed Save As keeps the previous binding.
-        match self.store.save(self.id, &mut self.ledger, &writer()) {
+        match self.storage.store.save(self.id, &mut self.ledger, &writer()) {
             Ok(n) => {
                 if let Some(p) = path {
                     self.path = Some(p.to_string());
@@ -195,7 +195,7 @@ impl DocumentOwner for Project {
         // Closing the page window closes the project, which
         // prompts when unsaved; with `keep_open` (the desktop app) it only hides the
         // page and the project stays open, so nothing is lost and nothing is asked.
-        self.unsaved() && self.open_pages() <= 1 && !self.keep_open
+        self.unsaved() && self.open_pages() <= 1 && !self.display.keep_open
     }
 
     fn closed(&mut self, s: &mut Session, uid: u64) -> bool {
@@ -203,17 +203,17 @@ impl DocumentOwner for Project {
         if let Some(page) = self.page_of(uid) {
             // The page's view is remembered for when it is shown again.
             if let Some(st) = s.docs.iter().find(|d| d.uid == uid) {
-                self.page_views.insert(page, st.views.clone());
+                self.display.page_views.insert(page, st.views.clone());
             }
             if let Some(v) = self.pages.get_mut(&page) {
                 *v = PageView::default();
             }
             self.events.record(EventKind::PageClosed, Some("close"), self.ledger.head(), Some(page), "");
         }
-        let done = self.open_pages() == 0 && !self.keep_open;
+        let done = self.open_pages() == 0 && !self.display.keep_open;
         if done {
             // The project is closed: let go of its file and writer lock.
-            self.file.release();
+            self.storage.file.release();
         }
         done
     }
@@ -311,7 +311,7 @@ impl Project {
         // Undoing an issued revision stops and asks first.
         if undo
             && let Some((rev, n)) = ecad_electrical::releases::revisions::issue_in(&ecad_electrical::releases::revisions::inverse(&ops))
-            && !std::mem::take(&mut self.confirm_issue_undo)
+            && !std::mem::take(&mut self.asks.confirm_issue_undo)
         {
             let row = ecad_electrical::releases::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
             let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
@@ -321,21 +321,22 @@ impl Project {
             if row.as_ref().is_some_and(|r| r.released.is_some()) {
                 q.push_str(" Its release folder stays on disk.");
             }
-            self.issue_undo_question = Some(q.clone());
+            self.asks.issue_undo_question = Some(q.clone());
             return Err(EngineError::Other(format!("{q} Use Undo Issue (`undoissue`) to confirm.")));
         }
-        self.issue_undo_question = None;
+        self.asks.issue_undo_question = None;
         // Undoing a merge stops and asks first.
         if undo
-            && !std::mem::take(&mut self.confirm_merge_undo)
+            && !std::mem::take(&mut self.asks.confirm_merge_undo)
             && let Some(q) = crate::history::merging::undo_question(self)
         {
-            self.merge_undo_question = Some(q.clone());
+            self.asks.merge_undo_question = Some(q.clone());
             return Err(EngineError::Other(format!("{} Use Undo Merge (`undomerge`) to confirm.", q.replace('\n', " "))));
         }
-        self.merge_undo_question = None;
+        self.asks.merge_undo_question = None;
         let pending = self.derived.begin(self.ledger.document(), &ops);
-        let r = if undo { self.ledger.undo_at(self.author.clone(), now_ms()) } else { self.ledger.redo_at(self.author.clone(), now_ms()) };
+        let r =
+            if undo { self.ledger.undo_at(self.caller.author.clone(), now_ms()) } else { self.ledger.redo_at(self.caller.author.clone(), now_ms()) };
         match r {
             Ok(_) => {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();

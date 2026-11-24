@@ -87,7 +87,7 @@ pub(crate) fn point_at(p: &Project, q: &PointQuery) -> Result<Point, CmdError> {
 /// The file could not be read or replayed.
 pub fn state_at(p: &Project, pt: &Point) -> Result<Document, String> {
     match reads_saved(p, pt) {
-        true => p.file.project().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
+        true => p.storage.file.project().ok_or("this branch is not in a file")?.point_state(pt.branch, pt.seq).map_err(|e| e.to_string()),
         false => p.ledger.state_at(pt.seq).map_err(|e| e.to_string()),
     }
 }
@@ -157,7 +157,7 @@ pub fn issued_state(p: &Project, rev: Rev) -> Result<(Named, u64, Document), Str
 /// branch. Only an unsaved point of the branch shown comes from the ledger, undoing at most the
 /// unsaved steps, so the cost never grows with the session's length.
 pub(crate) fn reads_saved(p: &Project, pt: &Point) -> bool {
-    p.file.project().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
+    p.storage.file.project().is_some_and(|v| pt.branch != v.branch() || pt.seq <= v.head().0)
 }
 
 /// Whether `pt` lies on the branch shown's line: its own steps, or its ancestry's at or before
@@ -284,7 +284,7 @@ fn current_or(p: &Project, b: BranchId) -> BranchId {
 /// Pages changed, added and removed between two saved snapshots, from their chunk hashes:
 /// no document is built.
 fn chunk_summary(p: &Project, this: &Named, prev: &Named) -> Vec<String> {
-    let Some(v) = p.file.project() else { return Vec::new() };
+    let Some(v) = p.storage.file.project() else { return Vec::new() };
     let Ok(r) = v.store().reader() else { return Vec::new() };
     let find = |n: &Named| r.version(n.branch, RowKind::of(&n.point), &n.point.key()).ok().flatten();
     let (Some(a), Some(b)) = (find(prev), find(this)) else { return Vec::new() };
@@ -425,7 +425,7 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
         .map(|pg| json!({"page": pg.hex(), "number": book.number(&then, *pg), "title": then.pages().get(pg).map(|x| x.title.clone())}))
         .collect();
     let bar = bar_text(p, &pt);
-    p.revision_view = Some(RevisionView {
+    p.display.revision_view = Some(RevisionView {
         rev: pt.title.clone(),
         date: String::new(),
         at: pt.seq,
@@ -445,7 +445,7 @@ pub(crate) struct ClosepointParams {}
 impl Command for ClosepointParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
-            let was = p.revision_view.take().map(|v| v.rev);
+            let was = p.display.revision_view.take().map(|v| v.rev);
             Ok(json!({"closed": was}))
         })
     }

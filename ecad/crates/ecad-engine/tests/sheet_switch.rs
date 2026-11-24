@@ -37,7 +37,7 @@ fn branching_and_switching_back_with_styles_survives_sheet_switches() {
     let dir = std::env::temp_dir().join(format!("ecad-050-sheet-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let (mut h, ..) = small_project(0x50_5ee7);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("p.ecad").display().to_string();
     raw(&mut h, "saveas", json!({"path": path}));
     for (y, pot) in [(60.0, "24V"), (70.0, "L1"), (80.0, "PE")] {

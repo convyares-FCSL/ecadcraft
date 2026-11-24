@@ -29,7 +29,7 @@ const NO_FILE: &str = "no file";
 
 /// Why branch actions cannot run: no version 2 file yet, or read-only.
 pub(crate) fn branch_file(p: &Project) -> Result<(), String> {
-    match p.file.project() {
+    match p.storage.file.project() {
         None => Err("Branches live in the project file. Save it first.".into()),
         Some(v) => match v.read_only() {
             Some(r) => Err(format!("The project is read-only ({r}); branches cannot be changed.")),
@@ -110,8 +110,8 @@ impl Command for BranchParams {
             ecad_file::project::check_branch_name(&name).map_err(|e| CmdError::refused(e.to_string()))?;
             // Saved first: the fork point and the branch row are in the file.
             p.save_pending(pg).map_err(CmdError::refused)?;
-            let by = Some(author_text(&p.author));
-            let v = p.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
+            let by = Some(author_text(&p.caller.author));
+            let v = p.storage.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
             let (id, rec) =
                 v.create_branch(&name, from.branch, from.seq, crate::project::now_ms(), by).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
@@ -132,7 +132,7 @@ impl Command for BranchParams {
 pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
     let seed = crate::project::session_seed();
     let ledger = p.ledger.clone();
-    let v = p.file.project_mut().ok_or("Branches live in the project file. Save it first.")?;
+    let v = p.storage.file.project_mut().ok_or("Branches live in the project file. Save it first.")?;
     let (l, report) = v.switch_to(&ledger, id, seed).map_err(|e| e.to_string())?;
     let high = v.base_tag_high().clone();
     p.adopt_branch(pg, l, high)?;
@@ -157,7 +157,7 @@ impl Command for RenamebranchParams {
         on_any_page(s, |p, pg| {
             branch_file(p).map_err(CmdError::refused)?;
             let (id, old) = find_branch(p, &self.branch).map_err(CmdError::refused)?;
-            let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let v = p.storage.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
             let rec = v.rename_branch(id, &self.name).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
             let line = format!("Branch \"{}\" renamed \"{}\".", old.name, rec.name);
@@ -204,14 +204,14 @@ impl Command for SwitchbranchParams {
 
 /// `switchbranch`'s work.
 fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -> Result<Value, CmdError> {
-    if p.file.project().is_none() {
+    if p.storage.file.project().is_none() {
         return Err(CmdError::refused(SAVE_FIRST));
     }
     let (id, rec) = find_branch(p, which).map_err(CmdError::refused)?;
     if id == current(p) {
         return Ok(json!({"branch": id.hex(), "name": rec.name, "switched": false, "message": format!("Already on branch \"{}\".", rec.name)}));
     }
-    let read_only = p.file.project().and_then(|v| v.read_only()).is_some();
+    let read_only = p.storage.file.project().and_then(|v| v.read_only()).is_some();
     if p.unsaved() && read_only {
         // Never a silent loss: the edits can only be kept by Save As.
         return Err(CmdError::refused(read_only_refusal(p)));
@@ -276,7 +276,7 @@ fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Va
         switch_to(p, pg, to).map_err(CmdError::refused)?;
         line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
     }
-    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.storage.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
     v.set_branch_open(id, false).map_err(|e| CmdError::refused(e.to_string()))?;
     p.note_branch_change();
     line.push_str(&format!("Branch \"{}\" archived; reopen it from \"Show merged and archived\".", rec.name));
@@ -326,7 +326,7 @@ fn reopen_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, name: Option<
         return Ok(json!({"branch": id.hex(), "name": rec.name, "message": line}));
     }
     let free = free_branch_name(p, &rec.name, Some(id));
-    let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.storage.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
     let reopened = match name {
         Some(n) => v.reopen_as(id, n),
         None => v.set_branch_open(id, true),

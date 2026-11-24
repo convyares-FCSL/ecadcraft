@@ -274,7 +274,7 @@ fn g_hover_properties_and_go_to() {
     let v = x.h.run("refgoto", json!({"source": x.nc.hex()})).unwrap();
     assert_eq!(v["page"], json!(x.p100.hex()));
     assert_eq!(v["target"], json!(x.coil.hex()));
-    assert!(x.h.p(|p| p.goto_ring).is_some_and(|(pg, at, _)| pg == x.p100 && at.near(ecad_model::Pt::new(75.0, 180.0), 1e-9)));
+    assert!(x.h.p(|p| p.display.goto_ring).is_some_and(|(pg, at, _)| pg == x.p100 && at.near(ecad_model::Pt::new(75.0, 180.0), 1e-9)));
     // Hover the coil's table: its contacts.
     let (uid, bar) = x.h.pv(|p, _| {
         let v = &p.pages[&x.p100];
@@ -346,7 +346,7 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     let dir = std::env::temp_dir().join(format!("ecad-025-{}-{}", std::process::id(), ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("x.ecad").to_string_lossy().into_owned();
-    x.h.cfg(|p| p.persistence = Persistence::File);
+    x.h.cfg(|p| p.storage.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": path})).unwrap();
     let live = x.h.doc();
     let idx = x.h.p(|p| p.reference().clone());

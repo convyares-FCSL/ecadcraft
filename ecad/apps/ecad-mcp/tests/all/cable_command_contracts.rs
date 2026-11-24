@@ -37,7 +37,7 @@ impl Client {
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
         assert!(c.s.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
         c
     }
 
@@ -107,7 +107,7 @@ impl Direct {
         ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "cables", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_engine::cables::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {

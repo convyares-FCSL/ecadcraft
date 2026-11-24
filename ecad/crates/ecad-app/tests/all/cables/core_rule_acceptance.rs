@@ -75,7 +75,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     let ring = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.goto_ring).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.display.goto_ring).unwrap()
     };
     assert!(ring.is_some_and(|(pg, at, _)| pg == page && Some(at) == want_at), "ring at the cable: {ring:?} vs {want_at:?}");
     let sel = h.state().cad.session.selection();

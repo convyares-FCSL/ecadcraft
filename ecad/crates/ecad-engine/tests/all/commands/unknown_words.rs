@@ -36,7 +36,7 @@ fn file_with_unknown_word(dir: &TempDir, seed: u64) -> String {
 
 /// Save As `path`; the file the project is now bound to.
 fn saved_as(h: &mut H, path: &str) -> String {
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let v = h.run("saveas", json!({"path": path})).unwrap();
     h.cfg(|p| p.path.clone()).unwrap_or_else(|| panic!("saved: {v}"))
 }

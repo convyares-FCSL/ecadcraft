@@ -34,12 +34,12 @@ pub(crate) struct RefgotoParams {
 impl Command for RefgotoParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let (uid, jump, opened) = on_any_page(s, |p, pg| {
-            let ring = p.goto_ring.map(|(page, at, _)| (page, at));
+            let ring = p.display.goto_ring.map(|(page, at, _)| (page, at));
             let jump = rules::goto(p.ledger.document(), p.reference(), self.source, self.target, ring)?;
             let opened = p.pages.get(&jump.page).and_then(|v| v.uid).is_none();
             let uid = p.open_page(pg, jump.page).map_err(CmdError::refused)?;
             // The go-to ring (display only, until the next change), as the Checks tab's.
-            p.goto_ring = Some((jump.page, jump.at, ecad_electrical::checks::Severity::Info));
+            p.display.goto_ring = Some((jump.page, jump.at, ecad_electrical::checks::Severity::Info));
             Ok((uid, jump, opened))
         })?;
         if opened {

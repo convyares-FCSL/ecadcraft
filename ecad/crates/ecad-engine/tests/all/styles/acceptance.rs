@@ -172,7 +172,7 @@ pub(crate) fn coil(h: &mut H, x: f64) -> DeviceId {
 
 /// Save `h` at `dir/name` and give the path.
 pub(crate) fn save_as(h: &mut H, dir: &std::path::Path, name: &str) -> String {
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join(name).display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     path

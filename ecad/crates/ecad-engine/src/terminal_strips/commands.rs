@@ -49,7 +49,7 @@ pub fn plan_fence_in(
     p: &mut crate::project::Project, page: PageId, style: Style, strip: Option<DeviceId>, pe: bool, from: Pt, to: Pt,
 ) -> Result<Fence, CmdError> {
     let tol = p.tolerance;
-    plan_fence(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, strip, pe, from, to, tol)
+    plan_fence(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, page, style, strip, pe, from, to, tol)
 }
 
 /// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}`:
@@ -78,7 +78,7 @@ pub(crate) fn place_level(
             Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c)),
             None => {
                 let c: DeviceId = p.ids.fresh();
-                let t = p.tag_high.given(&p.ledger, new_tag, &ecad_electrical::devices::prefix_for(doc, starter))?;
+                let t = p.indexes.tag_high.given(&p.ledger, new_tag, &ecad_electrical::devices::prefix_for(doc, starter))?;
                 ops.push(Op::CreateDevice {
                     id: c,
                     device: ecad_electrical::devices::with_given(
@@ -109,7 +109,7 @@ pub(crate) fn place_level(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
-        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: c });
+        p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: c });
         let doc = p.ledger.document();
         let first = shown.first().map(|(_, t, _)| *t);
         let name = first.map(|t| connection_point_words(doc, t)).unwrap_or_else(|| tag_text.clone());

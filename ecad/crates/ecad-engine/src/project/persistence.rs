@@ -104,7 +104,7 @@ Nothing was written and the project is still unsaved. Closing it discards the de
 
 /// A copy of the project's meaning taken when objects were put on the clipboard.
 #[derive(Debug, Clone)]
-pub struct ClipSnapshot {
+pub(crate) struct ClipSnapshot {
     pub doc: Document,
     pub page: PageId,
     pub map: HandleMap,
@@ -113,7 +113,7 @@ pub struct ClipSnapshot {
 impl Project {
     /// Where the project's file stands (`Persistence::File`).
     pub fn file_status(&self) -> ecad_file::binding::FileStatus {
-        self.file.status()
+        self.storage.file.status()
     }
 
     /// Save now, as Ctrl+S does (the release's save step), whatever the persistence: the file,
@@ -122,12 +122,12 @@ impl Project {
     /// # Errors
     /// The save failed, in words; the project stays as it is in memory.
     pub(crate) fn save_now(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
-        match self.persistence {
+        match self.storage.persistence {
             Persistence::File => self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string()),
             Persistence::Unavailable => Err(SAVE_UNAVAILABLE.into()),
             Persistence::TestStore => {
                 let head = self.ledger.head();
-                let r = self.store.save(self.id, &mut self.ledger, &writer());
+                let r = self.storage.store.save(self.id, &mut self.ledger, &writer());
                 match &r {
                     Ok(n) => self.events.record(EventKind::Saved, Some("qsave"), head, None, format!("persisted through seq {n}")),
                     Err(e) => self.events.record(EventKind::SaveFailed, Some("qsave"), head, None, e.clone()),
@@ -157,29 +157,30 @@ impl Project {
         let seed = session_seed();
         let window = self.window();
         let doc = ledger.document();
-        let target = self.active.filter(|p| doc.pages().contains_key(p)).or_else(|| ecad_model::document::book::Book::of(doc).order.first().copied());
+        let target =
+            self.display.active.filter(|p| doc.pages().contains_key(p)).or_else(|| ecad_model::document::book::Book::of(doc).order.first().copied());
         self.ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
-        self.baseline = ledger.head();
+        self.storage.baseline = ledger.head();
         let pages: Vec<PageId> = doc.page_order().to_vec();
         let cables: BTreeSet<CableId> = doc.cables().keys().copied().collect();
         self.ledger = ledger;
         self.derived.rebuild(self.ledger.document());
-        self.tag_high = ecad_electrical::devices::tags::TagHigh::starting_at(tag_high);
+        self.indexes.tag_high = ecad_electrical::devices::tags::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
-        self.designation_uses.reset();
+        self.indexes.designation_uses.reset();
         self.conflicts.clear();
-        self.views.retain(|c| cables.contains(c));
-        self.goto_ring = None;
-        self.frame = None;
-        self.frame_stale = false;
-        self.pending_known = false;
-        self.revision_view = None;
+        self.display.views.retain(|c| cables.contains(c));
+        self.display.goto_ring = None;
+        self.frame.drawn = None;
+        self.frame.stale = false;
+        self.frame.pending_known = false;
+        self.display.revision_view = None;
         self.clips.clear();
-        self.last_placed = None;
+        self.defaults.last_placed = None;
         // Every change-driven copy (pages, devices, properties, checks) rebuilds once.
-        self.changes.clear();
-        self.change_count += 2;
-        self.page_list_version += 1;
+        self.counts.changes.clear();
+        self.counts.change_count += 2;
+        self.counts.page_list_version += 1;
         let mut views: BTreeMap<PageId, PageView> = pages.iter().map(|p| (*p, PageView::default())).collect();
         if let Some((old, uid)) = window {
             self.oops.stale_doc(uid);
@@ -214,7 +215,7 @@ impl Project {
                 }
                 None => {
                     self.pages = views;
-                    self.active = None;
+                    self.display.active = None;
                 }
             }
         } else {
@@ -223,18 +224,18 @@ impl Project {
         self.sync_saved(pg);
         let head = self.ledger.head();
         self.events.record(EventKind::ProjectOpened, Some("switchbranch"), head, None, "another branch shown");
-        self.branch_gen += 1;
+        self.counts.branch_gen += 1;
         Ok(())
     }
 
     /// How many branch actions this session has seen ([`Project`]'s `branch_gen`).
     pub fn branch_gen(&self) -> u64 {
-        self.branch_gen
+        self.counts.branch_gen
     }
 
     /// A branch action happened: every view of the branches refreshes.
     pub(crate) fn note_branch_change(&mut self) {
-        self.branch_gen += 1;
+        self.counts.branch_gen += 1;
     }
 
     /// Bind the project to the file at `path`: its name, and every open page's path and title.
@@ -258,9 +259,9 @@ impl Project {
         let target = path.filter(|p| !p.trim().is_empty());
         let r: Result<(Option<String>, Option<String>), String> = match target {
             None if save_as => Err(ecad_file::binding::SAVE_AS_NEEDS_PATH.into()),
-            None => self.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
+            None => self.storage.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
             Some(p) => crate::file::normalize(p).map_err(|e| e.to_string()).and_then(|p| {
-                let w = self.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
+                let w = self.storage.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
                 Ok((
                     Some(p),
                     match w {
@@ -304,7 +305,7 @@ impl Project {
         let unsaved = self.unsaved();
         for v in self.pages.values() {
             if let Some(st) = v.uid.and_then(|u| pg.doc_mut(u)) {
-                st.saved = if unsaved { self.unsaved_marker.clone() } else { st.doc.clone() };
+                st.saved = if unsaved { self.storage.unsaved_marker.clone() } else { st.doc.clone() };
             }
         }
     }

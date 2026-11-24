@@ -16,9 +16,9 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> DeviceId {
 
 /// Run `cmd` on the session; the window projections it caused and the pages it names.
 fn counted(h: &mut H, cmd: &str, params: Value) -> (u64, Option<std::collections::BTreeSet<PageId>>) {
-    let (before, n) = h.p(|p| (p.projections, p.change_count()));
+    let (before, n) = h.p(|p| (p.counts.projections, p.change_count()));
     h.s.execute(cmd, &params).unwrap();
-    h.p(|p| (p.projections - before, p.changes_since(n)))
+    h.p(|p| (p.counts.projections - before, p.changes_since(n)))
 }
 
 /// An edit on another page does not re-project the page on screen; an edit on it does, once.

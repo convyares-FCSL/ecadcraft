@@ -76,7 +76,7 @@ impl App {
     pub(crate) fn report_windows(&mut self, ctx: &egui::Context) {
         if let Some(p) = self.project.clone()
             && p.is_attached(&self.cad.session)
-            && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.open_reports)).unwrap_or(false)
+            && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.asks.open_reports)).unwrap_or(false)
         {
             self.reports_view();
         }

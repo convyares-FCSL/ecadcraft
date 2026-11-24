@@ -236,7 +236,7 @@ impl App {
                 Some(crate::settings::sheets::Out::OpenRevisions) | None => {}
             }
         }
-        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.issue_undo_question.clone()).ok().flatten());
+        let question = self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| p.asks.issue_undo_question.clone()).ok().flatten());
         if let Some(q) = question {
             match crate::settings::sheets::issue_undo(ctx, &q) {
                 Some(true) => {
@@ -244,7 +244,7 @@ impl App {
                 }
                 Some(false) => {
                     if let Some(p) = self.project.clone() {
-                        let _ = p.configure(&mut self.cad.session, |p| p.issue_undo_question = None);
+                        let _ = p.configure(&mut self.cad.session, |p| p.asks.issue_undo_question = None);
                     }
                 }
                 None => {}

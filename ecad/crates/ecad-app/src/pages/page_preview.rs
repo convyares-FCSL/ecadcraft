@@ -9,7 +9,7 @@ impl App {
     /// Preview `page` of the revision opened read-only.
     pub fn preview_revision_page(&mut self, page: PageId) {
         let Some(p) = self.project.clone() else { return };
-        let rv = p.read(&mut self.cad.session, |p, _| p.revision_view.clone()).ok().flatten();
+        let rv = p.read(&mut self.cad.session, |p, _| p.display.revision_view.clone()).ok().flatten();
         let Some(rv) = rv else { return };
         let mut v = Preview::new(page, None, None);
         v.revision = Some((rv.doc.clone(), format!("Rev {}", rv.rev)));

@@ -67,7 +67,7 @@ impl Command for CableslashParams {
                 }
                 SlashTarget::New => {
                     let style = plain_style(p);
-                    let plan = rules::slash_new(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, from, to, &found, self.tag.as_deref())?;
+                    let plan = rules::slash_new(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, page, style, from, to, &found, self.tag.as_deref())?;
                     p.apply_edit(pg, "cableslash", "Cable slash", plan.ops)?;
                     Ok(json!({
                         "cable": plan.cable.hex(),
@@ -101,7 +101,8 @@ pub(crate) struct CableaddParams {
 impl Command for CableaddParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, _| {
-            let (cable, ops) = rules::add_to_cable(&p.ledger, &mut p.ids, &mut p.tag_high, self.cable, &self.conductors.0, self.tag.as_deref())?;
+            let (cable, ops) =
+                rules::add_to_cable(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, self.cable, &self.conductors.0, self.tag.as_deref())?;
             p.apply_edit(pg, "cableadd", "Add to cable", ops)?;
             Ok(json!({"cable": cable.hex()}))
         })
@@ -354,15 +355,15 @@ impl Command for CableviewParams {
             }
             let (changed, stored) = p.set_view(pg, k, target);
             let mut r = json!({"cable": k.hex(), "view": target.name()});
-            let remembered = match (&stored, p.settings.dir()) {
+            let remembered = match (&stored, p.display.view_settings.dir()) {
                 (Ok(()), Some(_)) => true,
                 (Err(e), Some(_)) => {
                     r["reason"] = Value::String(e.clone());
                     false
                 }
                 (_, None) => {
-                    if changed && !p.said_not_remembered {
-                        p.said_not_remembered = true;
+                    if changed && !p.display.said_not_remembered {
+                        p.display.said_not_remembered = true;
                         r["notice"] = Value::String(views::NOT_REMEMBERED.into());
                     }
                     false

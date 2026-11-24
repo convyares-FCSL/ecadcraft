@@ -211,7 +211,7 @@ fn symbol_of(d: &Document, t: ConnectionPointId) -> Option<(ecad_model::Represen
 fn reload(mut h: H, tag: &str, seed: u64) -> H {
     let dir = tmp_dir(tag);
     let path = dir.join("hand made.ecad").display().to_string();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     h.close_all();
     drop(h);
@@ -981,7 +981,7 @@ fn p_save_and_reopen_keep_everything() {
     let before_bom = m.h.run("bom", json!({"limit": 5000})).unwrap();
     let dir = tmp_dir("save");
     let path = dir.join("Klemmen -X01 (L N PE).ecad").to_string_lossy().to_string();
-    m.h.cfg(|p| p.persistence = Persistence::File);
+    m.h.cfg(|p| p.storage.persistence = Persistence::File);
     m.h.run("saveas", json!({"path": path})).unwrap();
     m.h.close_all();
     let mut h = reopen(&path, 0x7036_0015);

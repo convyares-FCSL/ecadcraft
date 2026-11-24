@@ -129,7 +129,7 @@ impl Command for MakeParams {
                 }
             }
             let style = plain_style(p);
-            let made = rules::plan_make(&p.ledger, &mut p.ids, &mut p.tag_high, &items, content, MakeAt { page, style, at, replace })?;
+            let made = rules::plan_make(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, &items, content, MakeAt { page, style, at, replace })?;
             p.apply_edit(pg, "makesymbol", &made.plan.label, made.plan.ops)?;
             let mut v = rules::result(p.ledger.document(), made.plan.id);
             if let Some((c, r, t)) = made.placed {
@@ -170,7 +170,7 @@ pub(crate) fn place_project_key(
         let (device, tag) = ecad_electrical::devices::commands::place::project_target(doc, device, tag.as_deref())?;
         let pl = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = plain_style(p);
-        let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
+        let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
         // The place proposes.
         let proposed = crate::symbols::draw::plan_place(p, &plan.ops, modes, plan.component, page, at, None).map_err(CmdError::refused)?;

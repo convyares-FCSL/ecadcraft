@@ -138,13 +138,13 @@ fn commit<P: Generic>(
 ) -> Result<(Value, Vec<String>), CmdError> {
     let mut held = match P::STATE {
         State::None => Held::None,
-        State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
+        State::LastCaption => Held::LastCaption(proj.defaults.last_caption.clone()),
         State::Conflicts => Held::Conflicts(None),
-        State::LastPlaced => Held::LastPlaced(proj.last_placed),
+        State::LastPlaced => Held::LastPlaced(proj.defaults.last_placed),
     };
     let change_count = proj.change_count();
     let plain = crate::commands::plain_style(proj);
-    let off_release_line = proj.file.project().filter(|v| !v.branch_record().release_line).map(|v| v.branch_record().name.clone());
+    let off_release_line = proj.storage.file.project().filter(|v| !v.branch_record().release_line).map(|v| v.branch_record().name.clone());
     let Outcome { edit, answer, writes, echo } = {
         let state = match &mut held {
             Held::None => Slot::None,
@@ -160,8 +160,8 @@ fn commit<P: Generic>(
             plain,
             tolerance: proj.tolerance,
             change_count,
-            tag_high: &mut proj.tag_high,
-            designation_uses: &mut proj.designation_uses,
+            tag_high: &mut proj.indexes.tag_high,
+            designation_uses: &mut proj.indexes.designation_uses,
             derived: &mut proj.derived,
             off_release_line,
             metrics: &crate::styles::draw::EngineMetrics,
@@ -188,10 +188,10 @@ fn commit<P: Generic>(
     }
     match held {
         Held::None => {}
-        Held::LastCaption(c) => proj.last_caption = c,
+        Held::LastCaption(c) => proj.defaults.last_caption = c,
         Held::Conflicts(None) => {}
         Held::Conflicts(Some(c)) => proj.conflicts = c,
-        Held::LastPlaced(l) => proj.last_placed = l,
+        Held::LastPlaced(l) => proj.defaults.last_placed = l,
     }
     let v = match answer {
         Answer::Now(v) => v,

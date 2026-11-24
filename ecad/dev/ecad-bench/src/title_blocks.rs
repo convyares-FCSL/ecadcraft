@@ -110,7 +110,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitle
         }
         out.own300_ms = median(&mut own);
         // Save with one page on screen: one frame worked out.
-        project.read(&mut s, |p, _| p.frame_builds)?;
+        project.read(&mut s, |p, _| p.counts.frame_builds)?;
         let mut save = Vec::new();
         let mut builds = Vec::new();
         for i in 0..runs.max(1) {
@@ -118,16 +118,16 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitle
             if let Some(BlockItem::Line { a, .. }) = l.items.first_mut() {
                 a.0 = (i % 5) as f64;
             }
-            let before = project.read(&mut s, |p, _| p.frame_builds)?;
+            let before = project.read(&mut s, |p, _| p.counts.frame_builds)?;
             let (ms, _) = exec(&mut s, "titleblock", json!({"id": id, "body": serde_json::to_value(&l).map_err(|e| e.to_string())?}))?;
             save.push(ms);
-            builds.push(project.read(&mut s, |p, _| p.frame_builds)? - before);
+            builds.push(project.read(&mut s, |p, _| p.counts.frame_builds)? - before);
         }
         out.save_ms = median(&mut save);
         out.save_builds = builds.iter().copied().max().unwrap_or(0);
-        let before = project.read(&mut s, |p, _| p.frame_builds)?;
+        let before = project.read(&mut s, |p, _| p.counts.frame_builds)?;
         exec(&mut s, "projectprops", json!({"props": {"bench_unread": "x"}}))?;
-        out.unread_builds = project.read(&mut s, |p, _| p.frame_builds)? - before;
+        out.unread_builds = project.read(&mut s, |p, _| p.counts.frame_builds)? - before;
         Ok::<(), String>(())
     })();
     remove(&copy);

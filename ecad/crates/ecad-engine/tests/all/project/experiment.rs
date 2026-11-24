@@ -191,7 +191,7 @@ fn scenario_s1_to_s16() {
     // S12: close the page window showing page 2 (the desktop app's `keep_open`: no prompt, the project
     // stays open), then show it again.
     h.activate(p2);
-    h.cfg(|p| p.keep_open = true);
+    h.cfg(|p| p.display.keep_open = true);
     let i2 = h.page_index(p2).unwrap();
     assert!(!h.s.close_needs_prompt(i2), "closing the page window never prompts with keep_open");
     h.run("close", json!({"index": i2})).unwrap();
@@ -211,21 +211,21 @@ fn scenario_s1_to_s16() {
     h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"})).unwrap();
     let i1 = h.page_index(p1).unwrap();
     assert!(h.s.doc_unsaved(i1));
-    h.cfg(|p| p.store.fail_next_write());
+    h.cfg(|p| p.storage.store.fail_next_write());
     let e = h.run("qsave", Value::Null).unwrap_err();
     assert!(e.contains("not saved"), "{e}");
     assert!(h.p(|p| p.ledger.is_unsaved()), "still unsaved after the failure");
     assert_eq!(h.p(|p| p.ledger.persisted()), saved_head);
     // The failed save acknowledged nothing: the file still opens at the first save, and the retry
     // writes the rest, so nothing is duplicated or lost.
-    let after_failure = h.p(|p| p.store.bytes());
+    let after_failure = h.p(|p| p.storage.store.bytes());
     let mut s0 = cadcraft_engine::Session::empty();
     let first = ProjectHandle::open_from(&mut s0, "Demo", after_failure, 1).unwrap();
     assert_eq!(first.read(&mut s0, |p, _| p.ledger.full_log().unwrap()).unwrap(), saved_log, "the first save is untouched");
     h.run("qsave", Value::Null).unwrap();
     assert!(!h.p(|p| p.ledger.is_unsaved()));
     assert_eq!(h.p(|p| p.events.count(EventKind::SaveFailed)), 1);
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let log = h.p(|p| p.ledger.full_log().unwrap());
     let mut s1 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s1, "Demo", medium, 1).unwrap();
@@ -251,14 +251,14 @@ fn scenario_s1_to_s16() {
 
     // S15: reopen from the in-memory project file (checkpoints are disabled, §20.8).
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let live = h.doc();
     let id = h.p(|p| p.id);
     let mut s2 = cadcraft_engine::Session::empty();
     let reopened = ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     assert_eq!(reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap(), live);
     assert_eq!(reopened.read(&mut s2, |p, _| p.id).unwrap(), id, "the project keeps its identity");
-    let report = reopened.read(&mut s2, |p, _| p.open_report.clone()).unwrap();
+    let report = reopened.read(&mut s2, |p, _| p.storage.open_report.clone()).unwrap();
     assert!(report.is_some_and(|r| r.damage.is_none()));
 
     // S16: failure after acceptance, before projection completes (PROJ-02).

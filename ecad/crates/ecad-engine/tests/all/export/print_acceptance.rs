@@ -486,7 +486,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     assert_eq!(h.doc().display().get("revisions.pending").map(String::as_str), Some("star"), "FP3 key");
     // Save and reopen: the same state, computed on open.
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s2 = cadcraft_engine::Session::empty();
     let r = ecad_engine::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let first = r.read(&mut s2, |p, _| p.ledger.document().page_order()[0]).unwrap();
@@ -663,7 +663,7 @@ fn ac14_a_project_without_033_settings_looks_as_before() {
     }
     h.run("qsave", Value::Null).unwrap();
     let doc = h.doc();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s2 = cadcraft_engine::Session::empty();
     let r = ecad_engine::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let (doc2, unsaved) = r.read(&mut s2, |p, _| (p.ledger.document().clone(), p.ledger.is_unsaved())).unwrap();

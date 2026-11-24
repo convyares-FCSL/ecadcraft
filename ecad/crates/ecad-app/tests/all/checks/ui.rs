@@ -42,7 +42,7 @@ pub(crate) fn demo_file(dir: &std::path::Path) -> String {
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = ecad_app::shell::app::App::new(None).unwrap();
     let p = t.project().unwrap().clone();
-    p.configure(&mut t.cad.session, |p| p.author = ecad_model::Author::Agent("ecad-demo".into())).unwrap();
+    p.configure(&mut t.cad.session, |p| p.caller.author = ecad_model::Author::Agent("ecad-demo".into())).unwrap();
     let page1 = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order().first().map(|x| x.hex())).unwrap().unwrap();
     let mut vars: Map<String, Value> = Map::new();
     vars.insert("page1".into(), Value::String(page1));
@@ -231,7 +231,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let ring = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.goto_ring).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.display.goto_ring).unwrap()
     };
     assert!(ring.is_some_and(|(pg, at, _)| pg == p3 && Some(at) == pe.check.at), "{ring:?}");
     save(&h, &deltas, "022-checks.png");
@@ -239,7 +239,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let ring_of = |h: &mut H| {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| p.goto_ring).unwrap()
+        p.read(&mut t.cad.session, |p, _| p.display.goto_ring).unwrap()
     };
     h.key_press(eframe::egui::Key::Escape);
     h.run_steps(3);

@@ -37,6 +37,7 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
         let pins_layout = ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice()
             == Some(defaults::connectors::MakerLayout::Pins);
         let next = p
+            .indexes
             .tag_high
             .peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::json::starter("socket4")?))
             .unwrap_or_else(|_| "-X?".into());

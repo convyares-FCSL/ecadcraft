@@ -41,7 +41,7 @@ use ecad_file::history::{Named, NodeKind, Point, status_word};
 
 /// The two branches of a merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sides {
+pub(crate) struct Sides {
     pub source: BranchId,
     pub target: BranchId,
     pub source_name: String,
@@ -74,7 +74,7 @@ impl Sides {
 ///
 /// # Errors
 /// Unknown branches, or two branches that are not parent and child, in words.
-pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, String> {
+pub(crate) fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, String> {
     let (sid, srec) = history::find_branch(p, from)?;
     let cur = history::current(p);
     let (tid, trec) = match into {
@@ -116,7 +116,7 @@ pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, Strin
 
 /// A merge with its states read: kept while nothing it read changes.
 #[derive(Debug)]
-pub struct Prepared {
+pub(crate) struct Prepared {
     pub sides: Sides,
     /// What it was read at: the source's head and the target's (and whether the target was the
     /// branch shown).
@@ -146,7 +146,7 @@ pub struct Prepared {
 /// target from the source records the source's head (`A1`), a merge into the source from the
 /// target records the target's head (`A2`); the newer of them, else the fork.
 fn ancestor(p: &Project, s: &Sides) -> Result<(BranchId, u64), String> {
-    let v = p.file.project().ok_or("Branches live in the project file. Save it first.")?;
+    let v = p.storage.file.project().ok_or("Branches live in the project file. Save it first.")?;
     let rows = |b: BranchId| if b == history::current(p) { v.merge_index(&p.ledger) } else { v.merge_rows(b) }.map_err(|e| e.to_string());
     // A1: into the target from the source, at target step m, of source head s1.
     let a1 = rows(s.target)?.into_iter().filter(|m| m.source == s.source).max_by_key(|m| m.seq);
@@ -211,7 +211,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     // state plus those steps, so every difference lies there).
     let (child, parent) = (sides.child(), sides.parent());
     let mut scope = Scope::default();
-    let mut high = p.file.project().map(|v| v.base_tag_high().clone()).unwrap_or_default();
+    let mut high = p.storage.file.project().map(|v| v.base_tag_high().clone()).unwrap_or_default();
     let mut target_last: BTreeMap<Obj, u64> = BTreeMap::new();
     for (b, from, to) in [(child, 1, head_of(p, child)?), (parent, sides.fork + 1, head_of(p, parent)?)] {
         let mut at = from;
@@ -290,7 +290,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
 /// The target-side position of the newest merge into the target from the source (where its
 /// ancestor lands on the target's line).
 fn last_merge_pos(p: &Project, s: &Sides) -> Option<u64> {
-    let v = p.file.project()?;
+    let v = p.storage.file.project()?;
     let rows = if s.target == history::current(p) { v.merge_index(&p.ledger).ok()? } else { v.merge_rows(s.target).ok()? };
     rows.into_iter().filter(|m| m.source == s.source).map(|m| m.seq).max()
 }
@@ -316,7 +316,7 @@ fn keeps(update: bool) -> impl Fn(&str) -> bool {
 /// with the commit's own check, on the live document (the branch shown) or the prepared copy,
 /// and reverted: a preview that says yes never ends in a refused
 /// Merge. The cost follows the ops.
-pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>) -> Plan {
+pub(crate) fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>) -> Plan {
     let keep = keeps(prep.sides.update);
     let (tname, sname) = if prep.sides.update {
         ("this branch".to_string(), prep.sides.source_name.clone())
@@ -383,7 +383,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
 ///
 /// # Errors
 /// As [`prepare`].
-pub fn prepared(p: &mut Project, sides: Sides) -> Result<Arc<Prepared>, String> {
+pub(crate) fn prepared(p: &mut Project, sides: Sides) -> Result<Arc<Prepared>, String> {
     let cur = history::current(p);
     let key = (head_of(p, sides.source)?, head_of(p, sides.target)?, sides.target == cur);
     if let Some(c) = &p.merge_cache
@@ -507,7 +507,7 @@ fn framed(prep: &Prepared, obj: Obj) -> Option<String> {
 
 /// The preview as JSON: the header, the counts line, the conflicts with their
 /// choices (`main` / `branch` words), the changes and what Merge would do.
-pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
+pub(crate) fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     let s = &prep.sides;
     let pt = s.parent_is_target();
     let docs = [&*prep.source_doc, &*prep.ancestor_doc];
@@ -601,6 +601,13 @@ pub fn specs() -> Vec<CommandSpec> {
     ]
 }
 
+impl Project {
+    /// Drops the merge last prepared (the merge dialog was cancelled).
+    pub fn forget_merge(&mut self) {
+        self.merge_cache = None;
+    }
+}
+
 /// A refusal of a merge with unanswered conflicts: what to give, never a dead end.
 fn unanswered_refusal(prep: &Prepared, plan: &Plan) -> String {
     let n = plan.unanswered.len();
@@ -640,7 +647,7 @@ impl Command for MergeParams {
         let given = self.choices.unwrap_or_default();
         if self.preview == Some(true) {
             return on_any_page(s, |p, _| {
-                if p.file.project().is_none() {
+                if p.storage.file.project().is_none() {
                     return Err(CmdError::refused("Branches live in the project file. Save it first."));
                 }
                 let sides = sides(p, &self.from, self.into.as_deref()).map_err(CmdError::refused)?;
@@ -693,7 +700,7 @@ fn merge(
             line = format!("{said}This branch already has {}'s changes.", sides.source_name);
         } else if close && asked_close == Some(true) {
             let head = p.ledger.head();
-            let v = p.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
+            let v = p.storage.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;
             v.mark_merged(sides.source, sides.target, head).map_err(|e| CmdError::refused(e.to_string()))?;
             p.note_branch_change();
             line.push_str(&format!(" Branch \"{}\" closed.", sides.source_name));
@@ -701,7 +708,7 @@ fn merge(
         pg.echo(line.clone());
         return Ok(json!({"merged": false, "message": line}));
     }
-    let v = p.file.project().ok_or(CmdError::refused(NO_FILE))?;
+    let v = p.storage.file.project().ok_or(CmdError::refused(NO_FILE))?;
     let source_head = prep.key.0;
     let chain = |b, seq| v.chain_of(b, seq).map_err(CmdError::from);
     let kind = TxKind::Merge {
@@ -712,7 +719,7 @@ fn merge(
     let changes = plan.changes.len();
     let resolved = plan.conflicts.len();
     let tx = p.apply_merge(pg, &label(&prep), kind, plan.ops.clone()).map_err(CmdError::refused)?;
-    if close && let Some(v) = p.file.project_mut() {
+    if close && let Some(v) = p.storage.file.project_mut() {
         v.close_on_save(tx, sides.source);
     }
     p.merge_cache = None;
@@ -753,7 +760,7 @@ fn top_is_merge(p: &Project) -> bool {
     match top.kind {
         TxKind::Merge { .. } => true,
         TxKind::Redo { .. } if merge_label(&top.label) => {
-            p.file.project().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq))
+            p.storage.file.project().and_then(|v| v.merge_index(&p.ledger).ok()).is_some_and(|m| m.iter().any(|x| x.seq == top.seq))
         }
         _ => false,
     }
@@ -763,7 +770,7 @@ fn top_is_merge(p: &Project) -> bool {
 /// only that branch is reopened by undoing it.
 fn closed_by_top(p: &Project) -> Option<BranchId> {
     let top = p.ledger.undo_top()?;
-    let v = p.file.project()?;
+    let v = p.storage.file.project()?;
     let cur = history::current(p).hex();
     let source = match top.kind {
         TxKind::Merge { source, .. } => BranchId(source),
@@ -817,9 +824,9 @@ fn undo_merge(p: &mut Project, pg: &mut Pages<'_>, _page: ecad_model::PageId) ->
     }
     let label = p.ledger.undo_top().map(|t| t.label.clone()).unwrap_or_default();
     let reopens = closed_by_top(p).is_some();
-    p.confirm_merge_undo = true;
+    p.asks.confirm_merge_undo = true;
     let r = p.undo_step(pg);
-    p.confirm_merge_undo = false;
+    p.asks.confirm_merge_undo = false;
     r.map_err(CmdError::refused)?;
     p.merge_cache = None;
     p.note_branch_change();

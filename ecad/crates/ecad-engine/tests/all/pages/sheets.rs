@@ -176,12 +176,12 @@ fn page_properties_are_one_transaction_each_and_the_title_block_follows() {
 #[test]
 fn the_frame_is_recomputed_only_after_an_op_of_its_update_map() {
     let mut s = fixture();
-    let builds = s.h.p(|p| p.frame_builds);
+    let builds = s.h.p(|p| p.counts.frame_builds);
     s.h.run("wire", json!({"points": [[0, 100], [40, 100]]})).unwrap();
     s.h.run("line", json!({"points": [[0, 120], [40, 120]]})).unwrap();
-    assert_eq!(s.h.p(|p| p.frame_builds), builds, "edits outside the update map");
+    assert_eq!(s.h.p(|p| p.counts.frame_builds), builds, "edits outside the update map");
     s.h.run("projectprops", json!({"title": "Panel 7"})).unwrap();
-    assert_eq!(s.h.p(|p| p.frame_builds), builds + 1);
+    assert_eq!(s.h.p(|p| p.counts.frame_builds), builds + 1);
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "Panel 7"));
     // Another page's number changes nothing here unless it is the next page.
     s.h.run("pageprops", json!({"page": s.field.hex(), "number": "105"})).unwrap();
@@ -317,17 +317,17 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
     let v = s.h.run("openrevision", json!({"rev": "A"})).unwrap();
     assert_eq!(s.h.head(), head, "opening records nothing");
     assert_eq!(v["at"], json!(at));
-    let then = s.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
+    let then = s.h.p(|p| p.display.revision_view.as_ref().unwrap().doc.clone());
     assert_eq!(then.wires().len(), now - 1, "Rev A has no wire drawn after it");
     s.h.run("closerevision", json!({})).unwrap();
-    assert!(s.h.p(|p| p.revision_view.is_none()));
+    assert!(s.h.p(|p| p.display.revision_view.is_none()));
     // Undo the wire, then a plain `u` across the issue stops and asks.
     s.h.run("u", Value::Null).unwrap();
     let head = s.h.head();
     let e = s.h.run("u", Value::Null).unwrap_err();
     assert!(e.contains("Rev A was issued on 2026-11-08. Undo the issue?"), "{e}");
     assert_eq!(s.h.head(), head, "nothing undone");
-    assert!(s.h.p(|p| p.issue_undo_question.is_some()));
+    assert!(s.h.p(|p| p.asks.issue_undo_question.is_some()));
     s.h.run("undoissue", json!({})).unwrap();
     assert!(!s.h.doc().versions().contains_key(&ecad_model::PointName::Revision(ecad_model::Rev::Letter(1))));
     assert!(frame_texts(&mut s.h, s.supply).iter().any(|t| t == "-"), "no issued revision");
@@ -347,7 +347,7 @@ fn save_and_reopen_keep_everything() {
     s.h.run("issuerevision", json!({})).unwrap();
     s.h.run("qsave", Value::Null).unwrap();
     let doc = s.h.doc();
-    let medium = s.h.p(|p| p.store.bytes());
+    let medium = s.h.p(|p| p.storage.store.bytes());
     let mut s2 = cadcraft_engine::Session::empty();
     let reopened = ecad_engine::ProjectHandle::open_from(&mut s2, "Demo", medium, 1).unwrap();
     let doc2 = reopened.read(&mut s2, |p, _| p.ledger.document().clone()).unwrap();
@@ -380,7 +380,7 @@ fn a_read_only_project_refuses_writes() {
     let mut s = fixture();
     s.h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
     s.h.run("issuerevision", json!({})).unwrap();
-    s.h.cfg(|p| p.persistence = ecad_engine::Persistence::Unavailable);
+    s.h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::Unavailable);
     // The command path refuses writes the same way for every ECAD command while a project is
     // read-only (`ecad-mcp` and the desktop app rely on it); reading and opening a revision work.
     let v = s.h.run("projectprops", json!({})).unwrap();

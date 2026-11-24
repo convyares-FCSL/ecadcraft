@@ -36,7 +36,7 @@ impl Drop for TempDir {
 fn save_close_and_reopen_keep_connectivity_ids_and_history() {
     let d = TempDir::new("reopen");
     let (mut h, c1, _c2, w) = small_project(31);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let first = h.first_page();
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("wire", json!({"points": pts(&[(0.0, 0.0), (30.0, 0.0)])})).unwrap();
@@ -109,7 +109,7 @@ fn save_close_and_reopen_keep_connectivity_ids_and_history() {
 fn a_second_session_opens_read_only_and_can_save_a_copy() {
     let d = TempDir::new("second");
     let (mut h, ..) = small_project(32);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = d.path("shared.ecad");
     h.run("saveas", json!({"path": path})).unwrap();
 
@@ -143,7 +143,7 @@ fn file_names_are_checked_and_completed() {
         assert_eq!(normalize("~/p").unwrap(), format!("{}.ecad", home.join("p").display()));
     }
     let (mut h, ..) = small_project(33);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     assert!(h.run("saveas", json!({"path": ""})).unwrap_err().contains("needs a file name"));
     assert!(h.run("saveas", json!({"path": "x.dwg"})).unwrap_err().contains(".ecad"));
     let d = TempDir::new("missing");
@@ -183,7 +183,7 @@ fn opening_a_non_project_read_only_reports_why() {
 /// A strip `-X01` of four terminals on four wires, saved as `name` in `d` (brief 030, AC 8).
 fn strip_project(d: &TempDir, name: &str, seed: u64) -> (H, String, String) {
     let mut h = H::new(seed);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.first_page();
     for x in [50.0, 90.0, 130.0, 170.0] {
         h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
@@ -257,7 +257,7 @@ fn a_028_project_opens_unchanged_with_no_accessories() {
 fn a_justified_text_saves_and_reopens_aligned() {
     let d = TempDir::new("justify");
     let mut h = H::new(0x31_04);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.first_page();
     h.run("text", json!({"at": [100, 100], "text": "MID", "height": 2.5, "justify": "MC"})).unwrap();
     h.run("text", json!({"at": [100, 80], "text": "LEFT", "height": 2.5})).unwrap();
@@ -298,7 +298,7 @@ fn save_project_as_refuses_another_existing_file_unless_replace_and_saves_the_ow
     use ecad_engine::file::{SaveAsError, SaveAsRefused};
     let d = TempDir::new("saveprojectas");
     let (mut h, ..) = small_project(32);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let other = d.0.join("other.ecad");
     std::fs::write(&other, b"not the project").unwrap();
 

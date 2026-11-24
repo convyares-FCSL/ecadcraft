@@ -229,7 +229,7 @@ fn a_slash_survives_save_and_reopen() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("slash.ecad").display().to_string();
     let mut f = fixture();
-    f.h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let r = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     f.h.run("saveas", json!({ "path": path })).unwrap();
     let live = f.h.doc();

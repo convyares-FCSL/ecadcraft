@@ -357,7 +357,7 @@ impl App {
         }
         if let Some(p) = &self.project
             && p.is_attached(&self.cad.session)
-            && p.configure(&mut self.cad.session, |p| p.keep_open = on).is_ok()
+            && p.configure(&mut self.cad.session, |p| p.display.keep_open = on).is_ok()
         {
             self.keep_open = Some(on);
         }

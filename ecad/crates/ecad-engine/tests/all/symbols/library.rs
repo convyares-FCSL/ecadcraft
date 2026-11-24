@@ -381,7 +381,7 @@ fn save_close_and_reopen_keep_the_library_devices() {
     for (i, key) in ["prox3", "valve2", "dsub9s", "rj45", "plcdi"].into_iter().enumerate() {
         place(&mut h, key, [60.0 * i as f64, -160.0]);
     }
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-034-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("library.ecad").display().to_string();

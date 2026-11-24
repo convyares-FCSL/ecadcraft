@@ -127,7 +127,7 @@ pub use {
 /// Revisions are issued, and the pending one edited, on a release line only:
 /// on another branch, the refusal names the way forward.
 pub fn release_line_refusal(p: &Project, issuing: bool) -> Option<String> {
-    let v = p.file.project()?;
+    let v = p.storage.file.project()?;
     let off_line = (!v.branch_record().release_line).then(|| v.branch_record().name.as_str());
     rules::release_line_refusal(off_line, issuing)
 }
@@ -232,7 +232,7 @@ impl Command for OpenrevisionParams {
                 })
                 .collect();
             let date = row.get("date").to_string();
-            p.revision_view =
+            p.display.revision_view =
                 Some(RevisionView { rev: row.rev().to_string(), date: date.clone(), at, doc: Arc::new(then), bar: None, id: next_view_id() });
             Ok(json!({"rev": row.rev(), "date": date, "at": at, "pages": pages}))
         })
@@ -248,7 +248,7 @@ pub(crate) struct CloserevisionParams {}
 impl Command for CloserevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
-            let was = p.revision_view.take().map(|v| v.rev);
+            let was = p.display.revision_view.take().map(|v| v.rev);
             Ok(json!({"closed": was}))
         })
     }
@@ -264,13 +264,13 @@ impl Command for UndoissueParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, _| {
             let rev = rules::undone_issue(&p.ledger.undo_ops().unwrap_or_default())?;
-            p.confirm_issue_undo = true;
+            p.asks.confirm_issue_undo = true;
             let r = p.undo_step(pg);
-            p.confirm_issue_undo = false;
+            p.asks.confirm_issue_undo = false;
             r.map_err(CmdError::refused)?;
             let rev = p.ledger.document().project().rev_scheme.show(rev);
-            if p.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
-                p.revision_view = None;
+            if p.display.revision_view.as_ref().is_some_and(|v| v.rev == rev) {
+                p.display.revision_view = None;
             }
             Ok(json!({"rev": rev, "undone": true}))
         })

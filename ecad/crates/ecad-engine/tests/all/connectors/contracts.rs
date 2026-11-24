@@ -500,7 +500,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let dir = std::env::temp_dir().join(format!("ecad-044-roundtrip-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("roundtrip.ecad").display().to_string();
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     let before = h.doc().devices()[&c].clone();
     while !h.s.docs.is_empty() {

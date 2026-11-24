@@ -28,7 +28,7 @@ impl Project {
     /// unavailable. Every other change (drawing edits, devices, undo or redo of those, view
     /// switches) leaves it alone, so the panel keeps its rows.
     pub fn page_list_version(&self) -> u64 {
-        self.page_list_version
+        self.counts.page_list_version
     }
 
     /// The general reference index, kept by the views' pipeline
@@ -58,13 +58,13 @@ impl Project {
     /// Whether the kept frame is marked to be drawn again (tests of the frame's map only).
     #[cfg(feature = "test-support")]
     pub fn frame_is_stale(&self) -> bool {
-        self.frame_stale
+        self.frame.stale
     }
 
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
     /// switch); 0 before the first. Cheap: callers compare it every frame.
     pub fn change_count(&self) -> u64 {
-        self.change_count
+        self.counts.change_count
     }
 
     /// The state a background job copied from this project would be for.
@@ -75,14 +75,14 @@ impl Project {
     /// The pages whose drawing the changes after change `n` could have changed: `Some(empty)`
     /// when none, `None` when any page could have changed or the changes are too old to tell.
     pub fn changes_since(&self, n: u64) -> Option<BTreeSet<PageId>> {
-        if n >= self.change_count {
+        if n >= self.counts.change_count {
             return Some(BTreeSet::new());
         }
-        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+        if self.counts.changes.front().is_none_or(|c| c.n > n + 1) {
             return None;
         }
         let mut out = BTreeSet::new();
-        for c in self.changes.iter().filter(|c| c.n > n) {
+        for c in self.counts.changes.iter().filter(|c| c.n > n) {
             out.extend(c.pages.as_ref()?.iter().copied());
         }
         Some(out)
@@ -92,13 +92,13 @@ impl Project {
     /// the changes are too old to tell (rebuild the list).
     pub fn device_changes_since(&self, n: u64) -> Option<ecad_electrical::devices::device_list::DeviceTouch> {
         let mut out = ecad_electrical::devices::device_list::DeviceTouch::default();
-        if n >= self.change_count {
+        if n >= self.counts.change_count {
             return Some(out);
         }
-        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+        if self.counts.changes.front().is_none_or(|c| c.n > n + 1) {
             return None;
         }
-        for c in self.changes.iter().filter(|c| c.n > n) {
+        for c in self.counts.changes.iter().filter(|c| c.n > n) {
             out.devices.extend(c.devices.devices.iter().copied());
             out.pages |= c.devices.pages;
             out.settings |= c.devices.settings;
@@ -109,14 +109,14 @@ impl Project {
     /// The objects whose Properties rows the changes after change `n` could have changed, together;
     /// `None` when any could have, or the changes are too old to tell (rebuild the copy).
     pub fn props_changes_since(&self, n: u64) -> Option<BTreeSet<ecad_model::ObjectRef>> {
-        if n >= self.change_count {
+        if n >= self.counts.change_count {
             return Some(BTreeSet::new());
         }
-        if self.changes.front().is_none_or(|c| c.n > n + 1) {
+        if self.counts.changes.front().is_none_or(|c| c.n > n + 1) {
             return None;
         }
         let mut out = BTreeSet::new();
-        for c in self.changes.iter().filter(|c| c.n > n) {
+        for c in self.counts.changes.iter().filter(|c| c.n > n) {
             out.extend(c.props.as_ref()?.iter().copied());
         }
         Some(out)
@@ -126,16 +126,16 @@ impl Project {
         &mut self, pages: Option<BTreeSet<PageId>>, devices: ecad_electrical::devices::device_list::DeviceTouch,
         props: Option<BTreeSet<ecad_model::ObjectRef>>, tree: bool,
     ) {
-        self.goto_ring = None;
+        self.display.goto_ring = None;
         self.refresh_pending();
-        self.tag_high.catch_up(&self.ledger);
+        self.indexes.tag_high.catch_up(&self.ledger);
         if devices.pages || tree {
-            self.page_list_version += 1;
+            self.counts.page_list_version += 1;
         }
-        self.change_count += 1;
-        self.changes.push_back(Change { n: self.change_count, pages, devices, props, tree });
-        while self.changes.len() > CHANGE_LOG {
-            self.changes.pop_front();
+        self.counts.change_count += 1;
+        self.counts.changes.push_back(Change { n: self.counts.change_count, pages, devices, props, tree });
+        while self.counts.changes.len() > CHANGE_LOG {
+            self.counts.changes.pop_front();
         }
     }
 
@@ -167,7 +167,7 @@ impl Project {
         let base = committed.map(|(d, _)| d.clone()).or(current).unwrap_or_else(|| Arc::new(base_drawing()));
         let prev = view.map.clone();
         let head = self.ledger.head();
-        self.projections += 1;
+        self.counts.projections += 1;
         let first = if self.take_projection_fault() { Err("injected projection failure".to_string()) } else { self.project(page, &base, &prev) };
         // Only a normal projection keeps the engine's handles, so only then is fidelity comparable.
         let normal = first.is_ok();
@@ -198,10 +198,10 @@ impl Project {
                     page,
                     &d,
                     &map,
-                    &self.views,
+                    &self.display.views,
                     self.tolerance,
-                    self.show_hidden_text,
-                    self.pending,
+                    self.display.show_hidden_text,
+                    self.frame.pending,
                     reports.as_ref(),
                 );
                 if v.ok() {
@@ -257,7 +257,7 @@ impl Project {
                     v.last = Some(st.doc.clone());
                     if v.unavailable {
                         v.unavailable = false;
-                        self.page_list_version += 1;
+                        self.counts.page_list_version += 1;
                     }
                 }
             }
@@ -271,7 +271,7 @@ impl Project {
                     v.last = Some(st.doc.clone());
                     if !v.unavailable {
                         v.unavailable = true;
-                        self.page_list_version += 1;
+                        self.counts.page_list_version += 1;
                     }
                 }
                 pg.echo("This page could not be drawn; it is unavailable until it is closed and reopened. The project is intact and can be saved.");
@@ -297,12 +297,12 @@ impl Project {
     /// kept for another page means the active page's frame is not kept, so it is drawn.
     pub(super) fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
         let active = self.active_page();
-        let frame_other = self.frame.as_ref().is_none_or(|(p, _)| Some(*p) != active);
+        let frame_other = self.frame.drawn.as_ref().is_none_or(|(p, _)| Some(*p) != active);
         let touched = match (pages, active) {
             (Some(set), Some(a)) => set.contains(&a),
             _ => true,
         };
-        if touched || self.frame_stale || frame_other {
+        if touched || self.frame.stale || frame_other {
             self.redraw_window(pg, command);
         } else {
             self.sync_saved(pg);
@@ -367,8 +367,8 @@ impl Project {
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::connectivity::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
         let committed = match kind {
-            Some(k) => self.ledger.commit_merge(self.author.clone(), label, k, ops, now_ms()),
-            None => self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass),
+            Some(k) => self.ledger.commit_merge(self.caller.author.clone(), label, k, ops, now_ms()),
+            None => self.ledger.commit_extended(self.caller.author.clone(), label, ops, now_ms(), pass),
         };
         let tx = committed.map_err(|e| {
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
@@ -403,7 +403,7 @@ impl Project {
             pages.insert(page);
         }
         if frame_stale {
-            self.frame_stale = true;
+            self.frame.stale = true;
         }
         let pages = pages.into_option();
         // Which page an undo or redo brings to the front is read before the change is recorded.

@@ -364,7 +364,7 @@ fn t11b_a_file_with_ends_that_meet_opens_unchanged() {
     let mut h = H::new(0x7032_0012);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({"join": false}));
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("alte Zeichnung 1.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     let head = h.head();
@@ -850,7 +850,7 @@ fn t16_label_settings_round_trip_and_default_when_absent() {
     let dir = tmp_dir("fpw1");
     let mut h = H::new(0x7032_0160);
     h.run("wiresettings", json!({"label_rule": "each", "label_min_length": 12.5})).unwrap();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("Etiketten ä.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     h.close_all();

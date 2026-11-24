@@ -409,7 +409,7 @@ fn reload(mut h: H, seed: u64) -> H {
     let dir = std::env::temp_dir().join(format!("ecad t045 hand made {}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("hand made.ecad").display().to_string();
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();

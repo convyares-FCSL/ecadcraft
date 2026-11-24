@@ -69,7 +69,7 @@ impl Panel {
 fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     let d = TempDir::new("trail");
     let (mut h, c1, _c2, w) = small_project(41);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let first = h.first_page();
     let path = d.path("trail.ecad");
     h.run("saveas", json!({"path": path})).unwrap();
@@ -195,7 +195,7 @@ fn a_busy_project_is_not_waited_for() {
 fn history_and_checks_work_on_copies_and_leave_the_live_project_alone() {
     let d = TempDir::new("checks");
     let (mut h, c1, ..) = small_project(44);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = d.path("checks.ecad");
     h.run("saveas", json!({"path": path})).unwrap();
     let first = h.first_page();
@@ -252,7 +252,7 @@ fn history_and_checks_work_on_copies_and_leave_the_live_project_alone() {
 fn saved_and_pending_transactions_are_told_apart() {
     let d = TempDir::new("states");
     let mut h = H::new(45);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let mut panel = Panel::default();
     panel.refresh(&mut h).unwrap();
     assert_eq!(panel.snap().record_state(1), RecordState::Pending);
@@ -295,7 +295,7 @@ fn saved_and_pending_transactions_are_told_apart() {
 #[test]
 fn a_project_without_persistence_saves_nothing() {
     let mut h = H::new(46);
-    h.cfg(|p| p.persistence = Persistence::Unavailable);
+    h.cfg(|p| p.storage.persistence = Persistence::Unavailable);
     let mut panel = Panel::default();
     panel.refresh(&mut h).unwrap();
     assert_eq!(panel.snap().record_state(1), RecordState::NotSaved);
@@ -305,7 +305,7 @@ fn a_project_without_persistence_saves_nothing() {
 fn exported_snapshots_carry_the_persistence_facts() {
     let d = TempDir::new("export");
     let (mut h, ..) = small_project(47);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = d.path("export.ecad");
     h.run("saveas", json!({"path": path})).unwrap();
     let snap = h.project.snapshot(&mut h.s, None).unwrap();

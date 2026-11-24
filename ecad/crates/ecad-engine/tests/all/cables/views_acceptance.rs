@@ -338,8 +338,8 @@ fn ac2_switching_never_touches_the_ecad_file_and_saves_are_view_independent() {
     let settings = Tmp::new("bytes-settings");
     let mut g = fixture();
     g.h.cfg(|p| {
-        p.persistence = Persistence::File;
-        p.settings = Settings::at(&settings.0);
+        p.storage.persistence = Persistence::File;
+        p.display.view_settings = Settings::at(&settings.0);
     });
     let path = dir.path("g.ecad");
     g.h.run("saveas", json!({"path": dir.path("g")})).unwrap();
@@ -504,7 +504,7 @@ fn child_no_settings_folder() {
     let mut s = Session::empty();
     let handle = Project::create_with(&mut s, "Nowhere", SEED, Persistence::File).unwrap();
     let mut g = fixture_on(H { s, project: handle, trail: Vec::new() });
-    assert!(g.h.p(|p| p.settings.dir().is_none()));
+    assert!(g.h.p(|p| p.display.view_settings.dir().is_none()));
     // Interactive: the notice is echoed once, the switch line says it was not remembered or not.
     g.h.cmdline("cableview");
     click(&mut g.h, 30.0, 7.5);
@@ -629,7 +629,7 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
     // One saved project, reopened once per case.
     let work = Tmp::new("hostile");
     let mut g = fixture();
-    g.h.cfg(|p| p.persistence = Persistence::File);
+    g.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = work.path("h.ecad");
     g.h.run("saveas", json!({"path": path})).unwrap();
     let (project, c1) = (g.h.p(|p| p.id).hex(), g.c1.hex());
@@ -684,7 +684,7 @@ fn ac2_hostile_settings_files_never_fail_open_or_save() {
 fn ac2_bom_and_folder_that_is_a_file() {
     let work = Tmp::new("bom");
     let mut g = fixture();
-    g.h.cfg(|p| p.persistence = Persistence::File);
+    g.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = work.path("b.ecad");
     g.h.run("saveas", json!({"path": path})).unwrap();
     let (project, c1) = (g.h.p(|p| p.id).hex(), g.c1.hex());
@@ -737,7 +737,7 @@ fn ac2_writes_keep_other_projects_and_drop_unknown_cables() {
         format!(r#"{{"format":"ecad-cable-views/1","projects":{{"{other}":{{"fan":["{stale}"]}},"{project}":{{"fan":["{stale}"]}}}}}}"#),
     )
     .unwrap();
-    g.h.cfg(|p| p.settings = Settings::at(&settings.0));
+    g.h.cfg(|p| p.display.view_settings = Settings::at(&settings.0));
     assert_eq!(set(&mut g.h, g.c1, "fan")["remembered"], true);
     let v: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&settings.0)).unwrap()).unwrap();
     assert_eq!(v["projects"][other], json!({"fan": [stale]}), "another project's entry is kept");
@@ -1247,7 +1247,7 @@ fn round2_m1_only_missing_or_non_json_files_are_rewritten() {
         std::fs::write(&file, &bytes).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         let before = stamp(&file);
-        g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+        g.h.cfg(|pr| pr.display.view_settings = Settings::at(&dir.0));
         let head = g.h.head();
         let r = g.h.run("cableview", json!({"cable": c1})).unwrap();
         assert_eq!(g.h.head(), head);
@@ -1280,10 +1280,10 @@ fn round2_m1_a_locked_file_is_left_alone() {
     std::thread::sleep(std::time::Duration::from_millis(20));
     let before = stamp(&file);
     let work = Tmp::new("m1-locked-work");
-    g.h.cfg(|pr| pr.persistence = Persistence::File);
+    g.h.cfg(|pr| pr.storage.persistence = Persistence::File);
     g.h.run("saveas", json!({"path": work.path("l")})).unwrap();
     let lock = std::fs::OpenOptions::new().read(true).share_mode(0).open(&file).unwrap();
-    g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+    g.h.cfg(|pr| pr.display.view_settings = Settings::at(&dir.0));
     let head = g.h.head();
     let r = g.h.run("cableview", json!({"cable": g.c1.hex(), "view": "fan"})).unwrap();
     assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("fan"), Some(false)), "{r}");
@@ -1309,7 +1309,7 @@ fn round2_m1_a_locked_file_is_left_alone() {
 fn round2_m2_no_entry_without_fan_cables() {
     let mut g = fixture();
     let dir = Tmp::new("m2-entry");
-    g.h.cfg(|pr| pr.settings = Settings::at(&dir.0));
+    g.h.cfg(|pr| pr.display.view_settings = Settings::at(&dir.0));
     set(&mut g.h, g.c1, "fan");
     set(&mut g.h, g.c1, "traditional");
     let v: Value = serde_json::from_str(&std::fs::read_to_string(file_in(&dir.0)).unwrap()).unwrap();
@@ -1405,8 +1405,8 @@ fn round2_m3_two_windows() {
     }
     let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     g.h.cfg(|pr| {
-        pr.persistence = Persistence::File;
-        pr.settings = Settings::at(&settings.0);
+        pr.storage.persistence = Persistence::File;
+        pr.display.view_settings = Settings::at(&settings.0);
     });
     g.h.run("saveas", json!({"path": work.path("m3")})).unwrap();
     let mut s2 = Session::empty();
@@ -1422,7 +1422,7 @@ fn round2_m3_two_windows() {
     eprintln!("same project, one switch in each window, one after the other: C2 kept in the file: {}", file.contains(&c2));
     // Two different projects one after the other: both kept.
     let mut other = fixture_on(H::new(SEED + 9));
-    other.h.cfg(|pr| pr.settings = Settings::at(&settings.0));
+    other.h.cfg(|pr| pr.display.view_settings = Settings::at(&settings.0));
     set(&mut other.h, other.c1, "fan");
     set(&mut g.h, g.c1, "traditional");
     set(&mut g.h, g.c1, "fan");

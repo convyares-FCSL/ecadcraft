@@ -624,7 +624,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("by prompts.ecad").display().to_string();
     let mut h = new_h();
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     base(&mut h);
     start(&mut h, "addconnectionpoint");
     typed(&mut h, "0,10");

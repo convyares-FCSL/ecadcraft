@@ -63,12 +63,12 @@ pub fn main_of(p: &Project) -> BranchId {
 
 /// The branch shown.
 pub fn current(p: &Project) -> BranchId {
-    p.file.project().map_or_else(|| main_of(p), ecad_file::Project::branch)
+    p.storage.file.project().map_or_else(|| main_of(p), ecad_file::Project::branch)
 }
 
 /// The branch shown's name.
 pub fn current_name(p: &Project) -> String {
-    p.file.project().map_or_else(|| "main".to_string(), |v| v.branch_record().name.clone())
+    p.storage.file.project().map_or_else(|| "main".to_string(), |v| v.branch_record().name.clone())
 }
 
 /// Every branch row of the file (`main` first); a project without a version 2 file has only
@@ -77,7 +77,7 @@ pub fn current_name(p: &Project) -> String {
 /// # Errors
 /// The file could not be read.
 pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String> {
-    match p.file.project() {
+    match p.storage.file.project() {
         Some(v) => v.branches().map_err(|e| e.to_string()),
         None => {
             let head = ecad_file::schema::Point { seq: p.ledger.head(), chain: String::new() };
@@ -89,7 +89,7 @@ pub fn branch_rows(p: &Project) -> Result<Vec<(BranchId, BranchRecord)>, String>
 /// The lineage of `branch`: itself, then its parents up to `main`, each with the parent's step it
 /// forks after.
 fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64>)>, String> {
-    let Some(v) = p.file.project() else {
+    let Some(v) = p.storage.file.project() else {
         return Ok(vec![(main_of(p), None)]);
     };
     let line = if branch == v.branch() {
@@ -103,7 +103,7 @@ fn lineage_of(p: &Project, branch: BranchId) -> Result<Vec<(BranchId, Option<u64
 
 /// The version rows (user and revision) of `branch` in the file.
 fn rows(p: &Project, branch: BranchId, kinds: &[RowKind]) -> Result<Vec<ecad_file::schema::VersionRecord>, String> {
-    let Some(v) = p.file.project() else { return Ok(Vec::new()) };
+    let Some(v) = p.storage.file.project() else { return Ok(Vec::new()) };
     let r = v.store().reader().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for k in kinds {
@@ -178,7 +178,7 @@ fn tx_at(p: &Project, branch: BranchId, seq: u64) -> Option<Transaction> {
     {
         return Some(t.clone());
     }
-    p.file.project()?.tx_display(branch, seq, seq).ok()?.into_iter().next()
+    p.storage.file.project()?.tx_display(branch, seq, seq).ok()?.into_iter().next()
 }
 
 /// Steps `from..=to` of `branch`, oldest first.
@@ -191,7 +191,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         let mut out = Vec::new();
         if from <= base {
             let hi = to.min(base);
-            match (p.file.project(), p.ledger.history()) {
+            match (p.storage.file.project(), p.ledger.history()) {
                 (Some(v), _) => out.extend(v.tx_display(branch, from, hi).map_err(|e| e.to_string())?),
                 (None, Some(h)) => out.extend(h.transactions(from, hi).map_err(|e| e.to_string())?),
                 (None, None) => {}
@@ -204,7 +204,7 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
         }
         return Ok(out);
     }
-    p.file.project().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
+    p.storage.file.project().ok_or("this branch is not in a file")?.tx_display(branch, from, to).map_err(|e| e.to_string())
 }
 
 /// The local zone's offset from UTC at `ms`, in seconds (the graph and the
@@ -322,7 +322,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             }
         }
         // Merges into this branch (the merge index), its unsaved ones included.
-        if let Some(v) = p.file.project() {
+        if let Some(v) = p.storage.file.project() {
             let merges = if is_cur { v.merge_index(&p.ledger) } else { v.merge_rows(*id) }.map_err(|e| e.to_string())?;
             for m in merges {
                 let src = names.get(&m.source).cloned().unwrap_or_else(|| "a branch".into());
@@ -346,7 +346,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
         }
         if *id == main {
             let label = "Project created".to_string();
-            let created = p.file.project().and_then(ecad_file::Project::created_ms);
+            let created = p.storage.file.project().and_then(ecad_file::Project::created_ms);
             nodes.push(Node {
                 branch: main,
                 seq: 0,

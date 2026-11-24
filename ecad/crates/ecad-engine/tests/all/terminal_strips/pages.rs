@@ -117,9 +117,9 @@ fn same_as_built(h: &mut H) {
 
 /// Run `cmd` on the session; the window projections it caused and the pages it names.
 fn counted(h: &mut H, cmd: &str, params: Value) -> (u64, Option<BTreeSet<PageId>>) {
-    let (before, n) = h.p(|p| (p.projections, p.change_count()));
+    let (before, n) = h.p(|p| (p.counts.projections, p.change_count()));
     h.s.execute(cmd, &params).unwrap();
-    h.p(|p| (p.projections - before, p.changes_since(n)))
+    h.p(|p| (p.counts.projections - before, p.changes_since(n)))
 }
 
 fn strip_page(g: &mut G) -> PageId {

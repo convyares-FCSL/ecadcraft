@@ -844,7 +844,7 @@ impl App {
         let page = check.page.ok_or("that row is not on a page")?;
         self.show_page(page)?;
         let handles = p.configure(&mut self.cad.session, |p| {
-            p.goto_ring = check.at.map(|at| (page, at, check.severity()));
+            p.display.goto_ring = check.at.map(|at| (page, at, check.severity()));
             ecad_engine::checks::handles_of(p, page, check.object)
         })?;
         if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
@@ -865,7 +865,7 @@ impl App {
         if let Some(p) = self.project.clone()
             && p.is_attached(&self.cad.session)
         {
-            let _ = p.configure(&mut self.cad.session, |p| p.goto_ring = None);
+            let _ = p.configure(&mut self.cad.session, |p| p.display.goto_ring = None);
         }
     }
 

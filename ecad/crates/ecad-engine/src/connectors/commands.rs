@@ -139,10 +139,10 @@ impl Command for ConnectorParams {
         let v = on_project(s, |p, pg, active| {
             let style = plain_style(p);
             let tol = p.tolerance;
-            let done = rules::plan_connector(&p.ledger, &mut p.ids, &mut p.tag_high, active, style, input, tol)?;
+            let done = rules::plan_connector(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, active, style, input, tol)?;
             // One transaction.
             p.apply_edit(pg, "connector", &done.label, done.made.ops.clone())?;
-            p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: None, device: done.made.component });
+            p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: None, device: done.made.component });
             let doc = p.ledger.document();
             let message = rules::echo(doc, &done);
             Ok(rules::result_json(doc, &done.made, &message))
@@ -198,7 +198,7 @@ pub(crate) fn place_half(
             Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c), false),
             None => {
                 let pins = cn::size_of(starter);
-                let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, new_tag, pins, None, &mut ops)?;
+                let (c, t) = cn::create_ops(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, starter, def, new_tag, pins, None, &mut ops)?;
                 (c, t, true)
             }
         };
@@ -222,7 +222,7 @@ pub(crate) fn place_half(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
-        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: c });
+        p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: c });
         let doc = p.ledger.document();
         let made = Made {
             component: c,

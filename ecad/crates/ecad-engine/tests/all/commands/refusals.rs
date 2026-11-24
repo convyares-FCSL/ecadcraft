@@ -84,7 +84,7 @@ fn escape_during_line_records_the_segments_kept() {
     assert_eq!(tx.ops.iter().filter(|o| o.name() == "AddItem").count(), 2);
     // The kept segments are saved and reopened as that transaction.
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s = cadcraft_engine::Session::empty();
     let reopened = ecad_engine::ProjectHandle::open_from(&mut s, "Demo", medium, 77).unwrap();
     assert_eq!(reopened.read(&mut s, |p, _| p.ledger.full_log().unwrap().last().cloned()).unwrap(), Some(tx));
@@ -208,7 +208,7 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     assert_eq!(app.session.docs[0].path.as_deref(), Some("demo.ecad"), "the page window carries the project path");
     // The desktop app's `keep_open` (design 016 section 4.1): closing the page window asks nothing and
     // the project stays open, unsaved, with no page shown; showing a page opens the window again.
-    h.project.configure(&mut app.session, |p| p.keep_open = true).unwrap();
+    h.project.configure(&mut app.session, |p| p.display.keep_open = true).unwrap();
     app.request_close(Some(0));
     assert!(app.close_prompt().is_none(), "the page window closes without a prompt");
     assert!(app.session.docs.is_empty());
@@ -217,10 +217,10 @@ fn closing_flow_prompts_for_the_project_not_for_page_tabs() {
     h.project.open_page(&mut app.session, first).unwrap();
     assert_eq!(app.session.docs.len(), 1);
     // Without it, closing the page window closes the project: prompt; a failed save keeps it open.
-    h.project.configure(&mut app.session, |p| p.keep_open = false).unwrap();
+    h.project.configure(&mut app.session, |p| p.display.keep_open = false).unwrap();
     app.request_close(Some(0));
     assert!(app.close_prompt().is_some(), "closing the project prompts");
-    h.project.configure(&mut app.session, |p| p.store.fail_next_write()).unwrap();
+    h.project.configure(&mut app.session, |p| p.storage.store.fail_next_write()).unwrap();
     app.answer_close(Choice::Save);
     assert_eq!(app.session.docs.len(), 1, "save failed: the project stays open");
     assert!(app.session.has_unsaved_work());
@@ -236,7 +236,7 @@ fn reopening_with_the_creation_seed_never_reissues_ids() {
     let mut h = H::new(4242);
     h.run("newpage", json!({"title": "2"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s = cadcraft_engine::Session::empty();
     let reopened = ecad_engine::ProjectHandle::open_from(&mut s, "Demo", medium, 4242).unwrap();
     let before = reopened.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
@@ -326,7 +326,7 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     h.run("newpage", json!({"title": "3"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
     let saved = h.p(|p| p.ledger.full_log().unwrap());
-    let (mut bytes, id, last) = h.p(|p| (p.store.bytes(), p.id, p.ledger.head()));
+    let (mut bytes, id, last) = h.p(|p| (p.storage.store.bytes(), p.id, p.ledger.head()));
     // Damage the last transaction's stored row at rest: one byte of its record.
     let row = {
         let store = ecad_file::Store::from_bytes(bytes.clone()).unwrap();
@@ -339,7 +339,7 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     bytes[start + row.len() - 1] ^= 0x01;
     let mut s = cadcraft_engine::Session::empty();
     let reopened = ecad_engine::ProjectHandle::open_from(&mut s, "Demo", bytes, 4242).unwrap();
-    let report = reopened.read(&mut s, |p, _| p.open_report.clone()).unwrap().unwrap();
+    let report = reopened.read(&mut s, |p, _| p.storage.open_report.clone()).unwrap().unwrap();
     assert!(report.damage.as_ref().is_some_and(|d| d.seq == Some(last)), "{report:?}");
     assert_eq!(report.verified_seq, last - 1);
     let log = reopened.read(&mut s, |p, _| p.ledger.full_log().unwrap()).unwrap();
@@ -347,6 +347,6 @@ fn a_damaged_file_opens_its_verified_prefix_read_only() {
     let e = s.execute("qsave", &Value::Null).unwrap_err().to_string();
     assert!(e.contains("read-only"), "{e}");
     // Nothing was written over the damage: the file's head is still the damaged transaction.
-    let file_head = reopened.read(&mut s, |p, _| p.store.project().map(|f| f.branch_record().head.seq)).unwrap();
+    let file_head = reopened.read(&mut s, |p, _| p.storage.store.project().map(|f| f.branch_record().head.seq)).unwrap();
     assert_eq!(file_head, Some(last), "the file is kept as it is");
 }

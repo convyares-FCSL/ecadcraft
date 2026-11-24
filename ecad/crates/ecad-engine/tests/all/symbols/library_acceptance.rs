@@ -862,7 +862,7 @@ fn l_save_and_reopen_keeps_everything() {
     let before = h.doc();
     let head = h.head();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("Bibliothek -K01 (Rev A).ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     h.close_all();

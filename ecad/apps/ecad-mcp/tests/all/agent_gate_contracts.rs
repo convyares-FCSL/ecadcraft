@@ -31,7 +31,7 @@ impl Client {
         let mut c = Client { s, next: 1 };
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": AGENT}}));
         assert!(r.get("result").is_some(), "{r}");
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
         c
     }
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -86,7 +86,7 @@ impl Direct {
         ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "tester", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_engine::cables::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -240,9 +240,9 @@ fn a_batch_over_the_cap_is_taken_back_by_kind_and_spares_the_persons_work() {
     let mut c = writer();
     // The person's own wire, recorded as the person's.
     c.s.with_session(|s, p| {
-        p.configure(s, |p| p.author = Author::User).unwrap();
+        p.configure(s, |p| p.caller.author = Author::User).unwrap();
         s.execute("wire", &json!({"points": [[0, -20], [60, -20]]})).unwrap();
-        p.configure(s, |p| p.author = Author::Agent(AGENT.into())).unwrap();
+        p.configure(s, |p| p.caller.author = Author::Agent(AGENT.into())).unwrap();
     })
     .unwrap();
     let person: Vec<Transaction> = c.log();

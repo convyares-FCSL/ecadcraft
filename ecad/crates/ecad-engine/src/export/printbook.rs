@@ -405,7 +405,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     p.refresh_pending();
     let doc = p.ledger.document();
     let mut out = resolve_with(doc, scope, p.kept_reports()).map(|r| r.notes).unwrap_or_default();
-    out.extend(ecad_electrical::releases::revisions::pending_note(doc, p.pending));
+    out.extend(ecad_electrical::releases::revisions::pending_note(doc, p.frame.pending));
     out
 }
 

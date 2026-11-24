@@ -634,7 +634,7 @@ impl App {
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
             // An issued revision opened read-only: its pages, under its bar.
-            match &p.revision_view {
+            match &p.display.revision_view {
                 Some(rv) => {
                     if *panel_revision != Some(rv.id) {
                         panel.set_tree(ecad_engine::tree_rows(&rv.doc, |_| false));
@@ -738,7 +738,7 @@ impl App {
             .read(&mut self.cad.session, |p, _| {
                 use ecad_engine::history;
                 let file = p.file_status().display_name;
-                let Some(v) = p.file.project() else {
+                let Some(v) = p.storage.file.project() else {
                     return BranchInfo { name: "main".into(), count: 1, bar: None, parent: None, release_line: true, file };
                 };
                 let rec = v.branch_record().clone();
@@ -766,7 +766,7 @@ impl App {
     /// preview closes. One integer and one ID compared per frame otherwise.
     pub fn sync_branch(&mut self) {
         let Some(p) = self.project.clone() else { return };
-        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.file.project().map(|v| v.branch().hex()))) else { return };
+        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.storage.file.project().map(|v| v.branch().hex()))) else { return };
         let Some(seen) = self.branch_seen.replace(now.clone()) else { return };
         if seen == now {
             return;

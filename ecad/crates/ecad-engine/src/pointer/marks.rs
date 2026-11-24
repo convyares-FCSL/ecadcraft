@@ -80,7 +80,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
         color: cable,
     }));
     // The Checks tab's go-to ring, in the row's severity colour.
-    if let Some((_, at, sev)) = p.goto_ring.filter(|(pg, _, _)| *pg == page) {
+    if let Some((_, at, sev)) = p.display.goto_ring.filter(|(pg, _, _)| *pg == page) {
         let color = colour(match sev {
             ecad_electrical::checks::Severity::Error => ecad_model::palette::Meaning::Error,
             ecad_electrical::checks::Severity::Warning => ecad_model::palette::Meaning::Warning,

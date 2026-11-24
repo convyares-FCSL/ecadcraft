@@ -141,7 +141,7 @@ pub mod numbering_seam {
         match way_before_issue(p.ledger.document(), way)? {
             Some(note) => Ok(BeforeIssue::Go(note)),
             None => {
-                let plan = plan_for(&p.ledger, &mut p.tag_high, &finalise_request())?;
+                let plan = plan_for(&p.ledger, &mut p.indexes.tag_high, &finalise_request())?;
                 Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
             }
         }
@@ -727,7 +727,7 @@ pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Op
 
 /// Why the project cannot be written, if it cannot.
 fn read_only(p: &Project) -> Option<String> {
-    if p.persistence == crate::project::Persistence::Unavailable {
+    if p.storage.persistence == crate::project::Persistence::Unavailable {
         return Some("saving is not available".into());
     }
     p.file_status().read_only
@@ -992,7 +992,7 @@ pub(crate) fn release_pending(
     // The caller's transaction budget (an agent's cap of one per call): known before anything
     // reaches the disk, never found out after. Finalise and the issue are one
     // transaction, so the need is one either way.
-    if let Some(budget) = p.tx_budget
+    if let Some(budget) = p.caller.tx_budget
         && budget < 1
     {
         return Err(over_budget(1, budget));
@@ -1028,8 +1028,18 @@ pub(crate) fn release_pending(
         p.reports();
         let kept = p.kept_reports().ok_or("the report models could not be built")?;
         let reports = finalised.as_ref().map_or(kept, |(o, _)| o.reports());
-        let b =
-            Build { doc: &issued_doc, reports, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
+        let b = Build {
+            doc: &issued_doc,
+            reports,
+            rows: &rows,
+            fan: &p.display.views,
+            tol: p.tolerance,
+            options: o,
+            stem,
+            rev: rev.clone(),
+            accepted,
+            chosen,
+        };
         let built = fail.and_then(|()| stage(&b, &staging, progress));
         match built.and_then(|st| landing(&target, &st, existing).map(|l| (st, l))) {
             Ok(x) => (x, b.stem.clone(), b.options),
@@ -1064,6 +1074,7 @@ pub(crate) fn release_pending(
     }
     // 6. Manifest, 7. rename.
     let chain = p
+        .storage
         .file
         .project()
         .filter(|_| saved.is_ok())
@@ -1073,7 +1084,7 @@ pub(crate) fn release_pending(
     let doc = p.ledger.document().clone();
     let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
     let reports = p.kept_reports().cloned().unwrap_or_default();
-    let fan = p.views.clone();
+    let fan = p.display.views.clone();
     let b =
         Build { doc: &doc, reports: &reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
     let m = manifest(&doc, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&doc, &fan));
@@ -1142,7 +1153,7 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
     let reports = detached.reports();
     let rows = crate::checks::all_with(&then, p.tolerance, reports);
     let staging = partial_of(&target);
-    let fan = p.views.clone();
+    let fan = p.display.views.clone();
     let b =
         Build { doc: &then, reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem: stem(p), rev: rev.clone(), accepted: false, chosen };
     let built =
@@ -1158,7 +1169,7 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
         }
     };
     let branch = crate::history::find_branch(p, &named.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
-    let chain = p.file.project().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
+    let chain = p.storage.file.project().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
     let iss = Issued { branch, transaction: seq, point: named.seq, chain };
     let m = manifest(&then, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&then, &fan));
     let finished = injected(p, Step::Manifest)

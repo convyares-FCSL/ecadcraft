@@ -631,7 +631,7 @@ impl App {
         if !p.is_attached(&self.cad.session) {
             return;
         }
-        let Ok(Some(want)) = p.configure(&mut self.cad.session, |p| p.agent_access_request.take()) else { return };
+        let Ok(Some(want)) = p.configure(&mut self.cad.session, |p| p.asks.agent_access_request.take()) else { return };
         if want.port != self.agent.pref.port {
             self.agent.port_text = want.port.to_string();
             if let Err(e) = self.agent.set_port_text() {
@@ -653,8 +653,8 @@ impl App {
         }
         let st = self.agent.status();
         let _ = p.configure(&mut self.cad.session, |p| {
-            if p.agent_access_status.as_ref() != Some(&st) {
-                p.agent_access_status = Some(st);
+            if p.asks.agent_access_status.as_ref() != Some(&st) {
+                p.asks.agent_access_status = Some(st);
             }
         });
     }

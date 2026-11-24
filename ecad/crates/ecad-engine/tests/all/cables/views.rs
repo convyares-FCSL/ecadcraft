@@ -376,8 +376,8 @@ fn views_are_remembered_per_cable_across_reopen() {
     }
     let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     g.h.cfg(|p| {
-        p.persistence = Persistence::File;
-        p.settings = Settings::at(&settings.0);
+        p.storage.persistence = Persistence::File;
+        p.display.view_settings = Settings::at(&settings.0);
     });
     g.h.run("saveas", json!({"path": dir.path("g")})).unwrap();
     let r = view(&mut g.h, g.c1, "fan");
@@ -418,8 +418,8 @@ fn an_unreadable_settings_file_starts_traditional() {
     let settings = TempDir::new("garbage-settings");
     let mut g = fixture();
     g.h.cfg(|p| {
-        p.persistence = Persistence::File;
-        p.settings = Settings::at(&settings.0);
+        p.storage.persistence = Persistence::File;
+        p.display.view_settings = Settings::at(&settings.0);
     });
     g.h.run("saveas", json!({"path": dir.path("g")})).unwrap();
     view(&mut g.h, g.c1, "fan");
@@ -444,7 +444,7 @@ fn an_unreadable_settings_file_starts_traditional() {
     // An unwritable folder: the switch still happens, with the reason.
     let blocked = settings.0.join("file-not-folder");
     std::fs::write(&blocked, b"x").unwrap();
-    h.cfg(|p| p.settings = Settings::at(&blocked));
+    h.cfg(|p| p.display.view_settings = Settings::at(&blocked));
     let r = view(&mut h, g.c1, "traditional");
     assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("traditional"), Some(false)), "{r}");
     assert!(r["reason"].is_string(), "{r}");
@@ -685,7 +685,7 @@ fn store_rewrites_only_a_missing_or_non_json_file() {
     }
     // Through the command: the switch happens, not remembered, with the reason.
     let mut g = fixture();
-    g.h.cfg(|p| p.settings = Settings::at(&dir.0));
+    g.h.cfg(|p| p.display.view_settings = Settings::at(&dir.0));
     let before = std::fs::read(&file).unwrap();
     let r = view(&mut g.h, g.c1, "fan");
     assert_eq!((r["view"].as_str(), r["remembered"].as_bool()), (Some("fan"), Some(false)), "{r}");

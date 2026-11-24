@@ -147,7 +147,7 @@ ecad-engine/src/
   generic.rs       the generic command runner: lock, declared file I/O, commit, echo, answer, schema, gate
   commands.rs      the command table (generic declarations + session commands; today cmd/mod.rs, lanes.rs)
   pointer/         what is under the cursor, the running tool's intent, picking and capture, previews, page marks, hover
-  project/         open, persistence, owner, changes, handle map, page tree (unchanged)
+  project/         open, persistence, owner, changes, handle map, page tree, parts (the session state groups)
   history/         history (split), merging, the event log (from ecad-inspect)
   translate/       translate, oops
   agent/           unchanged

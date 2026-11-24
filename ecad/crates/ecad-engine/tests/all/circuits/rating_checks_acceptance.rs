@@ -1162,7 +1162,7 @@ fn core03_an_old_projects_spare_core_is_now_a_clear_error() {
     let dir = std::env::temp_dir().join(format!("t057 cores ä {}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("old spare.ecad").display().to_string();
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();

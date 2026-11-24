@@ -784,7 +784,7 @@ fn j_save_reopen_keeps_everything() {
     let before_reads = reads(&mut a.h);
     let before_doc = a.h.doc();
     let before_head = a.h.head();
-    a.h.cfg(|p| p.persistence = Persistence::File);
+    a.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("Klemmen -X01 (Rev A).ecad").display().to_string();
     a.h.run("saveas", json!({"path": path})).unwrap();
     a.h.close_all();
@@ -808,7 +808,7 @@ fn j_a_028_file_opens_unchanged_and_shows_no_accessories() {
     let dir = tmp_dir("old");
     let mut a = fixture(0x7030_000e, false);
     assert!(!has_acc_or_jumper_bar_key(&a.h.doc()));
-    a.h.cfg(|p| p.persistence = Persistence::File);
+    a.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.join("old 028.ecad").display().to_string();
     a.h.run("saveas", json!({"path": path})).unwrap();
     let head = a.h.head();

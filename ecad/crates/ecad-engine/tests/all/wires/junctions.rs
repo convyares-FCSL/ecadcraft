@@ -43,7 +43,7 @@ fn a_file_holding_a_junction_opens_read_only() {
         let op = Op::CreateDevice { id: DeviceId(0x72_d7), device: junction };
         p.ledger.commit(Author::User, "an earlier build's junction", vec![op]).unwrap();
     });
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.0.join("junction072d").display().to_string();
     let v = h.run("saveas", json!({"path": path})).unwrap();
     let file = h.cfg(|p| p.path.clone()).unwrap_or_else(|| panic!("saved: {v}"));

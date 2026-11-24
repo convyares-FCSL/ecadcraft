@@ -19,7 +19,7 @@ const NONE_SELECTED: &str = "No continuation arrows selected.";
 /// `contcaption`: the selected arrows (if any), or pick them, then the caption.
 pub(crate) fn contcaption(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let last = read(s, |p, _| Ok(p.last_caption.clone())).unwrap_or(None);
+    let last = read(s, |p, _| Ok(p.defaults.last_caption.clone())).unwrap_or(None);
     let mut form = Caption { arrows: BTreeSet::new(), others: 0, last, captioning: false };
     form.add(s, &s.selection());
     form.captioning = !form.arrows.is_empty();

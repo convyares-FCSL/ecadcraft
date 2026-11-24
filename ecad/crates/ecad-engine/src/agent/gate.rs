@@ -179,7 +179,7 @@ pub fn roll_back(s: &mut Session, txs: &[Transaction]) -> Result<usize, (usize, 
 
 /// Tell the project how many transactions the call about to run may record (`None` after it).
 fn set_budget(s: &mut Session, p: &ProjectHandle, budget: Option<usize>) -> Result<(), String> {
-    p.configure(s, |p| p.tx_budget = budget)
+    p.configure(s, |p| p.caller.tx_budget = budget)
 }
 
 /// Said when an agent on the bridge would undo or redo a step that is not its own.
@@ -345,7 +345,7 @@ pub struct Scoped<R> {
 /// The author could not be set (the project is busy or not attached): nothing ran (fail closed,
 /// [`UNREADABLE`]).
 pub fn as_agent<R>(s: &mut Session, p: &ProjectHandle, name: &str, f: impl FnOnce(&mut Session) -> R) -> Result<Scoped<R>, String> {
-    p.configure(s, |p| p.author = Author::Agent(name.to_string())).map_err(|_| UNREADABLE.to_string())?;
+    p.configure(s, |p| p.caller.author = Author::Agent(name.to_string())).map_err(|_| UNREADABLE.to_string())?;
     let result = catch_unwind(AssertUnwindSafe(|| f(s))).ok();
     let restored = restore_user_retrying(s, p);
     Ok(Scoped { result, restored })
@@ -354,8 +354,8 @@ pub fn as_agent<R>(s: &mut Session, p: &ProjectHandle, name: &str, f: impl FnOnc
 /// Record the person as the author again and clear any budget. Returns whether it worked.
 pub fn restore_user(s: &mut Session, p: &ProjectHandle) -> bool {
     p.configure(s, |p| {
-        p.author = Author::User;
-        p.tx_budget = None;
+        p.caller.author = Author::User;
+        p.caller.tx_budget = None;
     })
     .is_ok()
 }
@@ -379,5 +379,5 @@ pub fn restore_user_retrying(s: &mut Session, p: &ProjectHandle) -> bool {
 /// Whether the project records the person as the author with no budget (the desktop app checks it at
 /// the top of every frame). `None` when the project cannot be read just now.
 pub fn author_is_user(s: &mut Session, p: &ProjectHandle) -> Option<bool> {
-    p.read(s, |p, _| p.author == Author::User && p.tx_budget.is_none()).ok()
+    p.read(s, |p, _| p.caller.author == Author::User && p.caller.tx_budget.is_none()).ok()
 }

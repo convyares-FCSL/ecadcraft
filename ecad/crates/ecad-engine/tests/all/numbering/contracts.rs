@@ -148,7 +148,7 @@ fn h_save_and_reopen_keep_tags_fixed_flags_the_setting_and_the_high_water_mark()
     let dir = std::env::temp_dir().join(format!("ecad-026-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut f = fixture();
-    f.h.cfg(|p| p.persistence = Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = Persistence::File);
     f.h.run("renumber", json!({"kind": "devices", "scope": "all"})).unwrap();
     f.h.run("numbering", json!({"provisional": true})).unwrap();
     let path = dir.join("n.ecad").display().to_string();

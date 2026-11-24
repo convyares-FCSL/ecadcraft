@@ -143,7 +143,7 @@ impl Live {
     fn author(&mut self) -> (Author, Option<usize>) {
         let t = self.h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| (p.author.clone(), p.tx_budget)).unwrap()
+        p.read(&mut t.cad.session, |p, _| (p.caller.author.clone(), p.caller.tx_budget)).unwrap()
     }
 
     /// A person's edit, through the app's command path (the ECAD command field's path).

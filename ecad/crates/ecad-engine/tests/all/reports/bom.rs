@@ -578,7 +578,7 @@ impl Drop for TempDir {
 #[test]
 fn everything_survives_save_and_reopen() {
     let mut f = fixture(0x47_0d);
-    f.h.cfg(|p| p.persistence = Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = Persistence::File);
     f.h.run(
         "partline",
         json!({"component": f.k[0].hex(), "kit": "Starter set", "add": [{"part_number": "SUP-1"}, {"part_number": "LBL-1", "qty": 2}]}),

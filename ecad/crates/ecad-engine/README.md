@@ -8,7 +8,7 @@ turns CADCraft edits into ECAD transactions, owns undo, redo and save, and runs 
 It is the only ECAD crate that uses `cadcraft-engine`, and it has no UI.
 
 ## Contents
-- `project/`, `access.rs`: `Project` owns the document and the open page drawings; `ProjectHandle` is the only way to reach it from outside, under a lock.
+- `project/`, `access.rs`: `Project` owns the document and the open page drawings, with its session state in groups (`project/parts.rs`: storage, display, counts, frame, indexes, defaults, asks, caller); `ProjectHandle` is the only way to reach it from outside, under a lock.
 - `translate/`, `history/`, `file.rs`: turning CADCraft commits into transactions, undo and redo, versions, branches and merging, and the `.ecad` file bound to a project.
 - `commands/`, `generic.rs`: the command registry and shared helpers, and the one runner of the generic commands declared in `ecad-electrical`.
 - `pointer/`: what is under the cursor and the running tool's intent, marks drawn over pages, hover text, and what the click-based forms share (picking, capture, previews). Each form is in its feature area's `interact` module.

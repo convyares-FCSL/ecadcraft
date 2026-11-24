@@ -67,10 +67,11 @@ pub fn print_project(
     }
     // The book shows the pending marker as the screen does.
     p.refresh_pending();
-    let o = Options { pending: p.pending, ..o };
+    let o = Options { pending: p.frame.pending, ..o };
     let doc = p.ledger.document();
     let resolved = printbook::resolve_with(doc, scope, p.kept_reports()).map_err(CmdError::refused)?;
-    let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.kept_reports(), o, path, progress).map_err(CmdError::refused)?;
+    let done =
+        printbook::print(doc, &resolved.pages, &p.display.views, p.tolerance, p.kept_reports(), o, path, progress).map_err(CmdError::refused)?;
     let files: Vec<Value> = done
         .files
         .iter()
@@ -148,7 +149,7 @@ pub(crate) struct ReportsParams {}
 impl Command for ReportsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
-            p.open_reports = true;
+            p.asks.open_reports = true;
             Ok(json!({"open": "reports"}))
         })
     }

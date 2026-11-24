@@ -51,7 +51,7 @@ fn yes(i: &Input) -> Option<bool> {
 /// page as a new device or as another symbol of one; repeat until Enter.
 pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let default = read(s, |p, _| Ok(p.last_placed.and_then(|l| l.starter))).ok().flatten();
+    let default = read(s, |p, _| Ok(p.defaults.last_placed.and_then(|l| l.starter))).ok().flatten();
     let default = default
         .map(symbols::catalogue::starter)
         .or_else(|| symbols::catalogue::STARTERS.first())
@@ -189,7 +189,7 @@ impl Place {
     fn default_rack(&self, s: &Session) -> Option<DeviceId> {
         read(s, |p, _| {
             let doc = p.ledger.document();
-            let last = self.last.or_else(|| p.last_placed.map(|l| l.device));
+            let last = self.last.or_else(|| p.defaults.last_placed.map(|l| l.device));
             let of_last = last.and_then(|c| match ecad_electrical::plc::rack::rack_ref(doc, c) {
                 ecad_electrical::plc::rack::RackRef::Rack(r) => Some(r),
                 _ => None,
@@ -222,7 +222,7 @@ impl Place {
                 None => {
                     let t = match &self.tag {
                         Some(t) => t.clone(),
-                        None => p.tag_high.peek(doc, &ecad_electrical::devices::prefix_for(doc, sym))?,
+                        None => p.indexes.tag_high.peek(doc, &ecad_electrical::devices::prefix_for(doc, sym))?,
                     };
                     Ok((format!("new device {t}"), t, sym.labels()))
                 }
@@ -364,7 +364,7 @@ impl Place {
         let prefix = self.symbol().prefix();
         read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok(p.last_placed.map(|l| l.device).filter(|c| {
+            Ok(p.defaults.last_placed.map(|l| l.device).filter(|c| {
                 ecad_electrical::devices::tags::tag_of(doc, *c).and_then(ecad_model::naming::tag::parse).is_some_and(|(px, _)| px == prefix)
             }))
         })

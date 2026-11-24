@@ -118,11 +118,11 @@ pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
         Views::Untouched => {}
         Views::Nothing => {
             let p = t.project().unwrap().clone();
-            p.configure(&mut t.cad.session, |p| p.settings = Settings::none()).unwrap();
+            p.configure(&mut t.cad.session, |p| p.display.view_settings = Settings::none()).unwrap();
         }
         Views::At(dir) => {
             let p = t.project().unwrap().clone();
-            p.configure(&mut t.cad.session, move |p| p.settings = Settings::at(dir)).unwrap();
+            p.configure(&mut t.cad.session, move |p| p.display.view_settings = Settings::at(dir)).unwrap();
         }
     }
     let mut b = Harness::builder().with_size(opts.size);

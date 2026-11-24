@@ -428,7 +428,7 @@ fn save_reopen_and_replay_keep_cable_drawings_and_references() {
     r.h.run("qsave", Value::Null).unwrap();
     let doc = r.h.doc();
     let references = r.h.run("cablereferences", json!({})).unwrap();
-    let medium = r.h.p(|p| p.store.bytes());
+    let medium = r.h.p(|p| p.storage.store.bytes());
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "R", medium, SEED).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
@@ -937,7 +937,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     // project (as the 004 bulk tests do).
     h.cfg(|p| p.ledger.commit(Author::User, "bulk cable", ops)).unwrap();
     h.s.execute("qsave", &Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "Big", medium, SEED + 7).unwrap();
     let mut h = H { s, project, trail: Vec::new() };

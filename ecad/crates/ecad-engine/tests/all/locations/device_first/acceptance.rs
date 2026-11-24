@@ -39,7 +39,7 @@ impl Drop for TempDir {
 
 /// Save to `dir`/`name` and reopen in a fresh session.
 fn save_and_reopen(h: &mut H, dir: &TempDir, name: &str, seed: u64) -> H {
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": dir.path(name)})).unwrap();
     let path = dir.path(&format!("{name}.ecad"));
     close_all(&mut h.s);

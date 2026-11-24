@@ -188,7 +188,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             _ => false,
         };
         let mut plan =
-            ecad_electrical::devices::placing::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, starter, placement, target)?;
+            ecad_electrical::devices::placing::plan_place(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, page, style, starter, placement, target)?;
         let land = match (landing, plan.connection_points.first()) {
             (Some(on), Some((_, _, t))) => {
                 let land = ecad_electrical::connectors::plan_land(p.ledger.document(), &mut p.ids, on, *t)?;
@@ -200,7 +200,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         // A new card goes in a rack's slot when the project has a rack.
         let card_slot = match ecad_electrical::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
-                let last = p.last_placed.map(|l| l.device);
+                let last = p.defaults.last_placed.map(|l| l.device);
                 let at = ecad_electrical::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
                 if let Some((r, s)) = at {
                     ecad_electrical::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
@@ -215,7 +215,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal block".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;
-        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: plan.component });
+        p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: plan.component });
         let doc = p.ledger.document();
         let landed = land.map(|(t, l)| ecad_electrical::connectors::land_result(doc, t, &l));
         if let (true, ecad_electrical::symbols::Kind::Contact { make }) = (plan.joined, starter.kind) {

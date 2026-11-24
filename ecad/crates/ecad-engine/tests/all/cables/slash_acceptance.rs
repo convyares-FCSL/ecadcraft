@@ -311,7 +311,7 @@ impl Drop for TempDir {
 fn ac3_save_close_reopen_keeps_cable_members_order_and_slash() {
     let dir = TempDir::new("reopen");
     let mut f = fixture(SEED);
-    f.h.cfg(|p| p.persistence = Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = Persistence::File);
     // Reversed slash, so stored order differs from ID or creation order.
     let r = slash(&mut f.h, (32.0, 18.0), (28.0, -3.0)).unwrap();
     f.h.run("cableslash", json!({"from": [80, -1], "to": [80, 1], "tag": "C2"})).unwrap_err();
@@ -472,7 +472,7 @@ fn ac5_cableadd_refuses_a_wire_already_in_a_cable() {
 fn ac5_read_only_project_treats_the_slash_like_other_ecad_edits() {
     let dir = TempDir::new("readonly");
     let mut f = fixture(SEED);
-    f.h.cfg(|p| p.persistence = Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.path("shared.ecad");
     f.h.run("saveas", json!({"path": path})).unwrap();
     let mut s = Session::empty();
@@ -918,7 +918,7 @@ fn bulk_wires(n: usize) -> (H, Vec<WireId>) {
     // the harness checks and only the reopened project is used.
     h.cfg(|p| p.ledger.commit(Author::User, "bulk wires", ops)).unwrap();
     h.s.execute("qsave", &Value::Null).unwrap();
-    let medium = h.p(|p| p.store.bytes());
+    let medium = h.p(|p| p.storage.store.bytes());
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "Big", medium, 5).unwrap();
     let mut h = H { s, project, trail: Vec::new() };

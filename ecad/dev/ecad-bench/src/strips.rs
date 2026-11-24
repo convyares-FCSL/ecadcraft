@@ -489,7 +489,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             (wire_of(strip), other.and_then(wire_of), cable)
         })?;
         run(&mut s, "openpage", json!({"page": sp_page.hex()}))?;
-        let projections = |s: &mut Session| project.read(s, |p, _| p.projections).unwrap_or(0);
+        let projections = |s: &mut Session| project.read(s, |p, _| p.counts.projections).unwrap_or(0);
         if let Some(w) = mine {
             let mut v = Vec::new();
             for i in 0..runs {

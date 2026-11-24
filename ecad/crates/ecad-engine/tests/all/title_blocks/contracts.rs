@@ -141,13 +141,13 @@ fn a_bound_project_key_redraws_and_an_unread_one_does_not() {
     h.run("titleblock", json!({"id": id, "body": body})).unwrap();
     h.run("setdefault", json!({"key": "print.frame.style", "level": "project", "value": id})).unwrap();
     let _ = texts(&mut h, page);
-    let builds = h.p(|p| p.frame_builds);
+    let builds = h.p(|p| p.counts.frame_builds);
     h.run("projectprops", json!({"props": {"unrelated": "x"}})).unwrap();
     let _ = texts(&mut h, page);
-    assert_eq!(h.p(|p| p.frame_builds), builds, "a key no field reads rebuilds no frame");
+    assert_eq!(h.p(|p| p.counts.frame_builds), builds, "a key no field reads rebuilds no frame");
     h.run("projectprops", json!({"props": {"job_no": "J-7"}})).unwrap();
     assert!(text_values(&mut h, page).contains(&"J-7".to_string()));
-    assert_eq!(h.p(|p| p.frame_builds), builds + 1);
+    assert_eq!(h.p(|p| p.counts.frame_builds), builds + 1);
     let v = h.run("titleblocks", json!({})).unwrap();
     assert!(v["keys"].as_array().unwrap().contains(&json!("job_no")), "{v}");
 }

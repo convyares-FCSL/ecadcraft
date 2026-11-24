@@ -765,16 +765,16 @@ fn ac12_deletepage_removes_generated_pages_only() {
 fn map_ordinary_edits_touch_no_type_view() {
     let (mut h, p) = pages(0x54_1301, 2);
     h.activate(p[0]);
-    let b = h.p(|pr| pr.frame_builds);
+    let b = h.p(|pr| pr.counts.frame_builds);
     h.run("line", json!({"points": [[0, 120], [40, 120]]})).unwrap();
     h.run("setstyle", json!({"catalogue": "page", "id": "network", "fields": {"zones": "off"}})).unwrap();
-    assert_eq!(h.p(|pr| pr.frame_builds), b, "a line and another type's change rebuild no frame here");
+    assert_eq!(h.p(|pr| pr.counts.frame_builds), b, "a line and another type's change rebuild no frame here");
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"zones": "off"}})).unwrap();
-    assert_eq!(h.p(|pr| pr.frame_builds), b + 1, "the active page's type: its frame once");
+    assert_eq!(h.p(|pr| pr.counts.frame_builds), b + 1, "the active page's type: its frame once");
     h.run("setdefault", json!({"key": "page.type", "level": "page", "page": p[1].hex(), "value": "network"})).unwrap();
-    assert_eq!(h.p(|pr| pr.frame_builds), b + 1, "another page's type: nothing here");
+    assert_eq!(h.p(|pr| pr.counts.frame_builds), b + 1, "another page's type: nothing here");
     h.run("setdefault", json!({"key": "page.type", "level": "page", "page": p[0].hex(), "value": "singleline"})).unwrap();
-    assert_eq!(h.p(|pr| pr.frame_builds), b + 2, "this page's type (zones off → on): its frame once");
+    assert_eq!(h.p(|pr| pr.counts.frame_builds), b + 2, "this page's type (zones off → on): its frame once");
 }
 
 /// §10.2: the cover follows its keys only: a project property no cover block reads (`site_contact`)
@@ -784,15 +784,15 @@ fn map_the_cover_follows_only_its_keys() {
     let (mut h, cover, sch) = with_cover(0x54_1302);
     // Baseline: what an unread key costs on a plain schematic page (019's path, not 054's).
     h.activate(sch);
-    let b0 = h.p(|pr| pr.projections);
+    let b0 = h.p(|pr| pr.counts.projections);
     h.run("projectprops", json!({"props": {"site_contact": "A"}})).unwrap();
-    let plain = h.p(|pr| pr.projections) - b0;
+    let plain = h.p(|pr| pr.counts.projections) - b0;
     h.activate(cover);
-    let before = h.p(|pr| pr.projections);
+    let before = h.p(|pr| pr.counts.projections);
     h.run("projectprops", json!({"props": {"site_contact": "J. Smith"}})).unwrap();
-    assert_eq!(h.p(|pr| pr.projections) - before, plain, "§10.2: an unread key costs the cover no more than a plain page");
+    assert_eq!(h.p(|pr| pr.counts.projections) - before, plain, "§10.2: an unread key costs the cover no more than a plain page");
     h.run("projectprops", json!({"customer": "Northfield"})).unwrap();
-    assert!(h.p(|pr| pr.projections) > before, "customer re-projects it");
+    assert!(h.p(|pr| pr.counts.projections) > before, "customer re-projects it");
     assert!(gen_texts(&mut h, cover).iter().any(|x| x.contains("Northfield")));
 }
 

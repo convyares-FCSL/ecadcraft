@@ -176,7 +176,7 @@ fn a_moved_tag_survives_save_and_reopen() {
     let dir = std::env::temp_dir().join(format!("ecad-031-moved-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let mut h = H::new(SEED);
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let page = h.first_page();
     let (_, r) = place(&mut h, "no", [100.0, 150.0]);
     h.run("movetext", json!({"representation": r.hex(), "kind": "tag", "to": [130, 170], "justify": "LT"})).unwrap();

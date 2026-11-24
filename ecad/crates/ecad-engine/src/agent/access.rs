@@ -9,8 +9,8 @@
 //!   format, mode or port reads as **Off** and says so ([`Loaded::warning`]).
 //! - Written atomically (write a temporary file, then rename), never into a project.
 //! - `agentaccess {mode?, port?}` reads the preference (no fields) or asks the window to set it
-//!   ([`Project::agent_access_request`]); the window applies it and reports
-//!   ([`Project::agent_access_status`]). Agents never run it (`ecad-mcp`'s policy refuses it).
+//!   (`agent_access_request` in [`Project::asks`]); the window applies it and reports
+//!   (`agent_access_status`). Agents never run it (`ecad-mcp`'s policy refuses it).
 //!
 //! Excluded: the listener, the gate and the banner (the desktop app), and anything stored in a project.
 
@@ -225,16 +225,16 @@ impl Command for AgentaccessParams {
             .map(|p| u16::try_from(p).ok().filter(|p| *p >= MIN_PORT).ok_or_else(|| err("`port` must be a port from 1024 to 65535")))
             .transpose()?;
         on_any_page(s, |p: &mut Project, _| {
-            let current = p.agent_access_status.as_ref().map_or_else(|| load(&Settings::from_env()).preference, |s| s.preference);
+            let current = p.asks.agent_access_status.as_ref().map_or_else(|| load(&Settings::from_env()).preference, |s| s.preference);
             if mode.is_none() && port.is_none() {
-                return Ok(reply(p.agent_access_status.as_ref(), current));
+                return Ok(reply(p.asks.agent_access_status.as_ref(), current));
             }
-            if p.agent_access_status.as_ref().is_some_and(|s| s.this_run) {
+            if p.asks.agent_access_status.as_ref().is_some_and(|s| s.this_run) {
                 return Err(CmdError::refused("Agent access is set by --control for this run; restart ECAD without it to change the preference."));
             }
             let want = Preference { mode: mode.unwrap_or(current.mode), port: port.unwrap_or(current.port) };
-            p.agent_access_request = Some(want);
-            Ok(reply(p.agent_access_status.as_ref(), want))
+            p.asks.agent_access_request = Some(want);
+            Ok(reply(p.asks.agent_access_status.as_ref(), want))
         })
     }
 }

@@ -438,7 +438,7 @@ save timings are measured on the v1 file. ecad-engine `debug.rs`'s saved-record 
 **Beyond the knock-ons (why step 12 stopped):**
 1. **ecad-engine runtime: `Persistence::TestStore`.** `Project::create` defaults to it;
    `MemoryStore` saves through v1's `ProjectFile` over a `MemoryMedium`, `Project::open_from` /
-   `ProjectHandle::open_from` reopen v1 bytes, `Project::open_report` keeps v1's `OpenReport`.
+   `ProjectHandle::open_from` reopen v1 bytes, `Project::storage.open_report` keeps v1's `OpenReport`.
    Used by ecad-engine tests (`experiment`, `refusals` (a CRC-damaged v1 file opens read-only),
    `cable_reference_contracts`, `cable_slash_acceptance_contracts`, `sheets_contracts`,
    `tester_033_print`) and by every test that saves a project made with `Project::create`.

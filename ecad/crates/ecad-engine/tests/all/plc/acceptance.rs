@@ -230,7 +230,7 @@ pub(crate) fn rekey_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>
 pub(crate) fn reload(mut h: H, tag: &str, seed: u64) -> H {
     let dir = tmp_dir(tag);
     let path = dir.join("PLC -A01 (Rack).ecad").display().to_string();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
     h.close_all();
     drop(h);

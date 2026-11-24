@@ -204,7 +204,7 @@ fn a4_save_and_reopen_keep_racks_slots_and_the_rack_reference() {
     let Rack { mut h, cpu, cards } = rack(4505);
     h.run("setprop", json!({"component": cards[1].hex(), "key": "plc.channels", "value": "32"})).unwrap();
     let path = tmp("roundtrip").join("plc.ecad").display().to_string();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.run("saveas", json!({"path": path})).unwrap();
     let saved = h.doc();
     while !h.s.docs.is_empty() {

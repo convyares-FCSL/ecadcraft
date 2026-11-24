@@ -393,23 +393,23 @@ impl Project {
     /// The file facts (cheap: no file access).
     pub fn file_facts(&self) -> FileFacts {
         let mut f = FileFacts {
-            persistence: Some(self.persistence),
-            open_report: self.open_report.as_ref().map(ecad_file::Report::describe),
+            persistence: Some(self.storage.persistence),
+            open_report: self.storage.open_report.as_ref().map(ecad_file::Report::describe),
             ..FileFacts::default()
         };
-        match self.persistence {
+        match self.storage.persistence {
             Persistence::TestStore => {
                 f.in_memory = true;
-                f.storage = self.store.project().map(ecad_file::binding::StorageFacts::of);
-                f.read_only = self.store.project().and_then(|p| p.read_only()).map(str::to_string);
+                f.storage = self.storage.store.project().map(ecad_file::binding::StorageFacts::of);
+                f.read_only = self.storage.store.project().and_then(|p| p.read_only()).map(str::to_string);
             }
             Persistence::File => {
-                let st = self.file.status();
+                let st = self.storage.file.status();
                 f.path = st.path;
                 f.read_only = st.read_only;
                 f.unconfirmed = st.unconfirmed;
-                f.lock_file = self.file.lock_file();
-                f.storage = self.file.storage();
+                f.lock_file = self.storage.file.lock_file();
+                f.storage = self.storage.file.storage();
             }
             Persistence::Unavailable => {}
         }
@@ -476,9 +476,9 @@ impl Project {
             file: self.file_facts(),
             base: self.ledger.base(),
             history: self.ledger.history().cloned(),
-            store: match self.persistence {
-                Persistence::TestStore => self.store.project().map(|p| Arc::downgrade(p.store())),
-                _ => self.file.store().as_ref().map(Arc::downgrade),
+            store: match self.storage.persistence {
+                Persistence::TestStore => self.storage.store.project().map(|p| Arc::downgrade(p.store())),
+                _ => self.storage.file.store().as_ref().map(Arc::downgrade),
             },
         }
     }
@@ -498,10 +498,10 @@ impl Project {
             head: self.ledger.head(),
             doc: self.ledger.document().clone(),
             pages,
-            views: self.views.clone(),
+            views: self.display.views.clone(),
             tolerance: self.tolerance,
-            hidden_text: self.show_hidden_text,
-            pending: self.pending,
+            hidden_text: self.display.show_hidden_text,
+            pending: self.frame.pending,
         }
     }
 }

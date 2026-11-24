@@ -36,7 +36,7 @@ impl Drop for TempDir {
 /// A saved file project (small fixture) at `path`.
 pub(super) fn saved(d: &TempDir, seed: u64) -> (H, String) {
     let (mut h, ..) = small_project(seed);
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = d.path("p.ecad");
     h.run("saveas", json!({"path": path})).unwrap();
     (h, path)
@@ -53,7 +53,7 @@ pub(super) fn wire(h: &mut H, y: f64) {
 }
 
 fn current(h: &mut H) -> String {
-    h.p(|p| p.file.project().unwrap().branch_record().name.clone())
+    h.p(|p| p.storage.file.project().unwrap().branch_record().name.clone())
 }
 
 pub(super) fn verify(path: &str) {

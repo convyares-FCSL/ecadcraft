@@ -284,7 +284,7 @@ fn d_next_number_is_the_highest_plus_one_and_deleted_tags_are_not_reused() {
 fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
     let mut f = k1();
     f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "Acme"})).unwrap();
-    f.h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    f.h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-018-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("devices.ecad").display().to_string();
@@ -317,7 +317,7 @@ fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
     h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
     let coil = symbols::catalogue::by_key("coil").unwrap();
     assert_eq!(h.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-018-s2-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("tags.ecad").display().to_string();
@@ -636,7 +636,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     }
     let k5: DeviceId = k5.unwrap();
     h.run("ecaddelete", json!({"component": k5.hex()})).unwrap();
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-021-c-{}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("k05.ecad").display().to_string();

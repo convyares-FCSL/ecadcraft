@@ -945,7 +945,7 @@ fn raw(h: &mut H, cmd: &str, params: Value) -> Result<Value, String> {
 fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
     let d = TempDir::new("reopen");
     let mut h = H::new(0x24_7501);
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let k2 = place(&mut h, "coil", (300.0, 200.0));
@@ -991,7 +991,7 @@ fn save_and_reopen_keep_boxes_locations_and_generated_pages() {
 fn a_project_without_024_opens_unchanged() {
     let d = TempDir::new("old");
     let mut h = H::new(0x24_7503);
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     place(&mut h, "coil", (100.0, 100.0));
     h.run("pageprops", json!({"location": "+OLD"})).unwrap();
     h.run("pline", json!({"vertices": pts(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)]), "closed": true})).unwrap();
@@ -1046,7 +1046,7 @@ fn the_golden_project_opens_and_reports_build() {
 fn merging_a_branch_with_a_box_edited_on_both_sides() {
     let d = TempDir::new("merge");
     let mut h = H::new(0x24_7506);
-    h.cfg(|p| p.persistence = ecad_engine::Persistence::File);
+    h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::File);
     let page = h.first_page();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let k2 = place(&mut h, "coil", (250.0, 100.0));

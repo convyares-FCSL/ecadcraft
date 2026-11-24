@@ -371,7 +371,7 @@ fn a_foreign_partial_folder_is_never_deleted() {
 fn an_issued_revision_is_written_again_and_existing_folders_are_kept() {
     let mut f = fixture("again");
     // Rev A was issued without a folder: write it now, read-only.
-    f.h.cfg(|p| p.persistence = ecad_engine::Persistence::Unavailable);
+    f.h.cfg(|p| p.storage.persistence = ecad_engine::Persistence::Unavailable);
     let e = f.h.run("release", json!({})).unwrap_err();
     assert!(e.starts_with("The project is read-only") && e.contains("give rev"), "{e}");
     let head = f.h.head();
@@ -439,7 +439,7 @@ fn reopening_a_revision_shows_it_in_its_title_block() {
     f.h.wire_pp(&[(60.0, 40.0), (120.0, 40.0)]).unwrap();
     for (cmd, params) in [("openrevision", json!({"rev": "B"})), ("showpoint", json!({"revision": "B"}))] {
         f.h.run(cmd, params).unwrap();
-        let doc = f.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
+        let doc = f.h.p(|p| p.display.revision_view.as_ref().unwrap().doc.clone());
         let shown = ecad_electrical::releases::revisions::issued(&doc);
         assert_eq!(shown.iter().map(|r| r.rev().to_string()).collect::<Vec<_>>(), ["B", "A"], "{cmd}");
         assert_eq!(doc.wires().len() + 1, f.h.doc().wires().len(), "{cmd}: as it was");

@@ -22,7 +22,7 @@ fn frame_texts(c: &mut Client) -> (Vec<String>, String) {
     c.s.with_session(|s, h| {
         h.read(s, |p, _| {
             let pending = ecad_electrical::releases::revisions::is_pending(&p.ledger);
-            assert_eq!(p.pending, pending, "the kept flag is the walk's");
+            assert_eq!(p.frame.pending, pending, "the kept flag is the walk's");
             let doc = p.ledger.document();
             let page: PageId = doc.page_order()[0];
             let texts =
@@ -94,7 +94,7 @@ fn the_pending_marker_follows_the_undo_stack() {
                     p.ledger.document(),
                     page,
                     ecad_engine::project::engine_views().report_models(p.ledger.document()).as_ref(),
-                    p.pending,
+                    p.frame.pending,
                 )
                 .into_iter()
                 .filter_map(|part| match part.kind {

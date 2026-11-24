@@ -42,7 +42,7 @@ fn project_in(dir: &Path, drawing_number: &str) -> (H, String) {
     h.run("revision", json!({"description": "Terminals added", "drawn": "CVA", "date": "2026-11-12"})).unwrap();
     std::fs::create_dir_all(dir).unwrap();
     let path = dir.join("demo.ecad").to_string_lossy().into_owned();
-    h.cfg(|p| p.persistence = Persistence::File);
+    h.cfg(|p| p.storage.persistence = Persistence::File);
     h.run("saveas", json!({"path": path})).unwrap();
     (h, path)
 }

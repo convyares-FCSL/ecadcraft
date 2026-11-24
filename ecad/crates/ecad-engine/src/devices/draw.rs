@@ -43,7 +43,7 @@ pub fn all_texts_on_page(doc: &Document, page: PageId) -> Vec<PageText> {
 }
 
 /// A derived text as an entity on [`TAG_LAYER`], in its kind's style from `draw`.
-pub fn text_entity(draw: &crate::styles::draw::DrawStyles, t: &DerivedText, handle: Handle) -> Entity {
+pub(crate) fn text_entity(draw: &crate::styles::draw::DrawStyles, t: &DerivedText, handle: Handle) -> Entity {
     let mut e = text_entity_with(
         &t.value,
         t.at,
@@ -94,5 +94,5 @@ pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valig
 /// prompts and pick lists).
 pub fn next_tag_preview(p: &crate::project::Project, s: &Starter) -> Option<String> {
     let doc = p.ledger.document();
-    p.tag_high.peek_auto(doc, &prefix_for(doc, s)).ok()
+    p.indexes.tag_high.peek_auto(doc, &prefix_for(doc, s)).ok()
 }

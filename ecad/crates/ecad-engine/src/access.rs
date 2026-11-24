@@ -117,7 +117,7 @@ impl ProjectHandle {
     }
 
     /// Whether the project is still attached to `s`: open there, with or without its page window
-    /// (a project whose page window was closed with [`Project::keep_open`] stays attached).
+    /// (a project whose page window was closed with `keep_open` ([`Project::display`]) stays attached).
     pub fn is_attached(&self, s: &Session) -> bool {
         let me = Arc::as_ptr(&self.0).cast::<()>();
         s.ext.owners().iter().any(|o| Arc::as_ptr(o).cast::<()>() == me)

@@ -42,7 +42,7 @@ pub(crate) fn place_channel(
         let (card, card_tag, new) = match card {
             Some(c) => (c, ecad_electrical::devices::tags::tag_words(doc, c), false),
             None => {
-                let (c, t2) = new_card_ops(&p.ledger, &mut p.ids, &mut p.tag_high, starter, def, t, new_tag, &mut ops)?;
+                let (c, t2) = new_card_ops(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, starter, def, t, new_tag, &mut ops)?;
                 (c, t2, true)
             }
         };
@@ -95,7 +95,7 @@ pub(crate) fn place_channel(
         let proposed = crate::symbols::draw::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
-        p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: card });
+        p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(starter.key), device: card });
         let doc = p.ledger.document();
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.connection_points.iter().map(|(_, _, pin, _)| pin.clone()).collect();
@@ -188,7 +188,7 @@ impl Command for PlcchannelsParams {
                 }
                 let input = rules::FenceInput { ty: self.ty.map(|t| t.0.0), first, point: self.point.clone(), from, to };
                 let tol = p.tolerance;
-                rules::plan_channels(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, card, &input, tol)?
+                rules::plan_channels(&p.ledger, &mut p.ids, &mut p.indexes.tag_high, page, style, card, &input, tol)?
             };
             let (c, tag, first) = (plan.card, plan.tag.clone(), plan.first);
             let channels: Vec<u32> = plan.placed.iter().map(|i| i + first).collect();
@@ -198,7 +198,7 @@ impl Command for PlcchannelsParams {
                 return Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}));
             }
             p.apply_edit(pg, "plcchannels", "Place channels", plan.ops)?;
-            p.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(plan.starter), device: c });
+            p.defaults.last_placed = Some(ecad_electrical::commands::run::LastPlaced { starter: Some(plan.starter), device: c });
             let k = plan.placed.len();
             let wires = if k == 1 { "1 wire".to_string() } else { format!("{k} wires") };
             let mut first_pins: Vec<String> = plan.pins.clone();

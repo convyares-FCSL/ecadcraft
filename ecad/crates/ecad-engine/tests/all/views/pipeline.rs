@@ -547,11 +547,11 @@ fn a_dropped_pending_leaves_the_frame_alone() {
 fn a_drawing_commit_runs_the_frame_map_and_leaves_the_frame() {
     let b = ecad_engine::dev::test_support::ProjectBuilder::new(647).page().build();
     let mut h = crate::common::H::from_built(b);
-    let builds = h.p(|p| p.frame_builds);
+    let builds = h.p(|p| p.counts.frame_builds);
     let head = h.head();
     h.cmdline("line 0,100 40,100 ");
     assert_eq!(h.head(), head + 1, "the line is a drawing commit");
-    assert_eq!(h.p(|p| p.frame_builds), builds, "a line is not on the frame's map");
+    assert_eq!(h.p(|p| p.counts.frame_builds), builds, "a line is not on the frame's map");
 }
 
 /// Step 4: a command refused by the ledger at commit (its op's `before` is stale) leaves the
@@ -568,7 +568,7 @@ fn a_refused_commit_leaves_the_frame_and_its_flag() {
     assert!(before.as_ref().is_some_and(|(p, _)| *p == page), "the page's frame is kept");
     assert!(!h.p(|p| p.frame_is_stale()));
     let head = h.head();
-    let builds = h.p(|p| p.frame_builds);
+    let builds = h.p(|p| p.counts.frame_builds);
     let project = h.doc().project().clone();
     let titled = |t: &str| {
         let mut p = project.clone();
@@ -582,11 +582,11 @@ fn a_refused_commit_leaves_the_frame_and_its_flag() {
     assert_eq!(h.head(), head, "nothing recorded");
     assert!(!h.p(|p| p.frame_is_stale()), "the flag is unchanged");
     assert_eq!(shown(&mut h), before, "the kept frame is unchanged");
-    assert_eq!(h.p(|p| p.frame_builds), builds);
+    assert_eq!(h.p(|p| p.counts.frame_builds), builds);
     // The same change from the real project is on the map: the frame is worked out again.
     let valid = ecad_model::Op::ModifyProject { before: project.clone(), after: titled("Panel 7") };
     h.project.apply_ops(&mut h.s, "valid", vec![valid]).unwrap();
-    assert_eq!(h.p(|p| p.frame_builds), builds + 1, "a title change is on the frame's map");
+    assert_eq!(h.p(|p| p.counts.frame_builds), builds + 1, "a title change is on the frame's map");
 }
 
 /// Step 9 (the R9 revisions probe, 2026-11-18): a revision records only the project's data, and

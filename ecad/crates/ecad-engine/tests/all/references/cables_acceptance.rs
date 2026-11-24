@@ -546,7 +546,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
     let mut r = connected(SEED + 8);
     r.h.run("movepage", json!({"page": r.field.hex(), "index": 1})).unwrap();
     r.h.run("renamepage", json!({"page": r.supply.hex(), "title": "Fält ⚡ 電源"})).unwrap();
-    r.h.cfg(|p| p.persistence = Persistence::File);
+    r.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.path("two pages.ecad");
     r.h.run("saveas", json!({"path": path})).unwrap();
     let doc = r.h.doc();
@@ -586,7 +586,7 @@ fn ac4_save_close_reopen_and_replay_give_the_same_cable_drawings_and_references(
 fn ac5_cablegoto_opens_a_closed_page_and_works_read_only() {
     let dir = TempDir::new("goto");
     let mut r = connected(SEED + 9);
-    r.h.cfg(|p| p.persistence = Persistence::File);
+    r.h.cfg(|p| p.storage.persistence = Persistence::File);
     let path = dir.path("shared.ecad");
     r.h.run("saveas", json!({"path": path})).unwrap();
     // Close Field's tab, then jump to it from Supply by the typed JSON form.
