@@ -80,14 +80,6 @@ pub(crate) fn slot_plan(doc: &Document, card: &str, rack: RackChoice<'_>, slot: 
     Ok((card, ops))
 }
 
-/// The I/O card type `word` names (DI, DQ, AI, AO, RTD or IOL).
-///
-/// # Errors
-/// Any other word.
-pub(crate) fn io_type(word: &str) -> Result<CardType, CmdError> {
-    CardType::parse(word).filter(|t| IO_TYPES.contains(t)).ok_or(CmdError::refused("`type` is DI, DQ, AI, AO, RTD or IOL"))
-}
-
 /// What `plccardtype` does.
 #[derive(Debug, Clone)]
 pub(crate) struct CardTypePlan {
@@ -239,7 +231,7 @@ pub(crate) fn tag_cards(doc: &Document, card: Option<&str>, rack: Option<&str>) 
 pub(crate) struct AddressInput {
     pub rack: Option<String>,
     pub card: Option<String>,
-    pub style: Option<Option<String>>,
+    pub style: Option<Option<crate::plc::address::Style>>,
     pub input_start: Option<Option<String>>,
     pub output_start: Option<Option<String>>,
     pub start: Option<Option<String>>,
@@ -278,16 +270,9 @@ pub(crate) fn plan_address(doc: &Document, input: &AddressInput) -> Result<Addre
     if let Some(rv) = &input.rack {
         let r = rack_named(doc, rv)?;
         let before = snapshot(doc, r);
-        if let Some(v) = &input.style {
+        if let Some(v) = input.style {
             // The station's own style; none follows the project's.
-            let style = match word(v).filter(|x| !x.is_empty()) {
-                None => None,
-                Some(x) => Some(
-                    crate::plc::address::Style::parse(&x)
-                        .ok_or_else(|| CmdError::refused(format!("`style` {x} is not a value of {}.", defaults::plc::ADDRESS_STYLE.key)))?
-                        .stored(),
-                ),
-            };
+            let style = v.map(crate::plc::address::Style::stored);
             crate::plc::edit::station(doc, &mut ops, r, |s| s.address_style = style);
         }
         for (key, value, entry) in
@@ -381,8 +366,8 @@ pub fn channel_card(doc: &Document, card: &str) -> Result<(DeviceId, CardType), 
 /// What the fence form of `plcchannels` is given (besides its card).
 #[derive(Debug, Clone)]
 pub struct FenceInput {
-    /// A new card's type (DI, DQ…); absent: DI.
-    pub ty: Option<String>,
+    /// A new card's type; absent: DI.
+    pub ty: Option<CardType>,
     /// The first channel number, as shown.
     pub first: Option<u32>,
     /// The point role landed on each wire.
@@ -422,9 +407,7 @@ pub fn plan_channels(
     let doc = ledger.document();
     let t = match (card, &input.ty) {
         (Some((_, t)), _) => t,
-        (None, Some(w)) => CardType::parse(w).filter(|t| t.has_channels()).ok_or_else(|| {
-            CmdError::refused(format!("No card type \"{}\". Types: DI, DQ, AI, AO, RTD, IOL.", w.chars().take(16).collect::<String>()))
-        })?,
+        (None, Some(t)) => *t,
         (None, None) => CardType::Di,
     };
     let found = crate::cables::slash::crossings(doc, page, input.from, input.to, tol);

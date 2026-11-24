@@ -135,9 +135,9 @@ pub(crate) struct PlcchannelsParams {
     /// The card: an ID or a tag (absent: a new card).
     #[serde(default)]
     card: Option<String>,
-    /// A new card's type: DI, DQ, AI, AO, RTD or IOL.
+    /// A new card's type (default DI; `DO` reads as DQ).
     #[serde(default, rename = "type")]
-    ty: Option<String>,
+    ty: Option<ecad_electrical::commands::input::Said<ecad_electrical::plc::rack::IoType>>,
     /// The first channel number, as shown.
     #[serde(default)]
     first: Option<TextOrNumber>,
@@ -186,7 +186,7 @@ impl Command for PlcchannelsParams {
                 if from.near(to, p.tolerance) {
                     return Err(CmdError::input("`from` and `to` must differ"));
                 }
-                let input = rules::FenceInput { ty: self.ty.clone(), first, point: self.point.clone(), from, to };
+                let input = rules::FenceInput { ty: self.ty.map(|t| t.0.0), first, point: self.point.clone(), from, to };
                 let tol = p.tolerance;
                 rules::plan_channels(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, card, &input, tol)?
             };

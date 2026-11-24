@@ -375,7 +375,7 @@ fn a_type_change_keeps_tags_and_descriptions_and_changes_the_signal_type() {
     let v = h.run("plccardtype", json!({"card": "-A05", "type": "DQ"})).unwrap();
     assert!(v["message"].as_str().unwrap().contains("Its channels become digital outputs (they were analogue outputs)"), "{v}");
     let e = h.run("plccardtype", json!({"card": "-A03", "type": "CPU"})).unwrap_err();
-    assert!(e.contains("DI, DQ, AI, AO, RTD or IOL"), "{e}");
+    assert!(e.contains(r#"`type` must be one of "DI", "DQ", "AI", "AO", "RTD", "IOL""#), "{e}");
     let e = h.run("plccardtype", json!({"card": "-A01", "type": "DI"})).unwrap_err();
     assert!(e.contains("not a card"), "{e}");
     let v = h.run("plccardtype", json!({"card": "-A03", "type": "dq"})).unwrap();

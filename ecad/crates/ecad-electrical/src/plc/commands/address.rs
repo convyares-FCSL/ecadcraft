@@ -23,9 +23,9 @@ pub struct PlcaddressParams {
     /// The card (without `rack`): an ID or a tag.
     #[serde(default)]
     card: Option<String>,
-    /// The rack's address style: byte.bit, iec, percent, slot or none; null: the default.
+    /// The rack's address style; null: the project's.
     #[serde(default, deserialize_with = "nullable")]
-    style: Option<Option<TextOrNumber>>,
+    style: Option<Option<crate::commands::input::Said<crate::plc::address::Style>>>,
     /// The rack's first input byte; null: the default.
     #[serde(default, deserialize_with = "nullable")]
     input_start: Option<Option<TextOrNumber>>,
@@ -55,7 +55,7 @@ impl Generic for PlcaddressParams {
         let input = AddressInput {
             rack: self.rack,
             card: self.card,
-            style: text(self.style),
+            style: self.style.map(|s| s.map(|s| s.0)),
             input_start: text(self.input_start),
             output_start: text(self.output_start),
             start: text(self.start),

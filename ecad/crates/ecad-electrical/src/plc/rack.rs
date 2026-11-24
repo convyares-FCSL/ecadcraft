@@ -524,6 +524,18 @@ pub(crate) fn merge_into(doc: &Document, ops: &mut Vec<Op>, from: DeviceId, into
 /// body's symbol is swapped and nothing it is wired to moves.
 pub const IO_TYPES: [CardType; 6] = [CardType::Di, CardType::Dq, CardType::Ai, CardType::Ao, CardType::Rtd, CardType::Iol];
 
+/// An I/O card type as a call names it: one of [`IO_TYPES`] by its code (`DO` reads as DQ).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IoType(pub CardType);
+
+impl crate::commands::input::Words for IoType {
+    const WORDS: &'static [&'static str] = &["DI", "DQ", "AI", "AO", "RTD", "IOL"];
+
+    fn read(text: &str) -> Option<IoType> {
+        CardType::parse(text).filter(|t| IO_TYPES.contains(t)).map(IoType)
+    }
+}
+
 /// `a DQ card`, `an AO card`.
 pub fn with_article(t: CardType) -> String {
     let noun = t.noun();

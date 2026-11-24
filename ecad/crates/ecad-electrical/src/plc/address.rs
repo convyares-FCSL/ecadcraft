@@ -96,6 +96,15 @@ impl Style {
     }
 }
 
+/// An address style as a call names it (any case).
+impl crate::commands::input::Words for Style {
+    const WORDS: &'static [&'static str] = &["byte.bit", "iec", "percent", "slot", "none"];
+
+    fn read(text: &str) -> Option<Style> {
+        Style::parse(text)
+    }
+}
+
 /// A card's pinned start, when set.
 pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
     crate::plc::edit::module_of(doc, c).and_then(|m| m.address.start).filter(|n| *n <= MAX_BYTE)

@@ -110,6 +110,9 @@ fn closed_word_sets_are_listed() {
         ("issuerevision", r#"provisional?: "finalise"|"issue""#),
         ("renumber", r#"kind?: "devices"|"cables"|"wires"|"terminal_blocks"|"all""#),
         ("setprop", r#"conflict?: "swap"|"merge"|"next""#),
+        ("plccardtype", r#"type: "DI"|"DQ"|"AI"|"AO"|"RTD"|"IOL""#),
+        ("plcchannels", r#"type?: "DI"|"DQ"|"AI"|"AO"|"RTD"|"IOL""#),
+        ("plcaddress", r#"style?: "byte.bit"|"iec"|"percent"|"slot"|"none"|null"#),
         ("terminalblocks", r#"type?: "Feedthrough"|"PE"|"x2"|"x2B"|"x3"|"LNPE"|"SEN"|"DIS"|"FUSE""#),
     ];
     for (id, words) in rows {
@@ -862,7 +865,7 @@ fn the_plc_commands_refuse_input_uniformly() {
         ("plcexport", json!({"path": 1}), "`path` must be text, or null"),
         ("plcimport", json!({"what": "all"}), "`what` must be one of \"both\", \"tags\", \"descriptions\", or null"),
         ("plcimport", json!({"dry_run": "yes"}), "`dry_run` must be true or false, or null"),
-        ("plccardtype", json!({"card": "-A1"}), "`type` (text) is required"),
+        ("plccardtype", json!({"card": "-A1"}), r#"`type` (one of "DI", "DQ", "AI", "AO", "RTD", "IOL") is required"#),
         ("plccardtype", json!({"card": "-A1", "type": "DI", "x": 1}), "`x` is not a parameter of this command; it takes `card`, `type`"),
     ];
     let mut h = H::new(7030);
@@ -885,7 +888,11 @@ fn the_plc_commands_keep_their_rule_words() {
         ("plcchannels", json!({"card": "-A1", "rest": true, "at": [1e13, 0]}), "`at` must be a point [x, y] on the sheet"),
         ("plcchannels", json!({"card": "-A1"}), "`from` [x,y] is required"),
         ("plcchannels", json!({"first": "x", "from": [0, 0], "to": [9, 9]}), "A channel is a whole number from 0 to 9999."),
-        ("plcchannels", json!({"type": "ZZ", "from": [0, 0], "to": [9, 9]}), "No card type \"ZZ\". Types: DI, DQ, AI, AO, RTD, IOL."),
+        (
+            "plcchannels",
+            json!({"type": "ZZ", "from": [0, 0], "to": [9, 9]}),
+            r#"`type` must be one of "DI", "DQ", "AI", "AO", "RTD", "IOL", or null"#,
+        ),
         ("plcchannel", json!({"card": "-A1"}), "`channel` (a number as shown) is required"),
         ("plcchannel", json!({"card": "-A1", "channel": 99}), "-A01 has 16 channels (0–15)."),
         ("plcchannel", json!({"card": "-A1", "channel": 0, "move_to": null}), "`move_to` is a channel number"),
@@ -895,7 +902,7 @@ fn the_plc_commands_keep_their_rule_words() {
         ("plcmaketags", json!({}), "Give `card` or `rack` (an ID or tag)."),
         ("plcexport", json!({"format": "xml"}), "No tag table format \"xml\"; the formats are: csv."),
         ("plcimport", json!({}), "Give `path` (a file) or `text` (the tag table)."),
-        ("plccardtype", json!({"card": "-A1", "type": "XX"}), "`type` is DI, DQ, AI, AO, RTD or IOL"),
+        ("plccardtype", json!({"card": "-A1", "type": "XX"}), r#"`type` must be one of "DI", "DQ", "AI", "AO", "RTD", "IOL""#),
         ("plccardtype", json!({"card": "-A1", "type": "DQ", "x": 1}), "`x` is not a parameter of this command; it takes `card`, `type`"),
     ];
     for (cmd, params, says) in rows {

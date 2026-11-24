@@ -235,7 +235,7 @@ fn i_addresses_in_three_styles() {
     h.run("plcaddress", json!({"rack": "-A01", "style": "none"})).unwrap();
     assert_eq!(addr(&mut h, di, 0), None);
     let e = h.run("plcaddress", json!({"rack": "-A01", "style": "vendor"})).unwrap_err();
-    assert!(e.contains("is not a value of plc.address.style"), "{e}");
+    assert!(e.contains(r#"`style` must be one of "byte.bit", "iec", "percent", "slot", "none", or null"#), "{e}");
     same_as_built(&mut h);
 }
 

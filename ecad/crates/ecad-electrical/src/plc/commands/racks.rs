@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{RackChoice, io_type, plan_card_type, slot_given, slot_plan};
+use super::{RackChoice, plan_card_type, slot_given, slot_plan};
 use crate::commands::input::{TextOrNumber, nullable};
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
@@ -109,9 +109,9 @@ impl Generic for PlcracksParams {
 pub struct PlccardtypeParams {
     /// The card: an ID or a tag.
     card: String,
-    /// The new type: DI, DQ, AI, AO, RTD or IOL.
+    /// The new type (`DO` reads as DQ).
     #[serde(rename = "type")]
-    ty: String,
+    ty: crate::commands::input::Said<crate::plc::rack::IoType>,
 }
 
 impl Generic for PlccardtypeParams {
@@ -119,7 +119,7 @@ impl Generic for PlccardtypeParams {
     const TITLE: &'static str = "Card Type";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let to = io_type(&self.ty)?;
+        let to = self.ty.0.0;
         let plan = plan_card_type(cx.doc, cx.ids, &self.card, to)?;
         let (card, message) = (plan.card, plan.message);
         if plan.ops.is_empty() {
