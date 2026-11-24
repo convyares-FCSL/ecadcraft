@@ -90,6 +90,15 @@ impl Mode {
     }
 }
 
+/// A mode as a call names it: its word or its label, in any case.
+impl ecad_electrical::commands::input::Words for Mode {
+    const WORDS: &'static [&'static str] = &["off", "read", "write"];
+
+    fn read(text: &str) -> Option<Mode> {
+        Mode::parse(text)
+    }
+}
+
 /// The preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Preference {
@@ -200,9 +209,9 @@ fn reply(st: Option<&Status>, pref: Preference) -> Value {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct AgentaccessParams {
-    /// "off", "read" or "write".
+    /// Off, read or write (also the labels: "Read only", "Read and change").
     #[serde(default)]
-    mode: Option<String>,
+    mode: Option<ecad_electrical::commands::input::Said<Mode>>,
     /// The port, from 1024 to 65535.
     #[serde(default)]
     port: Option<u64>,
@@ -210,7 +219,7 @@ pub(crate) struct AgentaccessParams {
 
 impl Command for AgentaccessParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let mode = self.mode.map(|m| Mode::parse(&m).ok_or_else(|| err("`mode` must be off, read or write"))).transpose()?;
+        let mode = self.mode.map(|m| m.0);
         let port = self
             .port
             .map(|p| u16::try_from(p).ok().filter(|p| *p >= MIN_PORT).ok_or_else(|| err("`port` must be a port from 1024 to 65535")))

@@ -116,6 +116,7 @@ fn closed_word_sets_are_listed() {
         ("connector", r#"halves?: "socket"|"plug"|"both""#),
         ("connector", r#"family?: "plain"|"dsub"|"m12"|"rj45"|"usba"|"usbb""#),
         ("connector", r#"layout?: "row"|"pins""#),
+        ("agentaccess", r#"mode?: "off"|"read"|"write""#),
         ("terminalblocks", r#"type?: "Feedthrough"|"PE"|"x2"|"x2B"|"x3"|"LNPE"|"SEN"|"DIS"|"FUSE""#),
     ];
     for (id, words) in rows {
