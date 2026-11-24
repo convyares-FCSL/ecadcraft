@@ -113,6 +113,9 @@ fn closed_word_sets_are_listed() {
         ("plccardtype", r#"type: "DI"|"DQ"|"AI"|"AO"|"RTD"|"IOL""#),
         ("plcchannels", r#"type?: "DI"|"DQ"|"AI"|"AO"|"RTD"|"IOL""#),
         ("plcaddress", r#"style?: "byte.bit"|"iec"|"percent"|"slot"|"none"|null"#),
+        ("connector", r#"halves?: "socket"|"plug"|"both""#),
+        ("connector", r#"family?: "plain"|"dsub"|"m12"|"rj45"|"usba"|"usbb""#),
+        ("connector", r#"layout?: "row"|"pins""#),
         ("terminalblocks", r#"type?: "Feedthrough"|"PE"|"x2"|"x2B"|"x3"|"LNPE"|"SEN"|"DIS"|"FUSE""#),
     ];
     for (id, words) in rows {
@@ -1457,10 +1460,10 @@ fn the_connector_commands_refuse_input_uniformly() {
 fn the_connector_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("connector", json!({"rotation": 45}), "`rotation` is 0, 90, 180 or 270"),
-        ("connector", json!({"at": [0, 0], "halves": "x"}), "`halves` is socket, plug or both"),
-        ("connector", json!({"at": [0, 0], "family": "x"}), "`family` is plain, dsub, m12, rj45, usba or usbb"),
+        ("connector", json!({"at": [0, 0], "halves": "x"}), r#"`halves` must be one of "socket", "plug", "both", or null"#),
+        ("connector", json!({"at": [0, 0], "family": "x"}), r#"`family` must be one of "plain", "dsub", "m12", "rj45", "usba", "usbb", or null"#),
         ("connector", json!({"at": [0, 0], "pins": 99}), "`pins` is a whole number from 1 to 64."),
-        ("connector", json!({"at": [0, 0], "layout": "x"}), "`layout` is row or pins"),
+        ("connector", json!({"at": [0, 0], "layout": "x"}), r#"`layout` must be one of "row", "pins", or null"#),
         ("connector", json!({"layout": "row", "family": "plain"}), "connector needs at for a row, or line or wire for pins."),
         ("connector", json!({"at": [0, 0], "page": "000000000000000000000000000000ab"}), "No such page."),
         ("pinlabel", json!({"to": "00000000000000000000000000000002"}), "`device` and `pin`, or `connection_point`, is required"),

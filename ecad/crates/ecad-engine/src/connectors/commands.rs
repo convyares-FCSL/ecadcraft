@@ -11,6 +11,8 @@
 //!
 //! [`Project::apply_edit`]: crate::project::Project::apply_edit
 
+use ecad_electrical::commands::input::Said;
+use ecad_electrical::defaults::connectors::{ConnectorSide, MakerLayout};
 use ecad_model::geometry::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
@@ -59,21 +61,21 @@ pub(crate) struct ConnectorParams {
     /// The connector to join: an id or a tag (absent: a new connector).
     #[serde(default)]
     device: Option<String>,
-    /// socket, plug or both.
+    /// Socket, plug or both (also `s`, `p` or `b`).
     #[serde(default)]
-    halves: Option<String>,
-    /// plain, dsub, m12, rj45, usba or usbb.
+    halves: Option<Said<ConnectorSide>>,
+    /// The family (also `d-sub`, `sub-d` or `usb-a`).
     #[serde(default)]
-    family: Option<String>,
+    family: Option<Said<ecad_model::objects::devices::ConnectorFamily>>,
     /// The pin count, 1 to 64.
     #[serde(default)]
     pins: Option<u64>,
     /// numbers, letters, or the pin names ["L", "N", "PE"].
     #[serde(default)]
     names: Option<NamesParam>,
-    /// row (whole halves) or pins (one pin on each wire).
+    /// Row (whole halves) or pins (one pin on each wire).
     #[serde(default)]
-    layout: Option<String>,
+    layout: Option<MakerLayout>,
     /// Where a row (or a bulkhead) goes.
     #[serde(default)]
     at: Option<Point>,
@@ -120,8 +122,8 @@ impl Command for ConnectorParams {
         let input = ConnectorInput {
             page: self.page,
             device: self.device,
-            halves: self.halves,
-            family: self.family,
+            halves: self.halves.map(|h| h.0),
+            family: self.family.map(|f| f.0),
             pins: self.pins,
             names,
             layout: self.layout,

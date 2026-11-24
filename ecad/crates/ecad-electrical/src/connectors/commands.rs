@@ -12,7 +12,9 @@ use ecad_model::{
     ConnectionPoint, ConnectionPointId, DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, WireId,
 };
 
+use crate::commands::input::Words;
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
+use crate::defaults::connectors::{ConnectorSide, MakerLayout};
 use crate::defaults::{self};
 use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
@@ -89,33 +91,52 @@ pub fn names(doc: &Document, names: Option<&NamesInput>) -> Result<Names, CmdErr
     }
 }
 
-/// The halves a call asks for (absent: the registry's `connector.maker.halves`).
-///
-/// # Errors
-/// A word that is not socket, plug or both.
-pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
-    let w = match halves {
-        None => ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_HALVES, Scope::project()).word().to_string(),
-        Some(w) => w.trim().to_ascii_lowercase(),
-    };
-    match w.as_str() {
-        "socket" | "s" => Ok(Side::Socket),
-        "plug" | "p" => Ok(Side::Plug),
-        "both" | "b" => Ok(Side::Both),
-        _ => Err(CmdError::input("`halves` is socket, plug or both")),
+/// The halves as a call names them (`s`, `p` and `b` too).
+impl Words for ConnectorSide {
+    const WORDS: &'static [&'static str] = <ConnectorSide as ecad_model::Word>::WORDS;
+
+    fn read(text: &str) -> Option<ConnectorSide> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "s" => Some(ConnectorSide::Socket),
+            "p" => Some(ConnectorSide::Plug),
+            "b" => Some(ConnectorSide::Both),
+            w => <ConnectorSide as ecad_model::Word>::parse(w),
+        }
     }
 }
 
-/// The family a call asks for (absent: the registry's `connector.maker.family`).
+/// A family as a call names it ([`ConnectorFamily::of_typed`]: `d-sub`, `sub-d` and `usb-a` too).
+impl Words for ConnectorFamily {
+    const WORDS: &'static [&'static str] = <ConnectorFamily as ecad_model::Word>::WORDS;
+
+    fn read(text: &str) -> Option<ConnectorFamily> {
+        ConnectorFamily::of_typed(text)
+    }
+}
+
+/// The halves a call asks for (absent: the registry's `connector.maker.halves`).
 ///
 /// # Errors
-/// A word that names no family.
-pub fn family(doc: &Document, family: Option<&str>) -> Result<ConnectorFamily, CmdError> {
-    match family {
-        None => Ok(ConnectorFamily::of_typed(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
-            .unwrap_or(ConnectorFamily::Plain)),
-        Some(w) => ConnectorFamily::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
-    }
+/// A registry value that is not socket, plug or both.
+pub fn halves(doc: &Document, halves: Option<ConnectorSide>) -> Result<Side, CmdError> {
+    let w = match halves {
+        Some(w) => w,
+        None => ConnectorSide::read(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_HALVES, Scope::project()).word())
+            .ok_or(CmdError::input("`halves` is socket, plug or both"))?,
+    };
+    Ok(match w {
+        ConnectorSide::Socket => Side::Socket,
+        ConnectorSide::Plug => Side::Plug,
+        ConnectorSide::Both => Side::Both,
+    })
+}
+
+/// The family a call asks for (absent: the registry's `connector.maker.family`).
+pub fn family(doc: &Document, family: Option<ConnectorFamily>) -> ConnectorFamily {
+    family.unwrap_or_else(|| {
+        ConnectorFamily::of_typed(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
+            .unwrap_or(ConnectorFamily::Plain)
+    })
 }
 
 /// The pin count a call asks for.
@@ -136,17 +157,16 @@ pub fn pins(pins: Option<u64>) -> Result<Option<usize>, CmdError> {
 /// Whether a call asks for the pins layout (absent: the registry's `connector.maker.layout`).
 ///
 /// # Errors
-/// A word that is not row or pins.
-pub fn pins_layout(doc: &Document, layout: Option<&str>) -> Result<bool, CmdError> {
+/// A registry value that is not row or pins.
+pub fn pins_layout(doc: &Document, layout: Option<MakerLayout>) -> Result<bool, CmdError> {
     let w = match layout {
-        None => ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word().to_string(),
-        Some(w) => w.trim().to_ascii_lowercase(),
+        Some(w) => w,
+        None => {
+            <MakerLayout as ecad_model::Word>::parse(ecad_model::registry::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word())
+                .ok_or(CmdError::input("`layout` is row or pins"))?
+        }
     };
-    match w.as_str() {
-        "row" => Ok(false),
-        "pins" => Ok(true),
-        _ => Err(CmdError::input("`layout` is row or pins")),
-    }
+    Ok(w == MakerLayout::Pins)
 }
 
 /// The registry's first pin count.
@@ -185,11 +205,11 @@ pub struct ConnectorInput {
     pub page: Option<PageId>,
     /// The connector to join (an id or a tag; absent: a new connector).
     pub device: Option<String>,
-    pub halves: Option<String>,
-    pub family: Option<String>,
+    pub halves: Option<ConnectorSide>,
+    pub family: Option<ConnectorFamily>,
     pub pins: Option<u64>,
     pub names: Option<NamesInput>,
-    pub layout: Option<String>,
+    pub layout: Option<MakerLayout>,
     /// Where a row (or a bulkhead) goes.
     pub at: Option<Pt>,
     /// The line pins are placed along.
@@ -231,14 +251,14 @@ pub fn plan_connector(
     {
         return Err(CmdError::refused(cn::not_a_connector(doc, c)));
     }
-    let halves = halves(doc, input.halves.as_deref())?;
+    let halves = halves(doc, input.halves)?;
     let family = match device {
         Some(c) if input.family.is_none() => cn::half_family(doc, c, Side::Socket),
-        _ => family(doc, input.family.as_deref())?,
+        _ => family(doc, input.family),
     };
     let pins_given = pins(input.pins)?;
     let names = names(doc, input.names.as_ref())?;
-    let pins_layout = pins_layout(doc, input.layout.as_deref())?;
+    let pins_layout = pins_layout(doc, input.layout)?;
     let (made, label) = if let Some(key) = family.bulkhead() {
         let at = input.at.ok_or(CmdError::refused(NEEDS_AT))?;
         (place_bulkhead(ledger, ids, high, page, style, key, at, input.degrees)?, "Place connector".to_string())
