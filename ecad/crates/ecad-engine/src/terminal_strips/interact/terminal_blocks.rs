@@ -55,8 +55,8 @@ enum Stage {
     Line,
 }
 
-/// The type keywords of the Type prompt.
-const TYPE_WORDS: &[&str] = &["Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE"];
+// The Type prompt's keywords are the types' words.
+use ecad_electrical::terminal_strips::terminal_blocks::TYPE_WORDS;
 
 struct PlaceTerminalBlocks {
     stage: Stage,

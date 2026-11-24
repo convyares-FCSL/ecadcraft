@@ -26,9 +26,9 @@ pub struct TerminalBlocksParams {
     /// PE terminal blocks (without `type`).
     #[serde(default)]
     pe: Option<bool>,
-    /// The terminal block type: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS or FUSE.
+    /// The terminal block type (also its registry code or key).
     #[serde(default, rename = "type")]
-    ty: Option<String>,
+    ty: Option<crate::commands::input::Said<&'static crate::terminal_strips::terminal_blocks::BlockType>>,
     /// The level: a level name, a level number, or All.
     #[serde(default)]
     level: Option<String>,
@@ -47,7 +47,7 @@ impl Generic for TerminalBlocksParams {
     const STATE: State = State::LastPlaced;
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let ty = block_type(self.ty.as_deref(), self.pe.unwrap_or(false))?;
+        let ty = block_type(self.ty.map(|t| t.0), self.pe.unwrap_or(false))?;
         let (from, to) = (self.from.0, self.to.0);
         let bad = |q: Pt| !(q.x.abs() <= MAX_COORD && q.y.abs() <= MAX_COORD);
         if bad(from) || bad(to) {

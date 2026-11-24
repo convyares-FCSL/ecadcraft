@@ -305,19 +305,14 @@ pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::BlockType, word: 
 
 // ---------------------------------------------------------------- `connection_points`
 
-/// The terminal type a `connection_points` call names: `type` (Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS,
-/// FUSE), else PE with `pe`, else feed-through.
+/// The terminal type a `connection_points` call names: `type`, else PE with `pe`, else
+/// feed-through.
 ///
 /// # Errors
-/// A word that names no type.
-pub fn block_type(word: Option<&str>, pe: bool) -> Result<&'static tt::BlockType, CmdError> {
-    match word {
-        Some(w) => tt::by_word(w).ok_or_else(|| {
-            CmdError::refused(format!(
-                "No terminal type \"{}\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
-                w.chars().take(24).collect::<String>()
-            ))
-        }),
+/// No PE type (never in a correct build).
+pub fn block_type(ty: Option<&'static tt::BlockType>, pe: bool) -> Result<&'static tt::BlockType, CmdError> {
+    match ty {
+        Some(t) => Ok(t),
         None if pe => tt::by_code("pe").ok_or(CmdError::refused("no PE type")),
         None => Ok(tt::feedthrough()),
     }

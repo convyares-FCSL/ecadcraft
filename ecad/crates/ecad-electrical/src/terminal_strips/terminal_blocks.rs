@@ -246,6 +246,18 @@ pub(crate) fn by_offer(code: &str) -> Option<&'static BlockType> {
     TYPES.iter().find(|t| t.offer.eq_ignore_ascii_case(code))
 }
 
+/// The words a prompt and the help list for the types, one per entry of [`TYPES`], in its order.
+pub const TYPE_WORDS: &[&str] = &["Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE"];
+
+/// A type as a call names it ([`by_word`]).
+impl crate::commands::input::Words for &'static BlockType {
+    const WORDS: &'static [&'static str] = TYPE_WORDS;
+
+    fn read(text: &str) -> Option<Self> {
+        by_word(text)
+    }
+}
+
 /// The type a Place Terminals prompt or JSON names: its offer code, its registry code, its key, or
 /// `Feedthrough`.
 pub fn by_word(word: &str) -> Option<&'static BlockType> {

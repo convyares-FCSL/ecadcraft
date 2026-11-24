@@ -110,10 +110,21 @@ fn closed_word_sets_are_listed() {
         ("issuerevision", r#"provisional?: "finalise"|"issue""#),
         ("renumber", r#"kind?: "devices"|"cables"|"wires"|"terminal_blocks"|"all""#),
         ("setprop", r#"conflict?: "swap"|"merge"|"next""#),
+        ("terminalblocks", r#"type?: "Feedthrough"|"PE"|"x2"|"x2B"|"x3"|"LNPE"|"SEN"|"DIS"|"FUSE""#),
     ];
     for (id, words) in rows {
         let help = ecad_engine::commands::help_of(id);
         assert!(help.contains(words), "{id} lists {words}: {help}");
+    }
+}
+
+/// The terminal block types' listed words: one per type, in the table's order.
+#[test]
+fn every_terminal_block_type_has_its_listed_word() {
+    use ecad_electrical::terminal_strips::terminal_blocks::{TYPE_WORDS, TYPES, by_word};
+    assert_eq!(TYPE_WORDS.len(), TYPES.len());
+    for (w, t) in TYPE_WORDS.iter().zip(TYPES) {
+        assert!(by_word(w).is_some_and(|x| std::ptr::eq(x, t)), "{w} names {}", t.name);
     }
 }
 
@@ -763,7 +774,11 @@ fn the_terminal_block_commands_refuse_input_uniformly() {
         ("terminalblocks", json!({"to": [0, 0]}), "`from` (point [x, y]) is required"),
         ("terminalblocks", json!({"from": [0, 0], "to": "x"}), "`to` must be a point [x, y]"),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "pe": "yes"}), "`pe` must be true or false, or null"),
-        ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "type": 2}), "`type` must be text, or null"),
+        (
+            "terminalblocks",
+            json!({"from": [0, 0], "to": [9, 9], "type": 2}),
+            r#"`type` must be one of "Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE", or null"#,
+        ),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9], "strip": "zz"}), "`strip` must be a hex id, or null"),
         ("bridge", json!({"from": "00000000000000000000000000000001"}), "`to` (hex id) is required"),
         ("stripplan", json!({"limit": "x"}), "`limit` must be a whole number, or null"),
@@ -784,7 +799,7 @@ fn the_terminal_block_commands_keep_their_rule_words() {
         (
             "terminalblocks",
             json!({"from": [0, 0], "to": [9, 9], "type": "nope"}),
-            "No terminal type \"nope\". Types: Feedthrough, PE, x2, x2B, x3, LNPE, SEN, DIS, FUSE.",
+            r#"`type` must be one of "Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "SEN", "DIS", "FUSE", or null"#,
         ),
         ("terminalblocks", json!({"from": [0, 0], "to": [0, 0]}), "`from` and `to` must differ"),
         ("terminalblocks", json!({"from": [0, 0], "to": [9, 9]}), "The line crosses no wire. Draw it across the wires to land."),
