@@ -13,7 +13,7 @@ clicks.
 ## Contents
 `lib.rs` lists the areas, one line each. The desktop program uses `shell`, `canvas`, `library` and `title_blocks::draft`;
 the other areas are `pub` only for this crate's tests and the agent-bridge tests in ecad-mcp.
-- `shell/`: the frame and the `App` struct (`shell/app.rs`): top bar, panels, status bar, tool strip, keys,
+- `shell/`: the frame and the `App` struct (`shell/app.rs`, its state in groups: files, command, hover, branch, seen, dialogs): top bar, panels, status bar, tool strip, keys,
   layout, file dialogs and the close flow. `shell/host.rs` is what the program supplies (default folder,
   login name, file manager, clock).
 - `commands/`: the action table, what the app runs, the Tool Sets tab.

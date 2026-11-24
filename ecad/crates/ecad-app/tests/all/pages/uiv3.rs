@@ -104,7 +104,7 @@ fn the_tabs_are_in_the_strips_order_with_one_head_and_foot() {
     h.run_steps(4);
     assert!(h.state().shell.state.companion.is_none());
     // The counts come from the models: the demo's wires and cables.
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     assert!(r.tab_counts[2] > 0 && r.tab_counts[3] > 0, "{:?}", r.tab_counts);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -118,9 +118,9 @@ fn a_selected_row_opens_the_right_panel_on_it() {
     project(&mut h, &dir);
     show(&mut h, ListsView::Wires);
     assert!(h.state().shell.state.right_collapsed, "closed until a row is picked");
-    let k = h.state().reports.as_ref().unwrap().wires.source.keys()[0];
-    let number = h.state().reports.as_ref().unwrap().wires.source.rows.text(k, "Wire number");
-    h.state_mut().reports.as_mut().unwrap().wires.table.selection.set([k]);
+    let k = h.state().dialogs.reports.as_ref().unwrap().wires.source.keys()[0];
+    let number = h.state().dialogs.reports.as_ref().unwrap().wires.source.rows.text(k, "Wire number");
+    h.state_mut().dialogs.reports.as_mut().unwrap().wires.table.selection.set([k]);
     h.run_steps(4);
     assert!(!h.state().shell.state.right_collapsed, "the panel opened");
     assert_eq!(h.state().shell.state.right_tab, RightTab::Device);
@@ -138,11 +138,11 @@ fn wires_group_by_potential_and_the_terminal_block_plan_by_strip() {
     std::fs::create_dir_all(&dir).unwrap();
     project(&mut h, &dir);
     show(&mut h, ListsView::Wires);
-    let w = &h.state().reports.as_ref().unwrap().wires;
+    let w = &h.state().dialogs.reports.as_ref().unwrap().wires;
     assert_eq!(w.table.view.group_by(), Some(ecad_app::wires::list::POTENTIAL));
     assert!(w.table.view.rows().iter().any(|r| matches!(r, ecad_widgets::table::Row::Group { .. })), "potential groups");
     show(&mut h, ListsView::TerminalBlocks);
-    let t = &h.state().reports.as_ref().unwrap().connection_points;
+    let t = &h.state().dialogs.reports.as_ref().unwrap().connection_points;
     assert_eq!(t.table.view.group_by(), Some(ecad_app::terminal_strips::plan::STRIP));
     assert_eq!(t.table.bands.len(), 3, "inside | the strip | outside");
     assert!(!ecad_app::terminal_strips::plan::columns().iter().any(|c| c.id == ecad_app::terminal_strips::plan::STRIP), "the strip is a group");
@@ -162,7 +162,7 @@ fn the_plc_cards_are_at_the_boards_scale() {
     let tile = h.get_by_label("ecad.plc.tile.1").rect();
     assert_eq!(tile.width(), strip::TILE_WIDTH);
     assert!(tile.height() >= strip::TILE_MIN_HEIGHT, "{tile:?}");
-    let v = &h.state().reports.as_ref().unwrap().io;
+    let v = &h.state().dialogs.reports.as_ref().unwrap().io;
     let card = &v.strip[1];
     assert!(!card.kind.is_empty() && !card.under.is_empty(), "type at the head's right, addresses under the squares: {card:?}");
     assert!(card.links.iter().flatten().any(|l| l.text.ends_with("in use")), "{:?}", card.links);
@@ -194,9 +194,9 @@ fn screenshots_of_boards_2_01_to_2_06() {
     shot(&h, "uiv3-E-2.01-ours.png");
     // 2.02: a terminal.
     show(&mut h, ListsView::TerminalBlocks);
-    let k = h.state().reports.as_ref().and_then(|r| r.connection_points.table.view.visible_keys().get(1).copied());
+    let k = h.state().dialogs.reports.as_ref().and_then(|r| r.connection_points.table.view.visible_keys().get(1).copied());
     if let Some(k) = k {
-        h.state_mut().reports.as_mut().unwrap().connection_points.table.selection.set([k]);
+        h.state_mut().dialogs.reports.as_mut().unwrap().connection_points.table.selection.set([k]);
     }
     h.run_steps(8);
     shot(&h, "uiv3-E-2.02-ours.png");
@@ -209,9 +209,9 @@ fn screenshots_of_boards_2_01_to_2_06() {
     shot(&h, "uiv3-E-2.03-ours.png");
     // 2.04: a wire.
     show(&mut h, ListsView::Wires);
-    let k = h.state().reports.as_ref().and_then(|r| r.wires.table.view.visible_keys().get(1).copied());
+    let k = h.state().dialogs.reports.as_ref().and_then(|r| r.wires.table.view.visible_keys().get(1).copied());
     if let Some(k) = k {
-        h.state_mut().reports.as_mut().unwrap().wires.table.selection.set([k]);
+        h.state_mut().dialogs.reports.as_mut().unwrap().wires.table.selection.set([k]);
     }
     h.run_steps(8);
     shot(&h, "uiv3-E-2.04-ours.png");

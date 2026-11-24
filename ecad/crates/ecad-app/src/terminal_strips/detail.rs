@@ -20,7 +20,7 @@ pub(crate) fn side_text(cells: &[ecad_electrical::terminal_strips::strip_model::
 }
 
 pub(crate) fn connection_point(t: &App, k: crate::terminal_strips::plan::BlockKey) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let row = r.connection_points.source.row(k)?;
     let crate::terminal_strips::plan::PlanRow::Block { tag, row, place, .. } = row else {
         return None;

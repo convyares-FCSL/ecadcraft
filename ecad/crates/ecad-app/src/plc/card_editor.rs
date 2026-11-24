@@ -102,7 +102,7 @@ impl State {
 
 /// The card shown by tile `i`, read from the project.
 pub fn info(t: &mut App, i: usize) -> Option<Info> {
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let tile = r.io.tiles.get(i)?;
     let c = tile.card()?;
     let rack_title = r.io.rack_title.to_lowercase();
@@ -284,7 +284,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
     let Some(info) = info(t, i) else { return };
     let Some(c) = info.card else { return };
     let writable = t.project_writable();
-    let (mut st, mut folded) = match t.reports.as_mut() {
+    let (mut st, mut folded) = match t.dialogs.reports.as_mut() {
         Some(r) => (std::mem::take(&mut r.io.card_editor), std::mem::take(&mut r.io.card_folded)),
         None => return,
     };
@@ -469,7 +469,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect, i: usize) {
             }
         }
     }
-    if let Some(r) = t.reports.as_mut() {
+    if let Some(r) = t.dialogs.reports.as_mut() {
         r.io.card_editor = st;
         r.io.card_folded = folded;
     }

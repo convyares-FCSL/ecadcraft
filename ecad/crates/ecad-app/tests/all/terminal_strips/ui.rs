@@ -79,7 +79,7 @@ fn terminal_strips_in_the_app() {
     // Reports ▸ Terminals and ▸ Cables.
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     assert_eq!(r.tab, panel::Tab::TerminalBlocks);
     let t = r.table().clone();
     assert_eq!(t.rows.len(), 9, "four drawn, five spare (8+1PE is 9 positions)");
@@ -91,14 +91,14 @@ fn terminal_strips_in_the_app() {
     for strip in [Some(x1), None] {
         h.state_mut().show_plan(strip);
         h.run_steps(3);
-        let copies = h.state().reports.as_ref().unwrap().copies;
+        let copies = h.state().dialogs.reports.as_ref().unwrap().copies;
         ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"part_number","value":"K-{}"}}"#, k2.hex(), copies));
         h.run_steps(3);
-        assert_eq!(h.state().reports.as_ref().unwrap().copies, copies, "an unrelated edit copies nothing");
+        assert_eq!(h.state().dialogs.reports.as_ref().unwrap().copies, copies, "an unrelated edit copies nothing");
         let offer = if strip.is_some() { "9" } else { "8+1PE" };
         ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"terminal_blocks","value":"{offer}"}}"#, x1.hex()));
         h.run_steps(3);
-        assert_eq!(h.state().reports.as_ref().unwrap().copies, copies + 1, "the strip's own edit copies once");
+        assert_eq!(h.state().dialogs.reports.as_ref().unwrap().copies, copies + 1, "the strip's own edit copies once");
     }
     // Brief 052: locations are stored, never inherited: accept each device's proposal (its go-to
     // symbol's context), as a person does from the inspector's Use link.
@@ -115,17 +115,17 @@ fn terminal_strips_in_the_app() {
     for (c, v) in proposals {
         ok(&mut h, &format!(r#"setlocation {{"component":"{}","value":"{v}"}}"#, c.hex()));
     }
-    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Cables;
+    h.state_mut().dialogs.reports.as_mut().unwrap().tab = panel::Tab::Cables;
     h.run_steps(4);
-    let t = h.state().reports.as_ref().unwrap().table().clone();
+    let t = h.state().dialogs.reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = t.rows[0].iter().map(|c| c.text.clone()).collect();
     assert_eq!(row[..7], ["-W01", "YSLY-JZ 7G1.5", "7", "+CP1", "+FIELD", "4", "3 (5, 6, GNYE)"], "{row:?}");
     save(&h, &deltas, "028-reports-cables.png");
     h.state_mut().show_cores(cable);
     h.run_steps(4);
-    let t = h.state().reports.as_ref().unwrap().table().clone();
+    let t = h.state().dialogs.reports.as_ref().unwrap().table().clone();
     assert_eq!(t.rows.len(), 7, "one row per offered core");
-    h.state_mut().reports = None;
+    h.state_mut().dialogs.reports = None;
     // A terminal plan page.
     ok(&mut h, &format!(r#"newpage {{"generated":"terminal_blocks","strip":"{}"}}"#, x1.hex()));
     h.run_steps(3);

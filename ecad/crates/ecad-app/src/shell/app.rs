@@ -167,91 +167,139 @@ type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<eg
 pub struct App {
     pub cad: CadApp,
     pub(crate) project: Option<ProjectHandle>,
-    pub(crate) snapshots: Option<PathBuf>,
-    pub(crate) held: Option<Held>,
-    pub(crate) dialog: Option<FileDialog>,
-    /// Set by CADCraft's Save As (menu, Ctrl+Shift+S, or Save of a project with no file).
-    pub(crate) save_as_requested: Arc<AtomicBool>,
-    /// Events of the project already reported.
-    pub(crate) seen_events: u64,
-    /// A message waiting in a dialog.
-    pub(crate) notice: Option<String>,
-    pub(crate) snapshot_count: u32,
-    /// The ECAD command field's field (whole lines, spaces included).
-    pub command: String,
-    /// What to fill in, after an ECAD Tool Sets button put a template in the command field.
-    pub(crate) command_hint: Option<&'static str>,
-    /// Give the command field keyboard focus on the next frame.
-    pub(crate) focus_command: bool,
     /// The Project panel's Developer section: the command field's reply, the inline debugger and
     /// the project summary.
     pub developer: developer::Developer,
-    /// What ECAD's fonts and style were last installed for (CADCraft's interface
-    /// language, theme choice and the system theme), and whether the style is applied once more
-    /// in the next pass, when ECAD's fonts are in.
-    pub(crate) ecad_style: Option<EcadStyleKey>,
-    pub(crate) ecad_style_again: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
     /// The kept views' first builds, on the background pool (issue 48).
     pub warm: ecad_engine::warm::Warm,
     /// The Project panel.
     pub panel: ProjectPanel,
-    /// The read-only preview of another page, when open.
-    pub preview: Option<Preview>,
-    /// Which project the panel's copy belongs to: counts projects attached in this session, and
-    /// branch switches (every copy rebuilds once, as on open).
-    pub(crate) project_serial: u64,
-    /// The branch facts the title, header and Revisions show, with the project serial
-    /// and branch-action count they were read at (read again only when either moves).
-    pub(crate) branch_info: Option<((u64, u64), Option<BranchInfo>)>,
-    /// The project's branch-action count and the branch shown, as last seen ([`App::sync_branch`]).
-    pub(crate) branch_seen: Option<(u64, Option<String>)>,
-    /// Counts branch actions run (rename, archive, a new branch): the branch facts are read again.
-    pub(crate) branch_rev: u64,
-    /// The window title last sent.
-    pub(crate) title_sent: String,
-    /// The `keep_open` the app last gave the project: on, except while a close or quit asks.
-    pub(crate) keep_open: Option<bool>,
-    /// The page name box (New Page and Rename Page), when open.
-    pub name_box: Option<NameBox>,
-    /// A Save As that a close waits for is being confirmed (the close goes on after it).
-    pub(crate) confirming_close: bool,
-    /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
-    pub(crate) focus_drawing: bool,
-    /// The ECAD object under the pointer and since when (egui time, seconds).
-    pub(crate) hovered: Option<(Hovered, f64)>,
-    /// The hover description shown now.
-    pub(crate) hover: Option<Vec<String>>,
-    /// How long the pointer rests on an object before its description shows, in seconds.
-    pub hover_delay: f64,
-    /// The home folder that `~` in typed paths stands for ([`crate::shell::host::Host::home`] by default).
-    pub home: Option<PathBuf>,
-    /// The lineweight display the app last set when it opened a project; `None` before the
-    /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
-    pub(crate) lwdisplay_set: Option<bool>,
     /// The symbol search window, opened from the ECAD tab's Find Symbol.
     pub search: crate::library::search::SymbolSearch,
     /// The Library workspace (the browser, or the symbol builder).
     pub library: library::Library,
+    /// The Publish workspace.
+    pub publish: publish::Publish,
+    /// The ECAD section of CADCraft's Properties palette, shared with its closure.
+    pub props: crate::settings::sheets::Shared,
+    /// Settings, a place you visit (its section, the Standards screen, the inspector's rows).
+    pub settings: settings::Settings,
+    /// Live agent access (preference, listener, bridge sessions, banner).
+    pub agent: agent::Agent,
+    /// The shell around the drawing (workspaces, panels, the developer switch).
+    pub shell: shell::Shell,
+    /// The project's files: snapshots, the file dialog, Save As and closing.
+    pub files: Files,
+    /// The ECAD command field.
+    pub command: CommandField,
+    /// The hover description.
+    pub hover: Hover,
+    /// The branch facts and the revision shown.
+    pub(crate) branch: BranchView,
+    /// What each copy the app keeps was built for.
+    pub seen: Seen,
+    /// The open dialogs and what they wait on.
+    pub dialogs: Dialogs,
+}
+
+/// The project's files: snapshots, the file dialog, Save As and closing.
+pub struct Files {
+    pub(crate) snapshots: Option<PathBuf>,
+    pub(crate) snapshot_count: u32,
+    pub(crate) held: Option<Held>,
+    pub(crate) dialog: Option<FileDialog>,
+    /// Set by CADCraft's Save As (menu, Ctrl+Shift+S, or Save of a project with no file).
+    pub(crate) save_as_requested: Arc<AtomicBool>,
+    /// A Save As that a close waits for is being confirmed (the close goes on after it).
+    pub(crate) confirming_close: bool,
+    /// The `keep_open` the app last gave the project: on, except while a close or quit asks.
+    pub(crate) keep_open: Option<bool>,
+    /// The home folder that `~` in typed paths stands for ([`crate::shell::host::Host::home`] by default).
+    pub home: Option<PathBuf>,
+}
+
+/// The ECAD command field.
+pub struct CommandField {
+    /// The ECAD command field's field (whole lines, spaces included).
+    pub text: String,
+    /// What to fill in, after an ECAD Tool Sets button put a template in the command field.
+    pub(crate) hint: Option<&'static str>,
+    /// Give the command field keyboard focus on the next frame.
+    pub(crate) focus: bool,
+    /// Give the drawing the keyboard on the next frame (after a tool started a prompt).
+    pub(crate) focus_drawing: bool,
+}
+
+/// The hover description.
+pub struct Hover {
+    /// The ECAD object under the pointer and since when (egui time, seconds).
+    pub(crate) under: Option<(Hovered, f64)>,
+    /// The hover description shown now.
+    pub(crate) lines: Option<Vec<String>>,
+    /// How long the pointer rests on an object before its description shows, in seconds.
+    pub delay: f64,
+}
+
+/// The branch facts and the revision shown.
+pub(crate) struct BranchView {
+    /// The branch facts the title, header and Revisions show, with the project serial
+    /// and branch-action count they were read at (read again only when either moves).
+    pub(crate) info: Option<((u64, u64), Option<BranchInfo>)>,
+    /// The project's branch-action count and the branch shown, as last seen ([`App::sync_branch`]).
+    pub(crate) seen: Option<(u64, Option<String>)>,
+    /// Counts branch actions run (rename, archive, a new branch): the branch facts are read again.
+    pub(crate) rev: u64,
+    /// The revision shown in the panel (its log point), when one is open.
+    pub(crate) panel_revision: Option<u64>,
+    /// The change count the Revisions dialog was filled at (it follows
+    /// `SetProperty(Project, rev.*)` and Name/UnnameVersion, so undo and redo too).
+    pub(crate) revisions_seen: u64,
+}
+
+/// What each copy the app keeps was built for.
+pub struct Seen {
+    /// Events of the project already reported.
+    pub(crate) events: u64,
+    /// Which project the panel's copy belongs to: counts projects attached in this session, and
+    /// branch switches (every copy rebuilds once, as on open).
+    pub(crate) project_serial: u64,
+    /// The window title last sent.
+    pub(crate) title_sent: String,
+    /// What the section's copy was built for: project serial, change count, page, selection.
+    pub(crate) props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
+    /// How many times the section's copy was built (tests: only when it can differ).
+    pub props_rebuilds: u64,
+    /// The selection last checked for frame objects.
+    pub(crate) frame_checked: Vec<Handle>,
+    /// What ECAD's fonts and style were last installed for (CADCraft's interface
+    /// language, theme choice and the system theme), and whether the style is applied once more
+    /// in the next pass, when ECAD's fonts are in.
+    pub(crate) ecad_style: Option<EcadStyleKey>,
+    pub(crate) ecad_style_again: bool,
+    /// The lineweight display the app last set when it opened a project; `None` before the
+    /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
+    pub(crate) lwdisplay_set: Option<bool>,
+}
+
+/// The open dialogs and what they wait on.
+pub struct Dialogs {
+    /// A message waiting in a dialog.
+    pub(crate) notice: Option<String>,
+    /// The page name box (New Page and Rename Page), when open.
+    pub name_box: Option<NameBox>,
+    /// The folder the page name box's new page goes in.
+    pub(crate) new_page_folder: Option<ecad_model::FolderId>,
+    /// The read-only preview of another page, when open.
+    pub preview: Option<Preview>,
     /// The Reports window and the Print Book dialog, while open.
     pub reports: Option<crate::reports::panel::Reports>,
     pub print_book: Option<crate::reports::panel::PrintBook>,
     /// The Release dialog.
     pub release: Option<crate::history::release_dialog::ReleaseDialog>,
-    /// The Publish workspace.
-    pub publish: publish::Publish,
-
-    /// The ECAD section of CADCraft's Properties palette, shared with its closure.
-    pub props: crate::settings::sheets::Shared,
-    /// What the section's copy was built for: project serial, change count, page, selection.
-    pub(crate) props_seen: Option<(u64, u64, Option<PageId>, Vec<Handle>)>,
-    /// How many times the section's copy was built (tests: only when it can differ).
-    pub props_rebuilds: u64,
     /// The Project Properties and Revisions dialogs, when open.
     pub project_props: Option<crate::settings::sheets::ProjectProps>,
-    /// Settings, a place you visit (its section, the Standards screen, the inspector's rows).
-    pub settings: settings::Settings,
     pub revisions: Option<crate::settings::sheets::Revisions>,
     /// The merge dialog, when open.
     pub merge: Option<crate::history::merge_dialog::MergeDialog>,
@@ -261,19 +309,6 @@ pub struct App {
     pub issue_prompt: Option<(String, String)>,
     /// The issue line to run once Finalise numbering is applied (Finalise numbering now).
     pub(crate) issue_after_finalise: Option<String>,
-    /// The folder the page name box's new page goes in.
-    pub(crate) new_page_folder: Option<ecad_model::FolderId>,
-    /// The revision shown in the panel (its log point), when one is open.
-    pub(crate) panel_revision: Option<u64>,
-    /// The change count the Revisions dialog was filled at (it follows
-    /// `SetProperty(Project, rev.*)` and Name/UnnameVersion, so undo and redo too).
-    pub(crate) revisions_seen: u64,
-    /// The selection last checked for frame objects.
-    pub(crate) frame_checked: Vec<Handle>,
-    /// Live agent access (preference, listener, bridge sessions, banner).
-    pub agent: agent::Agent,
-    /// The shell around the drawing (workspaces, panels, the developer switch).
-    pub shell: shell::Shell,
 }
 
 /// What the pointer rests on, for the hover tooltip.
@@ -289,7 +324,7 @@ pub(crate) enum Hovered {
 
 /// The hover tooltip's egui id (and element name).
 pub const HOVER_ID: &str = "ecad.hover";
-/// Default [`App::hover_delay`].
+/// The default hover delay ([`App::hover`]).
 pub(crate) const HOVER_DELAY: f64 = 0.5;
 
 impl App {
@@ -332,7 +367,7 @@ impl App {
             Some(path) => {
                 if let Err(e) = t.open_project(path) {
                     t.new_project()?;
-                    t.notice = Some(format!("The project file could not be opened: {e}"));
+                    t.dialogs.notice = Some(format!("The project file could not be opened: {e}"));
                 }
             }
             None => t.new_project()?,
@@ -358,67 +393,63 @@ impl App {
         App {
             cad,
             project: None,
-            snapshots,
-            held: None,
-            dialog: None,
-            save_as_requested: requested,
-            seen_events: 0,
-            notice: None,
-            snapshot_count: 0,
-            command: String::new(),
-            command_hint: None,
-            focus_command: false,
             developer: developer::Developer::default(),
-            ecad_style: None,
-            ecad_style_again: false,
             debugger: Debugger::default(),
             warm: ecad_engine::warm::Warm::default(),
             panel: ProjectPanel::default(),
-            preview: None,
-            project_serial: 0,
-            branch_info: None,
-            branch_seen: None,
-            branch_rev: 0,
-            title_sent: TITLE.to_string(),
-            keep_open: None,
-            confirming_close: false,
-            name_box: None,
-            focus_drawing: false,
-            hovered: None,
-            hover: None,
-            hover_delay: HOVER_DELAY,
-            home: crate::shell::host::host().home.clone(),
-            lwdisplay_set: None,
             search: crate::library::search::SymbolSearch::default(),
             library: library::Library::default(),
-            reports: None,
-            print_book: None,
-            release: None,
             publish: publish::Publish::default(),
-
             props,
-            props_seen: None,
-            props_rebuilds: 0,
-            project_props: None,
             settings: settings::Settings::default(),
-            revisions: None,
-            merge: None,
-            renumber: None,
-            issue_prompt: None,
-            issue_after_finalise: None,
-            new_page_folder: None,
-            panel_revision: None,
-            revisions_seen: 0,
-            frame_checked: Vec::new(),
             agent,
             shell,
+            files: Files {
+                snapshots,
+                held: None,
+                dialog: None,
+                save_as_requested: requested,
+                snapshot_count: 0,
+                keep_open: None,
+                confirming_close: false,
+                home: crate::shell::host::host().home.clone(),
+            },
+            command: CommandField { text: String::new(), hint: None, focus: false, focus_drawing: false },
+            hover: Hover { under: None, lines: None, delay: HOVER_DELAY },
+            branch: BranchView { info: None, seen: None, rev: 0, panel_revision: None, revisions_seen: 0 },
+            seen: Seen {
+                events: 0,
+                ecad_style: None,
+                ecad_style_again: false,
+                project_serial: 0,
+                title_sent: TITLE.to_string(),
+                lwdisplay_set: None,
+                props_seen: None,
+                props_rebuilds: 0,
+                frame_checked: Vec::new(),
+            },
+            dialogs: Dialogs {
+                notice: None,
+                preview: None,
+                name_box: None,
+                reports: None,
+                print_book: None,
+                release: None,
+                project_props: None,
+                revisions: None,
+                merge: None,
+                renumber: None,
+                issue_prompt: None,
+                issue_after_finalise: None,
+                new_page_folder: None,
+            },
         }
     }
 
     /// The current project (open or already closed).
     /// The flag CADCraft's Save As request sets; ecad-desktop's services hook raises it.
     pub fn save_as_flag(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.save_as_requested)
+        Arc::clone(&self.files.save_as_requested)
     }
 
     pub fn project(&self) -> Option<&ProjectHandle> {
@@ -437,12 +468,12 @@ impl App {
 
     /// The message waiting in the notice dialog.
     pub fn notice(&self) -> Option<&str> {
-        self.notice.as_deref()
+        self.dialogs.notice.as_deref()
     }
 
     /// Dismiss the notice dialog.
     pub fn dismiss_notice(&mut self) {
-        self.notice = None;
+        self.dialogs.notice = None;
     }
 
     /// The open project's name, pages, unsaved transactions and file.
@@ -471,10 +502,10 @@ impl App {
         self.drop_frame_selection();
         self.hold_close();
         self.sync_keep_open();
-        if self.save_as_requested.swap(false, Ordering::Relaxed) {
+        if self.files.save_as_requested.swap(false, Ordering::Relaxed) {
             let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
             if owned {
-                if self.dialog.is_none() {
+                if self.files.dialog.is_none() {
                     self.request_save_as();
                 }
             } else {
@@ -505,11 +536,11 @@ impl App {
     pub(crate) fn drop_frame_selection(&mut self) {
         // Only when the selection changed: no work on a frame where nothing was picked.
         let sel = self.cad.session.selection();
-        if sel == self.frame_checked {
+        if sel == self.seen.frame_checked {
             return;
         }
         let only_frame = ecad_engine::pages::frame::drop_from_selection(&mut self.cad.session);
-        self.frame_checked = self.cad.session.selection();
+        self.seen.frame_checked = self.cad.session.selection();
         if only_frame {
             self.cad.session.echo(ecad_electrical::pages::frames::DERIVED);
         }
@@ -559,7 +590,7 @@ impl App {
         self.issue_prompt_window(ui.ctx());
         self.preview_window(ui.ctx());
         self.symbol_search(ui.ctx());
-        if std::mem::take(&mut self.focus_drawing) {
+        if std::mem::take(&mut self.command.focus_drawing) {
             // Keys go to CADCraft's command line when no text field has the keyboard.
             ui.ctx().memory_mut(|m| {
                 if let Some(id) = m.focused() {
@@ -581,20 +612,20 @@ impl App {
         let theme = self.shell.state.theme.ui();
         ecad_widgets::set_theme(theme);
         let key = (self.cad.language(), self.cad.ui.theme, ctx.system_theme(), theme);
-        if self.ecad_style != Some(key) {
+        if self.seen.ecad_style != Some(key) {
             ecad_widgets::fonts::install(ctx, cadcraft_ui_egui::theme::font_definitions(key.0));
             ecad_widgets::style::apply(ctx);
-            self.ecad_style = Some(key);
-            self.ecad_style_again = true;
+            self.seen.ecad_style = Some(key);
+            self.seen.ecad_style_again = true;
             ctx.request_repaint();
-        } else if std::mem::take(&mut self.ecad_style_again) {
+        } else if std::mem::take(&mut self.seen.ecad_style_again) {
             ecad_widgets::style::apply(ctx);
         }
     }
 
     /// The app is exiting normally: export a final snapshot if enabled and a project is open.
     pub fn on_exit(&mut self) {
-        if self.snapshots.is_some() && self.project_open() {
+        if self.files.snapshots.is_some() && self.project_open() {
             let _ = self.export_snapshot("exit");
         }
         self.agent.shut_down();
@@ -623,14 +654,14 @@ impl App {
                 return;
             }
             self.panel.clear();
-            self.preview = None;
+            self.dialogs.preview = None;
             return;
         };
-        let serial = self.project_serial;
+        let serial = self.seen.project_serial;
         let devices_shown = self.panel.tab == crate::pages::project_panel::Tab::Devices || self.lists_shows_devices();
         let selection = if devices_shown { self.cad.session.selection() } else { Vec::new() };
         let panel = &mut self.panel;
-        let panel_revision = &mut self.panel_revision;
+        let panel_revision = &mut self.branch.panel_revision;
         let _ = p.read(&mut self.cad.session, |p, _| {
             panel.active = p.active_page();
             // An issued revision opened read-only: its pages, under its bar.
@@ -688,7 +719,7 @@ impl App {
                 }
             });
         }
-        self.panel.previewed = self.preview.as_ref().map(|v| v.page);
+        self.panel.previewed = self.dialogs.preview.as_ref().map(|v| v.page);
     }
 
     /// What the panel's header shows.
@@ -709,7 +740,7 @@ impl App {
                     status = format!("Branch {b} · {status}");
                 }
                 Header {
-                    snapshots: self.snapshots.is_some(),
+                    snapshots: self.files.snapshots.is_some(),
                     name: Some(s.name.clone()),
                     status,
                     read_only: s.file.read_only.is_some(),
@@ -721,14 +752,14 @@ impl App {
                     release: self.release_badge(),
                 }
             }
-            None => Header { note: NOTE, snapshots: self.snapshots.is_some(), ..Header::default() },
+            None => Header { note: NOTE, snapshots: self.files.snapshots.is_some(), ..Header::default() },
         }
     }
 
     /// The branch facts, read again only after a switch or a branch action.
     pub fn branch_info(&mut self) -> Option<BranchInfo> {
-        let key = (self.project_serial, self.branch_rev);
-        if let Some((k, v)) = &self.branch_info
+        let key = (self.seen.project_serial, self.branch.rev);
+        if let Some((k, v)) = &self.branch.info
             && *k == key
         {
             return v.clone();
@@ -756,7 +787,7 @@ impl App {
                 BranchInfo { name: rec.name.clone(), count: rows.len(), bar, parent: parent_name, release_line: rec.release_line, file }
             })
             .ok();
-        self.branch_info = Some((key, info.clone()));
+        self.branch.info = Some((key, info.clone()));
         info
     }
 
@@ -767,20 +798,20 @@ impl App {
     pub fn sync_branch(&mut self) {
         let Some(p) = self.project.clone() else { return };
         let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.storage.file.project().map(|v| v.branch().hex()))) else { return };
-        let Some(seen) = self.branch_seen.replace(now.clone()) else { return };
+        let Some(seen) = self.branch.seen.replace(now.clone()) else { return };
         if seen == now {
             return;
         }
-        self.branch_rev += 1;
+        self.branch.rev += 1;
         self.panel.history.invalidate();
         if seen.1 != now.1 {
-            self.project_serial += 1;
-            self.preview = None;
+            self.seen.project_serial += 1;
+            self.dialogs.preview = None;
             self.panel.devices.invalidate();
             self.panel.checks.invalidate();
             self.panel.history.selected = None;
         }
-        if self.revisions.is_some() {
+        if self.dialogs.revisions.is_some() {
             self.open_revisions();
         }
     }
@@ -790,9 +821,9 @@ impl App {
     pub(crate) fn sync_title(&mut self, ctx: &egui::Context) {
         let info = if self.project_open() { self.branch_info() } else { None };
         let title = window_title(info.as_ref());
-        if title != self.title_sent {
+        if title != self.seen.title_sent {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-            self.title_sent = title;
+            self.seen.title_sent = title;
         }
     }
 }

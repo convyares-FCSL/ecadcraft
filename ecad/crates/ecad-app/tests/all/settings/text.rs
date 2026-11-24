@@ -36,7 +36,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
-        let d = h.state_mut().project_props.as_mut().unwrap();
+        let d = h.state_mut().dialogs.project_props.as_mut().unwrap();
         let t = d.text.as_mut().expect("the Text section");
         let tag = t.rows.iter_mut().find(|r| r.kind == "tag").unwrap();
         assert_eq!((tag.height.as_str(), tag.bold, tag.show.as_deref()), ("2.5", true, Some("yes")));
@@ -47,7 +47,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     let before = head(&mut h);
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "one transaction");
-    assert!(h.state().project_props.is_none(), "OK closes the popout");
+    assert!(h.state().dialogs.project_props.is_none(), "OK closes the popout");
     let d = doc(&mut h);
     // Brief 050a: the tag text style's project record.
     let rec = d.styles().get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
@@ -64,9 +64,9 @@ fn the_text_section_writes_one_textstyle_transaction() {
 
     // An out-of-range height keeps OK disabled: nothing is written.
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
-    h.state_mut().project_props.as_mut().unwrap().text.as_mut().unwrap().rows[0].height = "11".into();
+    h.state_mut().dialogs.project_props.as_mut().unwrap().text.as_mut().unwrap().rows[0].height = "11".into();
     h.run_steps(2);
-    assert!(h.state().project_props.as_ref().unwrap().line().is_err());
+    assert!(h.state().dialogs.project_props.as_ref().unwrap().line().is_err());
     let before = head(&mut h);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before);

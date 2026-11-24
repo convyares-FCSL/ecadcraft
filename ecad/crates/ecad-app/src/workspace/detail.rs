@@ -48,7 +48,7 @@ fn first<K: Copy + Ord>(t: &ecad_widgets::table::Table<K>) -> Option<K> {
 
 /// The selected row of the tab shown, if any.
 pub(crate) fn selected_key(t: &App) -> Option<Selected> {
-    let r = t.reports.as_ref();
+    let r = t.dialogs.reports.as_ref();
     match t.shell.lists {
         ListsView::Devices => t.panel.devices.selected.map(Selected::Device),
         ListsView::TerminalBlocks => r.and_then(|r| first(&r.connection_points.table)).map(Selected::ConnectionPoint),
@@ -283,9 +283,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let mut out = Vec::new();
     let devices = &mut t.panel.devices;
     // The cable's Cable / Checks tabs, and its Checks rows.
-    let (mut cable_tab, cable_checks) = t.reports.as_ref().map_or((0, Vec::new()), |r| (r.cables.detail_tab, r.cables.cable_checks.clone()));
+    let (mut cable_tab, cable_checks) = t.dialogs.reports.as_ref().map_or((0, Vec::new()), |r| (r.cables.detail_tab, r.cables.cable_checks.clone()));
     let tab_before = cable_tab;
-    let mut cable_edit = t.reports.as_mut().map(|r| &mut r.cables.edit);
+    let mut cable_edit = t.dialogs.reports.as_mut().map(|r| &mut r.cables.edit);
     let full = rect.x_range();
     let rule = |ui: &mut egui::Ui| panel::rule(ui, full);
     crate::shell::in_rect(ui, rect.shrink2(vec2(space::L, space::M)), "ecad.project.detail", |ui| {
@@ -384,7 +384,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         });
     });
     if cable_tab != tab_before
-        && let Some(r) = t.reports.as_mut()
+        && let Some(r) = t.dialogs.reports.as_mut()
     {
         r.cables.detail_tab = cable_tab;
     }

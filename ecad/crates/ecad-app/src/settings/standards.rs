@@ -183,7 +183,7 @@ fn sync(t: &mut App) {
         }
         return;
     };
-    let serial = t.project_serial;
+    let serial = t.seen.project_serial;
     let v = &mut t.settings.standards;
     let seen = v.seen;
     let _ = p.read(&mut t.cad.session, |p, _| {

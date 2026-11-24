@@ -38,7 +38,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let body = Rect::from_min_max(pos2(rect.left() + space::M, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
     let running = t.cad.session.running.is_some();
     let project = t.project_open();
-    let snapshots = t.snapshots.is_some();
+    let snapshots = t.files.snapshots.is_some();
     // The Developer section is the Commands tab: folding it closes the panel (Agent access is
     // in Settings).
     let actions = crate::shell::in_rect(ui, body, "ecad.shell.text.body", |ui| {
@@ -46,9 +46,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             ui,
             developer::Parts {
                 dev: &mut t.developer,
-                command: &mut t.command,
-                hint: t.command_hint,
-                focus: &mut t.focus_command,
+                command: &mut t.command.text,
+                hint: t.command.hint,
+                focus: &mut t.command.focus,
                 debugger: &mut t.debugger,
                 running,
                 snapshots,
@@ -57,8 +57,8 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         )
     });
     t.shell.state.text_panel = t.developer.open;
-    if t.command.trim().is_empty() {
-        t.command_hint = None;
+    if t.command.text.trim().is_empty() {
+        t.command.hint = None;
     }
     for a in actions {
         match a {

@@ -44,11 +44,11 @@ impl App {
 
     /// The hover description shown now, if any.
     pub fn hover_lines(&self) -> Option<&[String]> {
-        self.hover.as_deref()
+        self.hover.lines.as_deref()
     }
 
     /// With no command running, the ECAD object CADCraft highlights under the pointer gets a
-    /// tooltip after [`App::hover_delay`]: its name or ID and its connections. It goes when the
+    /// tooltip after the hover delay ([`App::hover`]): its name or ID and its connections. It goes when the
     /// pointer leaves the object, a button is pressed or a command starts. Only reads.
     pub(crate) fn hover_tooltip(&mut self, ctx: &egui::Context) {
         let (now, pointer, pressed) = ctx.input(|i| (i.time, i.pointer.hover_pos(), i.pointer.any_down()));
@@ -71,27 +71,27 @@ impl App {
             (None, None) => self.cad.canvas.hover.filter(|_| idle).map(|h| (Hovered::Object(h), None)),
         };
         let (Some((h, connection_point_lines)), Some(pointer)) = (target, pointer) else {
-            self.hovered = None;
-            self.hover = None;
+            self.hover.under = None;
+            self.hover.lines = None;
             return;
         };
-        let since = match self.hovered {
+        let since = match self.hover.under {
             Some((was, since)) if was == h => since,
             _ => {
-                self.hover = None;
+                self.hover.lines = None;
                 now
             }
         };
-        self.hovered = Some((h, since));
-        if now - since < self.hover_delay {
+        self.hover.under = Some((h, since));
+        if now - since < self.hover.delay {
             // A hostile delay (NaN, infinite, huge) never panics: it falls back to a short wait.
-            let wait = std::time::Duration::try_from_secs_f64((self.hover_delay - (now - since)).clamp(0.01, 3600.0))
+            let wait = std::time::Duration::try_from_secs_f64((self.hover.delay - (now - since)).clamp(0.01, 3600.0))
                 .unwrap_or(std::time::Duration::from_millis(10));
             ctx.request_repaint_after(wait);
             return;
         }
-        if self.hover.is_none() {
-            self.hover = match h {
+        if self.hover.lines.is_none() {
+            self.hover.lines = match h {
                 Hovered::ConnectionPoint(_) | Hovered::Reference(_) => connection_point_lines,
                 Hovered::Object(h) => {
                     let uid = self.cad.session.state().map(|st| st.uid).ok();
@@ -104,7 +104,7 @@ impl App {
                 }
             };
         }
-        let Some(lines) = &self.hover else { return };
+        let Some(lines) = &self.hover.lines else { return };
         // The shell's popover style and text colours.
         let t = shell::left::colours();
         egui::Area::new(egui::Id::unique(HOVER_ID))

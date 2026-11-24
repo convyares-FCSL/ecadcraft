@@ -304,7 +304,7 @@ impl crate::shell::app::App {
     }
 
     fn start_command(&mut self, command: &str) -> Result<(), String> {
-        self.focus_drawing = true;
+        self.command.focus_drawing = true;
         let r = self.cad.session.start(command).map_err(|e| e.to_string());
         if let Err(e) = &r {
             self.cad.session.echo(e.clone());
@@ -467,9 +467,9 @@ impl crate::shell::app::App {
             }
             App::Template => {
                 let line = template(a, target, &self.picked());
-                self.command = line;
-                self.command_hint = Some("Fill in the <placeholders>, then press Enter.");
-                self.focus_command = true;
+                self.command.text = line;
+                self.command.hint = Some("Fill in the <placeholders>, then press Enter.");
+                self.command.focus = true;
                 self.developer.open = true;
             }
         }

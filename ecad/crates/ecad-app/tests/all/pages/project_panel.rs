@@ -169,7 +169,7 @@ pub(crate) fn rev3_app() -> App {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    t.hover_delay = 0.0;
+    t.hover.delay = 0.0;
     t
 }
 
@@ -359,9 +359,9 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     // the page at once.
     let before = head(&mut h);
     click(&mut h, project_panel::NEW_PAGE);
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "prefilled");
+    assert_eq!(h.state().dialogs.name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "prefilled");
     click(&mut h, "Cancel");
-    assert!(h.state().name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
+    assert!(h.state().dialogs.name_box.is_none() && head(&mut h) == before, "Cancel does nothing");
     h.get_by_label("Page 1: Supply").click_secondary();
     h.run_steps(3);
     {
@@ -373,9 +373,9 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
             .click();
     }
     h.run_steps(3);
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row wheel's New page too");
+    assert_eq!(h.state().dialogs.name_box.as_ref().map(|b| b.text.as_str()), Some("4"), "the row wheel's New page too");
     key(&mut h, Key::Enter, Modifiers::NONE);
-    assert!(h.state().name_box.is_none());
+    assert!(h.state().dialogs.name_box.is_none());
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "New page");
@@ -551,7 +551,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     click(&mut h, "Preview Reference");
     h.run_steps(3);
     let (page, ring, title, projections) = {
-        let v = h.state().preview.as_ref().expect("the preview is open");
+        let v = h.state().dialogs.preview.as_ref().expect("the preview is open");
         (v.page, v.ring, v.title.clone(), v.projections)
     };
     assert_eq!(page, field);
@@ -563,37 +563,37 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert!(h.query_by_label(ecad_app::pages::preview::OPEN_PAGE).is_some());
     h.run_steps(20); // the window's fade-in
     let shot_img = take(&h, &deltas, "016-preview-ref.png");
-    if let (Some(img), Some(rect)) = (&shot_img, h.state().preview.as_ref().and_then(|v| v.image_rect)) {
-        let v = h.state().preview.as_ref().unwrap();
+    if let (Some(img), Some(rect)) = (&shot_img, h.state().dialogs.preview.as_ref().and_then(|v| v.image_rect)) {
+        let v = h.state().dialogs.preview.as_ref().unwrap();
         let at = v.to_screen(rect, ecad_model::Pt::new(20.0, 5.0));
         assert!(magenta_near(img, at + egui::vec2(10.0, 0.0), 3), "the ring around the other end");
     }
 
     // Edits elsewhere do not redraw it; a change on its page or of its texts does.
-    let n = h.state().preview.as_ref().unwrap().projections;
+    let n = h.state().dialogs.preview.as_ref().unwrap().projections;
     assert_eq!(n, projections);
     ok(&mut h, r#"line {"points":[[0,-40],[30,-40]]}"#);
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().projections, n, "an edit on Supply does not touch Field");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().projections, n, "an edit on Supply does not touch Field");
     ok(&mut h, &format!(r#"movepage {{"page":"{}","index":1}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "the number stays with the page (brief 019)");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().title, "page 2: Field", "the number stays with the page (brief 019)");
     ok(&mut h, &format!(r#"renamepage {{"page":"{}","title":"Field X"}}"#, field.hex()));
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field X");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().title, "page 2: Field X");
     ok(&mut h, "u");
     ok(&mut h, "u");
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "undo");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().title, "page 2: Field", "undo");
     ok(&mut h, "redo");
     h.run_steps(2);
-    assert_eq!(h.state().preview.as_ref().unwrap().title, "page 2: Field", "redo");
-    assert!(h.state().preview.as_ref().unwrap().projections > n, "page changes redraw it");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().title, "page 2: Field", "redo");
+    assert!(h.state().dialogs.preview.as_ref().unwrap().projections > n, "page changes redraw it");
 
     // Clicks, drags, wheel and keys inside it record nothing and keep the selection.
     let before = head(&mut h);
     let selection = h.state().cad.session.selection();
-    let rect = h.state().preview.as_ref().unwrap().image_rect.unwrap();
+    let rect = h.state().dialogs.preview.as_ref().unwrap().image_rect.unwrap();
     pointer(&mut h, rect.center(), Some(true));
     pointer(&mut h, rect.center() + egui::vec2(30.0, 10.0), None);
     pointer(&mut h, rect.center() + egui::vec2(30.0, 10.0), Some(false));
@@ -601,25 +601,25 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
     assert_eq!(head(&mut h), before, "nothing recorded");
     assert_eq!(h.state().cad.session.selection(), selection, "the active page's selection is unchanged");
     assert_eq!(active(&mut h), Some(supply));
-    let draws = h.state().preview.as_ref().unwrap().draws;
+    let draws = h.state().dialogs.preview.as_ref().unwrap().draws;
     h.run_steps(10);
-    assert_eq!(h.state().preview.as_ref().unwrap().draws, draws, "never redrawn per frame");
+    assert_eq!(h.state().dialogs.preview.as_ref().unwrap().draws, draws, "never redrawn per frame");
 
     // Open page makes Field active with the preview's view and closes it.
     click(&mut h, ecad_app::pages::preview::OPEN_PAGE);
     assert_eq!(active(&mut h), Some(field));
-    assert!(h.state().preview.is_none());
+    assert!(h.state().dialogs.preview.is_none());
     // The panel's Preview on a row, and Space on it again closes; the active page says so.
     click(&mut h, "Page 3: Spare");
     click(&mut h, "Page 1: Supply");
     key(&mut h, Key::Space, Modifiers::NONE);
-    assert!(h.state().preview.is_none(), "the cursor row is active: no preview");
+    assert!(h.state().dialogs.preview.is_none(), "the cursor row is active: no preview");
     click(&mut h, "Page 3: Spare");
     key(&mut h, Key::ArrowUp, Modifiers::NONE);
     key(&mut h, Key::Space, Modifiers::NONE);
-    assert_eq!(h.state().preview.as_ref().map(|v| v.page), Some(supply), "Space previews the cursor row");
+    assert_eq!(h.state().dialogs.preview.as_ref().map(|v| v.page), Some(supply), "Space previews the cursor row");
     key(&mut h, Key::Space, Modifiers::NONE);
-    assert!(h.state().preview.is_none(), "Space again closes it");
+    assert!(h.state().dialogs.preview.is_none(), "Space again closes it");
     let _ = spare;
     if shots().is_some() {
         assert!(shot_img.is_some(), "016-preview-ref.png needs a wgpu adapter");
@@ -733,11 +733,11 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     // revision can still be reopened (the command reads only).
     assert!(!h.state().props.lock().unwrap().writable, "Properties fields are read-only");
     h.state_mut().open_project_popout(ecad_app::settings::sheets::Popout::Info);
-    assert!(h.state().project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
-    h.state_mut().project_props = None;
+    assert!(h.state().dialogs.project_props.as_ref().is_some_and(|d| d.read_only), "Project Properties read-only");
+    h.state_mut().dialogs.project_props = None;
     h.state_mut().open_revisions();
-    assert!(h.state().revisions.as_ref().is_some_and(|d| d.read_only), "no pending row, no Issue");
-    h.state_mut().revisions = None;
+    assert!(h.state().dialogs.revisions.as_ref().is_some_and(|d| d.read_only), "no pending row, no Issue");
+    h.state_mut().dialogs.revisions = None;
     assert_eq!(head(&mut h), before, "nothing recorded");
     drop(h);
     drop(first);
@@ -985,7 +985,7 @@ fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
     // connection points (design 072).
     crate::common::points_at(h.state_mut(), &[(0.0, 0.0), (40.0, 0.0)]);
     let before = head(&mut h);
-    h.state_mut().command = r#"wire {"points":[[0,0],[40,0]]}"#.into();
+    h.state_mut().command.text = r#"wire {"points":[[0,0],[40,0]]}"#.into();
     h.run_steps(1);
     click(&mut h, "Run");
     assert_eq!(head(&mut h), before + 1, "the line ran");

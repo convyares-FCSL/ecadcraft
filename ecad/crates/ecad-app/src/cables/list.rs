@@ -624,7 +624,7 @@ pub(crate) fn show_tab(t: &mut crate::shell::app::App, ui: &mut eframe::egui::Ui
     use ecad_widgets::tokens::{size, space, ui_type};
     use eframe::egui::{self, vec2};
     let s = ecad_widgets::SHELL;
-    let r = t.reports.as_mut()?;
+    let r = t.dialogs.reports.as_mut()?;
     let v = &mut r.cables;
     let full = ui.available_rect_before_wrap();
     // A plain list until Details (or a double-click) opens the selected cable

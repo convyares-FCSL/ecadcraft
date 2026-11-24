@@ -106,7 +106,7 @@ pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
         Some(t) => t,
         None => {
             let mut t = App::new(None).unwrap();
-            t.hover_delay = 0.0;
+            t.hover.delay = 0.0;
             t
         }
     };

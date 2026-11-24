@@ -191,7 +191,7 @@ fn main() -> eframe::Result {
                 t.mark(Step::SetWgpu);
             }
             let timing =
-                timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), app.home.as_deref()), built: false });
+                timing.map(|marks| Timing { marks, dir: preferred_folder(snapshots_for_timing.as_deref(), app.files.home.as_deref()), built: false });
             Ok(Box::new(Desktop(app, timing, window::FirstFit::new(restoring))))
         }),
     )

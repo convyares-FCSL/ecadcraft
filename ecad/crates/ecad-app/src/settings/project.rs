@@ -39,7 +39,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;
     }
-    if t.project_props.as_ref().is_none_or(|d| d.popout != Popout::Info) {
+    if t.dialogs.project_props.as_ref().is_none_or(|d| d.popout != Popout::Info) {
         t.fill_project_props(Popout::Info);
     }
     let name = t.header().name.unwrap_or_default();
@@ -53,7 +53,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         crate::canvas::Sheet::Follow => "Follow the theme",
         crate::canvas::Sheet::Dark => "Dark",
     };
-    let Some(d) = &mut t.project_props else { return };
+    let Some(d) = &mut t.dialogs.project_props else { return };
     let ro = d.read_only;
     let mut out = None;
     let full = ui.max_rect();
@@ -302,10 +302,10 @@ pub fn body(t: &mut App, ui: &mut egui::Ui, popout: Popout, part: Part) {
         ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;
     }
-    if t.project_props.as_ref().is_none_or(|d| d.popout != popout) {
+    if t.dialogs.project_props.as_ref().is_none_or(|d| d.popout != popout) {
         t.fill_project_props(popout);
     }
-    let Some(d) = &mut t.project_props else { return };
+    let Some(d) = &mut t.dialogs.project_props else { return };
     if let Some(out) = d.show_in(ui, part) {
         t.project_props_out(out);
     }
@@ -325,7 +325,7 @@ impl App {
                         self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));
                     d.labels = self.run_value("wiresettings", serde_json::json!({})).ok().map(|w| crate::settings::sheets::WireLabels::from_json(&w));
                 }
-                self.project_props = Some(d);
+                self.dialogs.project_props = Some(d);
             }
             Err(e) => self.cad.session.echo(e),
         }
@@ -339,7 +339,7 @@ impl App {
             Out::Run(lines) => match lines.lines().find_map(|l| self.run_line(l)) {
                 None => self.close_settings(),
                 Some(e) => {
-                    if let Some(d) = &mut self.project_props {
+                    if let Some(d) = &mut self.dialogs.project_props {
                         d.error = Some(e);
                     }
                 }

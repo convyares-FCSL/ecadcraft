@@ -150,7 +150,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     // 4. Reports: the BOM has devices only, -S01 flagged; wires; cables.
     h.state_mut().panel_action(project_panel::Action::Reports);
     h.run_steps(4);
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     let bom = r.table().clone();
     assert_eq!(bom.headers[0], "Location");
     let qty: usize = bom.rows.iter().map(|row| row[1].text.parse::<usize>().unwrap()).sum();
@@ -163,22 +163,22 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().export_report(&csv.to_string_lossy());
     let text = std::fs::read_to_string(&csv).unwrap();
     assert!(text.contains("'-S01") && text.contains("'+CP1"), "{text}");
-    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Wires;
+    h.state_mut().dialogs.reports.as_mut().unwrap().tab = panel::Tab::Wires;
     h.run_steps(4);
-    let wires = h.state().reports.as_ref().unwrap().table().clone();
+    let wires = h.state().dialogs.reports.as_ref().unwrap().table().clone();
     // -W01 continues on page 3 (F4, F5): each core is one wire from -K01 to -X02, listed with its
     // cable.
     let cored = wires.rows.iter().filter(|row| row[9].text.starts_with("-W01 core")).count();
     assert_eq!(cored, 3, "the three cores with their cable");
     save(&h, &deltas, "024-reports-wires.png");
-    h.state_mut().reports.as_mut().unwrap().tab = panel::Tab::Cables;
+    h.state_mut().dialogs.reports.as_mut().unwrap().tab = panel::Tab::Cables;
     h.run_steps(4);
-    let cables = h.state().reports.as_ref().unwrap().table().clone();
+    let cables = h.state().dialogs.reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
     // Brief 028: Cores is the offer read from the type. -W01 continues on page 3, so its ends read
     // +CP1 (-K01) and +JB1 (-X02); 3 used and 1 open (GNYE).
     assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
-    h.state_mut().reports = None;
+    h.state_mut().dialogs.reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.
     for k in [ecad_model::GenKind::Cover, ecad_model::GenKind::Contents] {
@@ -202,9 +202,9 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().panel_action(project_panel::Action::PrintBook(None));
     h.run_steps(4);
     let pdf = dir.join("demo.pdf");
-    h.state_mut().print_book.as_mut().unwrap().path = pdf.to_string_lossy().into_owned();
+    h.state_mut().dialogs.print_book.as_mut().unwrap().path = pdf.to_string_lossy().into_owned();
     h.run_steps(3);
-    assert_eq!(h.state().print_book.as_ref().unwrap().sheets, 7, "five pages, a cover and contents");
+    assert_eq!(h.state().dialogs.print_book.as_ref().unwrap().sheets, 7, "five pages, a cover and contents");
     save(&h, &deltas, "024-printbook.png");
     let v = h.state_mut().print_from_dialog().unwrap();
     assert_eq!(v["sheets"], 7, "{v}");

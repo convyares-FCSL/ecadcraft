@@ -87,9 +87,9 @@ fn the_rating_sections_show_boards_2_05_and_2_06() {
     let (wire, w01) = rated(&mut h, &dir);
     // 2.05: the wire, its Rating section after Made as.
     show(&mut h, ListsView::Wires);
-    let k = h.state().reports.as_ref().unwrap().wires.source.ids.iter().position(|c| *c == wire).unwrap();
-    h.state_mut().reports.as_mut().unwrap().wires.table.selection.set([k]);
-    h.state_mut().reports.as_mut().unwrap().wires.table.reveal(&[k]);
+    let k = h.state().dialogs.reports.as_ref().unwrap().wires.source.ids.iter().position(|c| *c == wire).unwrap();
+    h.state_mut().dialogs.reports.as_mut().unwrap().wires.table.selection.set([k]);
+    h.state_mut().dialogs.reports.as_mut().unwrap().wires.table.reveal(&[k]);
     h.run_steps(8);
     assert!(h.query_by_label_contains("Rated: 27 A at 30 \u{b0}C").is_some(), "Rated row");
     assert!(h.query_by_label_contains("Panel: \u{d7} 0.87 40 \u{b0}C").is_some(), "Panel row");
@@ -100,8 +100,8 @@ fn the_rating_sections_show_boards_2_05_and_2_06() {
     }
     // 2.06: the cable, its Rating section after Part.
     show(&mut h, ListsView::Cables);
-    let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
-    h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
+    let k = h.state().dialogs.reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.table.selection.set([k]);
     h.run_steps(8);
     assert!(h.query_by_label_contains("Table: 20 A 1.5 mm\u{b2} \u{b7} E \u{b7} Test (synthetic)").is_some(), "Table row");
     assert!(h.query_by_label_contains("Carries: 16.9 A").is_some(), "Carries row");
@@ -126,8 +126,8 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let ty = ecad_model::registry::styles::rows(&d, &ecad_electrical::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
     show(&mut h, ListsView::Cables);
-    let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
-    h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
+    let k = h.state().dialogs.reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.table.selection.set([k]);
     h.run_steps(8);
     // Owner: a plain list until Details opens the selected cable below it.
     assert!(h.query_by_label_contains("drawn end to end").is_none(), "a plain list");
@@ -137,13 +137,13 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     h.get_by_label(ecad_app::workspace::frame::DETAILS).click();
     h.run_steps(8);
     assert!(h.query_by_label_contains("-W01 drawn end to end, 4 cores").is_some(), "the drawing");
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     let colours: Vec<Option<String>> = r.cables.cores.rows.keys.iter().map(|i| r.cables.cores.colour(*i)).collect();
     assert_eq!(colours, ["BN", "BK", "GY", "GNYE"].map(|c| Some(c.to_string())).to_vec());
     let drawing = r.cables.drawing(k);
     assert_eq!(drawing.cores.iter().map(|c| c.colour.clone().unwrap_or_default()).collect::<Vec<_>>(), ["BN", "BK", "GY", "GNYE"]);
     // Owner rule: the demo's unwired GNYE core is an open end, an error, until ticked Not used.
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     let gnye = r.cables.cores.rows.keys.iter().copied().find(|i| r.cables.cores.rows.text(*i, "Core") == "GNYE").unwrap();
     assert!(r.cables.cores.is_open(gnye));
     let open_rows = |h: &mut H| doc_checks(h).into_iter().filter(|c| c.kind == ecad_electrical::checks::Kind::CoreOpen).count();
@@ -163,7 +163,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     // The GNYE row is the last of the four.
     h.get_all_by_label(ecad_app::cables::list::NOT_USED_TOGGLE).last().unwrap().click();
     h.run_steps(6);
-    assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
+    assert!(h.state().dialogs.reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
     assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
     let d = doc(&mut h);
     assert!(d.cables()[&w01].cores.iter().any(|m| m.label_str() == Some("GNYE") && m.is_spare()), "the core is stored Spare");
@@ -179,12 +179,12 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     h.get_by_label("Cable view").click();
     h.get_by_label("Swap ends").click();
     h.run_steps(4);
-    assert!(h.state().reports.as_ref().unwrap().cables.swapped);
+    assert!(h.state().dialogs.reports.as_ref().unwrap().cables.swapped);
     assert!(h.query_by_label_contains("drawn end to end").is_some());
     // Esc closes the details; the list stays.
     h.key_press(egui::Key::Escape);
     h.run_steps(4);
-    assert!(!h.state().reports.as_ref().unwrap().cables.details);
+    assert!(!h.state().dialogs.reports.as_ref().unwrap().cables.details);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

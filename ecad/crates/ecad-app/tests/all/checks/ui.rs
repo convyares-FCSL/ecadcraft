@@ -307,7 +307,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // one transaction, labels follow, `u` takes both back.
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
-        let d = h.state_mut().project_props.as_mut().unwrap();
+        let d = h.state_mut().dialogs.project_props.as_mut().unwrap();
         assert_eq!((d.colour_style.as_str(), d.label_height.as_str()), ("code2", "2.5"));
         d.label_height = "3".into();
     }
@@ -336,10 +336,10 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.label_rule.net").is_some());
     click(&mut h, "ecad.projectsettings.label_rule.each");
-    h.state_mut().project_props.as_mut().unwrap().labels.as_mut().unwrap().min_length = "10".into();
+    h.state_mut().dialogs.project_props.as_mut().unwrap().labels.as_mut().unwrap().min_length = "10".into();
     h.run_steps(2);
     assert!(h.query_by_label("ecad.projectsettings.label_min_length").is_some());
-    let line = h.state().project_props.as_ref().unwrap().line().unwrap().unwrap();
+    let line = h.state().dialogs.project_props.as_ref().unwrap().line().unwrap().unwrap();
     assert_eq!(line, r#"wiresettings {"label_min_length":10.0,"label_rule":"each"}"#);
     let before = crate::canvas::mouse_acceptance::head(&mut h);
     click(&mut h, "ecad.projectprops.ok");

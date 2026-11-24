@@ -7,9 +7,9 @@ use serde_json::json;
 
 impl App {
     pub fn open_new_page_box(&mut self) {
-        self.new_page_folder = None;
+        self.dialogs.new_page_folder = None;
         let n = self.project_page_count() + 1;
-        self.name_box = Some(NameBox { kind: NameBoxKind::New, text: n.to_string(), error: None, focused: false });
+        self.dialogs.name_box = Some(NameBox { kind: NameBoxKind::New, text: n.to_string(), error: None, focused: false });
     }
 
     /// Open the page name box to rename `page` (the active page when `None`), prefilled with its
@@ -21,7 +21,9 @@ impl App {
             Some((page, p.ledger.document().pages().get(&page)?.title.to_string()))
         });
         match found {
-            Ok(Some((page, title))) => self.name_box = Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false }),
+            Ok(Some((page, title))) => {
+                self.dialogs.name_box = Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false })
+            }
             _ => self.cad.session.echo("Rename Page: show the page to rename first."),
         }
     }
@@ -34,12 +36,12 @@ impl App {
     /// OK in the page name box: one `newpage` (the new page is shown at once) or `renamepage`. A
     /// refusal keeps the box open with the message.
     pub fn confirm_name_box(&mut self) {
-        let Some(b) = self.name_box.clone() else { return };
+        let Some(b) = self.dialogs.name_box.clone() else { return };
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
         let line = match b.kind {
-            NameBoxKind::New => match self.new_page_folder {
+            NameBoxKind::New => match self.dialogs.new_page_folder {
                 Some(f) => format!("newpage {}", json!({ "title": b.text, "folder": f.hex() })),
                 None => format!("newpage {}", json!({ "title": b.text })),
             },
@@ -47,14 +49,14 @@ impl App {
         };
         match self.run_line(&line) {
             None => {
-                self.name_box = None;
+                self.dialogs.name_box = None;
                 self.refresh_panel();
                 if let Some(page) = self.panel.active {
                     self.panel.reveal(page);
                 }
             }
             Some(e) => {
-                if let Some(nb) = &mut self.name_box {
+                if let Some(nb) = &mut self.dialogs.name_box {
                     nb.error = Some(e);
                     nb.focused = false;
                 }
@@ -64,11 +66,11 @@ impl App {
 
     /// Cancel in the page name box: nothing is written.
     pub fn cancel_name_box(&mut self) {
-        self.name_box = None;
+        self.dialogs.name_box = None;
     }
 
     pub(crate) fn name_box_dialog(&mut self, ctx: &egui::Context) {
-        let Some(b) = &mut self.name_box else { return };
+        let Some(b) = &mut self.dialogs.name_box else { return };
         let heading = match b.kind {
             NameBoxKind::New => "New page",
             NameBoxKind::Rename(_) => "Rename page",

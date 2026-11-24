@@ -100,7 +100,7 @@ fn the_cable_view_button_switches_a_cable_both_ways() {
     h.get_by_label("Cable View").click();
     h.run_steps(3);
     assert_eq!(prompt(&h), "Select a cable to switch its view:");
-    assert!(h.state().command.is_empty(), "the Command field stays empty");
+    assert!(h.state().command.text.is_empty(), "the Command field stays empty");
     // Click the slash: C1 becomes a fan on the same frame.
     let slash = screen(&h, 30.0, 7.5);
     click(&mut h, slash);

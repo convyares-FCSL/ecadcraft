@@ -17,7 +17,7 @@ impl App {
         if !self.search.open {
             return;
         }
-        let (project, session, finder, serial) = (&self.project, &mut self.cad.session, &mut self.search, self.project_serial);
+        let (project, session, finder, serial) = (&self.project, &mut self.cad.session, &mut self.search, self.seen.project_serial);
         let q = finder.query.clone();
         // Both are copies kept under the search's update map (search.rs): a frame reads nothing
         // from the project unless a change touched a device, a page or the settings.
@@ -47,8 +47,8 @@ impl App {
 
     /// The provisional question's window: Finalise numbering now, Issue anyway or Cancel.
     pub(crate) fn issue_prompt_window(&mut self, ctx: &egui::Context) {
-        let Some((line, text)) = self.issue_prompt.clone() else { return };
-        let rev = self.revisions.as_ref().and_then(|d| d.pending.first().cloned()).unwrap_or_default();
+        let Some((line, text)) = self.dialogs.issue_prompt.clone() else { return };
+        let rev = self.dialogs.revisions.as_ref().and_then(|d| d.pending.first().cloned()).unwrap_or_default();
         let title = format!("Issue Rev {rev}");
         let shown = Dialog::new(egui::Id::unique("ecad.issue"), &title, "ecad.issue").small().show(
             ctx,
@@ -68,33 +68,33 @@ impl App {
         let chosen = shown.footer.or(shown.closed.then_some(0));
         match chosen {
             Some(1) => {
-                self.issue_prompt = None;
-                self.issue_after_finalise = Some(line);
+                self.dialogs.issue_prompt = None;
+                self.dialogs.issue_after_finalise = Some(line);
                 self.open_renumber(true, false, None);
             }
             Some(2) => {
-                self.issue_prompt = None;
+                self.dialogs.issue_prompt = None;
                 let line = with_param(&line, "provisional", json!("issue"));
                 let r = self.run_line(&line);
-                if let Some(d) = &mut self.revisions {
+                if let Some(d) = &mut self.dialogs.revisions {
                     d.error = r.clone();
                 }
                 if r.is_none() {
                     self.open_revisions();
                 }
             }
-            Some(_) => self.issue_prompt = None,
+            Some(_) => self.dialogs.issue_prompt = None,
             None => {}
         }
     }
 
     /// The Renumber dialog per frame: previews on option changes, Apply, go to a row.
     pub(crate) fn renumber_window(&mut self, ctx: &egui::Context) {
-        let Some(d) = &mut self.renumber else { return };
+        let Some(d) = &mut self.dialogs.renumber else { return };
         match d.show(ctx) {
             Some(crate::devices::renumber_dialog::Out::Preview(c, v)) => {
                 let r = self.run_click(c, v);
-                if let Some(d) = &mut self.renumber {
+                if let Some(d) = &mut self.dialogs.renumber {
                     match r {
                         Ok(v) => {
                             d.preview = ecad_electrical::numbering::commands::Preview::from_reply(&v).unwrap_or_default();
@@ -106,18 +106,18 @@ impl App {
             }
             Some(crate::devices::renumber_dialog::Out::Apply(c, v)) => match self.run_click(c, v) {
                 Ok(_) => {
-                    self.renumber = None;
+                    self.dialogs.renumber = None;
                     // Finalise numbering now: the issue follows, its own step.
-                    if let Some(line) = self.issue_after_finalise.take() {
+                    if let Some(line) = self.dialogs.issue_after_finalise.take() {
                         let _ = self.run_line(&line);
                         self.open_revisions();
                     }
                 }
                 Err(e) => {
                     // A stale preview is computed again.
-                    let again = self.renumber.as_ref().and_then(|d| d.params(true).ok());
+                    let again = self.dialogs.renumber.as_ref().and_then(|d| d.params(true).ok());
                     let fresh = again.map(|(c, v)| self.run_click(c, v));
-                    if let Some(d) = &mut self.renumber {
+                    if let Some(d) = &mut self.dialogs.renumber {
                         d.error = Some(e);
                         if let Some(Ok(v)) = fresh {
                             d.preview = ecad_electrical::numbering::commands::Preview::from_reply(&v).unwrap_or_default();
@@ -134,8 +134,8 @@ impl App {
                 }
             }
             Some(crate::devices::renumber_dialog::Out::Cancel) => {
-                self.renumber = None;
-                self.issue_after_finalise = None;
+                self.dialogs.renumber = None;
+                self.dialogs.issue_after_finalise = None;
             }
             None => {}
         }
@@ -143,29 +143,29 @@ impl App {
 
     /// The merge dialog and the question an undo of a merge stops at.
     pub(crate) fn merge_windows(&mut self, ctx: &egui::Context) {
-        if let Some(d) = &mut self.merge {
+        if let Some(d) = &mut self.dialogs.merge {
             match d.show(ctx) {
                 Some(crate::history::merge_dialog::Out::Preview(params)) => match self.run_click("merge", params) {
                     Ok(v) => {
-                        if let Some(d) = &mut self.merge {
+                        if let Some(d) = &mut self.dialogs.merge {
                             d.preview = v;
                             d.error = None;
                         }
                     }
                     Err(e) => {
-                        if let Some(d) = &mut self.merge {
+                        if let Some(d) = &mut self.dialogs.merge {
                             d.error = Some(e);
                         }
                     }
                 },
                 Some(crate::history::merge_dialog::Out::Merge(params)) => match self.run_click("merge", params) {
                     Ok(_) => {
-                        self.merge = None;
+                        self.dialogs.merge = None;
                         self.panel.history.done();
                         self.sync_branch();
                     }
                     Err(e) => {
-                        if let Some(d) = &mut self.merge {
+                        if let Some(d) = &mut self.dialogs.merge {
                             d.error = Some(e);
                         }
                         self.sync_branch();
@@ -173,7 +173,7 @@ impl App {
                 },
                 Some(crate::history::merge_dialog::Out::Cancel) => {
                     // The prepared states are dropped with the dialog.
-                    self.merge = None;
+                    self.dialogs.merge = None;
                     if let Some(p) = self.project.clone() {
                         let _ = p.configure(&mut self.cad.session, ecad_engine::Project::forget_merge);
                     }
@@ -199,13 +199,13 @@ impl App {
     }
 
     pub(crate) fn dialogs(&mut self, ctx: &egui::Context) {
-        if let Some(h) = &self.held {
+        if let Some(h) = &self.files.held {
             self.close_dialog(ctx, h.title.clone(), h.changes);
-        } else if self.dialog.is_some() {
+        } else if self.files.dialog.is_some() {
             self.file_dialog(ctx);
-        } else if self.name_box.is_some() {
+        } else if self.dialogs.name_box.is_some() {
             self.name_box_dialog(ctx);
-        } else if let Some(msg) = self.notice.clone() {
+        } else if let Some(msg) = self.dialogs.notice.clone() {
             let shown = Dialog::new(egui::Id::unique("ecad_app_notice"), "ECAD desktop", "ecad.notice").small().show(
                 ctx,
                 |ui| prim::body(ui, &msg, false),
@@ -213,7 +213,7 @@ impl App {
             );
             let ok = shown.footer || shown.closed;
             if ok {
-                self.notice = None;
+                self.dialogs.notice = None;
             }
         }
     }
@@ -223,7 +223,7 @@ impl App {
         let name = self.status().map_or_else(|| PROJECT_NAME.to_string(), |s| s.name);
         let _ = title;
         let heading = format!("Save changes to project \"{name}\"?");
-        let snapshots = self.snapshots.is_some();
+        let snapshots = self.files.snapshots.is_some();
         let shown = Dialog::new(egui::Id::unique("ecad_app_close"), &heading, "ecad.close").small().show(
             ctx,
             |ui| {
@@ -261,7 +261,7 @@ impl App {
 
     fn file_dialog(&mut self, ctx: &egui::Context) {
         let example = self.in_default_folder("demo.ecad");
-        let Some(d) = &mut self.dialog else { return };
+        let Some(d) = &mut self.files.dialog else { return };
         let (heading, verb) = match d.kind {
             DialogKind::Open => ("Open project", "Open"),
             DialogKind::SaveAs => ("Save project as", "Save"),

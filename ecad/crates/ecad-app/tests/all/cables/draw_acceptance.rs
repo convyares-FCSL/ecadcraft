@@ -337,11 +337,11 @@ fn check_a_core_label_by_label_and_reference_screenshots() {
     let away = screen(&h, 60.0, 45.0);
     // Check A: Core Label by its label, click W3's route, type 3.
     let before = head(&mut h);
-    h.state_mut().command = "stale".into();
+    h.state_mut().command.text = "stale".into();
     h.get_by_label("Core Label").click();
     h.run_steps(3);
     assert_eq!(prompt(&h), "Select a wire in a cable:");
-    assert!(h.state().command.is_empty(), "the Command field is left empty");
+    assert!(h.state().command.text.is_empty(), "the Command field is left empty");
     let w3 = screen(&h, 30.0, 10.0);
     click(&mut h, w3);
     assert_eq!(prompt(&h), "Core number or colour for W3 <none>:");

@@ -72,7 +72,7 @@ fn the_reference_buttons_sit_in_wiring_and_start_their_prompts() {
         let t = h.state_mut();
         assert_eq!(t.cad.session.running.as_ref().map(|r| r.id.as_str()), Some(id), "{label}");
         assert_eq!(prompt(t), first, "{label}");
-        assert!(t.command.is_empty() && t.command_hint().is_none(), "{label}: the field is cleared");
+        assert!(t.command.text.is_empty() && t.command_hint().is_none(), "{label}: the field is cleared");
         assert_eq!(head(t), before, "{label}: starting records nothing");
         t.cad.session.cancel();
     }
@@ -90,14 +90,14 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     h.get_by_label("Rename").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
+    assert_eq!(t.dialogs.name_box.as_ref().map(|b| b.text.as_str()), Some("1"), "prefilled with the title");
     assert_eq!(head(t), before, "nothing ran yet");
-    t.name_box.as_mut().unwrap().text = "Supply".into();
+    t.dialogs.name_box.as_mut().unwrap().text = "Supply".into();
     h.run_steps(1);
     h.get_by_label("OK").click();
     h.run_steps(3);
     let t = h.state_mut();
-    assert!(t.name_box.is_none());
+    assert!(t.dialogs.name_box.is_none());
     assert_eq!(head(t), before + 1);
     assert_eq!(doc(t).pages()[&doc(t).page_order()[0]].title, "Supply");
     // New page from the same wheel: the name box with the next number; OK adds it.
@@ -112,7 +112,7 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
             .click();
     }
     h.run_steps(3);
-    assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
+    assert_eq!(h.state().dialogs.name_box.as_ref().map(|b| b.text.as_str()), Some("2"));
     h.get_by_label("OK").click();
     h.run_steps(3);
     let t = h.state_mut();

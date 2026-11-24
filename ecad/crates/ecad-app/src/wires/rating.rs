@@ -308,7 +308,7 @@ impl crate::shell::app::App {
             RatedSubject::Cable(_) => crate::shell::ListsView::Cables,
         };
         self.set_workspace(crate::shell::Workspace::Lists);
-        if let Some(r) = &mut self.reports {
+        if let Some(r) = &mut self.dialogs.reports {
             match s {
                 RatedSubject::Wire(c) => {
                     if let Some(k) = r.wires.source.ids.iter().position(|x| *x == c) {

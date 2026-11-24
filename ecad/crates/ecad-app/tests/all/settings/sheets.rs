@@ -87,10 +87,10 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(err.as_deref(), Some("Page 2 already exists (\"Field\")."));
     take(&h, &deltas, "019-props-page.png");
     // The section is rebuilt only when what it shows changed: a wire elsewhere leaves it.
-    let builds = h.state().props_rebuilds;
+    let builds = h.state().seen.props_rebuilds;
     ok(&mut h, r#"wire {"points":[[0,100],[30,100]]}"#);
     h.run_steps(2);
-    assert_eq!(h.state().props_rebuilds, builds, "a wire touches neither the page's nor the project's rows");
+    assert_eq!(h.state().seen.props_rebuilds, builds, "a wire touches neither the page's nor the project's rows");
     // Nor the Pages tree (design 019 §9): no rebuild on an unrelated commit.
     let tree_builds = h.state().panel.rebuilds;
     ok(&mut h, r#"line {"points":[[0,110],[30,110]]}"#);
@@ -99,9 +99,9 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
 
     // Project Properties: one transaction; Cancel writes nothing.
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
-    assert!(h.state().project_props.is_some());
+    assert!(h.state().dialogs.project_props.is_some());
     {
-        let d = h.state_mut().project_props.as_mut().unwrap();
+        let d = h.state_mut().dialogs.project_props.as_mut().unwrap();
         d.fields.insert("title".into(), "Panel 7 extension".into());
         d.fields.insert("drawing_number".into(), "FCS-1708-E-001".into());
         d.fields.insert("customer".into(), "ACME".into());
@@ -112,7 +112,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let before = head(&mut h);
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
-    assert!(h.state().project_props.is_none());
+    assert!(h.state().dialogs.project_props.is_none());
     assert_eq!(ecad_electrical::pages::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
@@ -121,7 +121,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     // Project settings: the reference style and the tag digits in one transaction; `u` undoes both.
     crate::pages::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);
     {
-        let d = h.state_mut().project_props.as_mut().unwrap();
+        let d = h.state_mut().dialogs.project_props.as_mut().unwrap();
         assert_eq!(d.popout, sheets::Popout::Settings);
         d.style = "page-column".into();
         d.padding = "3".into();
@@ -201,7 +201,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let p = h.state().project().unwrap().clone();
     crate::pages::project_panel::project_menu(&mut h, project_panel::REVISIONS);
     {
-        let r = h.state_mut().revisions.as_mut().unwrap();
+        let r = h.state_mut().dialogs.revisions.as_mut().unwrap();
         assert_eq!(r.pending[0], "A");
         assert!(!r.can_issue(), "Rev, Description and Drawn first");
     }
@@ -216,7 +216,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let (label, ops) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Issue Rev A");
     assert!(ops.iter().any(|o| matches!(o, Op::NameVersion { name, .. } if *name == ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)))));
-    h.state_mut().revisions = None;
+    h.state_mut().dialogs.revisions = None;
     // The title block, zoomed.
     let _ = h.state_mut().cad.run("zoom", serde_json::json!({"mode": "window", "p1": [-5, -60], "p2": [405, 20]}));
     h.run_steps(3);
@@ -227,11 +227,11 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     h.state_mut().open_revisions();
     h.run_steps(2);
     click(&mut h, "ecad.revisions.open.A");
-    h.state_mut().revisions = None;
+    h.state_mut().dialogs.revisions = None;
     h.run_steps(3);
     assert!(h.state().panel.revision.as_deref().is_some_and(|b| b.starts_with("Rev A")), "the bar");
     click(&mut h, "Page 100: Supply");
-    let title = h.state().preview.as_ref().map(|v| v.title.clone()).unwrap_or_default();
+    let title = h.state().dialogs.preview.as_ref().map(|v| v.title.clone()).unwrap_or_default();
     assert!(title.starts_with("Rev A · page 100: Supply"), "{title}");
     take(&h, &deltas, "019-rev-open.png");
     assert_eq!(active(&mut h), Some(supply), "the live page stays");
@@ -282,16 +282,16 @@ fn the_revisions_dialog_follows_undo_and_redo() {
     ok(&mut h, r#"revision {"description":"First issue","drawn":"CVA"}"#);
     ok(&mut h, "issuerevision {}");
     h.run_steps(2);
-    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "Rev A listed");
-    h.state_mut().revisions.as_mut().unwrap().pending[2] = "typed, not sent".into();
+    assert_eq!(h.state().dialogs.revisions.as_ref().map(|d| d.issued.len()), Some(1), "Rev A listed");
+    h.state_mut().dialogs.revisions.as_mut().unwrap().pending[2] = "typed, not sent".into();
     ok(&mut h, "undoissue {}");
     h.run_steps(2);
-    let d = h.state().revisions.clone().unwrap();
+    let d = h.state().dialogs.revisions.clone().unwrap();
     assert!(d.issued.is_empty(), "the undone issue is gone from the dialog");
     assert_eq!(d.pending[2], "typed, not sent", "unsent typing kept");
     ok(&mut h, "redo");
     h.run_steps(2);
-    assert_eq!(h.state().revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
+    assert_eq!(h.state().dialogs.revisions.as_ref().map(|d| d.issued.len()), Some(1), "redo brings it back");
 }
 
 /// The Project info and Project settings popouts size to their content: they reach their size in
@@ -320,7 +320,7 @@ fn the_project_popouts_keep_their_size() {
         // window; the settings' OK row stays under their fields.
         assert!(settled.bottom() < tall - 32.0, "{label} ends above the bottom bar: {settled:?}");
         click(&mut h, "ecad.projectprops.cancel");
-        assert!(h.state().project_props.is_none(), "{label} closed");
+        assert!(h.state().dialogs.project_props.is_none(), "{label} closed");
         assert!(!h.state().shell.settings_open, "Cancel closes Settings");
     }
 }

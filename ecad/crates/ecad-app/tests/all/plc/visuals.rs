@@ -61,7 +61,7 @@ fn show_plc(h: &mut H) {
 }
 
 fn view(h: &H) -> &IoView {
-    &h.state().reports.as_ref().expect("Lists ▸ PLC opens Reports' models").io
+    &h.state().dialogs.reports.as_ref().expect("Lists ▸ PLC opens Reports' models").io
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     let before = head(&mut h);
     {
         let t = h.state_mut();
-        let io = &mut t.reports.as_mut().unwrap().io;
+        let io = &mut t.dialogs.reports.as_mut().unwrap().io;
         io.table.cursor_col = Some(list::TEXT);
         // Brief 056: channel 8 is the first free channel shown (9 to 15 are folded).
         io.table.selection.click((di, 8));
@@ -123,7 +123,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
     // Too long: refused on the cell, nothing written.
     let before = head(&mut h);
     {
-        let io = &mut h.state_mut().reports.as_mut().unwrap().io;
+        let io = &mut h.state_mut().dialogs.reports.as_mut().unwrap().io;
         io.table.cursor_col = Some(list::TEXT);
         // Channel 9 is now the first free channel shown.
         io.table.selection.click((di, 9));

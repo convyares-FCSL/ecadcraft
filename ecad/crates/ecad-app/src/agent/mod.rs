@@ -677,7 +677,7 @@ impl App {
         if dragging {
             return Some("the designer is dragging on the drawing".into());
         }
-        if !self.command.trim().is_empty() || !self.cad.cmd.buffer.trim().is_empty() {
+        if !self.command.text.trim().is_empty() || !self.cad.cmd.buffer.trim().is_empty() {
             return Some("the designer is typing a command".into());
         }
         None
@@ -685,31 +685,31 @@ impl App {
 
     /// The title of an app dialog that is open, if any.
     fn open_dialog_title(&self) -> Option<&'static str> {
-        if let Some(d) = &self.dialog {
+        if let Some(d) = &self.files.dialog {
             return Some(match d.kind {
                 crate::shell::app::DialogKind::Open => "Open",
                 crate::shell::app::DialogKind::SaveAs => "Save As",
             });
         }
-        if self.held.is_some() || self.cad.closing.is_some() || self.cad.save_loss.is_some() {
+        if self.files.held.is_some() || self.cad.closing.is_some() || self.cad.save_loss.is_some() {
             return Some("Save changes");
         }
-        if self.merge.is_some() {
+        if self.dialogs.merge.is_some() {
             return Some("Merge");
         }
-        if self.renumber.is_some() {
+        if self.dialogs.renumber.is_some() {
             return Some("Renumber");
         }
-        if self.release.is_some() {
+        if self.dialogs.release.is_some() {
             return Some("Release");
         }
-        if self.project_props.is_some() {
+        if self.dialogs.project_props.is_some() {
             return Some("Project Properties");
         }
-        if self.name_box.is_some() {
+        if self.dialogs.name_box.is_some() {
             return Some("Page name");
         }
-        if self.issue_prompt.is_some() {
+        if self.dialogs.issue_prompt.is_some() {
             return Some("Issue revision");
         }
         if self.agent.undo_confirm.is_some() {

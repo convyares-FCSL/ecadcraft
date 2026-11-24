@@ -61,7 +61,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     // Renumber… from the Numbering group: the dialog with its preview.
     h.state_mut().tool("ecad.renumber").unwrap();
     h.run_steps(3);
-    let d = h.state().renumber.clone().expect("the dialog is open");
+    let d = h.state().dialogs.renumber.clone().expect("the dialog is open");
     assert!(d.preview.summary.contains("to change"), "{:?}", d.preview);
     for name in [
         "ecad.renumber.kind.devices",
@@ -74,15 +74,15 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
         assert!(h.query_by_label(name).is_some(), "{name}");
     }
     // A start that shifts every tag, so there is something to apply.
-    h.state_mut().renumber.as_mut().unwrap().start = "2".into();
-    let (c, v) = h.state().renumber.as_ref().unwrap().params(true).unwrap();
+    h.state_mut().dialogs.renumber.as_mut().unwrap().start = "2".into();
+    let (c, v) = h.state().dialogs.renumber.as_ref().unwrap().params(true).unwrap();
     let pv = h.state_mut().cad.session.execute(c, &v).unwrap();
-    h.state_mut().renumber.as_mut().unwrap().preview = ecad_electrical::numbering::commands::Preview::from_reply(&pv).unwrap_or_default();
+    h.state_mut().dialogs.renumber.as_mut().unwrap().preview = ecad_electrical::numbering::commands::Preview::from_reply(&pv).unwrap_or_default();
     h.run_steps(3);
     save_shot(&h, &deltas, "026-renumber.png");
     let before = head(&mut h);
     click(&mut h, "ecad.renumber.apply");
-    assert!(h.state().renumber.is_none(), "Apply closes the dialog");
+    assert!(h.state().dialogs.renumber.is_none(), "Apply closes the dialog");
     assert_eq!(head(&mut h), before + 1, "one step");
     ok(&mut h, "u");
     assert_eq!(head(&mut h), before + 2);
@@ -128,14 +128,14 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     h.run_steps(3);
     click(&mut h, "ecad.revisions.issue");
     click(&mut h, "Issue");
-    assert!(h.state().issue_prompt.is_some(), "the provisional question");
+    assert!(h.state().dialogs.issue_prompt.is_some(), "the provisional question");
     for name in ["ecad.issue.finalise", "ecad.issue.anyway", "ecad.issue.cancel"] {
         assert!(h.query_by_label(name).is_some(), "{name}");
     }
     save_shot(&h, &deltas, "026-issue.png");
     let before = head(&mut h);
     click(&mut h, "ecad.issue.finalise");
-    assert!(h.state().renumber.as_ref().is_some_and(|d| d.finalise), "Finalise numbering opens");
+    assert!(h.state().dialogs.renumber.as_ref().is_some_and(|d| d.finalise), "Finalise numbering opens");
     click(&mut h, "ecad.renumber.apply");
     assert_eq!(head(&mut h), before + 2, "Finalise, then the issue");
     assert!(!doc(&mut h).devices().values().any(|c| c.tag().is_some_and(|t| t.contains('?'))));
@@ -153,7 +153,7 @@ fn the_merge_dialog_offers_make_them_one_device() {
     h.run_steps(2);
     h.state_mut().ask_merge(json!({"from": "Option E"}));
     h.run_steps(3);
-    let d = h.state().merge.clone().expect("the merge dialog is open");
+    let d = h.state().dialogs.merge.clone().expect("the merge dialog is open");
     let k = d.preview["conflicts"].as_array().unwrap().iter().find(|k| k["kind"] == json!("tag")).cloned().expect("a tag conflict");
     let id = k["id"].as_str().unwrap().to_string();
     assert!(h.query_by_label(&format!("ecad.merge.conflict.{id}.one")).is_some(), "Make them one device");
@@ -161,7 +161,7 @@ fn the_merge_dialog_offers_make_them_one_device() {
     click(&mut h, &format!("ecad.merge.conflict.{id}.one"));
     let before = head(&mut h);
     click(&mut h, "ecad.merge.ok");
-    assert_eq!(head(&mut h), before + 1, "one merge step: {:?}", h.state().merge.as_ref().map(|d| d.error.clone()));
+    assert_eq!(head(&mut h), before + 1, "one merge step: {:?}", h.state().dialogs.merge.as_ref().map(|d| d.error.clone()));
     let n = doc(&mut h).devices().values().filter(|c| c.tag().is_some_and(|t| t == "-K40")).count();
     assert_eq!(n, 1, "one device");
     drop(h);

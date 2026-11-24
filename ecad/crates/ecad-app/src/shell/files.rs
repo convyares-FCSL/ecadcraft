@@ -41,28 +41,28 @@ impl App {
             self.cad.session.echo(line.to_string());
         }
         if summary.lines().count() > 1 {
-            self.notice = Some(summary.clone());
+            self.dialogs.notice = Some(summary.clone());
         }
         Ok(summary)
     }
 
     fn attach(&mut self, p: ProjectHandle) {
         self.project = Some(p);
-        self.project_serial += 1;
-        self.branch_seen = None;
-        self.keep_open = None;
+        self.seen.project_serial += 1;
+        self.branch.seen = None;
+        self.files.keep_open = None;
         self.panel.clear();
-        self.preview = None;
+        self.dialogs.preview = None;
         self.sync_keep_open();
         self.debugger.reset();
-        self.seen_events = self.event_count();
+        self.seen.events = self.event_count();
         self.cad.ui.start_tab = false;
         // Thick and thin cable lines only show with lineweights on, unless the
         // user has chosen Show/Hide Lineweight since the app started.
         let shown = &mut self.cad.session.settings.lwdisplay;
-        if self.lwdisplay_set.is_none_or(|set| *shown == set) {
+        if self.seen.lwdisplay_set.is_none_or(|set| *shown == set) {
             *shown = true;
-            self.lwdisplay_set = Some(true);
+            self.seen.lwdisplay_set = Some(true);
         }
         // Symbols snap to the 5 mm terminal grid of ECAD pages;
         // F9 turns it off as in CADCraft.
@@ -81,7 +81,7 @@ impl App {
     }
 
     /// Save the project as `path` (a `.ecad` file; the extension is added when missing; `~` is
-    /// [`App::home`]). The default folder is created if it does not exist yet; no other folder is.
+    /// the home folder ([`App::files`])). The default folder is created if it does not exist yet; no other folder is.
     ///
     /// # Errors
     /// No project is open, the path is refused, or the save failed (also shown in a dialog).
@@ -142,12 +142,12 @@ impl App {
 
     /// Title of the project close waiting for an answer.
     pub fn pending_close(&self) -> Option<&str> {
-        self.held.as_ref().map(|h| h.title.as_str())
+        self.files.held.as_ref().map(|h| h.title.as_str())
     }
 
     /// The open file dialog: its kind and the path typed so far.
     pub fn dialog(&self) -> Option<(DialogKind, &str, Option<&str>)> {
-        self.dialog.as_ref().map(|d| (d.kind, d.path.as_str(), d.error.as_deref()))
+        self.files.dialog.as_ref().map(|d| (d.kind, d.path.as_str(), d.error.as_deref()))
     }
 
     /// Open the Save As dialog, suggesting a name in the default folder (or the current file).
@@ -165,19 +165,19 @@ impl App {
             (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| self.in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
             _ => self.in_default_folder(""),
         };
-        self.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
+        self.files.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
     }
 
     /// Type a path into the open file dialog.
     pub fn set_dialog_path(&mut self, path: &str) {
-        if let Some(d) = &mut self.dialog {
+        if let Some(d) = &mut self.files.dialog {
             d.path = path.to_string();
         }
     }
 
     /// Cancel the open file dialog (a close waiting for it is cancelled too).
     pub fn cancel_dialog(&mut self) {
-        if self.dialog.take().is_some_and(|d| d.then_close.is_some()) {
+        if self.files.dialog.take().is_some_and(|d| d.then_close.is_some()) {
             self.cad.session.echo("Close cancelled; the ECAD project stays open.");
         }
         self.sync_keep_open();
@@ -187,8 +187,8 @@ impl App {
     /// stays open with the reason. Saving over an existing file other than the project's own asks
     /// once more first.
     pub fn confirm_dialog(&mut self) {
-        let Some(mut d) = self.dialog.take() else { return };
-        self.confirming_close = d.then_close.is_some();
+        let Some(mut d) = self.files.dialog.take() else { return };
+        self.files.confirming_close = d.then_close.is_some();
         let path = d.path.trim().to_string();
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
@@ -214,18 +214,18 @@ impl App {
             }
             Err(e) => {
                 // A failed save is shown in the dialog itself, not twice.
-                self.notice = None;
+                self.dialogs.notice = None;
                 d.error = Some(e);
                 d.focused = false;
-                self.dialog = Some(d);
+                self.files.dialog = Some(d);
             }
         }
-        self.confirming_close = false;
+        self.files.confirming_close = false;
         self.sync_keep_open();
     }
 
     pub(crate) fn hold_close(&mut self) {
-        if self.held.is_some() || self.dialog.as_ref().is_some_and(|d| d.then_close.is_some()) {
+        if self.files.held.is_some() || self.files.dialog.as_ref().is_some_and(|d| d.then_close.is_some()) {
             // One question at a time: a further close request waits until this one is answered.
             self.cad.closing = None;
             return;
@@ -238,26 +238,26 @@ impl App {
         }
         let Some(closing) = self.cad.closing.take() else { return };
         let changes = self.status().map_or(0, |s| s.unsaved);
-        self.held = Some(Held { closing, title, changes });
+        self.files.held = Some(Held { closing, title, changes });
     }
 
     /// Show a failed save in a dialog and a successful one at the command line.
     pub(crate) fn report_saves(&mut self) {
         let Some(p) = self.project.as_ref() else { return };
-        let seen = self.seen_events;
+        let seen = self.seen.events;
         let Ok(new) = p.read(&mut self.cad.session, |p, _| {
             p.events.events().filter(|e| e.n >= seen).map(|e| (e.n, e.kind, e.message.clone())).collect::<Vec<_>>()
         }) else {
             return;
         };
         for (n, kind, message) in new {
-            self.seen_events = n + 1;
+            self.seen.events = n + 1;
             match kind {
                 EventKind::Saved => self.cad.session.echo(format!("Saved: {message}")),
                 EventKind::SaveFailed => {
                     self.cad.session.echo(format!("Not saved: {message}"));
-                    if self.dialog.is_none() {
-                        self.notice = Some(format!("The project was not saved.\n\n{message}"));
+                    if self.files.dialog.is_none() {
+                        self.dialogs.notice = Some(format!("The project was not saved.\n\n{message}"));
                     }
                 }
                 _ => {}
@@ -271,7 +271,7 @@ impl App {
     /// - Discard: export a snapshot (when enabled), then close without saving.
     /// - Cancel: keep everything open.
     pub fn answer(&mut self, a: Answer) {
-        let Some(held) = self.held.take() else { return };
+        let Some(held) = self.files.held.take() else { return };
         match a {
             Answer::Cancel => {
                 self.cad.session.echo("Close cancelled; the ECAD project stays open.");
@@ -289,7 +289,7 @@ impl App {
             }
             Answer::Discard => {
                 let saved_before = self.status().and_then(|s| s.file.path);
-                if self.snapshots.is_some()
+                if self.files.snapshots.is_some()
                     && let Err(e) = self.export_snapshot("discarded")
                 {
                     self.cad.session.echo(format!("Snapshot not written: {e}"));
@@ -311,7 +311,7 @@ impl App {
     /// # Errors
     /// Snapshots are not enabled, there is no project, or writing failed.
     pub fn export_snapshot(&mut self, why: &str) -> Result<PathBuf, String> {
-        let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
+        let dir = self.files.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
         // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
         let dir = match dir.to_str() {
             Some(typed) => self.resolve(typed).map_err(|e| e.to_string())?,
@@ -319,10 +319,15 @@ impl App {
         };
         let p = self.project.as_ref().ok_or("there is no project")?;
         let snap = p.snapshot(&mut self.cad.session, None)?;
-        self.snapshot_count += 1;
-        let path =
-            ecad_engine::dev::snapshot::write_snapshot_file(&snap, &dir, why, self.snapshot_count, (crate::shell::host::host().now_ms)() / 1000)
-                .map_err(|e| format!("{}: {e}", dir.display()))?;
+        self.files.snapshot_count += 1;
+        let path = ecad_engine::dev::snapshot::write_snapshot_file(
+            &snap,
+            &dir,
+            why,
+            self.files.snapshot_count,
+            (crate::shell::host::host().now_ms)() / 1000,
+        )
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
         self.cad.session.echo(format!("Snapshot written: {} ({SNAPSHOT_NOTE})", path.display()));
         Ok(path)
     }
@@ -352,23 +357,23 @@ impl App {
 
     /// Give the project `keep_open` (only when it differs from what it was given last).
     fn set_keep_open(&mut self, on: bool) {
-        if self.keep_open == Some(on) {
+        if self.files.keep_open == Some(on) {
             return;
         }
         if let Some(p) = &self.project
             && p.is_attached(&self.cad.session)
             && p.configure(&mut self.cad.session, |p| p.display.keep_open = on).is_ok()
         {
-            self.keep_open = Some(on);
+            self.files.keep_open = Some(on);
         }
     }
 
     /// `keep_open` is on except while a close of the project or a quit is being asked about.
     pub(crate) fn sync_keep_open(&mut self) {
-        let closing = self.confirming_close
+        let closing = self.files.confirming_close
             || self.cad.closing.is_some()
-            || self.held.is_some()
-            || self.dialog.as_ref().is_some_and(|d| d.then_close.is_some());
+            || self.files.held.is_some()
+            || self.files.dialog.as_ref().is_some_and(|d| d.then_close.is_some());
         if !closing {
             self.set_keep_open(true);
         }
@@ -410,12 +415,12 @@ impl App {
         self.resolve(path.trim()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
 
-    /// A typed path as a path: `~` is [`App::home`].
+    /// A typed path as a path: `~` is the home folder ([`App::files`]).
     ///
     /// # Errors
     /// The path starts with `~` and the home folder is not known.
     pub(crate) fn resolve(&self, typed: &str) -> Result<PathBuf, ecad_file::binding::PathError> {
-        crate::shell::host::resolve(typed, self.home.as_deref())
+        crate::shell::host::resolve(typed, self.files.home.as_deref())
     }
 
     /// A typed project path as the `.ecad` file it names: `~` resolved, `.ecad` added.

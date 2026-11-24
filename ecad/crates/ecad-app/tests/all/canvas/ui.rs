@@ -62,7 +62,7 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
     // `ui.sheet dark` in the Text panel's Commands tab: the dark set, no restart, remembered.
     h.state_mut().shell.state.text_panel = true;
     h.run_steps(2);
-    h.state_mut().command = "ui.sheet dark".into();
+    h.state_mut().command.text = "ui.sheet dark".into();
     h.run_steps(1);
     click(&mut h, "Run");
     h.run_steps(2);

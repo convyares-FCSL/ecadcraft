@@ -12,7 +12,7 @@
 //!   can reach a plot.
 //! - **Update map.** What is painted from the project is cached per (project serial, change
 //!   count, page, selection, sheet), the key the app already keeps for the Properties section
-//!   (`App::props_seen`), and read again only when that key moves: a frame with the same key
+//!   (`App::seen`'s `props_seen`), and read again only when that key moves: a frame with the same key
 //!   reads nothing ([`State::reads`] counts the reads). The grid and the sheet surround are worked
 //!   out from the view each frame (no project read). The leader line repaints only while live.
 //! - Nothing is painted when the page is not shown (Lists, Library or Publish hiding it,
@@ -181,7 +181,7 @@ fn apply_preferences(t: &mut App) {
 /// Read the shown page's painted content again when the cache key moved. Whether only the
 /// selection moved, to something (a companion leader line is due).
 fn refresh(t: &mut App, st: &mut State) -> bool {
-    let Some((serial, count, page, selection)) = t.props_seen.clone() else {
+    let Some((serial, count, page, selection)) = t.seen.props_seen.clone() else {
         st.key = None;
         st.page = PageData::default();
         return false;
@@ -242,7 +242,7 @@ fn leader_to_selection(t: &App, xf: &cadcraft_ui_egui::canvas::Xf, companion: Re
 /// sheet fitted, frame and title block visible, a 24 px margin, where a tag is [`TAG_PX`] tall; the shell
 /// then remembers its zoom per page.
 fn first_open_zoom(t: &mut App, st: &mut State, rect: Rect) {
-    let page = t.props_seen.as_ref().and_then(|k| k.2);
+    let page = t.seen.props_seen.as_ref().and_then(|k| k.2);
     let stored: usize = t.shell.views.projects.values().map(|p| p.pages.len()).sum();
     let switched = page != st.seen_page;
     let first = switched && st.seen_page.is_some() && stored == st.stored_views.saturating_add(1);

@@ -125,7 +125,7 @@ fn workspaces_left_tabs_and_the_text_panel() {
     keys(&mut h, Modifiers::COMMAND, Key::Num3);
     assert!(h.query_by_label(ecad_app::library::browser::NEW).is_some(), "Library ▸ the browser");
     keys(&mut h, Modifiers::COMMAND, Key::Num4);
-    assert!(h.state().print_book.is_some());
+    assert!(h.state().dialogs.print_book.is_some());
     keys(&mut h, Modifiers::COMMAND, Key::Num1);
 
     // Each left tab shows today's content.
@@ -165,7 +165,7 @@ fn the_developer_switch_shows_cadcrafts_interface_and_idle_letters_start_nothing
     h.run_steps(3);
     assert!(h.query_by_label("Drafting").is_some(), "CADCraft's Tool Sets in the main view");
     keys(&mut h, Modifiers::COMMAND, Key::Slash);
-    h.state_mut().command = "ui.cadchrome off".into();
+    h.state_mut().command.text = "ui.cadchrome off".into();
     h.run_steps(1);
     click(&mut h, "Run");
     assert!(!h.state().shell_state().cad_chrome && h.query_by_label("Drafting").is_none());
@@ -473,8 +473,8 @@ fn lists_shows_the_device_list_at_the_main_views_width() {
     assert_eq!(filters.len(), 1, "one Devices view");
     assert!(filters.iter().all(|r| main.contains(r.center())), "in the main view");
     assert!(h.state().shell.slots.unwrap().panel.is_none(), "UI rev 3: Project has no panel slot");
-    assert!(h.state().reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
+    assert!(h.state().dialogs.reports.as_ref().is_some_and(|r| r.hidden), "Reports is not drawn over it");
     h.get_by_label(ecad_app::shell::LISTS_TERMINAL_STRIPS).click();
     h.run_steps(3);
-    assert_eq!(h.state().reports.as_ref().map(|r| r.tab), Some(ecad_app::reports::panel::Tab::TerminalBlocks));
+    assert_eq!(h.state().dialogs.reports.as_ref().map(|r| r.tab), Some(ecad_app::reports::panel::Tab::TerminalBlocks));
 }

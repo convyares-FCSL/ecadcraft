@@ -54,11 +54,11 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     // until Description and Drawn are filled.
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Publish);
     h.run_steps(3);
-    assert!(h.state().release.is_none(), "entering Publish opens no dialog");
+    assert!(h.state().dialogs.release.is_none(), "entering Publish opens no dialog");
     click(&mut h, ecad_app::publish::RELEASE);
     h.run_steps(2);
-    assert!(h.state().release.is_some(), "the dialog is open");
-    let d = h.state().release.clone().unwrap();
+    assert!(h.state().dialogs.release.is_some(), "the dialog is open");
+    let d = h.state().dialogs.release.clone().unwrap();
     assert_eq!(d.view.as_ref().unwrap().rev, "A");
     assert_eq!(d.blocked().as_deref(), Some(ecad_electrical::releases::revisions::FILL_FIRST));
     assert!(h.query_by_label("ecad.release.go").is_some());
@@ -71,7 +71,7 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     ok(&mut h, r#"revision {"description": "First issue", "drawn": "CVA"}"#);
     h.run_steps(3);
     assert_eq!(head(&mut h), before + 1);
-    let d = h.state().release.clone().unwrap();
+    let d = h.state().dialogs.release.clone().unwrap();
     assert_eq!(d.fields[2], "First issue", "the dialog follows the project");
     assert_eq!(d.blocked(), None);
     save(&h, &deltas, "027-release.png");
@@ -79,13 +79,13 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     let row = ["open-ends", "parts", "orphans", "other"].iter().map(|g| format!("ecad.release.row.{g}.0")).find(|l| h.query_by_label(l).is_some());
     if let Some(l) = row {
         click(&mut h, &l);
-        assert!(h.state().release.is_some(), "still open");
+        assert!(h.state().dialogs.release.is_some(), "still open");
     }
 
     // Release: the folder is written beside the project, the dialog closes, the project is saved.
     let before = head(&mut h);
     click(&mut h, "ecad.release.go");
-    assert!(h.state().release.is_none(), "closed after releasing");
+    assert!(h.state().dialogs.release.is_none(), "closed after releasing");
     assert_eq!(head(&mut h), before + 1, "Issue Rev A");
     let out = dir.join("release").join("Rev A");
     assert!(out.join("release.json").exists(), "{out:?}");
@@ -94,19 +94,19 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     // Revisions: Rev A's Folder cell reads Open.
     h.state_mut().open_revisions();
     h.run_steps(3);
-    let r = h.state().revisions.clone().unwrap();
+    let r = h.state().dialogs.revisions.clone().unwrap();
     assert!(r.issued[0].folder_exists, "{:?}", r.issued[0]);
     assert!(h.query_by_label("ecad.revisions.folder.A").is_some());
     assert!(h.query_by_label("ecad.revisions.release").is_some());
     save(&h, &deltas, "027-revisions.png");
 
     // Writing Rev A again into its folder asks first; Keep both writes `Rev A (2)`.
-    h.state_mut().revisions = None;
+    h.state_mut().dialogs.revisions = None;
     h.state_mut().open_release(Some("A".into()));
     h.run_steps(3);
     let before = head(&mut h);
     click(&mut h, "ecad.release.go");
-    assert!(h.state().release.as_ref().and_then(|d| d.exists.clone()).is_some_and(|q| q.contains("exists (")), "the question");
+    assert!(h.state().dialogs.release.as_ref().and_then(|d| d.exists.clone()).is_some_and(|q| q.contains("exists (")), "the question");
     save(&h, &deltas, "027-exists.png");
     click(&mut h, "ecad.release.exists.keep-both");
     assert!(dir.join("release").join("Rev A (2)").join("release.json").exists());

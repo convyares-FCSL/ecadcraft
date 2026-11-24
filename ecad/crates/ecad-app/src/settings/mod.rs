@@ -184,7 +184,7 @@ impl App {
     pub fn close_settings(&mut self) {
         self.shell.settings_open = false;
         self.settings.over = None;
-        self.project_props = None;
+        self.dialogs.project_props = None;
     }
 
     /// Back's words: `Back to Draw, page 2`, or the workspace Settings was opened over.
@@ -241,7 +241,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         close |= back_clicked;
         if let Some(sec) = chosen {
             if sec.item() != t.settings.section.item() {
-                t.project_props = None;
+                t.dialogs.project_props = None;
             }
             t.settings.section = sec;
         }

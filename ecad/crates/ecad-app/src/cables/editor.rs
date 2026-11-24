@@ -373,19 +373,19 @@ impl crate::shell::app::App {
         match a {
             Ask::Edit(field, set) => {
                 let res = self.run_value("cableedit", json!({"cable": k.hex(), "set": set}));
-                if let Some(r) = self.reports.as_mut() {
+                if let Some(r) = self.dialogs.reports.as_mut() {
                     r.cables.edit.error = res.err().map(|e| (field, e));
                 }
             }
             Ask::Remove => {
-                if let Some(r) = self.reports.as_mut() {
+                if let Some(r) = self.dialogs.reports.as_mut() {
                     r.cables.edit.refused = None;
                 }
                 let Some(p) = self.project.clone() else { return };
                 let check = p.read(&mut self.cad.session, |p, _| ecad_electrical::cables::commands::cables::drawn(p.ledger.document(), k));
                 match check {
                     Ok(Some(d)) => {
-                        if let Some(r) = self.reports.as_mut() {
+                        if let Some(r) = self.dialogs.reports.as_mut() {
                             r.cables.edit.refused = Some((d.words(), d.pages));
                         }
                     }
@@ -406,7 +406,7 @@ impl crate::shell::app::App {
     pub(crate) fn new_cable(&mut self) {
         let Ok(v) = self.run_value("cablenew", json!({})) else { return };
         let Some(k) = ecad_engine::commands::reply::id::<CableId>(&v, "cable") else { return };
-        if let Some(r) = self.reports.as_mut() {
+        if let Some(r) = self.dialogs.reports.as_mut() {
             r.cables.pending_select = Some(k);
             r.cables.details = true;
             r.cables.edit.focus_tag = true;

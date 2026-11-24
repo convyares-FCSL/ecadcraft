@@ -25,7 +25,7 @@ fn wire_numbers_one_per_wire_from_project_settings_in_one_transaction() {
     h.run_steps(3);
     assert!(h.query_by_label("ecad.projectsettings.number_by.net").is_some());
     crate::pages::project_panel::click(&mut h, "ecad.projectsettings.number_by.conductor");
-    let line = h.state().project_props.as_ref().unwrap().line().unwrap().unwrap();
+    let line = h.state().dialogs.project_props.as_ref().unwrap().line().unwrap().unwrap();
     assert_eq!(line, r#"wiresettings {"number_by":"conductor"}"#);
     let before = head(&mut h);
     crate::pages::project_panel::click(&mut h, "ecad.projectprops.ok");

@@ -16,14 +16,14 @@ impl App {
         if let Some(r) = self.cad.canvas.rect {
             v.place(r);
         }
-        self.preview = Some(v);
+        self.dialogs.preview = Some(v);
     }
 
     /// Preview `page` at its extents (the panel's Preview, Space or context menu). Asked again for
     /// the page previewed now, the preview closes.
     pub fn preview_page(&mut self, page: PageId) {
-        if self.preview.as_ref().is_some_and(|v| v.page == page) {
-            self.preview = None;
+        if self.dialogs.preview.as_ref().is_some_and(|v| v.page == page) {
+            self.dialogs.preview = None;
             return;
         }
         if self.panel.active == Some(page) {
@@ -35,7 +35,7 @@ impl App {
         if let Some(r) = self.cad.canvas.rect {
             v.place(r);
         }
-        self.preview = Some(v);
+        self.dialogs.preview = Some(v);
     }
 
     /// **Preview Reference**: the selected cable reference's other end, in the
@@ -59,7 +59,7 @@ impl App {
                 if let Some(r) = self.cad.canvas.rect {
                     v.place(r);
                 }
-                self.preview = Some(v);
+                self.dialogs.preview = Some(v);
                 Ok(())
             }
             Err(e) => {
@@ -73,23 +73,23 @@ impl App {
     /// closed when its page is gone or became active.
     pub(crate) fn preview_window(&mut self, ctx: &egui::Context) {
         let Some(project) = self.project.clone() else {
-            self.preview = None;
+            self.dialogs.preview = None;
             return;
         };
-        let Some(v) = &mut self.preview else { return };
+        let Some(v) = &mut self.dialogs.preview else { return };
         if !v.update(&project, &mut self.cad.session) {
-            self.preview = None;
+            self.dialogs.preview = None;
             self.cad.session.echo("The previewed page no longer exists.");
             return;
         }
         if self.panel.active == Some(v.page) && v.revision.is_none() {
-            self.preview = None;
+            self.dialogs.preview = None;
             return;
         }
         match v.show(ctx) {
-            Some(crate::pages::preview::Action::Close) => self.preview = None,
+            Some(crate::pages::preview::Action::Close) => self.dialogs.preview = None,
             Some(crate::pages::preview::Action::Open(page, view)) => {
-                self.preview = None;
+                self.dialogs.preview = None;
                 if self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()
                 {

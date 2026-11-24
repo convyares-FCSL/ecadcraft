@@ -161,7 +161,7 @@ fn app_with_home(home: Option<&Path>) -> App {
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     crate::common::save_as_services(&mut t);
-    t.home = home.map(Path::to_path_buf);
+    t.files.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
     t
 }
@@ -314,7 +314,7 @@ fn a_tilde_snapshots_folder_is_under_the_home_folder() {
         ecad_engine::install();
         ecad_engine::cables::views::isolate_for_tests();
         let mut t = App::new(Some(PathBuf::from(typed))).unwrap();
-        t.home = Some(home.0.clone());
+        t.files.home = Some(home.0.clone());
         let written = t.export_snapshot("paths").unwrap();
         assert_eq!(written.parent(), Some(home.0.join("snaps").as_path()), "{typed}");
     }
@@ -322,6 +322,6 @@ fn a_tilde_snapshots_folder_is_under_the_home_folder() {
     // With no home folder known, the export is refused and nothing is made.
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(Some(PathBuf::from("~/snaps"))).unwrap();
-    t.home = None;
+    t.files.home = None;
     assert_eq!(t.export_snapshot("paths").unwrap_err(), HOME_UNKNOWN);
 }

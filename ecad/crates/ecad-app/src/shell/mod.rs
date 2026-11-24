@@ -309,7 +309,7 @@ impl App {
             Workspace::Lists if self.project_open() => self.open_reports(),
             // Publish shows Print Book's choices as its own view; Release
             // opens from its button (and History), floating.
-            Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
+            Workspace::Publish if self.project_open() && self.dialogs.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
     }
@@ -514,7 +514,7 @@ impl App {
         // Release only when Publish is entered or asked for (it closes after releasing).
         match w {
             Workspace::Lists if self.project_open() => self.open_reports(),
-            Workspace::Publish if self.project_open() && self.print_book.is_none() => self.open_print_book(None),
+            Workspace::Publish if self.project_open() && self.dialogs.print_book.is_none() => self.open_print_book(None),
             _ => {}
         }
         // Project ▸ Reports hosts the window as its preview.
@@ -524,7 +524,7 @@ impl App {
             Workspace::Draw => slots.companion,
             _ => None,
         };
-        if let Some(r) = &mut self.reports {
+        if let Some(r) = &mut self.dialogs.reports {
             r.host = reports;
             r.hidden = reports.is_none();
             r.preview = preview;
@@ -536,11 +536,11 @@ impl App {
         }
         // Release floats over Publish; Print Book's dialog is never drawn, Publish's
         // own view sets its choices ([`crate::publish`]).
-        if let Some(d) = &mut self.release {
+        if let Some(d) = &mut self.dialogs.release {
             d.host = None;
             d.hidden = w != Workspace::Publish;
         }
-        if let Some(d) = &mut self.print_book {
+        if let Some(d) = &mut self.dialogs.print_book {
             d.host = None;
             d.hidden = true;
         }
@@ -554,7 +554,7 @@ impl App {
             self.shell.seen = None;
             return;
         };
-        let serial = self.project_serial;
+        let serial = self.seen.project_serial;
         let seen = self.shell.seen;
         let r = p.read(&mut self.cad.session, |p, _| {
             let now = p.change_count();

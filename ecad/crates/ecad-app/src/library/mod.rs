@@ -443,7 +443,7 @@ impl App {
         if self.cad.session.running.is_some() {
             self.cad.session.cancel();
         }
-        self.focus_drawing = true;
+        self.command.focus_drawing = true;
         if let Err(e) = self.cad.session.start("place") {
             self.cad.session.echo(e.to_string());
             return;

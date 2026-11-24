@@ -90,7 +90,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
     let n = log_len(&mut h);
     click(&mut h, "ecad.project.branch.merge");
-    let d = h.state().merge.clone().expect("the merge dialog is open");
+    let d = h.state().dialogs.merge.clone().expect("the merge dialog is open");
     eprintln!("5J.9 preview: title={} header={} counts={} note={:?}", d.preview["title"], d.preview["header"], d.preview["counts"], d.switch_note);
     assert_eq!(d.preview["title"], json!("MERGE \"Option B\" INTO main"));
     assert!(
@@ -111,12 +111,12 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     assert!(d.close_branch, "Close branch ticked by default");
     // Cancel writes nothing and stays on the branch.
     click(&mut h, "ecad.merge.cancel");
-    assert!(h.state().merge.is_none());
+    assert!(h.state().dialogs.merge.is_none());
     assert_eq!((branch(&mut h), log_len(&mut h)), ("Option B".to_string(), n), "Cancel: nothing written, still on the branch");
     // Merge.
     click(&mut h, "ecad.project.branch.merge");
     click(&mut h, "ecad.merge.ok");
-    assert!(h.state().merge.is_none(), "{:?}", h.state().merge.as_ref().and_then(|d| d.error.clone()));
+    assert!(h.state().dialogs.merge.is_none(), "{:?}", h.state().dialogs.merge.as_ref().and_then(|d| d.error.clone()));
     assert_eq!(branch(&mut h), "main");
     assert!(
         echoed(&h, "Merged \"Option B\" into main (2 changes). Save to keep it."),
@@ -137,13 +137,13 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     ok(&mut h, r#"switchbranch {"branch":"Option D","save":true}"#);
     h.run_steps(3);
     click(&mut h, "ecad.project.branch.update");
-    let d = h.state().merge.clone().expect("the update dialog is open");
+    let d = h.state().dialogs.merge.clone().expect("the update dialog is open");
     eprintln!("5J.12 preview: title={} header={} counts={}", d.preview["title"], d.preview["header"], d.preview["counts"]);
     assert!(d.preview["title"].as_str().unwrap().starts_with("UPDATE \"Option D\" FROM main"), "{}", d.preview["title"]);
     assert!(d.preview["header"].as_str().unwrap().starts_with("Brings main's changes since"), "{}", d.preview["header"]);
     assert!(!exists(&h, "ecad.merge.close"), "no Close box on an update");
     click(&mut h, "ecad.merge.ok");
-    assert!(h.state().merge.is_none(), "{:?}", h.state().merge.as_ref().and_then(|d| d.error.clone()));
+    assert!(h.state().dialogs.merge.is_none(), "{:?}", h.state().dialogs.merge.as_ref().and_then(|d| d.error.clone()));
     assert_eq!(branch(&mut h), "Option D");
     assert!(last_label(&mut h).starts_with("Update from main"), "{}", last_label(&mut h));
     assert!(echoed(&h, "Updated \"Option D\" from main"), "{:?}", h.state().cad.session.log.last());
@@ -163,10 +163,10 @@ fn quick_start_5j_keep_main_for_all_then_merge() {
     h.run_steps(3);
     click(&mut h, "ecad.project.branch.merge");
     click(&mut h, "ecad.merge.allmain");
-    assert_eq!(h.state().merge.as_ref().unwrap().preview["unanswered"], json!([]));
+    assert_eq!(h.state().dialogs.merge.as_ref().unwrap().preview["unanswered"], json!([]));
     let n = log_len(&mut h);
     click(&mut h, "ecad.merge.ok");
-    let still_open = h.state().merge.as_ref().map(|d| (d.error.clone(), d.preview["counts"].clone()));
+    let still_open = h.state().dialogs.merge.as_ref().map(|d| (d.error.clone(), d.preview["counts"].clone()));
     eprintln!(
         "Keep main for all + Merge: dialog {:?}; branch {}; steps {} -> {}; echo {:?}",
         still_open,
@@ -207,7 +207,7 @@ fn now_row_right_click_f2_rename_and_graph_paging() {
     }
     h.get_by_label("Merge into main…").click();
     h.run_steps(3);
-    assert!(h.state().merge.is_some(), "the menu's Merge into main… opens the dialog");
+    assert!(h.state().dialogs.merge.is_some(), "the menu's Merge into main… opens the dialog");
     click(&mut h, "ecad.merge.cancel");
     // Paging: more than 200 rows on main.
     ok(&mut h, r#"switchbranch {"branch":"main","save":true}"#);

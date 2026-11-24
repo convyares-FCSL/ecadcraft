@@ -154,7 +154,7 @@ fn the_interactive_buttons_start_their_prompts() {
         let t = h.state_mut();
         assert_eq!(t.cad.session.running.as_ref().map(|r| r.id.as_str()), Some(id), "{label}");
         assert_eq!(t.cad.session.current_prompt().unwrap().display(), first, "{label}");
-        assert!(t.command.is_empty() && t.command_hint().is_none(), "{label}: the field is cleared");
+        assert!(t.command.text.is_empty() && t.command_hint().is_none(), "{label}: the field is cleared");
         assert_eq!(head(t), before, "{label}: starting records nothing");
         t.cad.session.cancel();
     }
@@ -171,12 +171,12 @@ fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
     h.get_by_label("Set Property").click();
     h.run_steps(4);
     let t = h.state_mut();
-    assert_eq!(t.command, r#"setprop {"component":"<component id>","key":"tag","value":"<value>"}"#);
+    assert_eq!(t.command.text, r#"setprop {"component":"<component id>","key":"tag","value":"<value>"}"#);
     assert!(t.command_hint().unwrap().starts_with("Set Property:"));
     assert_eq!(head(t), before, "nothing ran");
     assert_eq!(t.cad.session.selection(), selection, "the selection is left as it was");
     // Pressing Enter on the unedited template is refused.
-    let line = t.command.clone();
+    let line = t.command.text.clone();
     let e = t.submit_command(&line).unwrap();
     assert!(e.contains("Replace the placeholders first") && e.contains("<value>"), "{e}");
     assert_eq!(head(t), before);
@@ -200,13 +200,13 @@ fn templates_take_ids_from_the_selection() {
     let h = p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(item).unwrap()).unwrap();
     t.cad.session.set_selection(vec![h]);
     t.tool("ecad.setprop").unwrap();
-    assert_eq!(t.command, format!(r#"setprop {{"conductor":"{}","key":"tag","value":"<value>"}}"#, cid.hex()));
+    assert_eq!(t.command.text, format!(r#"setprop {{"conductor":"{}","key":"tag","value":"<value>"}}"#, cid.hex()));
     t.tool("ecad.delete").unwrap();
-    assert_eq!(t.command, format!(r#"ecaddelete {{"conductor":"{}"}}"#, cid.hex()));
+    assert_eq!(t.command.text, format!(r#"ecaddelete {{"conductor":"{}"}}"#, cid.hex()));
     t.tool("ecad.cableadd").unwrap();
-    assert!(t.command.contains(&cid.hex()));
+    assert!(t.command.text.contains(&cid.hex()));
     // With the value filled in, the template runs as the typed command would.
-    let line = t.command.replace("<cable tag>", "-W1");
+    let line = t.command.text.replace("<cable tag>", "-W1");
     assert!(t.submit_command(&line).is_none(), "{line}");
     assert_eq!(doc(&mut t).cables().len(), 1);
 }
@@ -245,10 +245,10 @@ fn placeholders_are_found_and_ordinary_text_is_not() {
 fn a_run_button_leaves_a_waiting_template_and_its_check_alone() {
     let mut t = new_app();
     t.tool("ecad.setprop").unwrap();
-    let template = t.command.clone();
+    let template = t.command.text.clone();
     let before = head(&mut t);
     t.tool("ecad.inspect").unwrap();
-    assert_eq!(t.command, template);
+    assert_eq!(t.command.text, template);
     assert!(t.command_hint().is_some());
     let e = t.submit_command(&template).unwrap();
     assert!(e.contains("<value>"), "{e}");
@@ -272,7 +272,7 @@ fn a_command_waiting_at_a_prompt_is_cancelled_first() {
     assert!(t.submit_command("line").is_none());
     t.tool("ecad.setprop").unwrap();
     assert!(t.cad.session.running.is_none());
-    assert!(t.command.starts_with("setprop "));
+    assert!(t.command.text.starts_with("setprop "));
     // And an interactive tool replaces the waiting command.
     assert!(t.submit_command("line").is_none());
     t.tool("ecad.wire").unwrap();
@@ -285,7 +285,7 @@ fn a_huge_selection_is_followed_only_so_far() {
     let handles: Vec<Handle> = (1..=(tools::MAX_PICKED as u64 + 50)).map(Handle).collect();
     t.cad.session.set_selection(handles);
     t.tool("ecad.setprop").unwrap();
-    assert!(t.command.contains("<component id>"), "nothing it names is ECAD: placeholders stay");
+    assert!(t.command.text.contains("<component id>"), "nothing it names is ECAD: placeholders stay");
     let p = t.project().unwrap().clone();
     let uid = t.cad.session.state().unwrap().uid;
     let many: Vec<Handle> = (1..=(tools::MAX_PICKED as u64 + 50)).map(Handle).collect();

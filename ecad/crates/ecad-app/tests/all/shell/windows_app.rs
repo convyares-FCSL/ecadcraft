@@ -30,7 +30,7 @@ fn new_app(home: Option<&Path>, snapshots: Option<PathBuf>) -> App {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(snapshots).unwrap();
-    t.home = home.map(Path::to_path_buf);
+    t.files.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
     t
 }

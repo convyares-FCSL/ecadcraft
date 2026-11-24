@@ -122,15 +122,15 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     // M: Revisions on the branch: Issue is disabled with its reason.
     h.state_mut().open_revisions();
     h.run_steps(2);
-    assert_eq!(h.state().revisions.as_ref().and_then(|r| r.off_main.clone()).as_deref(), Some("Option B"));
+    assert_eq!(h.state().dialogs.revisions.as_ref().and_then(|r| r.off_main.clone()).as_deref(), Some("Option B"));
     // Switch to main from Revisions: the edit is unsaved, so Save and switch asks first.
     click(&mut h, "ecad.revisions.switchmain");
     assert!(matches!(&h.state().panel.history.dialog, Some(Dialog::Switch { branch, .. }) if branch == "main"));
     click(&mut h, "ecad.switchbranch.ok");
     assert_eq!(h.state_mut().branch_info().unwrap().name, "main");
     // Revisions, still open, now allows issuing.
-    assert_eq!(h.state().revisions.as_ref().map(|r| r.off_main.clone()), Some(None));
-    h.state_mut().revisions = None;
+    assert_eq!(h.state().dialogs.revisions.as_ref().map(|r| r.off_main.clone()), Some(None));
+    h.state_mut().dialogs.revisions = None;
     assert_eq!(doc(&mut h).wires().len(), wires, "main is as it was");
     // C: Restore the version after an edit on main: one step, undone by u.
     crate::common::points_at(h.state_mut(), &[(0.0, 160.0), (30.0, 160.0)]);

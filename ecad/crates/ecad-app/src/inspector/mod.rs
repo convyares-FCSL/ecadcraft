@@ -803,7 +803,7 @@ fn sync(t: &mut App) {
     };
     let owned = t.cad.session.state().is_ok_and(|st| t.cad.session.ext.owner_of(st.uid).is_some());
     let selection = if owned { t.cad.session.selection() } else { Vec::new() };
-    let serial = t.project_serial;
+    let serial = t.seen.project_serial;
     let i = &mut t.settings.inspector;
     let seen = i.seen.clone();
     let deps = i.deps.clone();

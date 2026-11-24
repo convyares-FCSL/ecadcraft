@@ -182,7 +182,7 @@ fn terminal_blocks_table_edits_a_label_in_one_transaction() {
     let x1 = doc(&mut h).components_tagged("-X01")[0];
     h.state_mut().show_plan(Some(x1));
     h.run_steps(4);
-    let r = h.state().reports.as_ref().unwrap();
+    let r = h.state().dialogs.reports.as_ref().unwrap();
     assert_eq!(r.tab, panel::Tab::TerminalBlocks);
     let v = &r.connection_points;
     let keys = v.table.view.visible_keys();
@@ -208,14 +208,14 @@ fn terminal_blocks_table_edits_a_label_in_one_transaction() {
     // Edit the first terminal's label: one transaction.
     h.get_by_label(&label).click();
     h.run_steps(2);
-    h.state_mut().reports.as_mut().unwrap().connection_points.table.cursor_col = Some(connection_points::LABEL);
+    h.state_mut().dialogs.reports.as_mut().unwrap().connection_points.table.cursor_col = Some(connection_points::LABEL);
     let before = head(&mut h);
     edit(&mut h, "Edit Label", "L1");
-    assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().reports.as_ref().unwrap().connection_points.table.refusal);
+    assert_eq!(head(&mut h), before + 1, "one transaction: {:?}", h.state().dialogs.reports.as_ref().unwrap().connection_points.table.refusal);
     let (label, _) = crate::pages::project_panel::last_ops(&mut h);
     assert_eq!(label, "Terminal label", "terminalblocklabel's transaction");
     h.run_steps(3);
-    let v = &h.state().reports.as_ref().unwrap().connection_points;
+    let v = &h.state().dialogs.reports.as_ref().unwrap().connection_points;
     assert_eq!(v.rebuilds, rebuilds, "patched, not rebuilt");
     assert!(v.table.view.visible_keys().iter().any(|k| v.source.cell(*k, connection_points::LABEL).text() == "L1"), "the row follows");
     take(&h, &deltas, "039-terminals.png");

@@ -197,7 +197,7 @@ impl App {
     /// The tabs' counts for the strip (`None`: not known yet).
     fn project_counts(&self) -> Vec<(ListsView, Option<usize>)> {
         let devices = Some(self.panel.devices.list.entries.len());
-        let t = self.reports.as_ref().map(|r| r.tab_counts);
+        let t = self.dialogs.reports.as_ref().map(|r| r.tab_counts);
         vec![
             (ListsView::Devices, devices),
             (ListsView::TerminalBlocks, t.map(|c| c[0])),
@@ -221,7 +221,7 @@ impl App {
             self.open_reports();
         }
         let tab = self.shell.lists;
-        if let Some(r) = self.reports.as_mut() {
+        if let Some(r) = self.dialogs.reports.as_mut() {
             r.io_shown = tab == ListsView::Plc;
             r.wires_shown = tab == ListsView::Wires;
             r.cables_shown = tab == ListsView::Cables;
@@ -268,20 +268,20 @@ impl App {
                 }
             }
             ListsView::TerminalBlocks => {
-                let Some(r) = self.reports.as_mut() else { return };
+                let Some(r) = self.dialogs.reports.as_mut() else { return };
                 r.connection_points.table.toolbar = false;
                 let acts = in_rect(ui, body_in, "ecad.project.terminal_blocks", |ui| r.connection_points.show(ui, writable));
                 self.list_actions(acts);
             }
             ListsView::Plc => {
-                let Some(r) = self.reports.as_mut() else { return };
+                let Some(r) = self.dialogs.reports.as_mut() else { return };
                 r.io.table.toolbar = false;
                 let acts =
                     in_rect(ui, body_in, "ecad.project.plc", |ui| r.io.show(ui).into_iter().filter_map(|a| r.io.handle(a)).collect::<Vec<_>>());
                 self.list_actions(acts);
             }
             ListsView::Wires => {
-                let Some(r) = self.reports.as_mut() else { return };
+                let Some(r) = self.dialogs.reports.as_mut() else { return };
                 let go = in_rect(ui, body_in, "ecad.project.wires", |ui| r.wires.show(ui));
                 if let Some((pg, at)) = go {
                     self.goto_place(pg, at);
@@ -373,7 +373,7 @@ impl App {
             ListsView::Checks => {}
             _ => {
                 let writable = self.project_writable();
-                if let Some(r) = self.reports.as_mut() {
+                if let Some(r) = self.dialogs.reports.as_mut() {
                     match tab {
                         ListsView::TerminalBlocks => {
                             r.connection_points.table.filter_field(ui, placeholder_text, w);
@@ -407,7 +407,7 @@ impl App {
     fn head_action(&mut self, ctx: &egui::Context, a: HeadAction) {
         match a {
             HeadAction::Details => {
-                if let Some(r) = &mut self.reports {
+                if let Some(r) = &mut self.dialogs.reports {
                     r.cables.details = !r.cables.details;
                 }
             }
@@ -420,7 +420,7 @@ impl App {
                 };
             }
             HeadAction::ImportTags => {
-                if let Some(r) = self.reports.as_mut() {
+                if let Some(r) = self.dialogs.reports.as_mut() {
                     let _ = r.io.handle(crate::workspace::ListAction::ImportTags);
                 }
             }
@@ -435,7 +435,7 @@ impl App {
 
     /// The shown tab's rows as CSV, and how many.
     fn project_csv(&self) -> Option<(String, usize)> {
-        let r = self.reports.as_ref();
+        let r = self.dialogs.reports.as_ref();
         let n = |s: &str| s.lines().count().saturating_sub(1);
         let csv = match self.shell.lists {
             ListsView::Devices => {
@@ -460,7 +460,7 @@ impl App {
                 crate::workspace::ListAction::Panel(a) => self.panel_action(a),
                 crate::workspace::ListAction::Run(line) => {
                     let refusal = self.run_line(&line);
-                    if let Some(r) = self.reports.as_mut() {
+                    if let Some(r) = self.dialogs.reports.as_mut() {
                         r.ran(refusal);
                     }
                 }
@@ -510,7 +510,7 @@ impl App {
                     Ok(()) => self.cad.session.echo("Search \"rack\" and pick a CPU or a head module body.".to_string()),
                     Err(e) => self.cad.session.echo(e.to_string()),
                 }
-                self.focus_drawing = true;
+                self.command.focus_drawing = true;
                 self.after_logic();
             }
             ListAction::PlaceCard(slot) => {
@@ -521,7 +521,7 @@ impl App {
                     Ok(()) => self.cad.session.echo(format!("Search \"card\" and pick a card body: it goes in the next free slot ({slot}).")),
                     Err(e) => self.cad.session.echo(e.to_string()),
                 }
-                self.focus_drawing = true;
+                self.command.focus_drawing = true;
                 self.after_logic();
             }
             _ => {}
@@ -531,7 +531,7 @@ impl App {
     /// The foot of `tab`: whether the input legend shows, what grey text means, and the counts.
     fn project_foot(&self, tab: ListsView) -> (bool, &'static str, Vec<(String, prim::Tone)>) {
         use prim::Tone;
-        let r = self.reports.as_ref();
+        let r = self.dialogs.reports.as_ref();
         match tab {
             ListsView::Devices => {
                 let d = &self.panel.devices;

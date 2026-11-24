@@ -42,7 +42,7 @@ fn demo(h: &mut H, dir: &std::path::Path) {
 }
 
 fn selected_cable(h: &H) -> Option<ecad_model::CableId> {
-    let v = &h.state().reports.as_ref()?.cables;
+    let v = &h.state().dialogs.reports.as_ref()?.cables;
     v.selected().and_then(|k| v.ids.get(k).copied())
 }
 
@@ -67,7 +67,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     assert_eq!(d.cables().len(), before + 1);
     let k = selected_cable(&h).expect("the new cable is selected");
     assert!(d.cables()[&k].cores.is_empty());
-    assert!(h.state().reports.as_ref().unwrap().cables.details, "its details are open");
+    assert!(h.state().dialogs.reports.as_ref().unwrap().cables.details, "its details are open");
     assert!(h.query_all_by_label_contains("not drawn").next().is_some(), "the not drawn badge");
     assert!(h.query_all_by_label_contains("1 not drawn").next().is_some(), "the footer counts it");
     assert!(h.query_by_label("ecad.project.detail.cable.tag").is_some(), "the Tag box");
@@ -95,7 +95,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     h.key_press(Key::Enter);
     h.run_steps(6);
     assert!(!doc(&mut h).cables()[&k].properties.contains_key("cores"));
-    assert!(h.state().reports.as_ref().unwrap().cables.edit.error.is_some(), "the refusal is shown");
+    assert!(h.state().dialogs.reports.as_ref().unwrap().cables.edit.error.is_some(), "the refusal is shown");
     // A planned end and a shield, through the commands the boxes run.
     ok(
         &mut h,
@@ -134,9 +134,9 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     demo(&mut h, &dir);
     let d = doc(&mut h);
     let w01 = d.cables_tagged("-W01")[0];
-    let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
-    h.state_mut().reports.as_mut().unwrap().cables.table.selection.set([k]);
-    h.state_mut().reports.as_mut().unwrap().cables.details = true;
+    let k = h.state().dialogs.reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.table.selection.set([k]);
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.details = true;
     h.run_steps(8);
     let head = doc(&mut h).cables().len();
     // The footer is below the Rating section: scroll it into view first.
@@ -145,17 +145,17 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     h.get_by_label(ecad_app::cables::editor::REMOVE).click();
     h.run_steps(6);
     assert_eq!(doc(&mut h).cables().len(), head, "nothing removed");
-    let refused = h.state().reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
+    let refused = h.state().dialogs.reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
     assert!(refused.0.contains("-W01 is drawn on") && refused.0.contains("Delete it on its page."), "{refused:?}");
     assert!(!refused.1.is_empty(), "a Go to per page");
     assert!(h.query_by_label("ecad.lists.cables.remove.refused").is_some());
     // The Checks tab lists -W01's own rows (its open core) with a Go to.
-    let rows = h.state().reports.as_ref().unwrap().cables.cable_checks.clone();
+    let rows = h.state().dialogs.reports.as_ref().unwrap().cables.cable_checks.clone();
     assert!(rows.iter().any(|(c, _)| c.kind == ecad_electrical::checks::Kind::CoreOpen), "{rows:?}");
-    h.state_mut().reports.as_mut().unwrap().cables.detail_tab = 1;
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.detail_tab = 1;
     h.run_steps(4);
     assert!(h.query_all_by_label_contains("core GNYE is not assigned").next().is_some(), "the Checks tab lists it");
-    h.state_mut().reports.as_mut().unwrap().cables.detail_tab = 0;
+    h.state_mut().dialogs.reports.as_mut().unwrap().cables.detail_tab = 0;
     h.run_steps(2);
     shot(&h, &deltas, "059-remove-refused.png");
     let _ = std::fs::remove_dir_all(&dir);

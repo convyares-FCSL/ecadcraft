@@ -6,7 +6,7 @@ use crate::workspace::detail::*;
 /// A channel row: its signal, where it is drawn and its test.
 pub(crate) fn channel(t: &App, k: crate::plc::list::IoKey) -> Option<Detail> {
     use ecad_electrical::plc::signals;
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let row = r.io.source.row(k)?;
     let addr = row.address.clone().unwrap_or_default();
     let mut subtitle = vec![addr.clone(), row.ty.to_string()];

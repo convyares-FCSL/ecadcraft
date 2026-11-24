@@ -95,7 +95,7 @@ impl crate::shell::app::App {
         // line takes; the tool says `Slash the wires of -W03 (4 cores).`
         let tag = p.read(&mut self.cad.session, |p, _| ecad_electrical::cables::cable_title(p.ledger.document(), cable));
         let Ok(tag) = tag else { return };
-        self.focus_drawing = true;
+        self.command.focus_drawing = true;
         if let Err(e) = self.cad.session.start("cableslash") {
             self.cad.session.echo(e.to_string());
             return;

@@ -182,7 +182,7 @@ impl App {
             self.publish.books += 1;
             self.publish.book = Book { at: Some((self.panel.rebuilds, self.publish.excluded_rev)), groups, order, position, pages };
         }
-        let Some(d) = &mut self.print_book else { return };
+        let Some(d) = &mut self.dialogs.print_book else { return };
         d.hidden = true;
         // Print Book is opened again after an export: give it the ticks back.
         match &self.publish.book.pages {
@@ -196,7 +196,7 @@ impl App {
         }
         let Some(p) = self.project.clone().filter(|p| p.is_attached(&self.cad.session)) else { return };
         let Ok(count) = p.read(&mut self.cad.session, |p, _| p.change_count()) else { return };
-        let counted = (self.publish.book.at, self.project_serial, count);
+        let counted = (self.publish.book.at, self.seen.project_serial, count);
         if self.publish.counted.as_ref() == Some(&counted) {
             return;
         }
@@ -206,7 +206,7 @@ impl App {
         };
         if let Ok(((sheets, unknown, flagged), notes)) = p.configure(&mut self.cad.session, |p| {
             (ecad_engine::export::printbook::count(p, &scope), ecad_engine::export::printbook::notes(p, &scope))
-        }) && let Some(d) = &mut self.print_book
+        }) && let Some(d) = &mut self.dialogs.print_book
         {
             d.sheets = sheets;
             d.unknown = unknown;
@@ -224,7 +224,7 @@ impl App {
             self.publish.thumbs_at = None;
             return;
         };
-        let serial = self.project_serial;
+        let serial = self.seen.project_serial;
         let since = self.publish.thumbs_at.filter(|a| a.0 == serial).map(|a| a.1);
         let read = p.read(&mut self.cad.session, |p, _| (p.change_count(), since.map(|n| p.changes_since(n))));
         let Ok((count, touched)) = read else { return };
@@ -524,7 +524,7 @@ impl App {
         let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), pos2(rect.right(), rect.bottom() - foot_h));
         let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - foot_h), rect.max);
         let thumb = preview.and_then(|p| self.publish.thumbs.get(&p)).map(|t| t.texture.id());
-        let Some(d) = &mut self.print_book else {
+        let Some(d) = &mut self.dialogs.print_book else {
             crate::shell::in_rect(ui, body.shrink(space::L), "publish.right.empty", |ui| ecad_widgets::prim::read_value(ui, "No project is open."));
             return;
         };

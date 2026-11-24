@@ -65,7 +65,7 @@ fn the_branch_bar_merges_into_main_through_the_dialog_and_undo_asks_first() {
     h.run_steps(3);
     // The branch bar's Merge into main… opens the dialog, which says it switches first.
     click(&mut h, "ecad.project.branch.merge");
-    let d = h.state().merge.clone().expect("the merge dialog is open");
+    let d = h.state().dialogs.merge.clone().expect("the merge dialog is open");
     assert!(d.switch_note.as_deref().is_some_and(|n| n.contains("switches to main")), "{:?}", d.switch_note);
     let conflicts = d.preview["conflicts"].as_array().cloned().unwrap();
     assert_eq!(conflicts.len(), 1, "{}", d.preview);
@@ -73,12 +73,12 @@ fn the_branch_bar_merges_into_main_through_the_dialog_and_undo_asks_first() {
     assert_eq!(h.state_mut().branch_info().unwrap().name, "Option B", "nothing switched yet");
     // Merge is disabled until the conflict has a choice.
     click(&mut h, "ecad.merge.ok");
-    assert!(h.state().merge.is_some(), "a disabled Merge does nothing");
+    assert!(h.state().dialogs.merge.is_some(), "a disabled Merge does nothing");
     click(&mut h, &format!("ecad.merge.conflict.{id}.branch"));
-    assert_eq!(h.state().merge.as_ref().unwrap().preview["unanswered"], json!([]));
+    assert_eq!(h.state().dialogs.merge.as_ref().unwrap().preview["unanswered"], json!([]));
     save_shot(&h, &deltas, "020-merge.png");
     click(&mut h, "ecad.merge.ok");
-    assert!(h.state().merge.is_none(), "{:?}", h.state().merge.as_ref().and_then(|d| d.error.clone()));
+    assert!(h.state().dialogs.merge.is_none(), "{:?}", h.state().dialogs.merge.as_ref().and_then(|d| d.error.clone()));
     assert_eq!(h.state_mut().branch_info().unwrap().name, "main");
     assert!(last_label(&mut h).starts_with("Merge \"Option B\" (based on "));
     assert_eq!(description(&mut h, k1).as_deref(), Some("Branch pump"));

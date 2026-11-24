@@ -59,7 +59,7 @@ fn the_reports_window_waits_for_its_first_build_and_drops_a_result_a_commit_over
     let ctx = eframe::egui::Context::default();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
     t.open_reports();
-    let waiting = |t: &App| t.reports.as_ref().is_some_and(|r| r.building);
+    let waiting = |t: &App| t.dialogs.reports.as_ref().is_some_and(|r| r.building);
     // The Checks tab's refresh starts the builds (a frame would also refresh the Reports window
     // at once, and a build of this small project can already be done by then).
     t.refresh_panel();
@@ -81,5 +81,5 @@ fn the_pre_release_check_waits_for_its_first_build_and_drops_a_result_a_commit_o
     let mut t = new_app();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
     t.open_release(None);
-    drive(&mut t, &mut |t| t.refresh_release(), &|t| t.release.as_ref().is_some_and(|d| d.view.is_none()));
+    drive(&mut t, &mut |t| t.refresh_release(), &|t| t.dialogs.release.as_ref().is_some_and(|d| d.view.is_none()));
 }

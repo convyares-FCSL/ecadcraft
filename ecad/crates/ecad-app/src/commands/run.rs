@@ -24,7 +24,7 @@ impl App {
         if text.is_empty() && !running {
             return None;
         }
-        if self.command_hint.is_some() {
+        if self.command.hint.is_some() {
             let left = crate::commands::tools::placeholders(text);
             if !left.is_empty() {
                 let e = format!("Replace the placeholders first: {}", left.join(", "));
@@ -34,7 +34,7 @@ impl App {
         }
         let r = self.run_line(text);
         if r.is_none() {
-            self.command_hint = None;
+            self.command.hint = None;
         }
         r
     }
@@ -49,7 +49,7 @@ impl App {
 
     /// What to fill in for the template in the command field, if one was put there.
     pub fn command_hint(&self) -> Option<&str> {
-        self.command_hint
+        self.command.hint
     }
 
     /// Act on a click of an ECAD Tool Sets button (see [`tools`]): start its command's interactive
@@ -72,9 +72,9 @@ impl App {
         }
         match tool.kind {
             crate::commands::tools::Kind::Start(command) => {
-                self.command.clear();
-                self.command_hint = None;
-                self.focus_drawing = true;
+                self.command.text.clear();
+                self.command.hint = None;
+                self.command.focus_drawing = true;
                 let r = self.cad.session.start(command).map_err(|e| e.to_string());
                 if let Err(e) = &r {
                     self.cad.session.echo(e.clone());
@@ -94,9 +94,9 @@ impl App {
             crate::commands::tools::Kind::Template => {
                 let picked = self.picked();
                 let (line, hint) = crate::commands::tools::template(id, &picked).ok_or_else(|| format!("no template for {id}"))?;
-                self.command = line;
-                self.command_hint = Some(hint);
-                self.focus_command = true;
+                self.command.text = line;
+                self.command.hint = Some(hint);
+                self.command.focus = true;
                 self.developer.open = true;
                 Ok(())
             }
@@ -127,7 +127,7 @@ impl App {
             }
             "ecad.dev.snapshot" => {
                 let r = self.export_snapshot("manual");
-                self.notice = Some(match &r {
+                self.dialogs.notice = Some(match &r {
                     Ok(p) => format!("Snapshot written to {}.\n\n{SNAPSHOT_NOTE}", p.display()),
                     Err(e) => format!("Snapshot not written: {e}"),
                 });
@@ -135,7 +135,7 @@ impl App {
             }
             "ecad.dev.command" => {
                 self.developer.open = true;
-                self.focus_command = true;
+                self.command.focus = true;
                 Ok(())
             }
             _ => Err(format!("unknown ECAD tool {id}")),
@@ -207,7 +207,7 @@ impl App {
         if let Err(e) = &r {
             self.cad.session.echo(e.clone());
         }
-        self.focus_drawing = true;
+        self.command.focus_drawing = true;
         self.after_logic();
         r
     }
@@ -284,7 +284,7 @@ impl App {
                 let failed = self.submit_command(&line);
                 self.developer.reply = self.cad.session.log.iter().skip(n).filter(|l| !l.starts_with("Command: ")).take(40).cloned().collect();
                 if failed.is_some() {
-                    self.command = line; // kept for correction
+                    self.command.text = line; // kept for correction
                 }
             }
             developer::Action::ToggleDebugger => self.toggle_debugger(),
@@ -350,12 +350,12 @@ impl App {
             A::Preview(page) => self.preview_page(page),
             A::NewProject => {
                 if let Err(e) = self.new_project() {
-                    self.notice = Some(e);
+                    self.dialogs.notice = Some(e);
                 }
             }
             A::OpenProject => {
                 if self.project_open() {
-                    self.notice = Some("Close this project first (Close, in the Project panel).".into());
+                    self.dialogs.notice = Some("Close this project first (Close, in the Project panel).".into());
                 } else {
                     self.request_open();
                 }
@@ -419,7 +419,7 @@ impl App {
             A::ShowDesignations => self.open_settings(settings::Section::Project),
             A::ShowReports => {
                 self.reports_view();
-                if let Some(r) = &mut self.reports {
+                if let Some(r) = &mut self.dialogs.reports {
                     r.tab = crate::reports::panel::Tab::Bom;
                     r.only_flagged = true;
                     r.invalidate();
@@ -497,7 +497,7 @@ impl App {
             }
             A::ShowCables => {
                 self.reports_view();
-                if let Some(r) = &mut self.reports {
+                if let Some(r) = &mut self.dialogs.reports {
                     r.tab = crate::reports::panel::Tab::Cables;
                     r.cores_of = None;
                     r.only_flagged = true;
@@ -581,7 +581,7 @@ impl App {
             }
             A::NewPageIn(None) => {
                 self.open_new_page_box();
-                self.new_page_folder = None;
+                self.dialogs.new_page_folder = None;
             }
             A::SetFolderStart(folder, start) => {
                 let line = format!("folderprops {}", json!({"folder": folder.hex(), "start": start}));
@@ -631,7 +631,7 @@ impl App {
             A::Revisions => self.open_revisions(),
             A::BackToCurrent => {
                 let _ = self.run_line("closerevision {}");
-                self.preview = None;
+                self.dialogs.preview = None;
             }
             A::RevisionPage(page) => self.preview_revision_page(page),
             A::History(d) => self.history_action(d),
@@ -696,7 +696,7 @@ impl App {
             }
             Do::SaveAs => self.request_save_as(),
             Do::ShowPoint(params) => match self.run_click("showpoint", params) {
-                Ok(_) => self.preview = None,
+                Ok(_) => self.dialogs.preview = None,
                 Err(e) => self.panel.history.refused(e),
             },
             Do::AskMerge(target) => self.ask_merge(target),
@@ -715,7 +715,7 @@ impl App {
                 let into = v["into"].as_str().unwrap_or("main").to_string();
                 let note = (v["update"] != json!(true) && into != shown)
                     .then(|| format!("This switches to {into} (saving \"{shown}\" first) and merges into it."));
-                self.merge = Some(crate::history::merge_dialog::MergeDialog::new(target, v, note));
+                self.dialogs.merge = Some(crate::history::merge_dialog::MergeDialog::new(target, v, note));
             }
             Err(e) => self.panel.history.refused(e),
         }
@@ -755,7 +755,7 @@ impl App {
                 Err(e) => d.error = Some(e),
             }
         }
-        self.renumber = Some(d);
+        self.dialogs.renumber = Some(d);
     }
 
     /// The provisional question before an issue, for the refused `line`.
@@ -763,7 +763,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let items = p.read(&mut self.cad.session, |p, _| ecad_electrical::numbering::commands::provisional_items(p.ledger.document()));
         if let Ok(items) = items {
-            self.issue_prompt = Some((line, format!("{}:\n{}", items.words(), items.list_line())));
+            self.dialogs.issue_prompt = Some((line, format!("{}:\n{}", items.words(), items.list_line())));
         }
     }
 
@@ -915,7 +915,7 @@ impl App {
             .ok()
             .flatten();
         let Some((page, items, at)) = found else {
-            self.notice = Some("That cable has no slash drawn; set its cores in the Reports' Cables tab or with setprop.".into());
+            self.dialogs.notice = Some("That cable has no slash drawn; set its cores in the Reports' Cables tab or with setprop.".into());
             return;
         };
         if self.show_page(page).is_err() {

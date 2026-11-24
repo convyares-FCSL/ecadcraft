@@ -126,7 +126,7 @@ impl ReportsList {
 pub fn show(t: &mut crate::shell::app::App, ui: &mut egui::Ui) {
     use ecad_widgets::tokens::{size, space, ui_type};
     let s = ecad_widgets::SHELL;
-    let Some(r) = t.reports.as_mut() else { return };
+    let Some(r) = t.dialogs.reports.as_mut() else { return };
     let list_h = 6.0 * size::ROW_TABLE + space::XS;
     let mut open_plc = false;
     ui.allocate_ui(egui::vec2(ui.available_width(), list_h), |ui| {
@@ -186,5 +186,5 @@ pub fn show(t: &mut crate::shell::app::App, ui: &mut egui::Ui) {
 
 /// Whether the preview (the hosted Reports window) shows: a report with a Reports tab.
 pub(crate) fn preview_shown(t: &crate::shell::app::App) -> bool {
-    t.reports.as_ref().and_then(|r| r.list.selected()).is_some_and(|p| p.tab.is_some())
+    t.dialogs.reports.as_ref().and_then(|r| r.list.selected()).is_some_and(|p| p.tab.is_some())
 }

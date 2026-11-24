@@ -7,7 +7,7 @@ use crate::workspace::detail::*;
 
 pub(crate) fn report(t: &App, k: usize) -> Option<Detail> {
     let rep = crate::reports::list::REPORTS.get(k)?;
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let columns: Vec<(String, String)> =
         if rep.tab == Some(r.tab) { r.table().headers.iter().map(|h| ((*h).to_string(), "shown".to_string())).collect() } else { Vec::new() };
     // Counted when the copy is taken, not each frame.

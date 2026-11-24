@@ -83,11 +83,11 @@ fn show_plc(h: &mut H) {
 }
 
 fn view(h: &H) -> &IoView {
-    &h.state().reports.as_ref().expect("Project ▸ PLC opens Reports' models").io
+    &h.state().dialogs.reports.as_ref().expect("Project ▸ PLC opens Reports' models").io
 }
 
 fn act(h: &mut H, a: ListAction) {
-    let out = h.state_mut().reports.as_mut().and_then(|r| r.io.handle(a));
+    let out = h.state_mut().dialogs.reports.as_mut().and_then(|r| r.io.handle(a));
     assert!(out.is_none(), "answered by the view: {out:?}");
     h.run_steps(4);
 }
@@ -183,7 +183,7 @@ fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in
     // The path row, filled in (a screenshot for the owner), then the import: one transaction, and
     // the row closes.
     act(&mut h, ListAction::ImportTags);
-    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = r"C:\Projects\Pump station\P56-tags.csv".into();
+    h.state_mut().dialogs.reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = r"C:\Projects\Pump station\P56-tags.csv".into();
     h.run_steps(4);
     take(&h, &deltas, "056-import-row.png");
     run_path(&mut h, ListAction::ImportTags, &file);
@@ -196,11 +196,11 @@ fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in
 /// Open the path row with `a`, give it `path`, press its OK, and run what it asks.
 fn run_path(h: &mut H, a: ListAction, path: &std::path::Path) {
     act(h, a);
-    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = path.to_string_lossy().into_owned();
-    let run = h.state_mut().reports.as_mut().and_then(|r| r.io.handle(ListAction::PathOk));
+    h.state_mut().dialogs.reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = path.to_string_lossy().into_owned();
+    let run = h.state_mut().dialogs.reports.as_mut().and_then(|r| r.io.handle(ListAction::PathOk));
     let Some(ListAction::Run(line)) = run else { panic!("{run:?}") };
     let refusal = h.state_mut().submit_command(&line);
-    if let Some(r) = h.state_mut().reports.as_mut() {
+    if let Some(r) = h.state_mut().dialogs.reports.as_mut() {
         r.ran(refusal);
     }
     h.run_steps(4);
@@ -300,8 +300,8 @@ fn i_export_tags_writes_the_rack_and_changes_nothing() {
     act(&mut h, ListAction::ExportTags);
     let row = view(&h).path_row.clone().unwrap();
     assert!(row.path.ends_with("PLC tags.csv"), "{}", row.path);
-    h.state_mut().reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = file.to_string_lossy().into_owned();
-    let run = h.state_mut().reports.as_mut().and_then(|r| r.io.handle(ListAction::PathOk));
+    h.state_mut().dialogs.reports.as_mut().unwrap().io.path_row.as_mut().unwrap().path = file.to_string_lossy().into_owned();
+    let run = h.state_mut().dialogs.reports.as_mut().and_then(|r| r.io.handle(ListAction::PathOk));
     let Some(ListAction::Run(line)) = run else { panic!("{run:?}") };
     assert!(line.starts_with("plcexport "), "{line}");
     ok(&mut h, &line);

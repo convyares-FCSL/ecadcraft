@@ -82,7 +82,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     let after = one_exact(&mut h, "Create cable", |h| {
         h.get_by_label(ecad_app::workspace::frame::ADD_NAME).click();
         h.run_steps(8);
-        let made = h.state().reports.as_ref().and_then(|r| r.cables.selected().and_then(|i| r.cables.ids.get(i).copied()));
+        let made = h.state().dialogs.reports.as_ref().and_then(|r| r.cables.selected().and_then(|i| r.cables.ids.get(i).copied()));
         assert!(made.is_some_and(|k| !before.contains(&k)), "the new cable is selected at once");
     });
     let k = *after.cables().keys().find(|k| !before.contains(k)).expect("a new cable");
@@ -96,7 +96,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
     h.state_mut().cable_ask(k, Ask::Edit(CableField::Length, json!({"length": "x"})));
     h.run_steps(4);
     assert_eq!(head(&mut h), n);
-    assert!(h.state().reports.as_ref().unwrap().cables.edit.error.is_some());
+    assert!(h.state().dialogs.reports.as_ref().unwrap().cables.edit.error.is_some());
     let gone = one_exact(&mut h, "Remove cable", |h| h.state_mut().cable_ask(k, Ask::Remove));
     assert!(!gone.cables().contains_key(&k));
     let _ = std::fs::remove_dir_all(&dir);
@@ -113,7 +113,7 @@ fn t2_remove_of_a_drawn_cable_writes_nothing_and_its_go_to_shows_the_page() {
     h.run_steps(6);
     assert_eq!(head(&mut h), n, "nothing written");
     assert!(doc(&mut h) == d);
-    let (words, pages) = h.state().reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
+    let (words, pages) = h.state().dialogs.reports.as_ref().unwrap().cables.edit.refused.clone().expect("refused");
     assert!(words.contains("-W01 is drawn on"), "{words}");
     assert!(!pages.is_empty());
     let page = pages[0].0;

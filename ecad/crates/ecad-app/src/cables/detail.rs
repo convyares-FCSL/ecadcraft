@@ -7,7 +7,7 @@ use crate::shell::app::App;
 use crate::workspace::detail::*;
 
 pub(crate) fn cable(t: &App, k: usize) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let v = &r.cables;
     let rows = &v.source.rows;
     let tag = rows.text(k, CableBase::Tag.header());

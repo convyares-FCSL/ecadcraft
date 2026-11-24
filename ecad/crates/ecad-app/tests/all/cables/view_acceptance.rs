@@ -282,11 +282,11 @@ fn ac5_cable_view_by_label_and_reference_screenshots() {
     // A running Cable Slash is cancelled by the Cable View click; the Command field is emptied.
     h.get_by_label("Cable Slash").click();
     h.run_steps(3);
-    h.state_mut().command = "stale text".into();
+    h.state_mut().command.text = "stale text".into();
     h.get_by_label("Cable View").click();
     h.run_steps(3);
     assert_eq!(prompt(&h), "Select a cable to switch its view:");
-    assert!(h.state().command.is_empty(), "the Command field is left empty");
+    assert!(h.state().command.text.is_empty(), "the Command field is left empty");
     assert_eq!(head(&mut h), before, "starting writes nothing");
     // Click the slash: fan on the same frame.
     let slash = screen(&h, 30.0, 7.5);
@@ -399,7 +399,7 @@ fn child_app_reopen() {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    t.hover_delay = 0.0;
+    t.hover.delay = 0.0;
     let mut h = build(t, None);
     fixture(&mut h);
     for line in [

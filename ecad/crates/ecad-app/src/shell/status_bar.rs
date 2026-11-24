@@ -120,7 +120,7 @@ impl App {
             return;
         };
         let page = self.panel.active;
-        let serial = self.project_serial;
+        let serial = self.seen.project_serial;
         let now = p.read(&mut self.cad.session, |p, _| p.change_count()).ok();
         let Some(now) = now else { return };
         if self.shell.well.facts_at == Some((serial, now, page)) {
@@ -706,7 +706,7 @@ impl App {
         self.shell.state.text_panel = !self.shell.state.text_panel;
         self.developer.open = self.shell.state.text_panel;
         if self.shell.state.text_panel {
-            self.focus_command = true;
+            self.command.focus = true;
         }
     }
 }

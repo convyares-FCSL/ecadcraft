@@ -18,7 +18,7 @@ mod hover_and_marks {
         ecad_engine::install();
         ecad_engine::cables::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
-        t.hover_delay = 0.0;
+        t.hover.delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
             |ui, t: &mut App| {
                 t.logic(&ui.ctx().clone());
@@ -319,7 +319,7 @@ mod layout_refusals {
         ecad_engine::install();
         ecad_engine::cables::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
-        t.hover_delay = 0.0;
+        t.hover.delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
             |ui, t: &mut App| {
                 t.logic(&ui.ctx().clone());

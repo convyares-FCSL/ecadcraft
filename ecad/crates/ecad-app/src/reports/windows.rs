@@ -24,11 +24,11 @@ impl App {
     }
 
     pub fn open_reports(&mut self) {
-        if self.reports.is_none() {
+        if self.dialogs.reports.is_none() {
             let stem = self.report_stem();
             let mut r = crate::reports::panel::Reports::default();
             r.stem = stem;
-            self.reports = Some(r);
+            self.dialogs.reports = Some(r);
         }
     }
 
@@ -43,7 +43,7 @@ impl App {
             .unwrap_or_default();
         let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f));
         let path = format!("{}.pdf", self.report_stem());
-        self.print_book = Some(crate::reports::panel::PrintBook {
+        self.dialogs.print_book = Some(crate::reports::panel::PrintBook {
             scope: if chosen.is_some() { crate::reports::panel::ScopeKind::Folder } else { crate::reports::panel::ScopeKind::All },
             folders,
             folder: chosen.unwrap_or(0),
@@ -58,9 +58,9 @@ impl App {
     /// models and the Checks list are built (on the background pool, first show) the window says
     /// "Running…" and nothing is read.
     pub(crate) fn refresh_reports(&mut self) {
-        let serial = self.project_serial;
+        let serial = self.seen.project_serial;
         let writable = !self.header().read_only;
-        if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {
+        if let (Some(r), Some(p)) = (&mut self.dialogs.reports, self.project.clone()) {
             r.writable = writable;
             let warm = &mut self.warm;
             let _ = p.configure(&mut self.cad.session, |p| {
@@ -81,20 +81,20 @@ impl App {
             self.reports_view();
         }
         self.refresh_reports();
-        let out = self.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
+        let out = self.dialogs.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
         match out {
-            Some(crate::reports::panel::Out::Close) => self.reports = None,
+            Some(crate::reports::panel::Out::Close) => self.dialogs.reports = None,
             Some(crate::reports::panel::Out::Export(path)) => self.export_report(&path),
             Some(crate::reports::panel::Out::Run(line)) => {
                 let refusal = self.run_line(&line);
-                if let Some(r) = self.reports.as_mut() {
+                if let Some(r) = self.dialogs.reports.as_mut() {
                     r.ran(refusal);
                 }
             }
             Some(crate::reports::panel::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Double-clicking a cable shows its cores.
             Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i))
-                if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) =>
+                if self.dialogs.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) =>
             {
                 self.show_cores_of_row(i)
             }
@@ -108,7 +108,7 @@ impl App {
     /// Write the Reports tab as shown to `path` as CSV.
     pub fn export_report(&mut self, path: &str) {
         let path = self.report_path(path);
-        let Some(r) = &mut self.reports else { return };
+        let Some(r) = &mut self.dialogs.reports else { return };
         let t = r.shown_table();
         let flagged = t.flagged();
         let text = ecad_electrical::reports::csv(&t, true);
@@ -126,10 +126,10 @@ impl App {
 
     /// Show the core list of the cable on shown row `i` of the Cables tab.
     fn show_cores_of_row(&mut self, i: usize) {
-        let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(k) = self.dialogs.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
         let cable = p.configure(&mut self.cad.session, |p| p.reports().cables().get(k).map(|c| c.cable)).ok().flatten();
-        if let (Some(r), Some(c)) = (&mut self.reports, cable) {
+        if let (Some(r), Some(c)) = (&mut self.dialogs.reports, cable) {
             r.cores_of = Some(c);
         }
     }
@@ -137,7 +137,7 @@ impl App {
     /// Reports on the Terminals tab for `strip` (Properties' **Show plan**).
     pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
         self.reports_view();
-        if let Some(r) = &mut self.reports {
+        if let Some(r) = &mut self.dialogs.reports {
             r.tab = crate::reports::panel::Tab::TerminalBlocks;
             r.strip = strip;
             r.cores_of = None;
@@ -148,7 +148,7 @@ impl App {
     /// Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
     pub fn show_cores(&mut self, cable: ecad_model::CableId) {
         self.reports_view();
-        if let Some(r) = &mut self.reports {
+        if let Some(r) = &mut self.dialogs.reports {
             r.tab = crate::reports::panel::Tab::Cables;
             r.cores_of = Some(cable);
             r.invalidate();
@@ -162,11 +162,11 @@ impl App {
             Symbol(ecad_model::RepresentationId),
             Place(PageId, ecad_model::Pt),
         }
-        let Some(k) = self.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(k) = self.dialogs.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
         let Some(p) = self.project.clone() else { return };
-        let group = self.reports.as_ref().map(|r| r.group).unwrap_or_default();
-        let connection_point = self.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
-        let cores = self.reports.as_ref().is_some_and(|r| r.cores_of.is_some());
+        let group = self.dialogs.reports.as_ref().map(|r| r.group).unwrap_or_default();
+        let connection_point = self.dialogs.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
+        let cores = self.dialogs.reports.as_ref().is_some_and(|r| r.cores_of.is_some());
         let to = p
             .configure(&mut self.cad.session, |p| {
                 let o = p.reports();
@@ -205,14 +205,14 @@ impl App {
     /// Open the Release dialog: the pending revision, or `rev` written again.
     pub fn open_release(&mut self, rev: Option<String>) {
         let read_only = self.header().read_only;
-        self.release = Some(crate::history::release_dialog::ReleaseDialog::new(rev, read_only));
+        self.dialogs.release = Some(crate::history::release_dialog::ReleaseDialog::new(rev, read_only));
         self.refresh_release();
     }
 
     /// Take the dialog's view again when the project, its kept Checks or the tick changed.
     pub fn refresh_release(&mut self) {
         let Some(p) = self.project.clone() else { return };
-        let Some(d) = &self.release else { return };
+        let Some(d) = &self.dialogs.release else { return };
         let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
         let warm = &mut self.warm;
         let r = p.configure(&mut self.cad.session, |p| {
@@ -233,13 +233,13 @@ impl App {
         });
         match r {
             Ok(Ok(Some((v, k)))) => {
-                if let Some(d) = &mut self.release {
+                if let Some(d) = &mut self.dialogs.release {
                     d.set_view(v, k);
                 }
             }
             Ok(Ok(None)) => {}
             Ok(Err(e)) | Err(e) => {
-                if let Some(d) = &mut self.release {
+                if let Some(d) = &mut self.dialogs.release {
                     d.error = Some(e);
                 }
             }
@@ -253,13 +253,13 @@ impl App {
         match &r {
             Ok(_) => {
                 // The command echoed what it wrote.
-                self.release = None;
-                if self.revisions.is_some() {
+                self.dialogs.release = None;
+                if self.dialogs.revisions.is_some() {
                     self.open_revisions();
                 }
             }
             Err(e) => {
-                if let Some(d) = &mut self.release {
+                if let Some(d) = &mut self.dialogs.release {
                     if e.contains(" exists (") && e.contains("Give existing:") {
                         d.exists = Some(e.clone());
                         d.error = None;
@@ -275,15 +275,15 @@ impl App {
 
     /// The Release dialog, live while open.
     fn release_window(&mut self, ctx: &egui::Context) {
-        if self.release.as_ref().is_none_or(|d| d.hidden) {
+        if self.dialogs.release.as_ref().is_none_or(|d| d.hidden) {
             return;
         }
         self.refresh_release();
-        let answer = self.release.as_mut().and_then(|d| d.show(ctx));
+        let answer = self.dialogs.release.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(crate::history::release_dialog::Out::Run(line)) => {
                 let e = self.run_line(&line);
-                if let Some(d) = &mut self.release {
+                if let Some(d) = &mut self.dialogs.release {
                     d.error = e;
                 }
             }
@@ -295,7 +295,7 @@ impl App {
             }
             Some(crate::history::release_dialog::Out::ShowReports) => {
                 self.reports_view();
-                if let Some(r) = &mut self.reports {
+                if let Some(r) = &mut self.dialogs.reports {
                     r.tab = crate::reports::panel::Tab::Bom;
                     r.only_flagged = true;
                     r.invalidate();
@@ -308,21 +308,21 @@ impl App {
                 self.open_release(Some(rev));
                 self.publish_view(shell::PublishTab::Release);
             }
-            Some(crate::history::release_dialog::Out::Close) => self.release = None,
+            Some(crate::history::release_dialog::Out::Close) => self.dialogs.release = None,
             None => {}
         }
     }
 
     /// Print with the dialog's choices (Print): `printbook` through the command path.
     pub fn print_from_dialog(&mut self) -> Result<serde_json::Value, String> {
-        let Some(d) = self.print_book.clone() else { return Err("Print Book is not open".into()) };
+        let Some(d) = self.dialogs.print_book.clone() else { return Err("Print Book is not open".into()) };
         let mut params = d.params();
         params["path"] = json!(self.report_path(&d.path)?);
         let r = self.run_value("printbook", params);
         match &r {
-            Ok(_) => self.print_book = None,
+            Ok(_) => self.dialogs.print_book = None,
             Err(e) => {
-                if let Some(d) = &mut self.print_book {
+                if let Some(d) = &mut self.dialogs.print_book {
                     d.error = Some(e.clone());
                 }
             }
@@ -332,7 +332,7 @@ impl App {
 
     /// The Print Book dialog: live counts, then `printbook` on Print.
     fn print_window(&mut self, ctx: &egui::Context) {
-        let Some(d) = self.print_book.as_ref().filter(|d| !d.hidden) else { return };
+        let Some(d) = self.dialogs.print_book.as_ref().filter(|d| !d.hidden) else { return };
         let scope = match d.scope {
             crate::reports::panel::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
             crate::reports::panel::ScopeKind::Folder => match d.folders.get(d.folder).map(|f| f.0) {
@@ -343,7 +343,7 @@ impl App {
         };
         if let Some(p) = self.project.clone()
             && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::count(p, &scope))
-            && let Some(d) = &mut self.print_book
+            && let Some(d) = &mut self.dialogs.print_book
         {
             d.sheets = sheets;
             d.unknown = unknown;
@@ -351,16 +351,16 @@ impl App {
         }
         if let Some(p) = self.project.clone()
             && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::notes(p, &scope))
-            && let Some(d) = &mut self.print_book
+            && let Some(d) = &mut self.dialogs.print_book
         {
             d.notes = notes;
         }
-        let answer = self.print_book.as_mut().and_then(|d| d.show(ctx));
+        let answer = self.dialogs.print_book.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(true) => {
                 let _ = self.print_from_dialog();
             }
-            Some(false) => self.print_book = None,
+            Some(false) => self.dialogs.print_book = None,
             None => {}
         }
     }

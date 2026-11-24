@@ -1291,7 +1291,7 @@ fn an_agent_write_costs_the_panels_no_more_than_a_persons_and_a_person_edit_leav
     }
     let counts = |live: &Live| {
         let t = live.h.state();
-        (t.panel.rebuilds, t.panel.history.builds, t.props_rebuilds)
+        (t.panel.rebuilds, t.panel.history.builds, t.seen.props_rebuilds)
     };
     let c0 = counts(&live);
     for y in [5.0, 10.0, 15.0] {

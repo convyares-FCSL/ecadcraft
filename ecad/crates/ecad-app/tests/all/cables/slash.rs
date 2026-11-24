@@ -72,7 +72,7 @@ fn a_cable_is_made_by_two_clicks_from_the_ecad_tab() {
     h.get_by_label("Cable Slash").click();
     h.run_steps(3);
     assert_eq!(prompt(&h), "Specify first point of cable slash or [Cable]:");
-    assert!(h.state().command.is_empty(), "the Command field stays empty");
+    assert!(h.state().command.text.is_empty(), "the Command field stays empty");
     // First point by a click in empty space below the wires, second typed exactly.
     let below = screen(&h, 28.0, -3.0);
     click(&mut h, below);

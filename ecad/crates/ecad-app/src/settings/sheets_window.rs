@@ -11,7 +11,7 @@ impl App {
     /// that tab, filled from `projectprops {}` (reads only).
     pub fn open_project_popout(&mut self, popout: crate::settings::sheets::Popout) {
         self.fill_project_props(popout);
-        if self.project_props.is_some() {
+        if self.dialogs.project_props.is_some() {
             // Project info, or Pages and sheets for the project's settings.
             let section = match popout {
                 crate::settings::sheets::Popout::Info => settings::Section::Project,
@@ -34,8 +34,8 @@ impl App {
                 let mut r = crate::settings::sheets::Revisions::from_json(&v, read_only || off_main.is_some());
                 r.off_main = off_main;
                 self.fill_folders(&mut r);
-                self.revisions = Some(r);
-                self.revisions_seen = self.change_count();
+                self.dialogs.revisions = Some(r);
+                self.branch.revisions_seen = self.change_count();
             }
             Err(e) => self.cad.session.echo(e),
         }
@@ -51,18 +51,18 @@ impl App {
     /// properties, issuing, undo and redo of them), keeping unsent typing. One integer compared
     /// per frame otherwise.
     fn refresh_revisions(&mut self) {
-        if self.revisions.is_none() {
+        if self.dialogs.revisions.is_none() {
             return;
         }
         let Some(p) = self.project.clone() else { return };
-        let seen = self.revisions_seen;
+        let seen = self.branch.revisions_seen;
         let Ok((count, touched)) = p.read(&mut self.cad.session, |p, _| {
             let count = p.change_count();
             (count, if count == seen { Some(Default::default()) } else { p.props_changes_since(seen) })
         }) else {
             return;
         };
-        self.revisions_seen = count;
+        self.branch.revisions_seen = count;
         let hit = touched.is_none_or(|t: std::collections::BTreeSet<ecad_model::ObjectRef>| t.contains(&ecad_model::ObjectRef::Project));
         if !hit {
             return;
@@ -71,7 +71,7 @@ impl App {
         if let Ok(v) = self.run_value("projectprops", json!({})) {
             let mut fresh = crate::settings::sheets::Revisions::from_json(&v, read_only);
             self.fill_folders(&mut fresh);
-            if let Some(d) = &mut self.revisions {
+            if let Some(d) = &mut self.dialogs.revisions {
                 d.refresh(fresh);
             }
         }
@@ -84,13 +84,13 @@ impl App {
             if let Ok(mut sh) = self.props.lock() {
                 sh.view = ecad_electrical::properties::PropsView::default();
             }
-            self.props_seen = None;
+            self.seen.props_seen = None;
             return;
         };
         let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
         let selection = if owned { self.cad.session.selection() } else { Vec::new() };
-        let serial = self.project_serial;
-        let seen = &self.props_seen;
+        let serial = self.seen.project_serial;
+        let seen = &self.seen.props_seen;
         let read = p.read(&mut self.cad.session, |p, _| {
             let page = p.active_page();
             let same = seen.as_ref().is_some_and(|(s, _, pg, sel)| *s == serial && *pg == page && *sel == selection);
@@ -109,7 +109,7 @@ impl App {
                 self.props.lock().map_or(true, |sh| t.iter().any(|o| sh.view.deps.contains(o)))
             });
         if !stale {
-            if let Some(seen) = &mut self.props_seen {
+            if let Some(seen) = &mut self.seen.props_seen {
                 seen.1 = count;
             }
             return;
@@ -125,8 +125,8 @@ impl App {
                 sh.view = view;
                 sh.writable = writable;
             }
-            self.props_rebuilds += 1;
-            self.props_seen = Some((serial, count, page, selection));
+            self.seen.props_rebuilds += 1;
+            self.seen.props_seen = Some((serial, count, page, selection));
         }
     }
 
@@ -189,7 +189,7 @@ impl App {
     pub(crate) fn sheet_windows(&mut self, ctx: &egui::Context) {
         // The project popouts are Settings sections (`settings::project`).
         self.refresh_revisions();
-        if let Some(d) = &mut self.revisions {
+        if let Some(d) = &mut self.dialogs.revisions {
             match d.show(ctx) {
                 Some(crate::settings::sheets::Out::Run(line)) => {
                     let issuing = line.starts_with("issuerevision");
@@ -199,7 +199,7 @@ impl App {
                     if provisional {
                         self.ask_issue_provisional(line);
                     } else {
-                        if let Some(d) = &mut self.revisions {
+                        if let Some(d) = &mut self.dialogs.revisions {
                             d.error = r.clone();
                         }
                         if r.is_none() && issuing {
@@ -209,16 +209,16 @@ impl App {
                 }
                 Some(crate::settings::sheets::Out::Open(rev)) => {
                     if let Some(e) = self.run_line(&format!("openrevision {}", json!({ "rev": rev })))
-                        && let Some(d) = &mut self.revisions
+                        && let Some(d) = &mut self.dialogs.revisions
                     {
                         d.error = Some(e);
                     }
                     self.refresh_panel();
                 }
-                Some(crate::settings::sheets::Out::Close) => self.revisions = None,
+                Some(crate::settings::sheets::Out::Close) => self.dialogs.revisions = None,
                 Some(crate::settings::sheets::Out::SwitchToMain) => self.ask_switch("main", "main"),
                 Some(crate::settings::sheets::Out::MergeIntoMain) => {
-                    self.revisions = None;
+                    self.dialogs.revisions = None;
                     let shown = self.branch_info().map(|b| b.name).unwrap_or_default();
                     self.ask_merge(json!({"from": shown, "into": "main"}));
                 }
@@ -228,7 +228,7 @@ impl App {
                 }
                 Some(crate::settings::sheets::Out::OpenFolder(f)) => {
                     if let Err(e) = crate::history::release_dialog::open_folder(&f)
-                        && let Some(d) = &mut self.revisions
+                        && let Some(d) = &mut self.dialogs.revisions
                     {
                         d.error = Some(e);
                     }

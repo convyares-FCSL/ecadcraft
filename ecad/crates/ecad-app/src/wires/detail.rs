@@ -7,7 +7,7 @@ use crate::shell::app::App;
 use crate::workspace::detail::*;
 
 pub(crate) fn wire(t: &App, k: usize) -> Option<Detail> {
-    let r = t.reports.as_ref()?;
+    let r = t.dialogs.reports.as_ref()?;
     let v = &r.wires;
     let rows = &v.source.rows;
     let number = rows.text(k, WireColumn::WireNumber.header());

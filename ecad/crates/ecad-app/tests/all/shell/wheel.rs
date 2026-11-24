@@ -377,7 +377,7 @@ fn a_page_row_opens_its_wheel() {
     assert_eq!(t.kind, ObjectKind::PageRow);
     wheel_slot(&h, "Rename").click();
     h.run_steps(3);
-    assert!(h.state().name_box.is_some(), "Rename opens the name box");
+    assert!(h.state().dialogs.name_box.is_some(), "Rename opens the name box");
 }
 
 /// The wheel, the intent line, a flyout and Ctrl+K at 1920 × 1080, for the owner's check (written

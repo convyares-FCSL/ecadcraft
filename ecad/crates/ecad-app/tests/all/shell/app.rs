@@ -391,7 +391,7 @@ fn the_quick_start_runs_headless() {
     use cadcraft_engine::doc::EntityKind;
     let home = TempDir::new("quickstart-home");
     let mut t = new_app(None);
-    t.home = Some(home.0.clone());
+    t.files.home = Some(home.0.clone());
     let p = t.project().unwrap().clone();
     let ok = |t: &mut App, line: &str| {
         let e = t.submit_command(line);

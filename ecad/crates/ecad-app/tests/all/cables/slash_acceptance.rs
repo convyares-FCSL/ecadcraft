@@ -281,11 +281,11 @@ fn ac9_cable_slash(out: Option<std::path::PathBuf>) {
     fixture(&mut h);
     let before = head(&mut h);
     // Leave text in the Command field to check the click clears it (design §3.1).
-    h.state_mut().command = "stale text".into();
+    h.state_mut().command.text = "stale text".into();
     button(&mut h, tools::TAB);
     button(&mut h, "Cable Slash");
     assert_eq!(prompt(&h), "Specify first point of cable slash or [Cable]:");
-    assert!(h.state().command.is_empty(), "the Command field is left empty");
+    assert!(h.state().command.text.is_empty(), "the Command field is left empty");
     assert!(h.state().command_hint().is_none(), "no template note");
     assert_eq!(head(&mut h), before, "starting writes nothing");
     // First click, then the cursor at the second point: the preview (green rings, count).

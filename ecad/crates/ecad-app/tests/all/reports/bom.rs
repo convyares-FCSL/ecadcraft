@@ -50,7 +50,7 @@ fn fixture(deltas: Option<Deltas>) -> H {
 }
 
 fn table(h: &H) -> ecad_electrical::reports::Table {
-    h.state().reports.as_ref().unwrap().table().clone()
+    h.state().dialogs.reports.as_ref().unwrap().table().clone()
 }
 
 #[test]
@@ -101,8 +101,8 @@ fn add_item_prompts_on_the_command_line_and_the_row_reads_metres() {
     // Its row: no page; the CSV export has a Unit column and a plain Qty.
     // A row's label is its first two cells.
     click(&mut h, "+CP1: 2 m");
-    assert_eq!(h.state().reports.as_ref().unwrap().note.as_deref(), Some(panel::ITEM_NO_PAGE));
-    let csv = h.state().reports.as_ref().unwrap().shown_table();
+    assert_eq!(h.state().dialogs.reports.as_ref().unwrap().note.as_deref(), Some(panel::ITEM_NO_PAGE));
+    let csv = h.state().dialogs.reports.as_ref().unwrap().shown_table();
     assert_eq!(&csv.headers[..4], ["Location", "Qty", "Unit", "Tags"]);
     let row = csv.rows.iter().find(|r| r[4].text == "DIN rail 35x7.5").unwrap();
     assert_eq!((row[1].text.as_str(), row[2].text.as_str()), ("2", "m"));
@@ -112,7 +112,7 @@ fn add_item_prompts_on_the_command_line_and_the_row_reads_metres() {
 fn the_inspector_lists_a_devices_part_set() {
     let deltas: Deltas = Arc::default();
     let mut h = fixture(Some(deltas.clone()));
-    h.state_mut().reports = None;
+    h.state_mut().dialogs.reports = None;
     let d = doc(&mut h);
     let k03 = d.components_tagged("-K03")[0];
     ok(&mut h, &format!(r#"setprop {{"component":"{}","key":"part_number","value":"CT-9A"}}"#, k03.hex()));
