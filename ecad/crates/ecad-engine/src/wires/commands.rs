@@ -82,7 +82,7 @@ pub(crate) struct WireParams {
 impl Command for WireParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let potential = match not_auto(self.potential) {
-            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
+            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(|e| err(e.to_string()))?,
             None => None,
         };
         let join = self.join;

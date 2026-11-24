@@ -603,7 +603,7 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
         w.number_by = b;
     }
     if let Some(u) = &change.unclassified_prefix {
-        w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(CmdError::refused)?.unwrap_or_default();
+        w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(|e| CmdError::refused(e.to_string()))?.unwrap_or_default();
     }
     if let Some(table) = &change.potentials {
         if table.len() > MAX_POTENTIALS {
@@ -617,7 +617,7 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
                 return Err(CmdError::refused(msg::CATEGORY_COLOURS));
             }
             let name = wiring::valid_text("potential", Some(r.name.trim()))
-                .map_err(CmdError::refused)?
+                .map_err(|e| CmdError::refused(e.to_string()))?
                 .ok_or(CmdError::input("every potential needs a `name`"))?;
             if !names.insert(name.to_uppercase()) {
                 return Err(CmdError::refused(format!("potential {name} is listed twice")));
@@ -627,7 +627,7 @@ pub(crate) fn wire_settings(before: &ProjectSettings, change: &WireSettingsChang
             }
             rows.push(wiring::PotentialDef {
                 supply: r.supply,
-                prefix: wiring::valid_text("prefix", Some(r.prefix.trim())).map_err(CmdError::refused)?.unwrap_or_default(),
+                prefix: wiring::valid_text("prefix", Some(r.prefix.trim())).map_err(|e| CmdError::refused(e.to_string()))?.unwrap_or_default(),
                 numbered: r.numbered.unwrap_or(true),
                 name,
             });

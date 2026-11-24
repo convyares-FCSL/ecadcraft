@@ -28,9 +28,10 @@ fn doc_with(tags: &[(u128, &str)]) -> Document {
 fn run(a: &Document, t: &Document, s: &Document, scope: &Scope, choices: &BTreeMap<String, Choice>) -> Plan {
     let all = |_: &str| true;
     let high = HighWater::new();
-    let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
+    let rule =
+        |_: Obj, _: &str, v: &str| -> Result<String, RuleError> { if v.trim().is_empty() { Err("empty".into()) } else { Ok(v.trim().to_string()) } };
     // Two devices described "coil" cannot be one (a stand-in for the engine's rules).
-    let join = |d: &Document, from: DeviceId, into: DeviceId| -> Result<Vec<Op>, String> {
+    let join = |d: &Document, from: DeviceId, into: DeviceId| -> Result<Vec<Op>, RuleError> {
         let coil = |c: DeviceId| d.devices.get(&c).and_then(|x| x.description.as_ref()).is_some_and(|v| v.as_str() == "coil");
         if coil(from) && coil(into) {
             return Err("already has a coil.".into());

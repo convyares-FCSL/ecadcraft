@@ -85,7 +85,7 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
         ),
     ];
     for (l, want) in cases {
-        let e = l.check().unwrap_err();
+        let e = l.check().unwrap_err().to_string();
         assert!(e.contains(want), "{want}: {e}");
         let (usable, skipped) = l.usable();
         assert!(skipped.items >= 1 || !l.size_ok(), "{want}: something skipped");
@@ -95,7 +95,7 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
     let logo =
         || BlockItem::Logo { at: Rect::new(0.0, 0.0, 9.0, 5.0), name: String::new(), prims: vec![Primitive::Point { at: Pt::new(0.0, 0.0) }; 2000] };
     let l = TitleBlockLayout { size: (180.0, 40.0), items: vec![logo(), logo(), logo()] };
-    assert!(l.check().unwrap_err().contains("4 000 at most"));
+    assert!(l.check().unwrap_err().to_string().contains("4 000 at most"));
     assert_eq!(l.usable().0, vec![0, 1]);
 }
 

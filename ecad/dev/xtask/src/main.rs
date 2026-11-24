@@ -489,7 +489,7 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// font and colour come from its `TextKind`'s style. A hard zero.
 const DRAWN_TEXT_CRATES: &[&str] = &["ecad-engine", "ecad-electrical"];
 
-/// The engine's session command files and folders, for the `CmdError` ratchet.
+/// The engine's session command files and folders: they report errors as `CmdError`, never as text.
 const ENGINE_COMMAND_FILES: &[&str] = &[
     "crates/ecad-engine/src/cables/commands.rs",
     "crates/ecad-engine/src/commands",
@@ -588,30 +588,13 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Per crate, the lines that still report an error as text: `Result<_, String>` and
-/// `Err(format!(`. Each crate's two counts only fall as its errors move to its `thiserror` enum.
-/// A crate without an entry must have none (`ecad-file` and `ecad-store`, since batch 8); `xtask`
-/// is a tool.
-const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
-    ("ecad-app", 57, 6),
-    ("ecad-bench", 94, 22),
-    ("ecad-engine", 143, 35),
-    ("ecad-desktop", 3, 5),
-    ("ecad-electrical", 0, 0),
-    ("ecad-inspector", 5, 2),
-    ("ecad-mcp", 34, 10),
-    ("ecad-model", 6, 7),
+/// No library crate reports an error as text: no `Result<_, String>` and no `Err(format!(`. A hard
+/// zero, with two kinds of exception, each with its reason and no count: Programs and Dev crates (a
+/// program or tool may return text from `main`, or use `anyhow`), and the crates listed here.
+const STRING_ERROR_EXEMPT: &[(&str, &str)] = &[
+    ("ecad-engine", "its errors move to its error type next; its command files already hold none (ENGINE_COMMAND_FILES)"),
+    ("ecad-app", "its errors move to typed errors next"),
 ];
-
-/// The command files (`crates/ecad-engine/src/cmd`) on their own, as the crate rows.
-const CMD_STRING_ERRORS: (usize, usize) = (0, 0);
-
-/// The migration bridges `impl From<String> for CmdError` and `impl From<&'static str>
-/// for CmdError` in ecad-electrical: none left.
-const CMD_ERROR_BRIDGES: usize = 0;
-
-/// Crates [`string_error_violations`] does not count.
-const STRING_ERROR_SKIP: &[&str] = &["ecad-xtask"];
 
 /// The lines of `text` (outside `//` comments) with a `Result<_, String>`, and with an
 /// `Err(format!(`.
@@ -622,14 +605,15 @@ fn string_error_counts(text: &str) -> (usize, usize) {
     (results, formats)
 }
 
-/// [`STRING_ERROR_ALLOWLIST`] against the sources: a count that rose, fell (lower it) or a crate
-/// missing from the list.
+/// The text errors of every crate that neither [`STRING_ERROR_EXEMPT`] nor the Programs and Dev layers
+/// exempt, of the engine's command files, and of the `CmdError` bridges from text: all must be none.
 fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
+    const FIX: &str = "return a typed error: the crate's thiserror enum";
     let mut out = Vec::new();
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for (name, _, dir, _) in classed_packages(meta)? {
+    let packages = classed_packages(meta)?;
+    for (name, class, dir, _) in &packages {
         let Some(dir) = dir else { continue };
-        if STRING_ERROR_SKIP.contains(&name) {
+        if matches!(class, Class::Programs | Class::Dev | Class::Exempt) || STRING_ERROR_EXEMPT.iter().any(|(n, _)| n == name) {
             continue;
         }
         let mut files = Vec::new();
@@ -640,22 +624,13 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
             let (r, e) = string_error_counts(&text);
             (results, formats) = (results + r, formats + e);
         }
-        match STRING_ERROR_ALLOWLIST.iter().find(|(n, _, _)| *n == name) {
-            Some((n, r, e)) => {
-                seen.insert(n);
-                const FIX: &str = "return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool";
-                out.extend(ratchet_problem(n, results, *r, "lines with `Result<_, String>`", FIX));
-                out.extend(ratchet_problem(n, formats, *e, "lines with `Err(format!(`", FIX));
-            }
-            None if results + formats > 0 => {
-                out.push(format!("{name}: {results} lines with `Result<_, String>` and {formats} with `Err(format!(` but no entry in STRING_ERROR_ALLOWLIST; return a typed error: the crate's thiserror enum, or anyhow in a program or dev tool"));
-            }
-            None => {}
+        if results + formats > 0 {
+            out.push(format!("{name}: {results} lines with `Result<_, String>` and {formats} with `Err(format!(`; {FIX}"));
         }
     }
-    for (n, _, _) in STRING_ERROR_ALLOWLIST {
-        if !seen.contains(n) {
-            out.push(format!("{n}: in STRING_ERROR_ALLOWLIST but not a counted crate; remove the entry"));
+    for (n, _) in STRING_ERROR_EXEMPT {
+        if !packages.iter().any(|(name, ..)| name == n) {
+            out.push(format!("{n}: in STRING_ERROR_EXEMPT but not a workspace member; remove the entry"));
         }
     }
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
@@ -670,9 +645,7 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         }
         Ok(sum)
     };
-    const FIX: &str = "return CmdError";
-    // The engine's session command files (0.2.3: each in its feature folder, plus `commands/`).
-    let cmd = "ecad-engine commands";
+    let cmd = "ecad-engine command files";
     let (mut r, mut e) = (0, 0);
     for p in ENGINE_COMMAND_FILES {
         let path = root.join(p);
@@ -685,14 +658,17 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         r += a;
         e += b;
     }
-    out.extend(ratchet_problem(cmd, r, CMD_STRING_ERRORS.0, "lines with `Result<_, String>`", FIX));
-    out.extend(ratchet_problem(cmd, e, CMD_STRING_ERRORS.1, "lines with `Err(format!(`", FIX));
+    if r + e > 0 {
+        out.push(format!("{cmd}: {r} lines with `Result<_, String>` and {e} with `Err(format!(`; return CmdError"));
+    }
     let bridges = |t: &str| {
         let code = strip_line_comments(t);
         (code.lines().filter(|l| l.contains("impl From<String> for CmdError") || l.contains("impl From<&'static str> for CmdError")).count(), 0)
     };
     let (b, _) = count_in(&root.join("crates/ecad-electrical/src"), &bridges)?;
-    out.extend(ratchet_problem("ecad-electrical", b, CMD_ERROR_BRIDGES, "CmdError bridges from text", "return a CmdError variant"));
+    if b > 0 {
+        out.push(format!("ecad-electrical: {b} CmdError bridges from text; return a CmdError variant"));
+    }
     Ok(out)
 }
 

@@ -158,7 +158,7 @@ impl Wire {
             let value = if choice.eq_ignore_ascii_case("auto") || choice.is_empty() {
                 None
             } else {
-                Some(ecad_model::connectivity::wiring::valid_text("potential", Some(&choice)).map_err(other)?.unwrap_or_default())
+                Some(ecad_model::connectivity::wiring::valid_text("potential", Some(&choice)).map_err(|e| other(e.to_string()))?.unwrap_or_default())
             };
             on_project(s, |p, _, _| {
                 // A table name is written as the table spells it.

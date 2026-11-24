@@ -329,12 +329,12 @@ pub(crate) fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, 
             Some(d) => d,
             None => p.ledger.document(),
         };
-        let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::merge::edit_rule(target, obj, key, v).map_err(String::from);
+        let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::merge::edit_rule(target, obj, key, v).map_err(state::RuleError::from);
         // Make them one: the device merge, with fresh IDs from the project.
         let ids = std::cell::RefCell::new(&mut p.ids);
         let join = |d: &Document, from: ecad_model::DeviceId, into: ecad_model::DeviceId| {
             let mut ids = ids.borrow_mut();
-            ecad_electrical::devices::merge::plan_merge(d, &mut ids, from, into).map_err(String::from)
+            ecad_electrical::devices::merge::plan_merge(d, &mut ids, from, into).map_err(state::RuleError::from)
         };
         let inp = Inputs {
             ancestor: &prep.ancestor_doc,

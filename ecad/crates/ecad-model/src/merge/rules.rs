@@ -472,7 +472,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
         };
         let id = format!("rule/tag/{}", key.text);
         // Make them one: two devices or two cables, never a device and a cable.
-        let one: Result<Vec<Op>, String> = match (src, tgt) {
+        let one: Result<Vec<Op>, RuleError> = match (src, tgt) {
             (Holder::Device(a), Holder::Device(b)) => {
                 let d = indexed.get_or_insert_with(|| {
                     let mut x = m.clone();
@@ -487,15 +487,15 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
                     x.rebuild_index();
                     x
                 });
-                join_cables(d, a, b).map_err(String::from)
+                join_cables(d, a, b).map_err(RuleError::from)
             }
-            _ => Err(format!("{tag_text} is a cable on one side and a device on the other.")),
+            _ => Err(JoinError::CableAndDevice(tag_text.to_string()).into()),
         };
         let mut choices = vec![Choice::RenumberSource, Choice::RenumberTarget];
         match &one {
             Ok(_) => choices.push(Choice::MakeOne),
             Err(why) => {
-                ctx.unavailable.insert(id.clone(), why.clone());
+                ctx.unavailable.insert(id.clone(), why.to_string());
             }
         }
         let noun = match h {

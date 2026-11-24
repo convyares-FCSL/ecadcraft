@@ -27,8 +27,9 @@ const ALLOWED: &[(&str, usize)] = &[
     ("ecad-electrical", 175),
     ("ecad-engine", 24),
     ("ecad-file", 23),
-    // One of these (`FieldSource`) is reached by other crates only through `RatingField`'s field.
-    ("ecad-model", 60),
+    // Three of these (`FieldSource`, `LayoutError`, `ValueTextError`) are reached by other crates only through a
+    // field or a return value.
+    ("ecad-model", 62),
     ("ecad-store", 3),
     ("ecad-widgets", 33),
 ];

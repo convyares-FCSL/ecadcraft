@@ -63,7 +63,7 @@ pub fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
 /// # Errors
 /// A bound broken (an unknown item kind does not read).
 pub(crate) fn check_body(l: TitleBlockLayout) -> Result<TitleBlockLayout, CmdError> {
-    l.check().map_err(CmdError::refused)?;
+    l.check().map_err(|e| CmdError::refused(e.to_string()))?;
     Ok(l)
 }
 

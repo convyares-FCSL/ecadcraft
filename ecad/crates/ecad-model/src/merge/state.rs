@@ -253,10 +253,22 @@ pub struct Inputs<'a> {
     pub high: &'a HighWater,
     /// Checks a value typed in an Edit field as an ordinary edit of that object's property would:
     /// the value as stored, or why it is refused.
-    pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, String>,
+    pub edit_rule: &'a dyn Fn(Obj, &str, &str) -> Result<String, RuleError>,
     /// The ops making device `from` part of device `into` in a state (the device merge), or why
     /// they cannot be one (Make them one). The state's index is current.
-    pub join: &'a dyn Fn(&Document, DeviceId, DeviceId) -> Result<Vec<Op>, String>,
+    pub join: &'a dyn Fn(&Document, DeviceId, DeviceId) -> Result<Vec<Op>, RuleError>,
+}
+
+/// Why a rule the caller supplies ([`Inputs::edit_rule`], [`Inputs::join`]) refuses: the caller's own
+/// error (the electrical rules' refusal), kept as an error; the plan shows its words.
+pub type RuleError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Why two objects with the same tag cannot be made one, when the merge itself knows.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum JoinError {
+    /// The tag (`-W1`) is a cable on one side and a device on the other.
+    #[error("{0} is a cable on one side and a device on the other.")]
+    CableAndDevice(String),
 }
 
 /// How a kept object uses another one (what "leave it unconnected / remove what uses it" does).

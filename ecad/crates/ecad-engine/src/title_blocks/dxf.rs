@@ -256,7 +256,7 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::document::she
         return Err(format!("The drawing becomes {} items; a block holds {MAX_ITEMS} at most. Simplify it first.", items.len()));
     }
     let layout = TitleBlockLayout { size, items };
-    layout.check()?;
+    layout.check().map_err(|e| e.to_string())?;
     Ok((layout, r.skipped))
 }
 
@@ -303,7 +303,7 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
                     Some(BlockItem::Logo { prims: slot, .. }) => *slot = prims,
                     _ => return Err(format!("Item {n} is not a logo.")),
                 }
-                layout.check()?;
+                layout.check().map_err(|e| e.to_string())?;
                 if let ecad_model::objects::styles::StyleBody::Frame(f) = &mut after.body {
                     f.title_block = Some(layout);
                 }

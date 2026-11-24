@@ -374,7 +374,7 @@ impl Generic for PotentialParams {
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let value = match self.value.flatten() {
-            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(CmdError::refused)?,
+            Some(v) => wiring::valid_text("potential", Some(&v)).map_err(|e| CmdError::refused(e.to_string()))?,
             None => None,
         };
         let c = self.conductor;

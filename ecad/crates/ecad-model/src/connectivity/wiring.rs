@@ -744,16 +744,25 @@ pub fn valid_number(text: &str) -> Result<String, crate::ParseError> {
 /// empty clears (`None`).
 ///
 /// # Errors
-/// Too long, or a control character, in words.
-pub fn valid_text(what: &str, text: Option<&str>) -> Result<Option<String>, String> {
+/// Too long, or a control character ([`ValueTextError`]).
+pub fn valid_text(what: &'static str, text: Option<&str>) -> Result<Option<String>, ValueTextError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.chars().count() > MAX_VALUE_CHARS {
-        return Err(format!("A {what} is at most {MAX_VALUE_CHARS} characters."));
+        return Err(ValueTextError::TooLong { what });
     }
     if t.chars().any(char::is_control) {
-        return Err(format!("A {what} has no control characters."));
+        return Err(ValueTextError::Control { what });
     }
     Ok(Some(t.to_string()))
+}
+
+/// Why [`valid_text`] refuses a value; `what` names the value (`potential`, `prefix`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum ValueTextError {
+    #[error("A {what} is at most {MAX_VALUE_CHARS} characters.")]
+    TooLong { what: &'static str },
+    #[error("A {what} has no control characters.")]
+    Control { what: &'static str },
 }
 
 /// A conductor's label.

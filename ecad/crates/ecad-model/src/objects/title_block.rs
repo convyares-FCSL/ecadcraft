@@ -483,6 +483,21 @@ pub fn logo_words(n: usize) -> String {
     format!("The logo has {} shapes; {} at most. Simplify it first.", group(n), group(MAX_LOGO_PRIMS))
 }
 
+/// The bound of a title block a layout breaks ([`TitleBlockLayout::check`]).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum LayoutError {
+    #[error("A block is 1 to {MAX_COORD_MM} mm wide and 1 to {MAX_BLOCK_HEIGHT_MM} mm high.")]
+    Size,
+    #[error("A block holds at most {MAX_ITEMS} items; this one has {0}.")]
+    TooManyItems(usize),
+    /// Item `number` (from 1), of kind `word`, breaks its own bound.
+    #[error("Item {number} ({word}): {fault}")]
+    Item { number: usize, word: &'static str, fault: String },
+    /// The logos together have this many shapes.
+    #[error("The logos have {} shapes together; {} at most.", group(*.0), group(MAX_BODY_PRIMS))]
+    LogoShapes(usize),
+}
+
 /// `3400` → `3 400`.
 pub fn group(n: usize) -> String {
     let s = n.to_string();
@@ -544,25 +559,25 @@ impl TitleBlockLayout {
     /// Whether the block keeps every bound of a title block (size, text sizes, row counts).
     ///
     /// # Errors
-    /// The first bound broken, in words (commands refuse with it; nothing is written).
-    pub fn check(&self) -> Result<(), String> {
+    /// The first bound broken ([`LayoutError`]; commands refuse with it, nothing is written).
+    pub fn check(&self) -> Result<(), LayoutError> {
         if !self.size_ok() {
-            return Err(format!("A block is 1 to {MAX_COORD_MM} mm wide and 1 to {MAX_BLOCK_HEIGHT_MM} mm high."));
+            return Err(LayoutError::Size);
         }
         if self.items.len() > MAX_ITEMS {
-            return Err(format!("A block holds at most {MAX_ITEMS} items; this one has {}.", self.items.len()));
+            return Err(LayoutError::TooManyItems(self.items.len()));
         }
         let mut prims = 0usize;
         for (i, item) in self.items.iter().enumerate() {
-            if let Some(f) = item.fault() {
-                return Err(format!("Item {} ({}): {f}", i + 1, item.word()));
+            if let Some(fault) = item.fault() {
+                return Err(LayoutError::Item { number: i + 1, word: item.word(), fault });
             }
             if let BlockItem::Logo { prims: p, .. } = item {
                 prims += p.len();
             }
         }
         if prims > MAX_BODY_PRIMS {
-            return Err(format!("The logos have {} shapes together; {} at most.", group(prims), group(MAX_BODY_PRIMS)));
+            return Err(LayoutError::LogoShapes(prims));
         }
         Ok(())
     }
