@@ -147,12 +147,22 @@ impl Indicator {
 
 impl fmt::Display for Indicator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Indicator {
+    /// Its set rating fields as shown, each with its field word.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
         let signal = (self.signal != SignalType::Steady).then(|| self.signal.word().to_string());
-        let parts: Vec<String> =
-            [self.colour.map(|c| c.label().to_string()), signal, self.rated_voltage.map(|v| v.to_string()), self.power.map(load_power)]
-                .into_iter()
-                .flatten()
-                .collect();
-        f.write_str(&parts.join(", "))
+        [
+            ("colour", self.colour.map(|c| c.label().to_string())),
+            ("signal", signal),
+            ("voltage", self.rated_voltage.map(|v| v.to_string())),
+            ("power", self.power.map(load_power)),
+        ]
+        .into_iter()
+        .filter_map(|(w, v)| v.map(|v| (w, v)))
+        .collect()
     }
 }

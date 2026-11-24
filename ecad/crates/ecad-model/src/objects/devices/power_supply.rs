@@ -172,13 +172,24 @@ fn voltages(input: Option<RatedVoltage>, output: Option<RatedVoltage>, dc_output
 
 impl fmt::Display for PowerSupply {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let parts: Vec<String> = match self {
-            PowerSupply::Psu(p) => [voltages(p.input, p.output, true), p.output_current.map(|a| a.to_string()), p.output_power.map(load_power)]
-                .into_iter()
-                .flatten()
-                .collect(),
-            PowerSupply::Transformer(t) => [voltages(t.input, t.output, false), t.rated_power.map(volt_amps)].into_iter().flatten().collect(),
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl PowerSupply {
+    /// Its set rating fields as shown, each with its field word (`voltages`: input and output, one
+    /// part), in the order [`fmt::Display`] writes them.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        let fields = match self {
+            PowerSupply::Psu(p) => [
+                ("voltages", voltages(p.input, p.output, true)),
+                ("current", p.output_current.map(|a| a.to_string())),
+                ("power", p.output_power.map(load_power)),
+            ],
+            PowerSupply::Transformer(t) => {
+                [("voltages", voltages(t.input, t.output, false)), ("current", None), ("power", t.rated_power.map(volt_amps))]
+            }
         };
-        f.write_str(&parts.join(", "))
+        fields.into_iter().filter_map(|(w, v)| v.map(|v| (w, v))).collect()
     }
 }

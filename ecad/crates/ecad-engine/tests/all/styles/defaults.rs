@@ -15,8 +15,22 @@ use serde_json::{Value, json};
 const SEED: u64 = 42;
 
 /// A valid value for `entry` that is not its built-in, as typed (`None` for a one-word choice).
+/// The device group whose rating-line template `key` is.
+fn template_group(key: &str) -> Option<ecad_model::objects::devices::DeviceGroup> {
+    use ecad_model::Word;
+    let w = key.strip_prefix("rating.template.")?;
+    <ecad_model::objects::devices::DeviceGroup as Word>::ALL.iter().copied().find(|g| g.word() == w)
+}
+
 fn other_value(e: &Entry) -> Option<String> {
     let builtin = ecad_model::registry::Resolved { value: e.builtin(), from: Source::Builtin }.text();
+    // A rating-line template: its group's fields in reverse order (a group with one field has only
+    // its built-in template).
+    if let Some(g) = template_group(e.key) {
+        let words: Vec<&str> = g.rating_fields().iter().rev().map(|f| f.word).collect();
+        let v = words.join(", ");
+        return (e.parse(&v).is_some() && v != builtin).then_some(v);
+    }
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
@@ -106,7 +120,12 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             // only its built-in exists.
             // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
             let single = |c: &ecad_model::registry::styles::Catalogue| c.builtins.len() <= 1;
-            assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
+            let one_field = template_group(e.key).is_some_and(|g| g.rating_fields().len() == 1);
+            assert!(
+                matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)) || one_field,
+                "{}: no test value",
+                e.key
+            );
             continue;
         };
         let stored = ecad_electrical::styles::commands::defaults::json_stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));

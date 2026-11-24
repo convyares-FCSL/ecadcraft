@@ -64,9 +64,13 @@ impl Load {
 
 impl fmt::Display for Load {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(w) = self.rated_power {
-            f.write_str(&load_power(w))?;
-        }
-        Ok(())
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Load {
+    /// Its set rating fields as shown, each with its field word.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        self.rated_power.map(|w| ("power", load_power(w))).into_iter().collect()
     }
 }

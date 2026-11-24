@@ -13,6 +13,9 @@
 //!   with the typed fields left empty, so nothing typed is lost.
 //! - What was read is shown back from the fields (the group's `Display`),
 //!   and reading that text again gives the same fields.
+//! - The rating line on the drawing ([`line`]) shows the fields the group's template names
+//!   (`rating.template.<group>`, by default the plate and design fields), in its order; answers
+//!   and the stored text keep every field.
 //!
 //! This module excludes the checks on a rating (the Checks rows read only the typed fields).
 #![deny(clippy::wildcard_enum_match_arm)]
@@ -506,6 +509,18 @@ pub(crate) fn with_position_rating(
         }
     }
     Ok(Device { device_type: DeviceType::TerminalStrip(strip), ..d.clone() })
+}
+
+/// Device `d`'s rating line on the drawing: its set fields that the project's template for its group
+/// names (`rating.template.<group>`), in that order; its note when no rating field is set.
+pub fn line(doc: &ecad_model::Document, d: &Device) -> Option<String> {
+    let Some(entry) = crate::defaults::rating::template_entry(d.device_type.group()) else { return d.rating_shown() };
+    if d.device_type.rating().is_none() {
+        return d.rating_note.as_ref().map(ToString::to_string);
+    }
+    let text = ecad_model::registry::resolve(doc, entry, ecad_model::registry::Scope::project()).text();
+    let words = crate::defaults::rating::template_words(d.device_type.group(), &text).unwrap_or_else(|| d.device_type.group().default_template());
+    d.device_type.rating_line(&words)
 }
 
 /// What a command that set `key` on `d` says it read: `Read: curve B, 16 A.`, or that the text

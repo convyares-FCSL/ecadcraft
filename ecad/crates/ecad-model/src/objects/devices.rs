@@ -37,7 +37,81 @@ crate::word_enum! {
     }
 }
 
+/// Where a rating field's value comes from: what decides whether the rating line on the drawing shows
+/// it by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldSource {
+    /// The nameplate: shown by default.
+    Plate,
+    /// How the device is used in this design (a motor's starting, a lamp's flashing): shown by
+    /// default.
+    Design,
+    /// The datasheet: kept, not shown unless the template adds it.
+    Datasheet,
+}
+
+/// One field of a group's rating line: its word in a template and where its value comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RatingField {
+    pub word: &'static str,
+    pub source: FieldSource,
+}
+
+/// `parts`' texts joined by `, `.
+pub(crate) fn join_parts(parts: &[(&str, String)]) -> String {
+    parts.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>().join(", ")
+}
+
 impl DeviceGroup {
+    /// The fields its rating line can show, in their default order; empty for a group with no
+    /// rating line.
+    pub fn rating_fields(self) -> &'static [RatingField] {
+        match self {
+            DeviceGroup::PowerSupply => &[
+                RatingField { word: "voltages", source: FieldSource::Plate },
+                RatingField { word: "current", source: FieldSource::Plate },
+                RatingField { word: "power", source: FieldSource::Plate },
+            ],
+            DeviceGroup::Protection => &[
+                RatingField { word: "curve", source: FieldSource::Plate },
+                RatingField { word: "current", source: FieldSource::Plate },
+                RatingField { word: "class", source: FieldSource::Plate },
+                RatingField { word: "residual", source: FieldSource::Plate },
+                RatingField { word: "breaking", source: FieldSource::Plate },
+                RatingField { word: "poles", source: FieldSource::Plate },
+                RatingField { word: "outputs", source: FieldSource::Plate },
+            ],
+            DeviceGroup::Switching => &[
+                RatingField { word: "control", source: FieldSource::Plate },
+                RatingField { word: "ac3_current", source: FieldSource::Plate },
+                RatingField { word: "ac3_power", source: FieldSource::Plate },
+            ],
+            DeviceGroup::Sensor => &[RatingField { word: "supply", source: FieldSource::Plate }],
+            DeviceGroup::Motor => &[
+                RatingField { word: "power", source: FieldSource::Plate },
+                RatingField { word: "voltage", source: FieldSource::Plate },
+                RatingField { word: "current", source: FieldSource::Plate },
+                RatingField { word: "frequency", source: FieldSource::Plate },
+                RatingField { word: "power_factor", source: FieldSource::Plate },
+                RatingField { word: "efficiency", source: FieldSource::Plate },
+                RatingField { word: "starting", source: FieldSource::Design },
+            ],
+            DeviceGroup::Load => &[RatingField { word: "power", source: FieldSource::Plate }],
+            DeviceGroup::Indicator => &[
+                RatingField { word: "colour", source: FieldSource::Plate },
+                RatingField { word: "signal", source: FieldSource::Design },
+                RatingField { word: "voltage", source: FieldSource::Plate },
+                RatingField { word: "power", source: FieldSource::Plate },
+            ],
+            DeviceGroup::TerminalStrip | DeviceGroup::Connector | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => &[],
+        }
+    }
+
+    /// The fields its rating line shows by default: the plate and design fields, in order.
+    pub fn default_template(self) -> Vec<&'static str> {
+        self.rating_fields().iter().filter(|f| f.source != FieldSource::Datasheet).map(|f| f.word).collect()
+    }
+
     /// The group's name as a person reads it (`Power supply`).
     pub fn label(self) -> &'static str {
         match self {
@@ -153,6 +227,31 @@ impl DeviceType {
                 false
             }
         }
+    }
+
+    /// Its set rating fields as shown, each with its field word ([`DeviceGroup::rating_fields`]),
+    /// in the order [`DeviceType::rating`] writes them.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        match self {
+            DeviceType::Protection(p) => p.rating_parts(),
+            DeviceType::Switching(s) => s.rating_parts(),
+            DeviceType::Sensor(s) => s.rating_parts(),
+            DeviceType::Motor(m) => m.rating_parts(),
+            DeviceType::Load(l) => l.rating_parts(),
+            DeviceType::Indicator(i) => i.rating_parts(),
+            DeviceType::PowerSupply(p) => p.rating_parts(),
+            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
+                Vec::new()
+            }
+        }
+    }
+
+    /// Its rating line by a template: the set fields named by `words`, in that order, joined by
+    /// `, `; `None` when none of them is set. A word the group has no field for shows nothing.
+    pub fn rating_line(&self, words: &[&str]) -> Option<String> {
+        let parts = self.rating_parts();
+        let shown: Vec<(&str, String)> = words.iter().filter_map(|w| parts.iter().find(|(p, _)| p == w)).map(|(w, v)| (*w, v.clone())).collect();
+        (!shown.is_empty()).then(|| join_parts(&shown))
     }
 
     /// Its typed rating as shown (`curve B, 16 A`), when a rating field is set.

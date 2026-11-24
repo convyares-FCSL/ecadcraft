@@ -178,6 +178,15 @@ pub(crate) fn motor_power(w: Watts) -> String {
 
 impl fmt::Display for Switching {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Switching {
+    /// Its set rating fields as shown, each with its field word (`control`: the coil or input
+    /// voltage and power, one part), in the order [`fmt::Display`] writes them.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        let mut out: Vec<(&'static str, String)> = Vec::new();
         let mut parts: Vec<String> = Vec::new();
         let word = match self.operator {
             Operator::Coil(_) => "coil",
@@ -191,12 +200,15 @@ impl fmt::Display for Switching {
                 first = false;
             }
         }
+        if !parts.is_empty() {
+            out.push(("control", parts.join(", ")));
+        }
         if let Some(a) = self.ac3_current {
-            parts.push(format!("AC-3 {a}"));
+            out.push(("ac3_current", format!("AC-3 {a}")));
         }
         if let Some(w) = self.ac3_power {
-            parts.push(motor_power(w));
+            out.push(("ac3_power", motor_power(w)));
         }
-        f.write_str(&parts.join(", "))
+        out
     }
 }

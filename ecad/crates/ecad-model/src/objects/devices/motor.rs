@@ -161,18 +161,25 @@ impl Motor {
 
 impl fmt::Display for Motor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let parts: Vec<String> = [
-            self.rated_power.map(motor_power),
-            self.rated_voltage.map(|v| v.to_string()),
-            self.rated_current.map(|a| a.to_string()),
-            self.rated_frequency.map(|f| f.to_string()),
-            self.power_factor.map(|p| format!("cos φ {p}")),
-            self.efficiency.map(|e| format!("eff {e}")),
-            self.starting.map(|s| s.label().to_string()),
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Motor {
+    /// Its set rating fields as shown, each with its field word, in the order [`fmt::Display`]
+    /// writes them.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        [
+            ("power", self.rated_power.map(motor_power)),
+            ("voltage", self.rated_voltage.map(|v| v.to_string())),
+            ("current", self.rated_current.map(|a| a.to_string())),
+            ("frequency", self.rated_frequency.map(|f| f.to_string())),
+            ("power_factor", self.power_factor.map(|p| format!("cos φ {p}"))),
+            ("efficiency", self.efficiency.map(|e| format!("eff {e}"))),
+            ("starting", self.starting.map(|s| s.label().to_string())),
         ]
         .into_iter()
-        .flatten()
-        .collect();
-        f.write_str(&parts.join(", "))
+        .filter_map(|(w, v)| v.map(|v| (w, v)))
+        .collect()
     }
 }

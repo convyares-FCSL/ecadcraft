@@ -184,6 +184,32 @@ and Checks shows "no rating"). Nobody has tried it by hand yet.
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector, and
 `rating::reader` in ecad-electrical (automated, not tried by hand).
 
+#### The rating line on the drawing
+
+The rating a symbol draws is made from the typed fields by its group's **rating line template**:
+which fields show, and in what order. Each group has one (Standards ▸ Defaults ▸ Rating,
+`rating.template.<group>`, at the standard or the project level): a list of field words,
+separated by commas. Built in, it shows the nameplate fields and the ones that say how the device
+is used here (a motor's starting, a lamp's flashing); a field taken from a datasheet is kept but
+shows only when a template adds it. A device with no typed rating draws its note.
+
+| Group | Field words (built-in order) |
+| --- | --- |
+| `power_supply` | `voltages`, `current`, `power` |
+| `protection` | `curve`, `current`, `class`, `residual`, `breaking`, `poles`, `outputs` |
+| `switching` | `control`, `ac3_current`, `ac3_power` |
+| `sensor` | `supply` |
+| `motor` | `power`, `voltage`, `current`, `frequency`, `power_factor`, `efficiency`, `starting` |
+| `load` | `power` |
+| `indicator` | `colour`, `signal`, `voltage`, `power` |
+
+`setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
+every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;
+the Properties panel, answers and reports keep every field. A word the group has no field for, or
+a word given twice, is refused.
+
+Tests: `devices::rating_line` in ecad-engine (automated, not tried by hand).
+
 ### Lane B, step 3: switching devices' ratings are typed
 
 A switching device (relay, contactor, SSR, push button, selector) now says what operates it, from

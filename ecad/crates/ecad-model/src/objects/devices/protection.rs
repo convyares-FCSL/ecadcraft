@@ -194,14 +194,43 @@ impl Protection {
 
 impl fmt::Display for Protection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Protection {
+    /// Its set rating fields as shown, each with its field word, in the order [`fmt::Display`]
+    /// writes them.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
         match self {
-            Protection::Fuse(x) | Protection::FuseTerminalBlock(x) => x.fmt(f),
-            Protection::Mcb(x) => x.fmt(f),
-            Protection::Rcd(x) => x.fmt(f),
-            Protection::Rcbo(x) => x.fmt(f),
-            Protection::FuseBank(x) => x.fmt(f),
+            Protection::Fuse(x) | Protection::FuseTerminalBlock(x) => {
+                parts(&[("current", show(x.rated_current)), ("class", x.class.map(|c| c.label().to_string())), ("breaking", show(x.breaking))])
+            }
+            Protection::Mcb(x) => parts(&[
+                ("curve", curve_words(x.curve)),
+                ("current", show(x.rated_current)),
+                ("breaking", show(x.breaking)),
+                ("poles", x.poles.map(|p| p.label().to_string())),
+            ]),
+            Protection::Rcd(x) => {
+                parts(&[("current", show(x.rated_current)), ("residual", show(x.residual)), ("poles", x.poles.map(|p| p.label().to_string()))])
+            }
+            Protection::Rcbo(x) => parts(&[
+                ("curve", curve_words(x.curve)),
+                ("current", show(x.rated_current)),
+                ("residual", show(x.residual)),
+                ("breaking", show(x.breaking)),
+                ("poles", x.poles.map(|p| p.label().to_string())),
+            ]),
+            // Each rated output: `1: 4 A; 2: 6.3 A, T`, one part.
+            Protection::FuseBank(x) => parts(&[("outputs", Some(x.to_string()).filter(|s| !s.is_empty()))]),
         }
     }
+}
+
+/// The set ones of `fields`, with their words.
+fn parts(fields: &[(&'static str, Option<String>)]) -> Vec<(&'static str, String)> {
+    fields.iter().filter_map(|(w, v)| v.clone().map(|v| (*w, v))).collect()
 }
 
 /// Writes `parts` joined by `, `.

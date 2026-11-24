@@ -6,6 +6,8 @@
 use ecad_model::registry::data::Slot;
 use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
 
+use ecad_model::objects::devices::DeviceGroup;
+
 ecad_model::word_enum! {
     /// The supply system a rating is checked for.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +49,91 @@ pub static VD_LIMIT: Entry = entry("rating.vd_limit", "Volt-drop limit (%)", Kin
 /// How far a motor's rated voltage may be from its supply's before Checks flags it.
 pub(crate) static SUPPLY_TOLERANCE: Entry = entry("rating.supply_tolerance", "Motor voltage tolerance (%)", Kind::Number { min: 0.0, max: 50.0 });
 
+/// The field words of a rating-line template for `group`: words of its fields, separated by
+/// commas, each once, in the order shown; `None` when one is not a field of the group.
+pub(crate) fn template_words(group: DeviceGroup, text: &str) -> Option<Vec<&'static str>> {
+    let fields: &[ecad_model::objects::devices::RatingField] = group.rating_fields();
+    let mut out: Vec<&'static str> = Vec::new();
+    for w in text.split(',').map(str::trim) {
+        let f = fields.iter().find(|f| f.word.eq_ignore_ascii_case(w))?;
+        if out.contains(&f.word) {
+            return None;
+        }
+        out.push(f.word);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+fn template_power_supply(s: &str) -> bool {
+    template_words(DeviceGroup::PowerSupply, s).is_some()
+}
+fn template_protection(s: &str) -> bool {
+    template_words(DeviceGroup::Protection, s).is_some()
+}
+fn template_switching(s: &str) -> bool {
+    template_words(DeviceGroup::Switching, s).is_some()
+}
+fn template_sensor(s: &str) -> bool {
+    template_words(DeviceGroup::Sensor, s).is_some()
+}
+fn template_motor(s: &str) -> bool {
+    template_words(DeviceGroup::Motor, s).is_some()
+}
+fn template_load(s: &str) -> bool {
+    template_words(DeviceGroup::Load, s).is_some()
+}
+fn template_indicator(s: &str) -> bool {
+    template_words(DeviceGroup::Indicator, s).is_some()
+}
+
+// The rating line on the drawing: which of a group's fields it shows, in order. Built in: the
+// plate and design fields; a datasheet field shows when a template adds it.
+pub(crate) static TEMPLATE_POWER_SUPPLY: Entry =
+    entry("rating.template.power_supply", "Rating line: power supply", Kind::Parsed { max_chars: 200, parse: template_power_supply });
+pub(crate) static TEMPLATE_PROTECTION: Entry =
+    entry("rating.template.protection", "Rating line: protection", Kind::Parsed { max_chars: 200, parse: template_protection });
+pub(crate) static TEMPLATE_SWITCHING: Entry =
+    entry("rating.template.switching", "Rating line: switching device", Kind::Parsed { max_chars: 200, parse: template_switching });
+pub(crate) static TEMPLATE_SENSOR: Entry =
+    entry("rating.template.sensor", "Rating line: sensor", Kind::Parsed { max_chars: 200, parse: template_sensor });
+pub(crate) static TEMPLATE_MOTOR: Entry =
+    entry("rating.template.motor", "Rating line: motor", Kind::Parsed { max_chars: 200, parse: template_motor });
+pub(crate) static TEMPLATE_LOAD: Entry = entry("rating.template.load", "Rating line: load", Kind::Parsed { max_chars: 200, parse: template_load });
+pub(crate) static TEMPLATE_INDICATOR: Entry =
+    entry("rating.template.indicator", "Rating line: indicator", Kind::Parsed { max_chars: 200, parse: template_indicator });
+
+/// The template entry of `group`, when its devices have a rating line.
+pub(crate) fn template_entry(group: DeviceGroup) -> Option<&'static Entry> {
+    match group {
+        DeviceGroup::PowerSupply => Some(&TEMPLATE_POWER_SUPPLY),
+        DeviceGroup::Protection => Some(&TEMPLATE_PROTECTION),
+        DeviceGroup::Switching => Some(&TEMPLATE_SWITCHING),
+        DeviceGroup::Sensor => Some(&TEMPLATE_SENSOR),
+        DeviceGroup::Motor => Some(&TEMPLATE_MOTOR),
+        DeviceGroup::Load => Some(&TEMPLATE_LOAD),
+        DeviceGroup::Indicator => Some(&TEMPLATE_INDICATOR),
+        DeviceGroup::TerminalStrip | DeviceGroup::Connector | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => None,
+    }
+}
+
 /// Every entry of this file, in the order Standards ▸ Defaults lists them.
-pub static ENTRIES: &[&Entry] =
-    &[&WIRE_BASIS, &CABLE_BASIS, &PANEL_TEMPERATURE, &AMBIENT, &TABLE, &BUNDLING, &METHOD, &VOLTAGE, &SYSTEM, &VD_LIMIT, &SUPPLY_TOLERANCE];
+pub static ENTRIES: &[&Entry] = &[
+    &WIRE_BASIS,
+    &CABLE_BASIS,
+    &PANEL_TEMPERATURE,
+    &AMBIENT,
+    &TABLE,
+    &BUNDLING,
+    &METHOD,
+    &VOLTAGE,
+    &SYSTEM,
+    &VD_LIMIT,
+    &SUPPLY_TOLERANCE,
+    &TEMPLATE_POWER_SUPPLY,
+    &TEMPLATE_PROTECTION,
+    &TEMPLATE_SWITCHING,
+    &TEMPLATE_SENSOR,
+    &TEMPLATE_MOTOR,
+    &TEMPLATE_LOAD,
+    &TEMPLATE_INDICATOR,
+];

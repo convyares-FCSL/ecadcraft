@@ -416,12 +416,15 @@ fn slot_texts(
             }
             SlotText::Description => (TextOf::Description, TextKind::Description, prop("description"), None),
             SlotText::PartNumber => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
-            other @ (SlotText::Rating
-            | SlotText::Maker
-            | SlotText::ArticleNumber
-            | SlotText::Function
-            | SlotText::Location
-            | SlotText::PointRating(_)) => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(&other.word()), None),
+            SlotText::Rating => (
+                TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)),
+                TextKind::Description,
+                device.and_then(|d| crate::devices::ratings::line(doc, d)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                None,
+            ),
+            other @ (SlotText::Maker | SlotText::ArticleNumber | SlotText::Function | SlotText::Location | SlotText::PointRating(_)) => {
+                (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(&other.word()), None)
+            }
         };
         let Some(value) = value else { continue };
         let style = m.text_style(doc, kind);

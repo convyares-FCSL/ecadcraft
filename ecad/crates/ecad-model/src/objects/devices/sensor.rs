@@ -137,9 +137,13 @@ impl Sensor {
 
 impl fmt::Display for Sensor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.supply {
-            Some(v) => write!(f, "{v}"),
-            None => Ok(()),
-        }
+        f.write_str(&super::join_parts(&self.rating_parts()))
+    }
+}
+
+impl Sensor {
+    /// Its set rating fields as shown, each with its field word.
+    pub fn rating_parts(&self) -> Vec<(&'static str, String)> {
+        self.supply.map(|v| ("supply", v.to_string())).into_iter().collect()
     }
 }

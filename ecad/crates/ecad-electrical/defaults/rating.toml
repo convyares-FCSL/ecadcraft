@@ -16,3 +16,10 @@
 "rating.system" = "ac3"
 "rating.vd_limit" = 5.0
 "rating.supply_tolerance" = 5.0
+"rating.template.power_supply" = "voltages, current, power"
+"rating.template.protection" = "curve, current, class, residual, breaking, poles, outputs"
+"rating.template.switching" = "control, ac3_current, ac3_power"
+"rating.template.sensor" = "supply"
+"rating.template.motor" = "power, voltage, current, frequency, power_factor, efficiency, starting"
+"rating.template.load" = "power"
+"rating.template.indicator" = "colour, signal, voltage, power"
