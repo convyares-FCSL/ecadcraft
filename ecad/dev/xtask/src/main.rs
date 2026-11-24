@@ -8,8 +8,7 @@
 //!   crate depends on one except through its own `dev` feature, dev features are read only in a
 //!   crate's `dev` module, and no product source reads a file under `dev/`. ECAD's interface kit
 //!   (class UiKit) uses egui and the drawing style only, and ECAD UI sources do not
-//!   style locally. Literal sizes in ECAD UI
-//!   sources are ratcheted: their allowlisted counts only fall. Core crates other than
+//!   style locally. Core crates other than
 //!   `ecad-store` reach no OS (file system, environment, processes, network, clock). The crate
 //!   rules: `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere, `rayon` only where
 //!   the work is. Every workspace member has a README with the standard sections.
@@ -124,17 +123,21 @@ const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 /// Features whose code lives only in a crate's `dev` module.
 const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops"];
 
-/// Files that still read a dev feature outside their crate's `dev` module, with the brief that
-/// will move the code. This list only shrinks: an entry whose file no longer
-/// needs it fails `layers`, and a new place is a violation.
-const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
-    ("crates/ecad-engine/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/properties/forms/mod.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
-];
+/// The engine files that read a dev feature outside its `dev` module, and why: the fault-injection and
+/// test-ops hooks sit inside the write and access paths they break or open, so a test exercises the
+/// real path. One area, no counts: a file listed here that no longer reads one fails `layers`, and any
+/// other file that does is a violation.
+const DEV_FEATURE_HOOKS: (&[&str], &str) = (
+    &[
+        "crates/ecad-engine/src/access.rs",
+        "crates/ecad-engine/src/properties/forms/mod.rs",
+        "crates/ecad-engine/src/lib.rs",
+        "crates/ecad-engine/src/project/changes.rs",
+        "crates/ecad-engine/src/project/owner.rs",
+        "crates/ecad-engine/src/project/persistence.rs",
+    ],
+    "fault-injection and test-ops hooks inside the paths they test",
+);
 
 /// Styling written in place, which ECAD UI code may no longer use: colours, sizes and fonts come from the tokens of `ecad-widgets`.
 /// `Tokens::get` reads CADCraft's theme colours directly; the `from_rgba` entries cover every RGBA
@@ -163,72 +166,23 @@ const LOCAL_STYLE: &[&str] = &[
 /// anything the person can change looks editable and a read value never looks like an input.
 const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 
-/// ECAD UI files that still use raw egui value controls ([`RAW_CONTROL`]): the number of lines
-/// that do, and why. The counts only fall, and a file not listed that
-/// uses one is a violation.
-const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/developer/mod.rs", 5, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/style_catalogues.rs", 3, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/pages/project_panel.rs", 6, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/publish/mod.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/library/search.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/inspector/mod.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
-    ("crates/ecad-app/src/settings/text_styles.rs", 4, "hand-rolled: convert to ecad_widgets::control"),
-];
-
-/// Sizes written as literals in ECAD UI code: a stroke width,
-/// a space or a size that starts with a digit, where `ecad-widgets::tokens` has (or will have) a token
-/// (`line::HAIRLINE_PX`, `space::XS`, …). Matched as the call followed directly by a digit.
-const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
-
-/// ECAD UI files with literal sizes ([`LITERAL_SIZE`]): the number of lines that have one. The counts only fall, and a file not
-/// listed that has one is a violation.
-const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
-    ("crates/ecad-app/src/agent/last_write.rs", 1),
-    ("crates/ecad-app/src/canvas/leader.rs", 1),
-    ("crates/ecad-app/src/canvas/markers.rs", 5),
-    ("crates/ecad-app/src/devices/panel.rs", 9),
-    ("crates/ecad-app/src/history/panel.rs", 23),
-    ("crates/ecad-app/src/library/browser.rs", 7),
-    ("crates/ecad-app/src/library/builder.rs", 18),
-    ("crates/ecad-app/src/library/details.rs", 6),
-    ("crates/ecad-app/src/library/review.rs", 1),
-    ("crates/ecad-app/src/title_blocks/canvas.rs", 25),
-    ("crates/ecad-app/src/title_blocks/frame_popover.rs", 3),
-    ("crates/ecad-app/src/title_blocks/list.rs", 7),
-    ("crates/ecad-app/src/cables/view.rs", 7),
-    ("crates/ecad-app/src/workspace/frame.rs", 1),
-    ("crates/ecad-app/src/pages/preview.rs", 5),
-    ("crates/ecad-app/src/pages/project_panel.rs", 20),
-    ("crates/ecad-app/src/publish/mod.rs", 11),
-    ("crates/ecad-app/src/settings/mod.rs", 7),
-    ("crates/ecad-app/src/settings/pages.rs", 16),
-    ("crates/ecad-app/src/settings/project.rs", 1),
-    ("crates/ecad-app/src/settings/standards.rs", 3),
-    ("crates/ecad-app/src/shell/conflicts.rs", 1),
-    ("crates/ecad-app/src/shell/connector.rs", 2),
-    ("crates/ecad-app/src/shell/glyphs.rs", 11),
-    ("crates/ecad-app/src/shell/intent.rs", 1),
-    ("crates/ecad-app/src/shell/left.rs", 1),
-    ("crates/ecad-app/src/shell/new_page.rs", 3),
-    ("crates/ecad-app/src/shell/placing.rs", 2),
-    ("crates/ecad-app/src/inspector/mod.rs", 1),
-    ("crates/ecad-app/src/inspector/checks_tab.rs", 5),
-    ("crates/ecad-app/src/inspector/device.rs", 1),
-    ("crates/ecad-app/src/inspector/layout_tab.rs", 8),
-    ("crates/ecad-app/src/inspector/placing_view.rs", 4),
-    ("crates/ecad-app/src/inspector/widgets.rs", 10),
-    ("crates/ecad-app/src/shell/status_bar.rs", 14),
-    ("crates/ecad-app/src/shell/table_editor.rs", 1),
-    ("crates/ecad-app/src/shell/tool_strip.rs", 2),
-    ("crates/ecad-app/src/shell/top_bar.rs", 11),
-    ("apps/ecad-desktop/src/window.rs", 9),
+/// ECAD UI files that still use raw egui value controls ([`RAW_CONTROL`]): panels made before the
+/// components, converted to `ecad_widgets::control` in a later pass. No counts: a listed file may keep
+/// its controls, any other file may not, and a listed file that has none left fails until it is removed.
+const RAW_CONTROL_FILES: &[&str] = &[
+    "crates/ecad-app/src/developer/mod.rs",
+    "crates/ecad-app/src/library/builder.rs",
+    "crates/ecad-app/src/library/details.rs",
+    "crates/ecad-app/src/settings/style_catalogues.rs",
+    "crates/ecad-app/src/pages/project_panel.rs",
+    "crates/ecad-app/src/publish/mod.rs",
+    "crates/ecad-app/src/library/search.rs",
+    "crates/ecad-app/src/settings/project.rs",
+    "crates/ecad-app/src/settings/standards.rs",
+    "crates/ecad-app/src/shell/placing.rs",
+    "crates/ecad-app/src/inspector/layout_tab.rs",
+    "crates/ecad-app/src/inspector/mod.rs",
+    "crates/ecad-app/src/settings/text_styles.rs",
 ];
 
 /// Paths a layer's sources (`src/`, outside `//` comments) must not name, each matched where it
@@ -554,63 +508,23 @@ const ENGINE_COMMAND_FILES: &[&str] = &[
     "crates/ecad-engine/src/generic.rs",
 ];
 
-/// Paths (fragments of a file's path under the workspace) where literal text styling is allowed,
-/// each with why: the styles, their engine half (fonts and CADCraft styles) and their data define
-/// the sizes; symbol definitions and builders draw
-/// glyph text as line art in symbol units; screen-only overlays (`interact/`)
-/// are sized in pixels; an imported title block keeps the user's own sizes; commands
-/// draw nothing.
+/// Where literal text styling is allowed, as fragments of a file's path under the workspace:
+/// the styles and their data define the sizes (`/styles/`, `/defaults/`); symbol definitions draw
+/// glyph text as line art in symbol units; screen-only overlays (`interact`, the pointer, the
+/// property forms) are sized in pixels; an imported title block keeps the user's own sizes; commands
+/// (every `commands` file or folder, and the generic runner) draw nothing.
 const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "/styles/",
     "/defaults/",
-    "ecad-electrical/src/styles/text_style",
-    "ecad-engine/src/styles/draw.rs",
-    "ecad-electrical/src/symbols",
+    "ecad-electrical/src/symbols/",
     "ecad-engine/src/pointer/",
     "ecad-engine/src/properties/forms/",
-    "ecad-engine/src/connectors/interact.rs",
-    "ecad-engine/src/continuations/interact.rs",
-    "ecad-engine/src/devices/interact.rs",
-    "ecad-engine/src/locations/interact.rs",
-    "ecad-engine/src/references/interact/",
-    "ecad-engine/src/reports/interact.rs",
-    "ecad-engine/src/styles/interact.rs",
-    "ecad-engine/src/terminal_strips/interact/",
-    "ecad-engine/src/wires/interact.rs",
+    "/interact/",
+    "/interact.rs",
     "ecad-engine/src/title_blocks/dxf.rs",
-    "ecad-engine/src/cables/commands.rs",
-    "ecad-engine/src/commands/",
-    "ecad-engine/src/connectors/commands.rs",
-    "ecad-engine/src/devices/commands.rs",
-    "ecad-engine/src/pages/commands/",
-    "ecad-engine/src/plc/commands/",
-    "ecad-engine/src/references/commands/",
-    "ecad-engine/src/releases/commands.rs",
-    "ecad-engine/src/reports/commands.rs",
-    "ecad-engine/src/styles/commands.rs",
-    "ecad-engine/src/symbols/commands.rs",
-    "ecad-engine/src/terminal_strips/commands.rs",
-    "ecad-engine/src/title_blocks/commands.rs",
-    "ecad-engine/src/wires/commands.rs",
+    "/commands/",
+    "/commands.rs",
     "ecad-engine/src/generic.rs",
-    "ecad-electrical/src/cables/commands/",
-    "ecad-electrical/src/circuits/commands.rs",
-    "ecad-electrical/src/commands/",
-    "ecad-electrical/src/connectors/commands.rs",
-    "ecad-electrical/src/continuations/commands.rs",
-    "ecad-electrical/src/devices/commands/",
-    "ecad-electrical/src/locations/commands/",
-    "ecad-electrical/src/numbering/commands.rs",
-    "ecad-electrical/src/pages/commands/",
-    "ecad-electrical/src/plc/commands/",
-    "ecad-electrical/src/properties/commands/",
-    "ecad-electrical/src/references/commands/",
-    "ecad-electrical/src/reports/commands/",
-    "ecad-electrical/src/styles/commands/",
-    "ecad-electrical/src/symbols/commands.rs",
-    "ecad-electrical/src/terminal_strips/commands/",
-    "ecad-electrical/src/title_blocks/commands.rs",
-    "ecad-electrical/src/wires/commands/",
 ];
 
 /// The lines of one source file (`rel`) that style drawn text literally, before its test module,
@@ -968,19 +882,6 @@ fn raw_control_places(rel: &str, text: &str) -> Vec<String> {
     places_matching(rel, text, RAW_CONTROL)
 }
 
-/// The places in one ECAD UI source file with a literal size ([`LITERAL_SIZE`] followed directly
-/// by a digit), as `rel:line: text`; comment lines and `//` comments are skipped.
-fn literal_size_places(rel: &str, text: &str) -> Vec<String> {
-    let code = strip_line_comments(text);
-    let literal =
-        |l: &str| LITERAL_SIZE.iter().any(|p| l.match_indices(p).any(|(i, _)| l[i + p.len()..].chars().next().is_some_and(|c| c.is_ascii_digit())));
-    code.lines()
-        .enumerate()
-        .filter(|(_, l)| literal(l))
-        .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
-        .collect()
-}
-
 /// What is wrong with an entry of a ratchet allowlist that has `found` places against its
 /// `allowed` count, if anything: more is a violation (`fix` says what to do instead); fewer means
 /// lower the count, and none means remove the entry. `what` names the places, plural.
@@ -1001,19 +902,6 @@ fn places_matching(rel: &str, text: &str, patterns: &[&str]) -> Vec<String> {
         .filter(|(_, l)| patterns.iter().any(|p| l.contains(p)))
         .map(|(i, _)| format!("{rel}:{}: {}", i + 1, text.lines().nth(i).unwrap_or_default().trim()))
         .collect()
-}
-
-/// What is wrong with a file in [`RAW_CONTROL_ALLOWLIST`] that has `found` raw-control lines
-/// against its `allowed` count, if anything: more is a violation; fewer means lower the count.
-fn raw_count_problem(path: &str, found: usize, allowed: usize, why: &str) -> Option<String> {
-    match found.cmp(&allowed) {
-        std::cmp::Ordering::Greater => {
-            Some(format!("{path}: {found} raw egui value controls, the allowlist allows {allowed} ({why}); use ecad_widgets::control"))
-        }
-        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer uses raw egui value controls; remove its allowlist entry")),
-        std::cmp::Ordering::Less => Some(format!("{path}: {found} raw egui value controls, fewer than the allowlist's {allowed}; lower the count")),
-        std::cmp::Ordering::Equal => None,
-    }
 }
 
 /// A path as components, `.` and `..` resolved (never above the start).
@@ -1140,9 +1028,8 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
-    let mut allowed_used: BTreeSet<&str> = BTreeSet::new();
+    let mut hooks_used: BTreeSet<&str> = BTreeSet::new();
     let mut raw_seen: BTreeSet<&str> = BTreeSet::new();
-    let mut size_seen: BTreeSet<&str> = BTreeSet::new();
     for p in meta["packages"].as_array().ok_or("cargo metadata: no packages")? {
         let name = p["name"].as_str().unwrap_or_default();
         let class = class_of(name);
@@ -1156,9 +1043,9 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
             let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
             let places = dev_feature_places(&rel, &text);
-            match DEV_FEATURE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
-                Some((path, _)) if !places.is_empty() => {
-                    allowed_used.insert(path);
+            match DEV_FEATURE_HOOKS.0.iter().find(|path| **path == rel) {
+                Some(path) if !places.is_empty() => {
+                    hooks_used.insert(path);
                 }
                 _ => out.extend(places.into_iter().map(|p| format!("{p} (dev features are read only in the crate's `dev` module)"))),
             }
@@ -1168,43 +1055,23 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                     local_style_places(&rel, &text).into_iter().map(|p| format!("{p} (no local styling: take it from the ecad-widgets tokens)")),
                 );
                 let places = raw_control_places(&rel, &text);
-                match RAW_CONTROL_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
-                    Some((path, allowed, why)) => {
+                match RAW_CONTROL_FILES.iter().find(|path| **path == rel) {
+                    Some(path) if !places.is_empty() => {
                         raw_seen.insert(path);
-                        out.extend(raw_count_problem(path, places.len(), *allowed, why));
                     }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_widgets::control)"))),
-                }
-                let places = literal_size_places(&rel, &text);
-                match LITERAL_SIZE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
-                    Some((path, allowed)) => {
-                        size_seen.insert(path);
-                        out.extend(ratchet_problem(
-                            path,
-                            places.len(),
-                            *allowed,
-                            "lines with literal sizes",
-                            "take the size from the ecad-widgets tokens",
-                        ));
-                    }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no literal sizes: take them from the ecad-widgets tokens)"))),
+                    _ => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_widgets::control)"))),
                 }
             }
         }
     }
-    for (path, _, why) in RAW_CONTROL_ALLOWLIST {
+    for path in RAW_CONTROL_FILES {
         if !raw_seen.contains(path) {
-            out.push(format!("{path}: in the raw-control allowlist ({why}) but not found; remove the entry"));
+            out.push(format!("{path}: in RAW_CONTROL_FILES but has no raw egui value control left; remove the entry"));
         }
     }
-    for (path, _) in LITERAL_SIZE_ALLOWLIST {
-        if !size_seen.contains(path) {
-            out.push(format!("{path}: in the literal-size allowlist but not found; remove the entry"));
-        }
-    }
-    for (path, brief) in DEV_FEATURE_ALLOWLIST {
-        if !allowed_used.contains(path) {
-            out.push(format!("{path}: in the dev-feature allowlist ({brief}) but no longer needs it; remove the entry"));
+    for path in DEV_FEATURE_HOOKS.0 {
+        if !hooks_used.contains(path) {
+            out.push(format!("{path}: in DEV_FEATURE_HOOKS ({}) but reads no dev feature; remove the entry", DEV_FEATURE_HOOKS.1));
         }
     }
     Ok(out)
@@ -1899,25 +1766,6 @@ let c = ecad_widgets::color(SHELL.text);",
         }
     }
 
-    /// A literal size is the call followed directly by a digit; a token, a variable or
-    /// a comment is not.
-    #[test]
-    fn literal_sizes_are_found_and_tokens_are_not() {
-        let rows: &[(&str, usize)] = &[
-            ("ui.add_space(4.0);", 1),
-            ("let s = egui::Stroke::new(1.0, c);", 1),
-            ("let v = egui::vec2(12.0, 0.0);", 1),
-            ("ui.add_space(space::XS);", 0),
-            ("let s = egui::Stroke::new(line::HAIRLINE_PX, c);", 0),
-            ("let v = egui::vec2(w, 0.0);", 0),
-            ("// ui.add_space(4.0);", 0),
-            ("let v = egui::vec2(w, 0.0); ui.add_space(8.0); // vec2(3", 1),
-        ];
-        for (text, n) in rows {
-            assert_eq!(literal_size_places("crates/ecad-app/src/x.rs", text).len(), *n, "{text}");
-        }
-    }
-
     /// The text-error counter counts lines, outside comments.
     #[test]
     fn text_errors_are_counted_by_line() {
@@ -2179,11 +2027,14 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         let v = source_violations(&meta).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/new_panel.rs:1:") && m.contains("no local styling")), "{v:?}");
-        assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/pages/preview.rs:1:") && m.contains("no local styling")), "no file is exempt: {v:?}");
+        assert!(
+            v.iter().any(|m| m.starts_with("crates/ecad-app/src/pages/preview.rs:1:") && m.contains("no local styling")),
+            "no file is exempt: {v:?}"
+        );
     }
 
-    /// A UI file not in the raw-control allowlist that uses `egui::TextEdit` or a `ComboBox` fails
-    /// `layers`; one in it, within its count, does not.
+    /// A UI file not in [`RAW_CONTROL_FILES`] that uses `egui::TextEdit` or a `ComboBox` fails
+    /// `layers`; a listed one does not.
     #[test]
     fn a_new_ui_file_with_a_raw_text_edit_fails_layers() {
         let root = std::env::temp_dir().join(format!("ecad-xtask-raw-{}", std::process::id()));

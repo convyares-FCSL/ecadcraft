@@ -129,6 +129,25 @@ started.
   edit with a 252-sheet graphic strip page shown from 436 ms to 6 ms, so keeping parts per sheet
   between edits was not needed.
 
+## Guard follow-ups: 0.2.4 (owner, 2026-11-24)
+
+The guards review of the 0.2.3 close-out kept only bans at zero and area entries with a reason; these
+are the counts it dropped, each to be finished in 0.2.4.
+
+- **Raw egui controls:** 13 app panels made before the components still use `egui::TextEdit` or
+  `ComboBox` (`RAW_CONTROL_FILES` in xtask). Convert them to `ecad_widgets::control`; an entry goes
+  when its file has none left, and at none the list is deleted.
+- **Literal sizes:** about 260 lines in 39 app files write a space, a stroke width or a size as a
+  number (`add_space(4.0)`, `Stroke::new(1.0, ..)`, `vec2(12.0, ..)`). After a token pass that gives
+  each a token, the literal-size ban returns as a hard zero.
+- **Stored text fields:** 11 fields in ecad-model's stored structs are still `String` (potential
+  `name` and `prefix`, `unclassified_prefix`, `label_rule`; a definition's and two drawing names,
+  `linetype`; two device labels; the ledger's `label`). Type them as `Text<N>` or a typed value (a
+  format change: bump `SCHEMA_VERSION`); then the G13 entry is removed and G13 is a hard zero.
+- **Typed errors in the engine and the app:** the engine still has about 145 `Result<_, String>`
+  lines and 35 `Err(format!(..))`, the app about 57 and 6. Move them to the crate's error type;
+  then the text-error ban covers both crates like the others.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
