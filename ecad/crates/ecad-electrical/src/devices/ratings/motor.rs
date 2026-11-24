@@ -82,12 +82,14 @@ fn piece_token(lower: &str) -> Option<Tok> {
         "soft-start" | "softstart" => return Some(Tok::Starting(Starting::Soft)),
         "soft" => return Some(Tok::Soft),
         "vfd" | "vsd" => return Some(Tok::Starting(Starting::Vfd)),
-        "star" | "y" => return Some(Tok::Connection(WindingConnection::Star)),
-        "delta" | "δ" => return Some(Tok::Connection(WindingConnection::Delta)),
-        "star/delta" | "star_delta" | "y/δ" | "δ/y" => return Some(Tok::Connection(WindingConnection::StarDelta)),
+        "star/delta" => return Some(Tok::Connection(WindingConnection::StarDelta)),
         "class" => return Some(Tok::ClassWord),
         "ip" => return Some(Tok::IpWord),
         _ => {}
+    }
+    // A connection by its word (`star`, `delta`) or as on a nameplate (`Y`, `Δ`, `Y/Δ`).
+    if let Some(c) = WindingConnection::parse(lower).or_else(|| WindingConnection::ALL.iter().copied().find(|c| c.label().to_lowercase() == lower)) {
+        return Some(Tok::Connection(c));
     }
     if let Some(c) = EfficiencyClass::parse(lower) {
         return Some(Tok::EfficiencyClass(c));
