@@ -2,6 +2,22 @@
 
 use super::*;
 
+/// Where the routes on `page` start and end.
+pub fn route_ends(doc: &Document, page: PageId) -> Vec<(RouteId, Pt, Pt)> {
+    doc.routes_on(page).filter_map(|r| doc.routes().get(&r).and_then(|x| x.end_points()).map(|[a, b]| (r, a, b))).collect()
+}
+
+/// A wire on `page` with a route end within `aperture` of `at`.
+pub fn wire_ending_at(doc: &Document, page: PageId, at: Pt, aperture: f64) -> Option<WireId> {
+    route_ends(doc, page).into_iter().filter(|(_, a, b)| a.dist(at) <= aperture || b.dist(at) <= aperture).find_map(|(r, _, _)| wire_of_route(doc, r))
+}
+
+/// The wire a clicked route stands for when picking cable members: the first wire it carries
+/// that is in a cable, else the wire it stands for ([`wire_of_route`]).
+pub fn cabled_wire(doc: &Document, r: RouteId) -> Option<WireId> {
+    wires_of_route(doc, r).into_iter().find(|w| !doc.cables_of(*w).is_empty()).or_else(|| wire_of_route(doc, r))
+}
+
 /// A route's drawing: its representation, its item's ID and the item.
 pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemId, &Item)> {
     doc.representations_of(Subject::Route(r)).find_map(|(rid, rep)| {
@@ -257,7 +273,7 @@ pub fn wire_of_route(doc: &Document, r: RouteId) -> Option<WireId> {
 
 /// The wires route `r` carries: the wire between its two connection points when it runs from one
 /// to the other, else every wire of its net, in net order.
-pub fn wires_of_route(doc: &Document, r: RouteId) -> Vec<WireId> {
+pub(crate) fn wires_of_route(doc: &Document, r: RouteId) -> Vec<WireId> {
     let Some(route) = doc.routes().get(&r) else { return Vec::new() };
     if let [RouteEnd::Point(a), RouteEnd::Point(b)] = route.ends
         && let Some(w) = wire_between(doc, a, b)

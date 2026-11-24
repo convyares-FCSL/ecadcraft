@@ -13,7 +13,7 @@
 //!   that value).
 //! - A strip proposes for the strip (its positions and levels take the strip's).
 //!
-//! Excludes: the prompt itself (the command line and the prompt strip, `crate::interact`). This
+//! Excludes: the prompt itself (the command line and the prompt strip, the engine's click-based forms). This
 //! module reads and plans ops only.
 #![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 

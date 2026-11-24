@@ -19,7 +19,8 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_electrical::references::cables::markers_on_page;
-use ecad_engine::interact::{hover_lines, overlay_marks};
+use ecad_engine::pointer::hover::hover_lines;
+use ecad_engine::pointer::marks::overlay_marks;
 use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{

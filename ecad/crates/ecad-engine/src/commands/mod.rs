@@ -5,7 +5,7 @@
 //! runner; the commands that need the session live in their feature area's `commands` module of this crate
 //! (for example [`crate::pages::commands`], [`crate::references::commands`]) and register in [`specs`].
 //! Commands reach the command line, scripts, the control channel and MCP through the engine's extension
-//! command registry. Some also have click-based forms ([`crate::interact`]), started by a bare command name, a
+//! command registry. Some also have click-based forms (each feature's `interact` module), started by a bare command name, a
 //! menu or a tool button; those commit through the JSON forms. Programmatic calls (`Session::execute`,
 //! `name {json}`) always run the JSON form and never prompt. `cableview` records nothing: a cable's view is
 //! presentation only ([`crate::cables::views`]).
@@ -20,7 +20,6 @@ use serde_json::Value;
 
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::generic::Entry;
-use crate::interact;
 use crate::project::Project;
 use ecad_electrical::circuits::commands as rating;
 use ecad_electrical::continuations::commands as continuation;
@@ -63,8 +62,8 @@ pub fn specs() -> Vec<CommandSpec> {
 /// The generic commands, each listed once: its registration, its schema and what the agent gate
 /// reads come from its entry.
 const GENERIC: &[Entry] = &[
-    Entry::of::<connect::ConnectParams>().interactive(interact::connect),
-    Entry::of::<connect::DisconnectParams>().interactive(interact::disconnect),
+    Entry::of::<connect::ConnectParams>().interactive(crate::properties::forms::connect::connect),
+    Entry::of::<connect::DisconnectParams>().interactive(crate::properties::forms::connect::disconnect),
     Entry::of::<default::SetdefaultParams>(),
     Entry::of::<default::DefaultsParams>(),
     Entry::of::<ecad_drawing_style::text::commands::TextstyleParams>(),
@@ -77,7 +76,7 @@ const GENERIC: &[Entry] = &[
     Entry::of::<designation::RemoveParams>(),
     Entry::of::<level::TerminalblocklabelParams>(),
     Entry::of::<level::TopositionParams>(),
-    Entry::of::<continuation::ContcaptionParams>().interactive(interact::contcaption),
+    Entry::of::<continuation::ContcaptionParams>().interactive(crate::continuations::interact::contcaption),
     Entry::of::<device_link::LinkParams>().undoable(),
     Entry::of::<device_link::UnlinkParams>().undoable(),
     Entry::of::<device_link::UserFieldParams>().undoable(),
@@ -96,14 +95,15 @@ const GENERIC: &[Entry] = &[
     Entry::of::<ecad_drawing_style::title_blocks::commands::TitleblocksParams>(),
     Entry::of::<ecad_drawing_style::title_blocks::commands::TitleblockParams>(),
     Entry::of::<bom::PartlineParams>(),
-    Entry::of::<bom::BomitemParams>().interactive(interact::bomitem),
+    Entry::of::<bom::BomitemParams>().interactive(crate::reports::interact::bomitem),
     Entry::of::<bom::ArticleParams>(),
-    Entry::of::<boxes::LocationboxParams>().interactive(interact::locationbox),
-    Entry::of::<boxes::FunctionboxParams>().interactive(interact::functionbox),
+    Entry::of::<boxes::LocationboxParams>().interactive(crate::locations::interact::locationbox),
+    Entry::of::<boxes::FunctionboxParams>().interactive(crate::locations::interact::functionbox),
     Entry::of::<lists::BomParams>(),
     Entry::of::<lists::WirelistParams>(),
     Entry::of::<lists::CablelistParams>(),
-    Entry::of::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>().interactive(interact::terminal_blocks),
+    Entry::of::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>()
+        .interactive(crate::terminal_strips::interact::terminal_blocks::terminal_blocks),
     Entry::of::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
     Entry::of::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),
     Entry::of::<ecad_electrical::plc::commands::racks::PlcslotParams>(),
@@ -115,8 +115,8 @@ const GENERIC: &[Entry] = &[
     Entry::of::<ecad_electrical::plc::commands::tags::PlcmaketagsParams>(),
     Entry::of::<ecad_electrical::plc::commands::exchange::PlcexportParams>(),
     Entry::of::<ecad_electrical::plc::commands::exchange::PlcimportParams>(),
-    Entry::of::<accessory::AccessoryParams>().interactive(interact::accessory),
-    Entry::of::<accessory::JumperParams>().interactive(interact::jumper),
+    Entry::of::<accessory::AccessoryParams>().interactive(crate::terminal_strips::interact::accessories::accessory),
+    Entry::of::<accessory::JumperParams>().interactive(crate::terminal_strips::interact::accessories::jumper),
     Entry::of::<rating::RatingParams>(),
     Entry::of::<rating::RatingtableParams>(),
     Entry::of::<rating::RatingsParams>(),
@@ -136,23 +136,24 @@ const GENERIC: &[Entry] = &[
     Entry::of::<ecad_electrical::pages::commands::props::RevisionParams>(),
     Entry::of::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
     Entry::of::<ecad_electrical::references::commands::devices::ContactsParams>(),
-    Entry::of::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(interact::mirrormove),
-    Entry::of::<ecad_electrical::references::commands::cables::CableReferenceParams>().interactive(interact::cablereference),
-    Entry::of::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(interact::cablecontinue),
+    Entry::of::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(crate::references::interact::devices::mirrormove),
+    Entry::of::<ecad_electrical::references::commands::cables::CableReferenceParams>()
+        .interactive(crate::references::interact::cables::cablereference),
+    Entry::of::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(crate::references::interact::cables::cablecontinue),
     Entry::of::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
     Entry::of::<device::EcaddeleteParams>(),
     Entry::of::<device::SymbolsParams>(),
     Entry::of::<device::DevicesParams>(),
     Entry::of::<device::TagsettingsParams>(),
-    Entry::of::<device::DevicepropsParams>().interactive(interact::deviceprops),
-    Entry::of::<device::DevicedeleteParams>().interactive(interact::devicedelete),
+    Entry::of::<device::DevicepropsParams>().interactive(crate::devices::interact::deviceprops),
+    Entry::of::<device::DevicedeleteParams>().interactive(crate::devices::interact::devicedelete),
     Entry::of::<net::NetsParams>(),
     Entry::of::<net::NetParams>(),
-    Entry::of::<net::WirenumberParams>().interactive(interact::wirenumber),
+    Entry::of::<net::WirenumberParams>().interactive(crate::wires::interact::wirenumber),
     Entry::of::<net::PotentialParams>(),
     Entry::of::<net::CategoryParams>(),
     Entry::of::<net::WiresettingsParams>(),
-    Entry::of::<net::RenumberwiresParams>().interactive(interact::renumberwires),
+    Entry::of::<net::RenumberwiresParams>().interactive(crate::wires::interact::renumberwires),
     Entry::of::<net::ChecksParams>(),
     Entry::of::<ecad_electrical::symbols::builder::NewParams>(),
     Entry::of::<ecad_electrical::symbols::builder::EditParams>(),
@@ -163,41 +164,43 @@ const GENERIC: &[Entry] = &[
 fn base_specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("convertcomponent", "Convert to Device", crate::commands::input::typed::<crate::devices::commands::ConvertcomponentParams>)
-            .interactive(interact::convert)
+            .interactive(crate::properties::forms::convert::convert)
             .noundo(),
         CommandSpec::new(
             "addconnectionpoint",
             "Add Connection Point",
             crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>,
         )
-        .interactive(interact::addconnectionpoint)
+        .interactive(crate::properties::forms::add_connection_point::addconnectionpoint)
         .noundo(),
-        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>).interactive(interact::wire).noundo(),
+        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>)
+            .interactive(crate::properties::forms::wire::wire)
+            .noundo(),
         CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::typed::<crate::cables::commands::CableslashParams>)
-            .interactive(interact::cableslash)
+            .interactive(crate::properties::forms::cable_slash::cableslash)
             .noundo(),
         CommandSpec::new("cableview", "Cable View", crate::commands::input::typed::<crate::cables::commands::CableviewParams>)
-            .interactive(interact::cableview)
+            .interactive(crate::properties::forms::cable_view::cableview)
             .noundo(),
         CommandSpec::new("cablecore", "Core Label", crate::commands::input::typed::<crate::cables::commands::CablecoreParams>)
-            .interactive(interact::cablecore)
+            .interactive(crate::properties::forms::cable_core::cablecore)
             .noundo(),
         CommandSpec::new("cablefan", "Cable Join", crate::commands::input::typed::<crate::cables::commands::CablefanParams>)
-            .interactive(interact::cablefan)
+            .interactive(crate::properties::forms::cable_fan::cablefan)
             .noundo(),
         CommandSpec::new("cablegoto", "Go to Reference", crate::commands::input::typed::<crate::references::commands::cables::CablegotoParams>)
-            .interactive(interact::cablegoto)
+            .interactive(crate::references::interact::cables::cablegoto)
             .noundo(),
         CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>).noundo(),
         CommandSpec::new("place", "Place Symbol", crate::commands::input::typed::<crate::devices::commands::PlaceParams>)
-            .interactive(interact::place)
+            .interactive(crate::devices::interact::place)
             .noundo(),
         CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>).noundo(),
         CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).noundo(),
         CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::typed::<crate::pages::commands::pages::EcadinspectParams>)
             .noundo(),
         CommandSpec::new("joinwires", "Join Wires", crate::commands::input::typed::<crate::wires::commands::JoinwiresParams>)
-            .interactive(interact::joinwires)
+            .interactive(crate::wires::interact::joinwires)
             .noundo(),
     ]
 }

@@ -937,11 +937,6 @@ fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String
     Ok(Options { mono, lineweights, pending: false })
 }
 
-/// The tags of the cables shown fan (the manifest's `cable_views`).
-fn fan_tags(doc: &Document, fan: &BTreeSet<ecad_model::CableId>) -> Vec<String> {
-    fan.iter().filter(|k| doc.cables().contains_key(k)).map(|k| ecad_electrical::cables::cable_title(doc, *k)).collect()
-}
-
 /// The words of a finished release.
 fn done_words(rev: &str, folder: &Path, st: &Staged, rows: &[Check]) -> String {
     let (e, w, _) = counts(rows);
@@ -1081,7 +1076,7 @@ pub(crate) fn release_pending(
     let fan = p.views.clone();
     let b =
         Build { doc: &doc, reports: &reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
-    let m = manifest(&doc, &row, &iss, &b, &st, &rows, &fan_tags(&doc, &fan));
+    let m = manifest(&doc, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&doc, &fan));
     let finished = injected(p, Step::Manifest)
         .and_then(|()| write_manifest(&staging, &m))
         .and_then(|()| injected(p, Step::Rename))
@@ -1165,7 +1160,7 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
     let branch = crate::history::find_branch(p, &named.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
     let chain = p.file.project().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
     let iss = Issued { branch, transaction: seq, point: named.seq, chain };
-    let m = manifest(&then, &row, &iss, &b, &st, &rows, &fan_tags(&then, &fan));
+    let m = manifest(&then, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&then, &fan));
     let finished = injected(p, Step::Manifest)
         .and_then(|()| write_manifest(&staging, &m))
         .and_then(|()| injected(p, Step::Rename))

@@ -1,5 +1,5 @@
 //! `refgoto`: opens the place a reference shows, so it is the
-//! engine's; its interactive form is in [`crate::interact`]. The other cross-reference commands
+//! engine's; its interactive form is in [`crate::references::interact::devices`]. The other cross-reference commands
 //! are generic ([`ecad_electrical::references::commands::devices`]).
 
 use cadcraft_engine::{CommandSpec, Session};

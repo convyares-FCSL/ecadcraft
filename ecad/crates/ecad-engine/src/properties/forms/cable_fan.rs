@@ -1,7 +1,8 @@
 //! Cable Join.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{ATTACHED_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
+use crate::pointer::pick::{can_start, in_range, pick, pixel, pt, read};
+use crate::pointer::preview::{ATTACHED_ACI, CONNECTION_POINT_RING_PX, preview_entity, ring_kind};
 use crate::project::Mapped;
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;

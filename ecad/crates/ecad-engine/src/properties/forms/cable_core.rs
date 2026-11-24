@@ -1,8 +1,9 @@
 //! Core Label.
 
-use super::cable_view::{WIRE_NOT_IN_CABLE, cabled_wire};
+use super::cable_view::WIRE_NOT_IN_CABLE;
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{ATTACHED_ACI, can_start, in_range, pick, preview_entity, read};
+use crate::pointer::pick::{can_start, in_range, pick, read};
+use crate::pointer::preview::{ATTACHED_ACI, preview_entity};
 use crate::project::Mapped;
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;
@@ -39,7 +40,7 @@ impl CableCore {
                 Some(Mapped::Fan(_)) => map.core_of(h).ok_or(CORE_IS_CABLE)?,
                 Some(Mapped::Item(i)) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
                     Some(Subject::Wire(w)) => w,
-                    Some(Subject::Route(r)) => cabled_wire(doc, r).ok_or(CORE_NOT_WIRE)?,
+                    Some(Subject::Route(r)) => ecad_electrical::wires::routes::cabled_wire(doc, r).ok_or(CORE_NOT_WIRE)?,
                     Some(Subject::Cable(_)) => return Err(CORE_IS_CABLE.into()),
                     _ => return Err(CORE_NOT_WIRE.into()),
                 },

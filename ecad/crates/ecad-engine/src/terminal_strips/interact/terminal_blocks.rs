@@ -9,10 +9,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
-use crate::interact::{
-    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, connection_point_for, in_range, line_kind, pixel, preview_entity, preview_text, pt, read,
-    ring_kind, v2,
-};
+use crate::pointer::pick::{can_start, connection_point_for, in_range, pixel, pt, read, v2};
+use crate::pointer::preview::{ATTACHED_ACI, REFUSE_ACI, RING_PX, line_kind, preview_entity, preview_text, ring_kind};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
@@ -302,7 +300,7 @@ impl Interactive for PlaceTerminalBlocks {
     }
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::pointer::pick::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }
@@ -400,7 +398,7 @@ impl Interactive for DrawBridge {
     /// The bridge as it will be drawn, to the terminal under the cursor (else to the cursor).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, a, _)) = &self.first else { return Vec::new() };
-        if !(crate::interact::model_space(s) && in_range(cursor)) {
+        if !(crate::pointer::pick::model_space(s) && in_range(cursor)) {
             return Vec::new();
         }
         let b = connection_point_for(s, cursor).map_or(pt(cursor), |(_, at, _)| at);

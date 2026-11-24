@@ -811,7 +811,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     // Hover over the pin (interact::hover_connection_point) names it.
     let at = shown_at(&c.h.doc(), c.p101, s3).unwrap();
     let uid = c.h.p(|p| p.pages[&c.p101].uid).unwrap();
-    let hover = c.h.p(|p| ecad_engine::interact::hover_connection_point(p, uid, cadcraft_engine::geom::Vec2::new(at.x, at.y), 1.0));
+    let hover = c.h.p(|p| ecad_engine::pointer::hover::hover_connection_point(p, uid, cadcraft_engine::geom::Vec2::new(at.x, at.y), 1.0));
     let (ht, lines) = hover.expect("a pin under the cursor");
     assert_eq!(ht, s3);
     let mut bad: Vec<String> = Vec::new();

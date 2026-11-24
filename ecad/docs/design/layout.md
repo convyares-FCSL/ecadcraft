@@ -146,7 +146,7 @@ ecad-engine/src/
   background.rs    background jobs (R11)
   generic.rs       the generic command runner: lock, declared file I/O, commit, echo, answer, schema, gate
   commands.rs      the command table (generic declarations + session commands; today cmd/mod.rs, lanes.rs)
-  pointer.rs       what is under the cursor and the running tool's intent (interact/kind, interact/intent)
+  pointer/         what is under the cursor, the running tool's intent, picking and capture, previews, page marks, hover
   project/         open, persistence, owner, changes, handle map, page tree (unchanged)
   history/         history (split), merging, the event log (from ecad-inspect)
   translate/       translate, oops

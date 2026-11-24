@@ -9,7 +9,7 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{AidId, Subject};
 use serde_json::json;
 
-use crate::interact::{can_start, in_range, pick, read};
+use crate::pointer::pick::{can_start, in_range, pick, read};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;

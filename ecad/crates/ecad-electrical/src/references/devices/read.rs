@@ -262,7 +262,7 @@ pub(crate) fn goto_target(doc: &Document, idx: &RefIndex, source: Representation
 }
 
 /// Hover lines for contact `rep`: `Coil: 100-B-3  (page 100 "Supply")`.
-pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
+pub(crate) fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
     let dev = device(doc, c);
     if !dev.children.contains(&rep) {
         return Vec::new();

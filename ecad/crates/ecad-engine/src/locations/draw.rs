@@ -45,17 +45,6 @@ pub(crate) fn styled_label_entity(
     e
 }
 
-/// The font family a box's label style draws in when it is not the project font, for
-/// the page to install (`install_family`).
-pub(crate) fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
-    let c = doc.representations().get(&rep).and_then(|r| match r.subject {
-        Subject::Aid(a) => Some(a),
-        _ => None,
-    })?;
-    let label = ecad_drawing_style::catalogues::location::box_draw(doc, c).label_style;
-    ecad_drawing_style::text::own_style_of(doc, &label).family
-}
-
 /// Draw the outlines of `page`'s boxes in their location style
 /// (line type, weight and colour) instead of the stored item style. `item_handle` finds a box
 /// item's entity among `ents`.

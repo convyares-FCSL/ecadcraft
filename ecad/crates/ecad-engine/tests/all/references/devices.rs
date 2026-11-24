@@ -268,7 +268,7 @@ fn g_hover_properties_and_go_to() {
         let v = &p.pages[&x.p105];
         (v.uid.unwrap(), v.map.reference(x.no, 0).unwrap())
     });
-    let lines = x.h.p(|p| ecad_engine::interact::hover_lines(p, uid, text_handle)).unwrap();
+    let lines = x.h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, text_handle)).unwrap();
     assert!(lines.iter().any(|l| l.starts_with("Coil: 100/C2") && l.contains("page 100 \"Supply\"")), "{lines:?}");
     // Go to Reference from the NC: the coil's page, ringed and selected.
     let v = x.h.run("refgoto", json!({"source": x.nc.hex()})).unwrap();
@@ -280,7 +280,7 @@ fn g_hover_properties_and_go_to() {
         let v = &p.pages[&x.p100];
         (v.uid.unwrap(), v.map.reference(x.coil, 0).unwrap())
     });
-    let lines = x.h.p(|p| ecad_engine::interact::hover_lines(p, uid, bar)).unwrap();
+    let lines = x.h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, bar)).unwrap();
     assert!(lines[0].starts_with("Contacts: 5 drawn"), "{lines:?}");
     assert!(lines.iter().any(|l| l.contains("13/14 NO aux 105/")), "{lines:?}");
     // And back from the coil to a given contact.

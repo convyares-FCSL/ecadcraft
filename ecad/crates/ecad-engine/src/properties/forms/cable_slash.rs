@@ -1,9 +1,8 @@
 //! Cable Slash.
 
 use super::{R, Safe, commit, hex_of, not_a_point, other, paper_guard, safely};
-use crate::interact::{
-    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
-};
+use crate::pointer::pick::{can_start, in_range, pixel, pt, read, v2};
+use crate::pointer::preview::{ATTACHED_ACI, REFUSE_ACI, RING_PX, line_kind, preview_entity, preview_text, ring_kind};
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
@@ -240,7 +239,7 @@ impl Interactive for CableSlash {
     /// The rubber band from the first point to the cursor.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::pointer::pick::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }

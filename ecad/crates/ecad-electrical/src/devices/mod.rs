@@ -43,6 +43,31 @@ use ecad_model::{
 };
 use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
+/// The default name of the next connection point of device `c`: the smallest positive integer
+/// not already used as a label among its connection points.
+pub fn next_connection_point_name(doc: &Document, c: DeviceId) -> String {
+    let used: BTreeSet<String> = doc.connection_points_of(c).filter_map(|(_, t)| t.label.clone()).collect();
+    let mut n: u64 = 1;
+    // At most one more than the labels in use: bounded by the device's connection points.
+    while used.contains(&n.to_string()) && n <= used.len() as u64 {
+        n += 1;
+    }
+    n.to_string()
+}
+
+/// Most characters in a typed connection point name.
+pub(crate) const MAX_CONNECTION_POINT_NAME: usize = 64;
+/// Refusal of a typed connection point name.
+pub const BAD_CONNECTION_POINT_NAME: &str = "Names are 1 to 64 printable characters.";
+
+/// A typed connection point name, trimmed: 1 to [`MAX_CONNECTION_POINT_NAME`] characters, none of
+/// them control characters.
+pub fn valid_connection_point_name(text: &str) -> Option<String> {
+    let t = text.trim();
+    let n = t.chars().count();
+    ((1..=MAX_CONNECTION_POINT_NAME).contains(&n) && !t.chars().any(char::is_control)).then(|| t.to_string())
+}
+
 /// `t` as a device's stored tag: refused when it is not 1 to 40 printable
 /// characters.
 ///

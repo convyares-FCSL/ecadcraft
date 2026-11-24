@@ -357,3 +357,49 @@ impl Generic for MovetextParams {
 fn current_text(doc: &Document, rep: RepresentationId, t: &MoveTarget, look: &dyn Look) -> Option<crate::devices::texts::PageText> {
     crate::devices::texts::all_texts_measured(doc, t.page, None, look).into_iter().find(|x| x.text.rep == rep && x.text.of == t.of)
 }
+
+/// What `showtext` says after a change (`v` is its result): `Tag -X01 hidden on this symbol.`…
+pub fn showtext_echo(doc: &Document, v: &Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
+    let what = kind.words();
+    let mut what = what.to_string();
+    if let Some(first) = what.get(..1) {
+        what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
+    }
+    let tag = component.map(|c| crate::devices::tags::tag_words(doc, c));
+    let subject = match (&tag, kind) {
+        (Some(t), TextKind::Tag) => format!("{what} {t}"),
+        _ => what,
+    };
+    let done = if <ecad_model::look::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == ecad_model::look::Shown::Off {
+        "hidden"
+    } else {
+        "shown"
+    };
+    let level = v.get("level").and_then(|l| l.as_str()).unwrap_or_default();
+    let place = match level {
+        "symbol" => "on this symbol".to_string(),
+        "device" => format!("for {}", tag.clone().unwrap_or_default()),
+        "page" => {
+            let page = v.get("target").and_then(|t| t.as_str()).and_then(PageId::parse);
+            page.map_or_else(|| "on this page".to_string(), |p| format!("on page {}", crate::references::cables::page_number(doc, p)))
+        }
+        _ => "in the project".to_string(),
+    };
+    let mut line = format!("{subject} {done} {place}.");
+    let strip = component.is_some_and(|c| crate::terminal_strips::strip_of(doc, c).is_some());
+    if level == "device" && kind == TextKind::Tag && strip {
+        line.push_str(" Strip tags show once per run unless you set a symbol.");
+    }
+    if v.get("changed").and_then(|c| c.as_bool()) == Some(false) {
+        line = format!("{subject} is already {done} {place}.");
+    }
+    line
+}
+
+/// The `movetext` call that names text `of` of representation `rep`.
+pub fn movetext_call(rep: RepresentationId, of: TextOf) -> Value {
+    match of {
+        TextOf::ConnectionPoint(t) => json!({"representation": rep.hex(), "kind": "point_label", "connection_point": t.hex()}),
+        _ => json!({"representation": rep.hex(), "kind": "tag"}),
+    }
+}

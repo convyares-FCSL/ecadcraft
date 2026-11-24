@@ -8,4 +8,5 @@ pub mod generated;
 pub(crate) mod generated_view;
 pub mod page_types;
 pub(crate) mod tree_view;
+pub mod undo;
 pub(crate) mod view;

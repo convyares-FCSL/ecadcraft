@@ -8,7 +8,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
-use crate::interact::{can_start, connection_point_for, in_range, line_kind, pt, read, v2};
+use crate::pointer::pick::{can_start, connection_point_for, in_range, pt, read, v2};
+use crate::pointer::preview::line_kind;
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::terminal_strips;
@@ -287,7 +288,7 @@ impl Interactive for Jumper {
     /// cursor).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, _, last)) = self.picks.last() else { return Vec::new() };
-        if !(crate::interact::model_space(s) && in_range(cursor)) {
+        if !(crate::pointer::pick::model_space(s) && in_range(cursor)) {
             return Vec::new();
         }
         let mut out: Vec<EntityKind> = self.picks.windows(2).filter_map(|w| Some(line_kind(w.first()?.2, w.get(1)?.2))).collect();

@@ -7,7 +7,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{Pt, WireId};
 use serde_json::{Value, json};
 
-use crate::interact::{ATTACHED_ACI, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::pointer::pick::{can_start, in_range, pick_radius, pt, read};
+use crate::pointer::preview::{ATTACHED_ACI, preview_entity};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 

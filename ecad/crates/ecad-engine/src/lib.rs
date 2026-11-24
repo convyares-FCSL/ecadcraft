@@ -10,8 +10,8 @@
 //! - [`ProjectHandle`] (the `access` module): the only way to reach a project from outside, under its lock.
 //! - [`cad`]: the CADCraft types and functions the app and the programs may name.
 //! - [`commands`]: the command registry and the shared helpers of session commands.
-//! - [`interact`]: click-based forms of the commands, the marks drawn over pages and the hover text.
-//! - [`pointer`]: what is under the cursor and the running tool's intent.
+//! - [`pointer`]: what is under the cursor, the running tool's intent, the marks drawn over pages, the hover
+//!   text, and what the click-based forms of the commands share (each form is in its feature's `interact` module).
 //! - [`convert`] and each feature's `draw` module: building CADCraft entities, text styles and fonts from
 //!   what the rules decide.
 //! - [`file`]: the project's `.ecad` file on disk, the home folder and path rules.
@@ -46,7 +46,6 @@ pub mod export;
 pub mod file;
 pub(crate) mod generic;
 pub mod history;
-pub mod interact;
 pub mod locations;
 pub mod pages;
 pub mod plc;

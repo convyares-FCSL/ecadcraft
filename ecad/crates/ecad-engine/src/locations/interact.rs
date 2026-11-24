@@ -10,11 +10,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ItemId, ItemKind, Primitive, Pt, Subject};
+use ecad_model::{Primitive, Pt, Subject};
 use serde_json::json;
 
 use crate::convert::kind_for_primitive;
-use crate::interact::{ATTACHED_ACI, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::pointer::pick::{can_start, in_range, pick_radius, pt, read};
+use crate::pointer::preview::{ATTACHED_ACI, preview_entity};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 
@@ -239,7 +240,8 @@ impl LocationBox {
                     }
                     Mode::Select => {
                         let tol = pick_radius(s).unwrap_or(1.0);
-                        let item = read(s, |p, page| Ok(outline_at(p.ledger.document(), page, at, tol))).map_err(other)?;
+                        let item =
+                            read(s, |p, page| Ok(ecad_electrical::locations::outline_at(p.ledger.document(), page, at, tol))).map_err(other)?;
                         match item {
                             Some(id) => {
                                 let params = self.params(("item", json!(id.hex())));
@@ -256,27 +258,6 @@ impl LocationBox {
             _ => Ok(Step::Continue),
         }
     }
-}
-
-/// The polyline item on `page` whose outline passes within `tol` of `at` (any, closed or not:
-/// the command says which ones are refused).
-fn outline_at(doc: &ecad_model::Document, page: ecad_model::PageId, at: Pt, tol: f64) -> Option<ItemId> {
-    doc.items()
-        .iter()
-        .filter(|(_, i)| i.page == page)
-        .filter_map(|(id, i)| match &i.kind {
-            ItemKind::Primitive(Primitive::Polyline { vertices, closed }) => {
-                let n = vertices.len();
-                let segs = if *closed { n } else { n.saturating_sub(1) };
-                let d = (0..segs)
-                    .filter_map(|k| Some(at.dist(ecad_model::geometry::geom::nearest_on_segment(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))))
-                    .fold(f64::INFINITY, f64::min);
-                (d <= tol).then_some((d, *id))
-            }
-            _ => None,
-        })
-        .min_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, id)| id)
 }
 
 impl Interactive for LocationBox {

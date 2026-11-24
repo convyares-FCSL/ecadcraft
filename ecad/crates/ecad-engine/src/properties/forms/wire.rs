@@ -2,10 +2,8 @@
 
 use super::{R, Safe, commit, hex_of, not_a_point, other, paper_guard, safely};
 use crate::commands::{MAX_WIRE_POINTS, on_project};
-use crate::interact::{
-    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, capture_at, capture_preview, connection_point_for, in_range, line_kind, pixel, preview_entity,
-    preview_text, pt, read, ring_kind, v2,
-};
+use crate::pointer::pick::{can_start, capture_at, connection_point_for, in_range, pixel, pt, read, v2};
+use crate::pointer::preview::{ATTACHED_ACI, REFUSE_ACI, RING_PX, capture_preview, line_kind, preview_entity, preview_text, ring_kind};
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
@@ -51,7 +49,7 @@ fn wire_potential(s: &Session) -> Option<String> {
 impl Wire {
     /// The open end of another wire within the pick radius of `p`.
     fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
-        let tol = crate::interact::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
+        let tol = crate::pointer::pick::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
         read(s, |proj, page| Ok(ecad_electrical::wires::joining::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page))))
             .ok()
             .flatten()
@@ -272,7 +270,7 @@ impl Interactive for Wire {
     }
     /// The wire so far, and the rubber band to the cursor (or to the connection point it captures).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !crate::interact::model_space(s) {
+        if !crate::pointer::pick::model_space(s) {
             return Vec::new();
         }
         let mut out: Vec<EntityKind> = self.points.windows(2).filter_map(|w| Some(line_kind(*w.first()?, *w.get(1)?))).collect();
@@ -296,7 +294,7 @@ impl Interactive for Wire {
             && in_range(cursor)
             && let Some(px) = pixel(s)
         {
-            let tol = crate::interact::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
+            let tol = crate::pointer::pick::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
             let potential = wire_potential(s);
             let seen = read(s, |p, page| {
                 let doc = p.ledger.document();

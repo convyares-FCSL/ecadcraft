@@ -4,6 +4,7 @@
 //! them are `ecad_engine::commands::cable`.
 
 pub mod commands;
+pub mod hover;
 pub mod layout;
 pub mod slash;
 pub mod words;
@@ -17,7 +18,7 @@ use crate::locations::designations::{self, Aspect};
 use crate::styles::cable;
 
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
-pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
+pub(crate) fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
     match m.position {
         ecad_model::CorePosition::Wire(w) => crate::wires::routes::wire_pages(doc, w),
         ecad_model::CorePosition::Route { route, .. } => doc.routes().get(&route).map(|r| r.page).into_iter().collect(),
@@ -514,6 +515,27 @@ pub(crate) fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
     Some(format!("{cores}{size}"))
 }
 
+/// The cable a person typed: a tag (case-insensitive, exact), else a full ID or a leading hex
+/// prefix of at least 8 digits naming one cable.
+///
+/// # Errors
+/// No cable by that name, or a prefix naming more than one.
+pub fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, crate::CmdError> {
+    let t = typed.trim();
+    let tagged: Vec<CableId> = doc.cables().iter().filter(|(_, c)| c.tag().is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
+    let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
+        let lower = t.to_ascii_lowercase();
+        doc.cables().keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()
+    } else {
+        tagged
+    };
+    match found.as_slice() {
+        [] => Err(crate::CmdError::refused(format!("No cable named \"{t}\"."))),
+        [k] => Ok(*k),
+        many => Err(crate::CmdError::refused(format!("\"{t}\" names {} cables; type more of it.", many.len()))),
+    }
+}
+
 /// A cable after the word "Cable" in messages: its tag, else `8a3f19c0…`.
 pub fn cable_title(doc: &Document, cable: CableId) -> String {
     match doc.cables().get(&cable).and_then(|c| c.tag_shown()) {
@@ -523,7 +545,7 @@ pub fn cable_title(doc: &Document, cable: CableId) -> String {
 }
 
 /// A member's core label, shortened for a hover; `None` when it has none.
-pub fn member_core(m: &ecad_model::Core) -> Option<String> {
+pub(crate) fn member_core(m: &ecad_model::Core) -> Option<String> {
     let core = m.label_str()?;
     (!core.trim().is_empty()).then(|| crate::cables::words::shorten(core, crate::cables::words::MAX_CORE_CHARS))
 }

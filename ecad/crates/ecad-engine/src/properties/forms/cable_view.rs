@@ -3,12 +3,12 @@
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::cables::views::View;
 use crate::commands::MAX_HANDLES;
-use crate::interact::{can_start, in_range, pick, read};
+use crate::pointer::pick::{can_start, in_range, pick, read};
 use crate::project::Mapped;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_electrical::cables::slash;
 use ecad_electrical::commands::input::OUT_OF_RANGE;
-use ecad_model::{CableId, Subject, WireId};
+use ecad_model::{CableId, Subject};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
@@ -27,15 +27,6 @@ pub(crate) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable."
 
 /// The cable a mapped object names: a slash, a fan line, or a wire in a cable
 /// (and, a cable reference's point or text).
-/// The wire a clicked line stands for when picking cable members: the first wire it carries that
-/// is in a cable, else the wire it stands for ([`ecad_electrical::wires::routes::wire_of_route`]).
-pub(crate) fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) -> Option<WireId> {
-    ecad_electrical::wires::routes::wires_of_route(doc, r)
-        .into_iter()
-        .find(|w| !doc.cables_of(*w).is_empty())
-        .or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, r))
-}
-
 pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
     match m {
         Mapped::Fan(k) => Ok(k),
@@ -47,14 +38,14 @@ pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
             Some(Subject::Cable(k)) => Ok(k),
             Some(Subject::Wire(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
             Some(Subject::Route(r)) => {
-                let w = cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
+                let w = ecad_electrical::wires::routes::cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
                 doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)
             }
             _ => Err(NOT_A_CABLE),
         },
         Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
         Mapped::Tee(r) => {
-            let w = cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
+            let w = ecad_electrical::wires::routes::cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
             doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)
         }
         Mapped::Marker(..) | Mapped::Tag(_) | Mapped::Frame(_) | Mapped::DeviceReference(_) | Mapped::JumperBar(..) => Err(NOT_A_CABLE),
@@ -70,8 +61,9 @@ impl CableView {
         }
         let r = commit(s, "cableview", &params)?;
         let shown = r.get("view").and_then(Value::as_str).and_then(View::parse).unwrap_or(View::Traditional);
-        let mut line = read(s, |p, _| Ok(ecad_electrical::cables::layout::switched(p.ledger.document(), cable, shown.name())))
-            .unwrap_or_else(|_| format!("Cable {}… now shown in {} view.", short_hex(cable), shown.name()));
+        let mut line = read(s, |p, _| Ok(ecad_electrical::cables::layout::switched(p.ledger.document(), cable, shown.name()))).unwrap_or_else(|_| {
+            format!("Cable {}… now shown in {} view.", ecad_electrical::terminal_strips::terminal_blocks::short(&cable.hex()), shown.name())
+        });
         if let Some(reason) = r.get("reason").and_then(Value::as_str) {
             line.pop();
             line.push_str(&format!(" (not remembered: {reason})."));
@@ -163,10 +155,6 @@ impl CableView {
             _ => Ok(Step::Continue),
         }
     }
-}
-
-fn short_hex(k: CableId) -> String {
-    k.hex().get(..8).unwrap_or_default().to_string()
 }
 
 impl Interactive for CableView {

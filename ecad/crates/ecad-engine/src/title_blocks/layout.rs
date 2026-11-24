@@ -169,13 +169,6 @@ pub(crate) fn text_draw(input: &FrameInput, draw: &ItemDraw) -> TextDraw {
     TextDraw { mm: draw.size, style: base.style, weight: if draw.bold { base.weight.or(input.text.bold_weight) } else { None } }
 }
 
-fn aci_of(ink: Ink) -> Option<u8> {
-    match ink {
-        Ink::Ink => None,
-        Ink::Red => Some(RED_ACI),
-    }
-}
-
 /// Draw `layout`'s items with the block's bottom-left corner at `origin` (paper mm).
 pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origin: (f64, f64)) -> Drawn {
     let (usable, skipped) = layout.usable();
@@ -227,7 +220,12 @@ fn value_text(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), va
         Align::Centre => (r.x + r.w / 2.0, HAlign::Center),
         Align::Right => (r.right() - INSET_MM, HAlign::Right),
     };
-    pen.text((origin.0 + x, y), tl, value, (h, VAlign::Middle), aci_of(draw.colour), Some(room))
+    // The ink as CADCraft's colour index; plain ink takes the pen's.
+    let aci = match draw.colour {
+        Ink::Ink => None,
+        Ink::Red => Some(RED_ACI),
+    };
+    pen.text((origin.0 + x, y), tl, value, (h, VAlign::Middle), aci, Some(room))
 }
 
 /// A revision table: columns from the project's revision columns, a header row,

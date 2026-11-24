@@ -638,7 +638,7 @@ pub(crate) fn project_page_kept(
     // Location box labels: derived on every draw, never stored.
     for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, ecad_electrical::devices::texts::TextOf::Tag).unwrap_or_else(|| d.new_handle());
-        if let Some(f) = crate::locations::draw::label_family(doc, rep) {
+        if let Some(f) = ecad_drawing_style::catalogues::location::label_family(doc, rep) {
             crate::styles::draw::install_family(&mut d, doc, &f);
         }
         ents.push(crate::locations::draw::styled_label_entity(doc, &draw, rep, &value, at, h));

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle};
-use ecad_engine::interact::hover_lines;
+use ecad_engine::pointer::hover::hover_lines;
 use ecad_engine::project::Mapped;
 use ecad_engine::{Persistence, ProjectHandle};
 const KIND: &str = "kind";

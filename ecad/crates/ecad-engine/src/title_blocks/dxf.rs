@@ -286,7 +286,8 @@ pub(crate) fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Re
         return on_project(s, |p, pg, _| {
             (|| {
                 let doc = p.ledger.document();
-                let id = crate::title_blocks::commands::target(doc, params)?;
+                let text = |k: &str| params.get(k).and_then(Value::as_str);
+                let id = ecad_drawing_style::title_blocks::commands::frame(doc, text("id"), text("name"))?;
                 if id.is_builtin() {
                     return Err(ecad_drawing_style::title_blocks::commands::BUILTIN_READ_ONLY.into());
                 }

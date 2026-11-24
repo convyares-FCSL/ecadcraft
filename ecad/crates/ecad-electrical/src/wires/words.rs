@@ -26,7 +26,7 @@ pub fn route_wire_words(doc: &Document, r: RouteId) -> String {
 }
 
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
-pub fn point_words(doc: &Document, t: ConnectionPointId) -> String {
+pub(crate) fn point_words(doc: &Document, t: ConnectionPointId) -> String {
     let Some(term) = doc.connection_points().get(&t) else { return "?".into() };
     if let Some(a) = term.owner.aid() {
         return format!("\u{2192}{}", crate::continuations::display_name(doc, a));

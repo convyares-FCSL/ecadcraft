@@ -1056,3 +1056,11 @@ pub fn references_json(doc: &Document, references: &[CableReference]) -> Value {
             .collect(),
     )
 }
+/// The text cable `cable`'s next reference would show: its existing reference's place, or `/?`
+/// (and `true`) when it has none.
+pub fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
+    match all(doc).into_iter().find(|r| r.cable == cable) {
+        Some(r) => (r.locator(), false),
+        None => ("/?".into(), true),
+    }
+}

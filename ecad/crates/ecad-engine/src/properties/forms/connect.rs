@@ -1,10 +1,8 @@
 //! Connect and Disconnect.
 
 use super::{R, Safe, commit, end_name, not_a_point, other, paper_guard, safely};
-use crate::interact::{
-    ATTACHED_ACI, LOOSE_ACI, RING_PX, can_start, capture_at, capture_preview, connection_point_for, in_range, line_kind, pick, pixel, preview_entity,
-    pt, read, ring_kind, v2,
-};
+use crate::pointer::pick::{can_start, capture_at, connection_point_for, in_range, pick, pixel, pt, read, v2};
+use crate::pointer::preview::{ATTACHED_ACI, LOOSE_ACI, RING_PX, capture_preview, line_kind, preview_entity, ring_kind};
 use crate::project::Mapped;
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
@@ -108,7 +106,7 @@ impl Interactive for ConnectForm {
     }
     /// Connect: the rubber band from the chosen end to the cursor or the captured connection point.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !crate::interact::model_space(s) {
+        if !crate::pointer::pick::model_space(s) {
             return Vec::new();
         }
         match self.end {

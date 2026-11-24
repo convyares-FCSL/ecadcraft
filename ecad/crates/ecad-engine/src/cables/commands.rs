@@ -1,5 +1,5 @@
 //! The drawn cable commands: `cableslash`, `cableadd`, `cablecore`,
-//! `cablefan` and `cableview`. The interactive forms ([`crate::interact`]) commit through these.
+//! `cablefan` and `cableview`. The interactive forms (each feature's `interact` module) commit through these.
 //! `cableview` records nothing: a cable's view is presentation only ([`crate::cables::views`]).
 //!
 //! Each command is a thin shim: its params struct reads the JSON, the rules in

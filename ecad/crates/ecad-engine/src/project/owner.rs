@@ -258,7 +258,7 @@ impl DocumentOwner for Project {
         if s.layout_space() != cadcraft_engine::doc::Space::Model {
             return Vec::new();
         }
-        crate::interact::overlay_marks(self, uid)
+        crate::pointer::marks::overlay_marks(self, uid)
     }
 
     fn recover(&mut self, s: &mut Session) {

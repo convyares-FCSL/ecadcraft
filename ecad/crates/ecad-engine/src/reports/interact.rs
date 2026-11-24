@@ -5,13 +5,13 @@
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use serde_json::{Map, Value, json};
 
-use crate::interact::can_start;
+use crate::pointer::pick::can_start;
 use crate::properties::forms::{R, Safe, commit, other, safely};
 
 /// `bomitem`: the prompts.
 pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
-    let (metres, location) = crate::interact::read(s, |p, _| {
+    let (metres, location) = crate::pointer::pick::read(s, |p, _| {
         let doc = p.ledger.document();
         let stored = ecad_electrical::locations::designations::default_key(doc.project(), ecad_electrical::locations::designations::Aspect::Location);
         Ok((

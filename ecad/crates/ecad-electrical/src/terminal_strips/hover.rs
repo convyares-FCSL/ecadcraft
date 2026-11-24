@@ -24,7 +24,7 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
 /// The hover lines of a terminal symbol `here` of strip `c`, from the document
 /// alone: `-X01:3  feed-through  +CP1`, `inside  -K01:A1  24V-07`, `outside  -W01 core 3 → -M01:U1`,
 /// `bridged to 4`, then the strip's positions.
-pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
+pub(crate) fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
     let mut lines = Vec::new();
     let Some(r) = doc.representations().get(&here) else { return lines };
     let pe = rep_is_pe(doc, r);

@@ -12,7 +12,8 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
-use crate::interact::{CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
+use crate::pointer::pick::{can_start, in_range, pick, pixel, pt, read};
+use crate::pointer::preview::{CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, preview_entity, ring_kind};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
@@ -670,7 +671,7 @@ impl Interactive for Place {
     }
     /// The symbol at the cursor, as it would be placed.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
-        if !matches!(self.stage, Stage::Point | Stage::Symbol) || !crate::interact::model_space(s) || !in_range(cursor) {
+        if !matches!(self.stage, Stage::Point | Stage::Symbol) || !crate::pointer::pick::model_space(s) || !in_range(cursor) {
             return Vec::new();
         }
         let pl = self.placement(cursor);

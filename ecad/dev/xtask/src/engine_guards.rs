@@ -6,9 +6,8 @@
 //! return something (a decision, a plan, words, JSON), again not an engine type. Such a function needs nothing the engine has, so it belongs in a Core crate
 //! (usually ecad-electrical).
 //!
-//! The count is kept per file: a file on [`ALLOWED`] may have exactly that many (a ratchet: lower
-//! the count when one moves out, remove the entry at 0), every other file none. Each entry says
-//! why its functions are still in the engine. Functions on [`ADAPTERS`] (thin wrappers over a font,
+//! No file has one, apart from the areas on [`EXEMPT`], which keep theirs by design and say why
+//! (a folder or a file, no count). Functions on [`ADAPTERS`] (thin wrappers over a font,
 //! the clock, a file write or a CADCraft reader, which the textual test cannot see) are not counted.
 //!
 //! Textual, like the other guards: over `crates/ecad-engine/src/`, outside `//` comments and
@@ -16,6 +15,7 @@
 //! declares it `pub` ([`CORE_CRATES`]) or it is a standard one ([`STD_TYPES`]); one the engine
 //! crate declares, or a file imports from `cadcraft_*`, is an engine type even when a Core crate
 //! has the same name (the engine's font wrappers `FrameText` and `FrameInput`, for example).
+//! Types a Core macro declares (ids, units, text types: [`DECLARING_MACROS`]) count as Core.
 //! Unknown names count as engine, so the guard never flags what it cannot place. Methods with a
 //! `self` receiver are not counted.
 
@@ -63,22 +63,14 @@ const STD_TYPES: &[&str] = &[
 /// Engine types every file sees (the project handle and its pages).
 const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 
-/// The files that still have rule functions, how many, and why they stay for now. The count only
-/// falls. Functions on [`ADAPTERS`] are not counted.
+/// The areas of the engine that keep rule functions by design, and why: each needs a live session,
+/// or is movement, where a mistake is most expensive. An entry is a folder (ending in `/`) or a file under the workspace root; no
+/// count, and every other file has none.
 #[rustfmt::skip]
-const ALLOWED: &[(&str, usize, &str)] = &[
-    // The agent gate stays in the engine.
-    ("crates/ecad-engine/src/agent/gate.rs", 2, "the agent gate: undo step, issue order and the transaction summary it answers with"),
-    ("crates/ecad-engine/src/agent/tools.rs", 1, "the MCP tools' list paging"),
-    // The dev tools stay.
-    ("crates/ecad-engine/src/dev/snapshot.rs", 2, "the snapshot's readable labels and index (carved from ecad-inspect in 0.2.3; a dev view)"),
-    ("crates/ecad-engine/src/dev/checks.rs", 2, "the live debugger: replay to a sequence number"),
-    ("crates/ecad-engine/src/dev/objects.rs", 2, "the live debugger's read-only labels and counts"),
-    ("crates/ecad-engine/src/dev/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
-    // Judgement calls that stay with the engine code they serve.
-    ("crates/ecad-engine/src/title_blocks/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),
-    ("crates/ecad-engine/src/translate/mod.rs", 1, "movement: the drawn shape of a moved primitive (a tester area)"),
-    ("crates/ecad-engine/src/title_blocks/commands.rs", 1, "titleblockimport's frame read from JSON by hand until lane 066d types it"),
+const EXEMPT: &[(&str, &str)] = &[
+    ("crates/ecad-engine/src/agent/", "the agent gate and tools: the undo step, issue order, transaction summary and list paging an agent's session answers with"),
+    ("crates/ecad-engine/src/dev/", "the dev tools (snapshot, live debugger, projection check): read-only views of a live session, never shipped behaviour"),
+    ("crates/ecad-engine/src/translate/", "movement: the drawn shape of a moved primitive, kept beside the movement code, where a mistake is most expensive"),
 ];
 
 /// Functions the guard's textual test counts that are adapters, not domain rules: each is a thin
@@ -94,6 +86,17 @@ const ADAPTERS: &[(&str, &str, &str)] = &[
     ("crates/ecad-engine/src/project/mod.rs", "views_for", "builds the engine's own views"),
     ("crates/ecad-engine/src/title_blocks/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
     ("crates/ecad-engine/src/translate/mod.rs", "preview", "applies ops to the live ledger and rolls them back"),
+    ("crates/ecad-engine/src/convert.rs", "block_name", "names the CADCraft block a definition projects to"),
+    ("crates/ecad-engine/src/cables/views.rs", "drawings_on_page", "lays cables out with CADCraft's fonts (font_width, LOOK)"),
+    ("crates/ecad-engine/src/devices/draw.rs", "texts_on_page", "measures derived texts with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/devices/draw.rs", "hover_lines", "measures a device's lens with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/devices/draw.rs", "all_texts_on_page", "measures derived texts with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/references/draw/cables.rs", "reference_at", "measures reference flags with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/references/draw/devices.rs", "contacts_json", "measures the contact table with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/references/interact/cables.rs", "check_continue", "plans a reference end with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/wires/draw.rs", "labels_on_page_with", "measures wire labels with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/wires/draw.rs", "labels_on_page", "measures wire labels with CADCraft's fonts (LOOK)"),
+    ("crates/ecad-engine/src/wires/draw.rs", "quiet_ends_of", "reads reference markers and cable layouts with CADCraft's fonts (LOOK)"),
 ];
 
 /// The parameters of a list, split at its top-level commas.
@@ -159,9 +162,30 @@ impl Names {
     }
 }
 
-/// The names `text` declares `pub` (structs, enums, unions, type aliases, traits).
+/// The Core macros that declare a `pub` type, named by the first identifier of their call
+/// (`typed_id!(/// A device. DeviceId, "cmp")`).
+const DECLARING_MACROS: &[&str] = &["typed_id!(", "unit!(", "text_type!("];
+
+/// The names `text` declares `pub` (structs, enums, unions, type aliases, traits, and the types
+/// [`DECLARING_MACROS`] declare).
 fn pub_types(text: &str) -> Vec<String> {
     let mut out = Vec::new();
+    for m in DECLARING_MACROS {
+        for (at, _) in text.match_indices(m) {
+            if text[..at].chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                continue;
+            }
+            // Skip the doc comments, then take the name.
+            let mut rest = text[at + m.len()..].trim_start();
+            while let Some(r) = rest.strip_prefix("///") {
+                rest = r.split_once('\n').map_or("", |x| x.1).trim_start();
+            }
+            let n: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if n.chars().next().is_some_and(char::is_uppercase) {
+                out.push(n);
+            }
+        }
+    }
     for line in text.lines() {
         let l = line.trim_start();
         let Some(rest) = l.strip_prefix("pub ").or_else(|| l.strip_prefix("pub(crate) ")) else { continue };
@@ -331,19 +355,17 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let fix = "move the function to a Core crate (usually ecad-electrical) and call it from the engine";
     let mut out = Vec::new();
     for (rel, found) in &by_file {
-        let allowed = ALLOWED.iter().find(|(p, _, _)| p == rel).map_or(0, |(_, n, _)| *n);
-        if let Some(p) = super::ratchet_problem(rel, found.len(), allowed, what, fix) {
+        if exempt(rel) {
+            continue;
+        }
+        if let Some(p) = super::ratchet_problem(rel, found.len(), 0, what, fix) {
             out.push(p);
-            if found.len() > allowed {
-                out.extend(found.iter().map(|f| format!("    {f}")));
-            }
+            out.extend(found.iter().map(|f| format!("    {f}")));
         }
     }
-    for (rel, allowed, _) in ALLOWED {
-        if !by_file.contains_key(*rel)
-            && let Some(p) = super::ratchet_problem(rel, 0, *allowed, what, fix)
-        {
-            out.push(p);
+    for (area, _) in EXEMPT {
+        if !files_seen.iter().any(|f| f == area || (area.ends_with('/') && f.starts_with(area))) {
+            out.push(format!("{area}: on engine_guards::EXEMPT but there is no such file or folder; remove it"));
         }
     }
     for (p, n, _) in ADAPTERS {
@@ -353,6 +375,11 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     }
     out.extend(adapter_gone);
     Ok(out)
+}
+
+/// Whether file `rel` is in an area on [`EXEMPT`].
+fn exempt(rel: &str) -> bool {
+    EXEMPT.iter().any(|(a, _)| rel == *a || (a.ends_with('/') && rel.starts_with(a)))
 }
 
 /// Whether `text` declares a function named `name`.
@@ -400,6 +427,13 @@ mod tests {
         for (text, want) in rows {
             assert_eq!(places("f.rs", text, &names()).len(), *want, "{text}");
         }
+    }
+
+    #[test]
+    fn macro_declared_types_are_found() {
+        let text =
+            "typed_id!(/// A device.\n    DeviceId, \"cmp\");\nunit!(\n    /// Volts.\n    /// More.\n    Volts,\n    \"V\"\n);\nmy_unit!(Nope);";
+        assert_eq!(pub_types(text), vec!["DeviceId".to_string(), "Volts".to_string()]);
     }
 
     #[test]

@@ -8,9 +8,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, Pt, Word};
 use serde_json::{Value, json};
 
-use crate::interact::{
-    ATTACHED_ACI, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
-};
+use crate::pointer::pick::{can_start, in_range, pixel, pt, read, v2};
+use crate::pointer::preview::{ATTACHED_ACI, REFUSE_ACI, RING_PX, line_kind, preview_entity, preview_text, ring_kind};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 use ecad_electrical::connectors::{self as cn, FamilyRules};
@@ -412,7 +411,7 @@ impl Interactive for PlaceConnector {
     }
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         match self.first {
-            Some(a) if crate::interact::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
+            Some(a) if crate::pointer::pick::model_space(s) && in_range(cursor) => vec![line_kind(a, pt(cursor))],
             _ => Vec::new(),
         }
     }

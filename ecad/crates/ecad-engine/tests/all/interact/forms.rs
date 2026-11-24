@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
-use ecad_engine::interact::{self, NOT_OWNED};
+use ecad_engine::pointer::pick::NOT_OWNED;
 use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, RouteEnd, RouteId, Transaction, WireId};
 use serde_json::{Value, json};
 
@@ -431,7 +431,7 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
         }
         // After the commit the end shows a dot when attached, a square when loose.
         let uid = h.s.state().unwrap().uid;
-        let marks = h.p(|p| interact::overlay_marks(p, uid));
+        let marks = h.p(|p| ecad_engine::pointer::marks::overlay_marks(p, uid));
         let at_end = marks.iter().filter(|m| m.at.near(Vec2::new(end.x, end.y), 1e-9)).map(|m| m.shape).collect::<Vec<_>>();
         assert!(at_end.contains(if attaches { &MarkShape::Dot } else { &MarkShape::Square }), "{at_end:?}");
     }
@@ -532,9 +532,9 @@ fn hostile_input_is_refused_without_a_commit() {
     start(&mut h, "addconnectionpoint");
     typed(&mut h, "N");
     h.s.input(Input::Text("x".repeat(10_000))).unwrap();
-    assert_eq!(h.s.log.last().unwrap(), interact::BAD_NAME);
+    assert_eq!(h.s.log.last().unwrap(), ecad_electrical::devices::BAD_CONNECTION_POINT_NAME);
     h.s.input(Input::Text("a\u{7}b".into())).unwrap();
-    assert_eq!(h.s.log.last().unwrap(), interact::BAD_NAME);
+    assert_eq!(h.s.log.last().unwrap(), ecad_electrical::devices::BAD_CONNECTION_POINT_NAME);
     h.s.cancel();
     assert_eq!(h.head(), head);
     // 4 097 wire points (a route's bound, design 072 §4.3): the last is refused; Esc commits
@@ -556,7 +556,7 @@ fn the_overlay_marks_connection_points_and_wire_ends_and_hover_names_them() {
     h.run("wire", json!({"points": [[40, 10], [70, 10], [70, 0], [90, 0]]})).unwrap();
     h.run("wire", json!({"points": [[0, 30], [20, 30]]})).unwrap();
     let uid = h.s.state().unwrap().uid;
-    let marks = h.p(|p| interact::overlay_marks(p, uid));
+    let marks = h.p(|p| ecad_engine::pointer::marks::overlay_marks(p, uid));
     let count = |s: MarkShape| marks.iter().filter(|m| m.shape == s).count();
     assert_eq!(count(MarkShape::Ring), 3, "the drawn terminal and the coil's two");
     assert_eq!(count(MarkShape::Dot), 2, "both ends of the connected wire");
@@ -570,14 +570,14 @@ fn the_overlay_marks_connection_points_and_wire_ends_and_hover_names_them() {
     let coil = d.devices().iter().find(|(_, c)| c.definition.is_some()).map(|(c, _)| *c).unwrap();
     let item = h.symbol_item(coil);
     let coil_handle = h.handle_of(pg, item);
-    let lines = h.p(|p| interact::hover_lines(p, uid, coil_handle)).unwrap();
+    let lines = h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, coil_handle)).unwrap();
     assert_eq!(lines[0], "Device (no tag)");
     assert_eq!(lines[1], format!("id {}", coil.hex()));
     assert_eq!(lines[2], "Connection points: 2");
     assert!(lines.iter().any(|l| l == "  A1 — 1 wire end"), "{lines:?}");
     let w = *d.wires().keys().next().unwrap();
     let wh = h.route_handle(pg, w);
-    let lines = h.p(|p| interact::hover_lines(p, uid, wh)).unwrap();
+    let lines = h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, wh)).unwrap();
     assert_eq!(lines[0], "Wire 01", "a wire is named by its number");
     assert!(lines[2].starts_with("End A: connection point 1 of "), "{lines:?}");
     assert!(lines[3].starts_with("End B: connection point A1 of "), "{lines:?}");
@@ -585,17 +585,17 @@ fn the_overlay_marks_connection_points_and_wire_ends_and_hover_names_them() {
     let (rid, rep) = d.representations_of(ecad_model::Subject::Device(drawn)).next().unwrap();
     let t = *rep.connection_points.keys().next().unwrap();
     let marker = h.p(|p| p.pages[&pg].map.marker(rid, t)).unwrap();
-    let lines = h.p(|p| interact::hover_lines(p, uid, marker)).unwrap();
+    let lines = h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, marker)).unwrap();
     assert_eq!(lines[0], "Connection point 1");
     assert_eq!(lines[1], format!("of component {}", drawn.hex()));
     assert!(lines[4].starts_with("  wire ") && lines[4].ends_with("end A"), "{lines:?}");
     // Plain geometry: nothing.
     h.run("line", json!({"points": [[0, 60], [30, 60]]})).unwrap();
     let plain = h.s.doc().unwrap().model.iter().last().unwrap().handle;
-    assert!(h.p(|p| interact::hover_lines(p, uid, plain)).is_none());
+    assert!(h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, plain)).is_none());
     // Reading them changed nothing.
     let before = h.head();
-    let _ = h.p(|p| (interact::overlay_marks(p, uid), interact::hover_lines(p, uid, wh)));
+    let _ = h.p(|p| (ecad_engine::pointer::marks::overlay_marks(p, uid), ecad_engine::pointer::hover::hover_lines(p, uid, wh)));
     assert_eq!(h.head(), before);
 }
 
@@ -609,9 +609,9 @@ fn default_connection_point_names_are_the_smallest_unused_number() {
     for (at, label) in [([40, 2], "2"), ([40, 4], "A")] {
         h.run("addconnectionpoint", json!({"handle": right.hex(), "at": at, "label": label})).unwrap();
     }
-    assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "1");
+    assert_eq!(h.p(|p| ecad_electrical::devices::next_connection_point_name(p.ledger.document(), c)), "1");
     h.run("addconnectionpoint", json!({"handle": right.hex(), "at": [40, 6], "label": "1"})).unwrap();
-    assert_eq!(h.p(|p| interact::next_connection_point_name(p.ledger.document(), c)), "3");
+    assert_eq!(h.p(|p| ecad_electrical::devices::next_connection_point_name(p.ledger.document(), c)), "3");
 }
 
 #[test]
@@ -630,9 +630,9 @@ fn a_click_lands_on_the_outline_nearest_the_cursor() {
     assert!(q.near(Pt::new(0.0, 5.0), 1e-9) || q.near(Pt::new(5.0, 0.0), 1e-9), "an end of the arc: {q:?}");
     let hostile = Primitive::Line { a: Pt::new(f64::MAX, 0.0), b: Pt::new(-f64::MAX, 0.0) };
     let _ = ecad_model::geometry::geom::nearest_on(&hostile, Pt::new(0.0, 1.0));
-    assert_eq!(interact::valid_name("  K1 "), Some("K1".into()));
-    assert_eq!(interact::valid_name(""), None);
-    assert_eq!(interact::valid_name(&"x".repeat(65)), None);
+    assert_eq!(ecad_electrical::devices::valid_connection_point_name("  K1 "), Some("K1".into()));
+    assert_eq!(ecad_electrical::devices::valid_connection_point_name(""), None);
+    assert_eq!(ecad_electrical::devices::valid_connection_point_name(&"x".repeat(65)), None);
 }
 
 /// Review fix 2: a panic in a form's prompt or preview (injected) gives a plain prompt and no

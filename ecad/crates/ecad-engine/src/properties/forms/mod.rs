@@ -12,7 +12,7 @@ pub(crate) mod wire;
 
 use crate::commands::on_project;
 #[cfg(feature = "fault-injection")]
-use crate::interact::read;
+use crate::pointer::pick::read;
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
@@ -110,8 +110,8 @@ pub(crate) fn commit(s: &mut Session, id: &str, params: &Value) -> R<Value> {
 /// Points and picks are refused while a paper-space layout is shown (the user switched layouts
 /// while the form ran): ECAD objects are drawn in the page's model space only.
 pub(crate) fn paper_guard(s: &Session, i: &Input) -> R<()> {
-    if matches!(i, Input::Point(_) | Input::Pick(_)) && !crate::interact::model_space(s) {
-        return Err(other(crate::interact::PAPER_SPACE));
+    if matches!(i, Input::Point(_) | Input::Pick(_)) && !crate::pointer::pick::model_space(s) {
+        return Err(other(crate::pointer::pick::PAPER_SPACE));
     }
     Ok(())
 }

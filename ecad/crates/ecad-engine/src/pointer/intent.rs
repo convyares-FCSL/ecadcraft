@@ -10,9 +10,9 @@
 
 use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{Document, PageId, Subject};
+use ecad_model::Subject;
 
-use crate::interact::{capture, pick, pixel, read, route_ends};
+use crate::pointer::pick::{capture, pick, pixel, read};
 use crate::project::{Mapped, Project};
 
 /// The sentence for tool `command` with the cursor at `cursor` on the active page.
@@ -35,7 +35,7 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
         "wire" => match point {
             Some(c) => {
                 let mut s = format!("joins {}", ecad_electrical::terminal_strips::connection_point_phrase(doc, c.connection_point));
-                if let Some(w) = wire_ending_at(doc, page, c.at, aperture) {
+                if let Some(w) = ecad_electrical::wires::routes::wire_ending_at(doc, page, c.at, aperture) {
                     s.push_str(&format!(" to {}", ecad_electrical::wires::words::wire_called(doc, w)));
                 }
                 Some(s)
@@ -56,12 +56,4 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
         "connect" => point.map(|c| format!("connects to {}", ecad_electrical::terminal_strips::connection_point_phrase(doc, c.connection_point))),
         _ => None,
     }
-}
-
-/// A wire on `page` with an end within `aperture` of `at`.
-fn wire_ending_at(doc: &Document, page: PageId, at: ecad_model::Pt, aperture: f64) -> Option<ecad_model::WireId> {
-    route_ends(doc, page)
-        .into_iter()
-        .filter(|(_, a, b)| a.dist(at) <= aperture || b.dist(at) <= aperture)
-        .find_map(|(r, _, _)| ecad_electrical::wires::routes::wire_of_route(doc, r))
 }

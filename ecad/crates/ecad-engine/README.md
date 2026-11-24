@@ -11,7 +11,7 @@ It is the only ECAD crate that uses `cadcraft-engine`, and it has no UI.
 - `project/`, `access.rs`: `Project` owns the document and the open page drawings; `ProjectHandle` is the only way to reach it from outside, under a lock.
 - `translate/`, `history/`, `file.rs`: turning CADCraft commits into transactions, undo and redo, versions, branches and merging, and the `.ecad` file bound to a project.
 - `commands/`, `generic.rs`: the command registry and shared helpers, and the one runner of the generic commands declared in `ecad-electrical`.
-- `interact.rs`, `pointer/`: the click-based forms of the commands, marks drawn over pages, hover text, and what is under the cursor.
+- `pointer/`: what is under the cursor and the running tool's intent, marks drawn over pages, hover text, and what the click-based forms share (picking, capture, previews). Each form is in its feature area's `interact` module.
 - `convert.rs`, `cad.rs`: building CADCraft entities from what the rules decide (with each feature area's `draw` module), and the CADCraft names the app and programs may use.
 - Feature areas, each the engine half of the same area in `ecad-electrical` (its session commands, drawing and click forms): `cables/`, `checks.rs`, `connectors/`, `continuations/`, `devices/`, `locations/`, `pages/`, `plc/`, `properties/`, `references/`, `releases/`, `reports/`, `styles/`, `symbols/`, `terminal_strips/`, `title_blocks/`, `wires/`.
 - `agent/`: the write gate and bridge for agents (shared by the window and `ecad-mcp`).

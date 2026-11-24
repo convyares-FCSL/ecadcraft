@@ -3,10 +3,6 @@
 //! engine's; the other title block commands are generic ([`ecad_drawing_style::title_blocks::commands`]).
 
 use cadcraft_engine::{CommandSpec, Session};
-use ecad_drawing_style::title_blocks::commands as rules;
-use ecad_electrical::CmdError;
-use ecad_model::Document;
-use ecad_model::objects::styles::StyleRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -20,12 +16,6 @@ pub const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimp
 /// The command of this module.
 pub fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("titleblockimport", "Import Title Block", crate::commands::input::typed::<TitleblockimportParams>).noundo()]
-}
-
-/// The frame a JSON call names (`id` or `name`): `titleblockimport` still reads its JSON by hand.
-pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdError> {
-    let text = |k: &str| params.get(k).and_then(Value::as_str);
-    rules::frame(doc, text("id"), text("name"))
 }
 
 /// A new frame from a DXF drawing (`{path | dxf, sheet?, name?}`), or a DXF drawing put into a logo item (`{id |

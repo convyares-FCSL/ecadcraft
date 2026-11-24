@@ -306,3 +306,8 @@ pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
         _ => slot.missing_why.is_empty(),
     }
 }
+
+/// The tags of the cables in `fan` that still exist (a release manifest's `cable_views`).
+pub fn fan_tags(doc: &Document, fan: &std::collections::BTreeSet<ecad_model::CableId>) -> Vec<String> {
+    fan.iter().filter(|k| doc.cables().contains_key(k)).map(|k| crate::cables::cable_title(doc, *k)).collect()
+}

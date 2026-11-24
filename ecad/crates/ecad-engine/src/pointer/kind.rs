@@ -15,7 +15,7 @@ use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, WireId};
 
-use crate::interact::{capture, pick, pixel, pt, read, route_ends};
+use crate::pointer::pick::{capture, pick, pixel, pt, read};
 use crate::project::{Mapped, Project};
 use ecad_electrical::devices::kinds::ObjectKind;
 use ecad_electrical::terminal_strips::terminal_blocks::connection_point_name;
@@ -111,7 +111,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         return t;
     }
     let c = pt(cursor);
-    let ok_aperture = aperture.is_finite() && aperture > 0.0 && crate::interact::in_range(cursor);
+    let ok_aperture = aperture.is_finite() && aperture > 0.0 && crate::pointer::pick::in_range(cursor);
     // A cable reference end (its point or text) wins over the wire running into it.
     if ok_aperture && let Some(r) = crate::references::draw::cables::reference_at(doc, page, c, aperture) {
         return reference(doc, map, page, t, r);
@@ -119,7 +119,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     // A wire's end within the aperture.
     if ok_aperture {
         let mut best: Option<(f64, RouteId, End)> = None;
-        for (r, a, b) in route_ends(doc, page) {
+        for (r, a, b) in ecad_electrical::wires::routes::route_ends(doc, page) {
             for (end, p_) in [(End::A, a), (End::B, b)] {
                 let d = p_.dist(c);
                 if d <= aperture && best.is_none_or(|(x, _, _)| d < x) {

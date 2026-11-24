@@ -1,5 +1,5 @@
 //! `cablegoto`: opens the other end's page and moves the view
-//! there, so it is the engine's; its interactive form is in [`crate::interact`]. The other cable
+//! there, so it is the engine's; its interactive form is in [`crate::references::interact::cables`]. The other cable
 //! reference commands are generic ([`ecad_electrical::references::commands::cables`]).
 
 use cadcraft_engine::Session;

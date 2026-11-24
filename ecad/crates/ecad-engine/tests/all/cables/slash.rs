@@ -15,7 +15,8 @@ use common::{H, id};
 use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
 use ecad_engine::dev::debug::ObjectId;
 use ecad_engine::dev::objects::used_by;
-use ecad_engine::interact::{hover_lines, overlay_marks};
+use ecad_engine::pointer::hover::hover_lines;
+use ecad_engine::pointer::marks::overlay_marks;
 use ecad_model::{
     Author, CableId, Color, CorePosition, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, RepresentationId, Style, Subject, Transaction, WireId,
 };

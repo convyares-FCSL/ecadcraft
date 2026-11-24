@@ -8,7 +8,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
-use crate::interact::{can_start, in_range, line_kind, pick, pt, read};
+use crate::pointer::pick::{can_start, in_range, pick, pt, read};
+use crate::pointer::preview::line_kind;
 use crate::project::{Mapped, Project};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;

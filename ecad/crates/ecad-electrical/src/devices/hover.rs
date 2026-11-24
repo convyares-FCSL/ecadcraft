@@ -118,3 +118,59 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
 pub fn derived_text_kind(of: TextOf, symbol: bool) -> ecad_model::look::TextKind {
     if symbol { kind_of(of) } else { ecad_model::look::TextKind::LocationLabel }
 }
+
+/// A device without a tag: its tag line, ID, and each connection point with its wire end count.
+pub fn component_lines(doc: &Document, c: DeviceId) -> Vec<String> {
+    let component = doc.devices().get(&c);
+    let mut lines = vec![format!("Device {}", component.and_then(|x| x.tag_shown()).unwrap_or_else(|| "(no tag)".into())), format!("id {}", c.hex())];
+    let connection_points: Vec<(ConnectionPointId, String)> =
+        doc.connection_points_of(c).map(|(t, x)| (t, x.label.clone().unwrap_or_else(|| "(no label)".into()))).collect();
+    lines.push(format!("Connection points: {}", connection_points.len()));
+    for (t, label) in connection_points {
+        let k = doc.ends_at(t).len();
+        lines.push(format!("  {label} \u{2014} {k} wire end{}", if k == 1 { "" } else { "s" }));
+    }
+    lines
+}
+
+/// A connection point's lens: its name, its component, its ID and the wire ends on it.
+pub fn connection_point_lines(doc: &Document, t: ConnectionPointId) -> Vec<String> {
+    let term = doc.connection_points().get(&t);
+    let of = term
+        .map(|x| {
+            let c = x.device().and_then(|c| doc.devices().get(&c));
+            c.and_then(|c| c.tag_shown()).unwrap_or_else(|| x.owner.subject_hex())
+        })
+        .unwrap_or_default();
+    let mut lines = vec![
+        // A connector pin by its half (`-X10.S:3`).
+        format!(
+            "Connection point {}",
+            crate::connectors::pin_name(doc, t).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| "(no label)".into())
+        ),
+        format!("of component {of}"),
+        format!("id {}", t.hex()),
+    ];
+    let ends = doc.ends_at(t);
+    if ends.is_empty() {
+        lines.push("Wires: none".into());
+    } else {
+        lines.push("Wires:".into());
+        lines.extend(
+            ends.into_iter().map(|(w, end)| format!("  wire {}\u{2026} end {end:?}", crate::terminal_strips::terminal_blocks::short(&w.hex()))),
+        );
+    }
+    lines
+}
+
+/// A device's lens with its cross-reference lines: the coil's place on a contact, the table's
+/// contacts on a coil, before the lens's last (`id`) line.
+pub fn with_device_references(doc: &Document, c: DeviceId, rep: RepresentationId, mut lines: Vec<String>) -> Vec<String> {
+    let mut extra = crate::references::devices::read::contact_lines(doc, c, rep);
+    extra.extend(crate::references::devices::read::head_lines(doc, c, rep));
+    let at = lines.len().saturating_sub(1);
+    for (i, l) in extra.into_iter().enumerate() {
+        lines.insert(at + i, l);
+    }
+    lines
+}

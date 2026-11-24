@@ -31,6 +31,7 @@
 //! This module reads the document and plans ops; it commits nothing itself.
 
 pub mod commands;
+pub mod hover;
 pub mod joining;
 pub mod label_rule;
 pub mod labels;

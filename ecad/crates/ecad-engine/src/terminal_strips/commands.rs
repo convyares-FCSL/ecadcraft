@@ -29,7 +29,11 @@ pub const TYPED: &[Typed] = &[Typed::of::<BridgeParams>("bridge")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>).interactive(crate::interact::bridge).noundo()]
+    vec![
+        CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
+            .interactive(crate::terminal_strips::interact::terminal_blocks::bridge)
+            .noundo(),
+    ]
 }
 
 // ---------------------------------------------------------------- landing on a wire

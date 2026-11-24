@@ -2,7 +2,7 @@
 //! `devices` (read only), `deviceprops`, `devicedelete`, `ecaddelete` and `tagsettings`; and the
 //! experiments' `convertcomponent` and `addconnectionpoint`.
 //!
-//! The interactive forms ([`crate::interact`]) commit through exactly these. `place` is a thin shim:
+//! The interactive forms ([`crate::devices::interact`]) commit through exactly these. `place` is a thin shim:
 //! [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
 //! which device a symbol joins, each form's planner builds the ops, and the shim commits and
 //! answers in JSON.

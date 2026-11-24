@@ -12,7 +12,8 @@ use ecad_model::connectivity::derive::CableReference;
 use ecad_model::{CableId, Document, Op, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
-use crate::interact::{can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
+use crate::pointer::pick::{can_start, in_range, pick, pick_radius, pixel, pt, read, v2};
+use crate::pointer::preview::{line_kind, preview_entity, preview_text, ring_kind};
 use crate::project::{Mapped, Project};
 use crate::properties::forms::cable_view::{NOTHING_THERE, cable_named};
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -22,7 +23,7 @@ use {ecad_electrical::references::cables::ORPHAN_ACI, ecad_electrical::reference
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).
 const RING: f64 = ecad_electrical::references::cables::RING_PX as f64;
 /// `ecad.attach-preview` (ACI 3) for the preview text that says what will happen.
-const PREVIEW_ACI: u8 = crate::interact::ATTACHED_ACI;
+const PREVIEW_ACI: u8 = crate::pointer::preview::ATTACHED_ACI;
 /// `ecad.preview-text` height in screen pixels.
 const PREVIEW_TEXT_PX: f64 = 12.0;
 
@@ -64,14 +65,6 @@ fn ring_and_text(s: &Session, at: Pt, text: &str, orphan: bool, left: bool) -> V
     let x = if left { at.x - RING * px - width } else { at.x + RING * px };
     out.push(preview_text(s, Pt::new(x, at.y - 4.0 * px), px, text.to_string(), aci));
     out
-}
-
-/// The text the cable's next reference would show: its existing reference's place, or `/?`.
-fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
-    match ecad_electrical::references::cables::all(doc).into_iter().find(|r| r.cable == cable) {
-        Some(r) => (r.locator(), false),
-        None => ("/?".into(), true),
-    }
 }
 
 // ---------------------------------------------------------------- Cable Reference
@@ -178,7 +171,9 @@ impl Interactive for CableRef {
         if !in_range(cursor) {
             return Vec::new();
         }
-        let Ok((text, orphan)) = read(s, |p, _| Ok(next_text(p.ledger.document(), k))) else { return Vec::new() };
+        let Ok((text, orphan)) = read(s, |p, _| Ok(ecad_electrical::references::cables::next_text(p.ledger.document(), k))) else {
+            return Vec::new();
+        };
         ring_and_text(s, pt(cursor), &text, orphan, false)
     }
 }
@@ -224,24 +219,6 @@ fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
 
 /// Most orphan references `List` shows.
 const MAX_LISTED: usize = 20;
-
-/// The cable typed at step 1: a tag (case-insensitive, exact), else a full ID
-/// or a leading hex prefix of at least 8 digits naming one cable.
-fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
-    let t = typed.trim();
-    let tagged: Vec<CableId> = doc.cables().iter().filter(|(_, c)| c.tag().is_some_and(|x| x.eq_ignore_ascii_case(t))).map(|(k, _)| *k).collect();
-    let found = if tagged.is_empty() && t.len() >= 8 && t.chars().all(|c| c.is_ascii_hexdigit()) {
-        let lower = t.to_ascii_lowercase();
-        doc.cables().keys().copied().filter(|k| k.hex().starts_with(&lower)).collect()
-    } else {
-        tagged
-    };
-    match found.as_slice() {
-        [] => Err(format!("No cable named \"{t}\".")),
-        [k] => Ok(*k),
-        many => Err(format!("\"{t}\" names {} cables; type more of it.", many.len())),
-    }
-}
 
 /// The checks of step 1 for `cable` on `page`, without any geometry.
 fn check_continue(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
@@ -319,7 +296,8 @@ impl Continue {
                         Self::list(s);
                         return Ok(Step::Continue);
                     }
-                    let k = read(s, |p, _| cable_typed(p.ledger.document(), &t)).map_err(other)?;
+                    let k =
+                        read(s, |p, _| ecad_electrical::cables::cable_typed(p.ledger.document(), &t).map_err(|e| e.to_string())).map_err(other)?;
                     self.pick_cable(s, k)
                 }
                 _ => Ok(Step::Continue),
@@ -393,7 +371,7 @@ impl Interactive for Continue {
     /// Step 3: the stubs and the slash as they will be drawn.
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let (Some(k), Some(at)) = (self.cable, self.at) else { return Vec::new() };
-        if !crate::interact::model_space(s) || !in_range(cursor) {
+        if !crate::pointer::pick::model_space(s) || !in_range(cursor) {
             return Vec::new();
         }
         let Some(plan) = Self::plan(s, k, at, pt(cursor)) else { return vec![line_kind(at, pt(cursor))] };
@@ -408,7 +386,9 @@ impl Interactive for Continue {
         if !in_range(cursor) {
             return Vec::new();
         }
-        let Ok((text, orphan)) = read(s, |p, _| Ok(next_text(p.ledger.document(), k))) else { return Vec::new() };
+        let Ok((text, orphan)) = read(s, |p, _| Ok(ecad_electrical::references::cables::next_text(p.ledger.document(), k))) else {
+            return Vec::new();
+        };
         match self.at {
             None => ring_and_text(s, pt(cursor), &text, orphan, false),
             Some(at) => {

@@ -17,7 +17,8 @@ use common::{H, id};
 use ecad_electrical::cables::layout::{self, MarkerEnd, Role, Shape};
 use ecad_engine::cables::draw;
 use ecad_engine::cables::views::{self, FanOnPage};
-use ecad_engine::interact::{hover_lines, overlay_marks};
+use ecad_engine::pointer::hover::hover_lines;
+use ecad_engine::pointer::marks::overlay_marks;
 use ecad_model::{
     CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction, WireId,
 };

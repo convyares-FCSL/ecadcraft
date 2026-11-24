@@ -854,6 +854,27 @@ pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<(RepresentationId, St
         .collect()
 }
 
+/// The polyline item on `page` whose outline passes within `tol` of `at` (any, closed or not:
+/// the command says which ones are refused).
+pub fn outline_at(doc: &Document, page: ecad_model::PageId, at: ecad_model::Pt, tol: f64) -> Option<ecad_model::ItemId> {
+    doc.items()
+        .iter()
+        .filter(|(_, i)| i.page == page)
+        .filter_map(|(id, i)| match &i.kind {
+            ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, closed }) => {
+                let n = vertices.len();
+                let segs = if *closed { n } else { n.saturating_sub(1) };
+                let d = (0..segs)
+                    .filter_map(|k| Some(at.dist(ecad_model::geometry::geom::nearest_on_segment(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))))
+                    .fold(f64::INFINITY, f64::min);
+                (d <= tol).then_some((d, *id))
+            }
+            _ => None,
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, id)| id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

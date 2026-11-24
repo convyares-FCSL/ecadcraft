@@ -9,7 +9,7 @@ use cadcraft_engine::ext::MarkShape;
 use ecad_electrical::checks::Kind;
 use ecad_engine::cables::draw::{self, Painted};
 use ecad_engine::export::printbook;
-use ecad_engine::interact::overlay_marks;
+use ecad_engine::pointer::marks::overlay_marks;
 use ecad_model::palette::sheet::PAPER;
 use ecad_model::{Pt, WireId};
 use serde_json::json;

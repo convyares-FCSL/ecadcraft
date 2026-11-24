@@ -7,7 +7,7 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
-use crate::interact::{can_start, in_range, pick, read};
+use crate::pointer::pick::{can_start, in_range, pick, read};
 use crate::project::Mapped;
 use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
@@ -100,7 +100,8 @@ impl ShowText {
             (Level::Project, _) => {}
         }
         let v = commit(s, "showtext", &params)?;
-        let words = read(s, |p, _| Ok(echo(p.ledger.document(), &v, kind, show, component))).unwrap_or_default();
+        let words = read(s, |p, _| Ok(ecad_electrical::styles::commands::text::showtext_echo(p.ledger.document(), &v, kind, show, component)))
+            .unwrap_or_default();
         s.echo(words);
         Ok(Step::Continue)
     }
@@ -128,44 +129,6 @@ impl ShowText {
             _ => Ok(Step::Continue),
         }
     }
-}
-
-/// The echo after a change: `Tag -X01 hidden on this symbol.`…
-fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
-    let what = kind.words();
-    let mut what = what.to_string();
-    if let Some(first) = what.get(..1) {
-        what = format!("{}{}", first.to_ascii_uppercase(), what.get(1..).unwrap_or_default());
-    }
-    let tag = component.map(|c| ecad_electrical::devices::tags::tag_words(doc, c));
-    let subject = match (&tag, kind) {
-        (Some(t), TextKind::Tag) => format!("{what} {t}"),
-        _ => what,
-    };
-    let done = if <ecad_model::look::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == ecad_model::look::Shown::Off {
-        "hidden"
-    } else {
-        "shown"
-    };
-    let level = v.get("level").and_then(|l| l.as_str()).unwrap_or_default();
-    let place = match level {
-        "symbol" => "on this symbol".to_string(),
-        "device" => format!("for {}", tag.clone().unwrap_or_default()),
-        "page" => {
-            let page = v.get("target").and_then(|t| t.as_str()).and_then(PageId::parse);
-            page.map_or_else(|| "on this page".to_string(), |p| format!("on page {}", ecad_electrical::references::cables::page_number(doc, p)))
-        }
-        _ => "in the project".to_string(),
-    };
-    let mut line = format!("{subject} {done} {place}.");
-    let strip = component.is_some_and(|c| ecad_electrical::terminal_strips::strip_of(doc, c).is_some());
-    if level == "device" && kind == TextKind::Tag && strip {
-        line.push_str(" Strip tags show once per run unless you set a symbol.");
-    }
-    if v.get("changed").and_then(|c| c.as_bool()) == Some(false) {
-        line = format!("{subject} is already {done} {place}.");
-    }
-    line
 }
 
 impl Interactive for ShowText {
@@ -242,13 +205,6 @@ impl MoveText {
         })
     }
 
-    fn params(rep: RepresentationId, of: TextOf) -> serde_json::Value {
-        match of {
-            TextOf::ConnectionPoint(t) => json!({"representation": rep.hex(), "kind": "point_label", "connection_point": t.hex()}),
-            _ => json!({"representation": rep.hex(), "kind": "tag"}),
-        }
-    }
-
     fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
         match (i, self.picked.clone()) {
             (Input::Point(p), _) if !in_range(p) => Err(other(OUT_OF_RANGE)),
@@ -256,7 +212,7 @@ impl MoveText {
                 let h = pick(s, p).ok_or_else(|| other(PICK_TO_MOVE))?;
                 let (rep, of, what) = Self::pick_text(s, h).map_err(other)?;
                 if self.reset {
-                    let mut q = Self::params(rep, of);
+                    let mut q = ecad_electrical::styles::commands::text::movetext_call(rep, of);
                     q["reset"] = json!(true);
                     commit(s, "movetext", &q)?;
                     s.echo(format!("{what} is placed automatically again."));
@@ -266,7 +222,7 @@ impl MoveText {
                 Ok(Step::Continue)
             }
             (Input::Point(p), Some((rep, of, what))) => {
-                let mut q = Self::params(rep, of);
+                let mut q = ecad_electrical::styles::commands::text::movetext_call(rep, of);
                 q["to"] = json!([p.x, p.y]);
                 if let Some(j) = &self.justify {
                     q["justify"] = json!(j);

@@ -23,7 +23,7 @@ const ALLOWED: &[(&str, usize)] = &[
     ("ecad-drawing-style", 1),
     // Two of these (`DashBudget`, `FlagShape`) are reached by other crates only through a return value.
     ("ecad-electrical", 175),
-    ("ecad-engine", 26),
+    ("ecad-engine", 25),
     ("ecad-file", 23),
     ("ecad-model", 60),
     ("ecad-store", 3),

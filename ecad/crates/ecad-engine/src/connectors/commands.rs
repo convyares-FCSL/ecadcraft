@@ -2,7 +2,7 @@
 //! and `place` for a connector half or pin (Find Symbol).
 //!
 //! Every write is one transaction, committed through [`Project::apply_edit`]; nothing here opens a
-//! dialog. The interactive form of `connector` ([`crate::interact::connector`]) commits through
+//! dialog. The interactive form of `connector` ([`crate::connectors::interact::connector`]) commits through
 //! this JSON form.
 //!
 //! `connector` and `pinlabel` are thin shims: their params structs read the JSON, the
@@ -36,7 +36,9 @@ pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>).interactive(crate::interact::connector).noundo(),
+        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>)
+            .interactive(crate::connectors::interact::connector)
+            .noundo(),
         CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>).noundo(),
     ]
 }

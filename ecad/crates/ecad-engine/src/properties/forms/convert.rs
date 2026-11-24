@@ -2,7 +2,7 @@
 
 use super::{R, Safe, commit, hex_of, other, paper_guard, safely};
 use crate::commands::MAX_HANDLES;
-use crate::interact::can_start;
+use crate::pointer::pick::can_start;
 use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;

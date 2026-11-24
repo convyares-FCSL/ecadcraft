@@ -1,10 +1,8 @@
 //! Add Connection Point.
 
 use super::{R, Safe, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{
-    CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, NO_OUTLINE, can_start, drawn_component, from_cursor, in_range, next_connection_point_name, pick,
-    pixel, preview_entity, pt, read, ring_kind, v2, valid_name,
-};
+use crate::pointer::pick::{NO_OUTLINE, can_start, drawn_component, from_cursor, in_range, pick, pixel, pt, read, v2};
+use crate::pointer::preview::{CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, preview_entity, ring_kind};
 use cadcraft_engine::doc::{Entity, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
@@ -38,7 +36,7 @@ impl AddConnectionPoint {
             return Some(n.clone());
         }
         if let Ok((_, c, _)) = Self::resolve(s, s.cursor, true) {
-            return read(s, |p, _| Ok(next_connection_point_name(p.ledger.document(), c))).ok();
+            return read(s, |p, _| Ok(ecad_electrical::devices::next_connection_point_name(p.ledger.document(), c))).ok();
         }
         // Off any component: a number only when every drawn component on the page would get the
         // same one, so whichever a typed point lands on gets what the prompt says.
@@ -49,7 +47,7 @@ impl AddConnectionPoint {
                 .values()
                 .filter(|r| r.page == page && r.form == ecad_model::Form::Drawn)
                 .filter_map(|r| match r.subject {
-                    Subject::Device(c) => Some(next_connection_point_name(doc, c)),
+                    Subject::Device(c) => Some(ecad_electrical::devices::next_connection_point_name(doc, c)),
                     _ => None,
                 })
                 .collect();
@@ -85,13 +83,13 @@ impl AddConnectionPoint {
                     self.naming = false;
                     Ok(Step::Continue)
                 }
-                Input::Text(t) | Input::Keyword(t) => match valid_name(&t) {
+                Input::Text(t) | Input::Keyword(t) => match ecad_electrical::devices::valid_connection_point_name(&t) {
                     Some(n) => {
                         self.name = Some(n);
                         self.naming = false;
                         Ok(Step::Continue)
                     }
-                    None => Err(other(crate::interact::BAD_NAME)),
+                    None => Err(other(ecad_electrical::devices::BAD_CONNECTION_POINT_NAME)),
                 },
                 _ => Ok(Step::Continue),
             };
@@ -106,7 +104,7 @@ impl AddConnectionPoint {
                 let (h, c, at) = Self::resolve(s, p, clicked).map_err(other)?;
                 let label = match &self.name {
                     Some(n) => n.clone(),
-                    None => read(s, |proj, _| Ok(next_connection_point_name(proj.ledger.document(), c))).map_err(other)?,
+                    None => read(s, |proj, _| Ok(ecad_electrical::devices::next_connection_point_name(proj.ledger.document(), c))).map_err(other)?,
                 };
                 commit(s, "addconnectionpoint", &json!({"handle": h.hex(), "at": [at.x, at.y], "label": label}))?;
                 self.name = None;

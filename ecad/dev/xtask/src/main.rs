@@ -581,7 +581,6 @@ const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "ecad-electrical/src/styles/text_style",
     "ecad-engine/src/styles/draw.rs",
     "ecad-electrical/src/symbols",
-    "ecad-engine/src/interact.rs",
     "ecad-engine/src/pointer/",
     "ecad-engine/src/properties/forms/",
     "ecad-engine/src/connectors/interact.rs",
@@ -697,7 +696,7 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 94, 22),
-    ("ecad-engine", 144, 37),
+    ("ecad-engine", 143, 35),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 0, 0),

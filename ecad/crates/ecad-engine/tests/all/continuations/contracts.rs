@@ -134,7 +134,7 @@ fn a_fifth_arrow_shows_plus_one_and_hover_lists_all() {
         let v = &p.pages[&f.pages[0]];
         (v.uid.unwrap(), v.map.reference(a, 0).unwrap())
     });
-    let lines = f.h.p(|p| ecad_engine::interact::hover_lines(p, uid, hd)).unwrap();
+    let lines = f.h.p(|p| ecad_engine::pointer::hover::hover_lines(p, uid, hd)).unwrap();
     assert_eq!(lines[0], "Continuation 24V: 4 other ends", "{lines:?}");
     assert_eq!(lines.iter().filter(|l| l.contains("page 10")).count(), 4, "{lines:?}");
     index_matches(&mut f.h);

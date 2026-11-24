@@ -205,3 +205,14 @@ fn reach(doc: &Document, _: &ecad_model::Op, id: &StyleRef) -> ecad_model::regis
     }
     ecad_model::registry::styles::Reach::Also(out)
 }
+
+/// The font family a box's label style draws in when it is not the project font, for
+/// the page to install (`install_family`).
+pub fn label_family(doc: &Document, rep: ecad_model::RepresentationId) -> Option<String> {
+    let c = doc.representations().get(&rep).and_then(|r| match r.subject {
+        ecad_model::Subject::Aid(a) => Some(a),
+        _ => None,
+    })?;
+    let label = box_draw(doc, c).label_style;
+    crate::text::own_style_of(doc, &label).family
+}
