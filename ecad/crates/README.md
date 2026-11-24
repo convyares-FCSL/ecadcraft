@@ -20,7 +20,7 @@ build.
 ## Who may use whom
 
 ```text
-Programs   ecad-desktop   ecad-cli   ecad-mcp      (may also use each other)
+Programs   ecad-desktop   ecad-mcp                 (may also use each other)
    |            |
    v            v
   App        ecad-app
@@ -52,7 +52,6 @@ else of ours.
 | [`ecad-widgets`](ecad-widgets/README.md) | UI kit | Widgets (controls, primitives, panels, tables, dialogs) and the screen tokens (`tokens`). |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |
 | [`ecad-desktop`](../apps/ecad-desktop/README.md) | Programs | The desktop program: command line, window, start-up timing. |
-| [`ecad-cli`](../apps/ecad-cli/README.md) | Programs | The `ecad` command line (no commands in this version). |
 | [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
 | [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |
 | [`ecad-inspector`](../dev/ecad-inspector/README.md) | Dev | `ecadinspect`: look inside a `.ecad` file, text or web page. |

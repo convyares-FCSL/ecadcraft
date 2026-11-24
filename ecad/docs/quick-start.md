@@ -1295,8 +1295,8 @@ Typed instead: `accessory {"strip":"<id>","at":"start","items":["end_stop"]}`,
 
 ## 7C. Look inside a project file: `ecadinspect` (brief 021, moved by brief 029)
 
-A developer tool: it is in `ecad/dev/ecad-inspector` and never ships (`ecad inspect` now only
-says where it went). Read-only; run it on a saved file (the app may have it open). The page that
+A developer tool: it is in `ecad/dev/ecad-inspector` and never ships. There is no `ecad`
+command line: headless use goes through `ecad-mcp`. Read-only; run it on a saved file (the app may have it open). The page that
 shows the same file in a browser is under "The inspector" below.
 
 ```sh

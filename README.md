@@ -49,7 +49,7 @@ You draw on the CADCraft engine. Every edit is a transaction recorded in the pro
 - **Core:** the project model, the electrical rules (devices, wires, cables, strips, checks, reports) and the `.ecad` file. No screen and no drawing engine.
 - **Engine:** `ecad-engine`, the one link to [CADCraft](https://github.com/storytold/cadcraft) for drawing pages and running commands.
 - **UI kit and App:** ECAD's widgets, and the application built from them (`ecad-app`).
-- **Programs:** one thin `main` each: `ecad-desktop`, `ecad-cli` and `ecad-mcp`.
+- **Programs:** one thin `main` each: `ecad-desktop` and `ecad-mcp` (headless use goes through `ecad-mcp`).
 - **Dev:** the benchmark and the inspector, never shipped.
 
 The layers, the rules between them and a README for every crate are in [`ecad/crates/README.md`](ecad/crates/README.md).

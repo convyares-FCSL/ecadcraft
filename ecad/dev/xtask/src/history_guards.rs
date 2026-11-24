@@ -5,7 +5,7 @@
 //! This guard reads the comment text (`//`, `///`, `//!`, and a `//` comment after code) of every `.rs` file under
 //! the `src/` of each workspace member, and the `#` comments of the built-in data under its `defaults/` (`.toml`),
 //! and reports each line [`citation`] recognises. A hard zero: rewrite the
-//! comment to say what is true now; there is no allowlist. `ecad-cli` is left out: it is being removed.
+//! comment to say what is true now; there is no allowlist.
 //!
 //! Textual and hand-written like the other guards (xtask has no regex crate). Domain text that looks similar is
 //! not a citation: a jumper bar lane (`lane 0`), a jumper bar tag (`JB-10`), a PLC address (`%Q2.2`), a number
@@ -15,9 +15,6 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-
-/// Members whose sources are not checked, with why.
-const SKIPPED: &[&str] = &["ecad-cli"];
 
 /// The prefixes of the old briefs' requirement ids, always written in capitals and followed by a dash and a digit.
 const REQUIREMENT_IDS: &[&str] = &["DOC", "PROJ", "SAVE", "FILE", "TX", "UNDO", "LIB", "EEP"];
@@ -195,8 +192,8 @@ fn toml_files(dir: &std::path::Path) -> Vec<PathBuf> {
 pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
-    for (name, _, dir, _) in super::classed_packages(meta)? {
-        let (false, Some(dir)) = (SKIPPED.contains(&name), dir) else { continue };
+    for (_, _, dir, _) in super::classed_packages(meta)? {
+        let Some(dir) = dir else { continue };
         let mut paths = Vec::new();
         super::rust_files(&dir.join("src"), &mut paths);
         let mut paths: Vec<(PathBuf, &str)> = paths.into_iter().map(|p| (p, "//")).collect();

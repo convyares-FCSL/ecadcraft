@@ -63,7 +63,7 @@ enum Class {
     /// The application (`ecad-app`): Core, Engine, UI kit and CADCraft's window crates, but never
     /// `cadcraft-engine` directly and no Programs crate.
     App,
-    /// Things a person or agent starts, one `main` each (`ecad-desktop`, `ecad-cli`, `ecad-mcp`):
+    /// Things a person or agent starts, one `main` each (`ecad-desktop`, `ecad-mcp`):
     /// anything in the product (other programs too), but never `cadcraft-engine`
     /// directly.
     Programs,
@@ -86,7 +86,6 @@ const TABLE: &[(&str, Class)] = &[
     // The screen tokens; the canvas palette is `ecad_model::palette`.
     ("ecad-widgets", Class::UiKit),
     ("ecad-bench", Class::Dev),
-    ("ecad-cli", Class::Programs),
     // The application, and the desktop program that runs it.
     ("ecad-app", Class::App),
     ("ecad-desktop", Class::Programs),
@@ -697,7 +696,6 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 94, 22),
     ("ecad-engine", 143, 35),
-    ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 0, 0),
     ("ecad-inspector", 5, 2),
@@ -1828,7 +1826,6 @@ mod tests {
             [
                 "ecad-app",
                 "ecad-bench",
-                "ecad-cli",
                 "ecad-desktop",
                 "ecad-drawing-style",
                 "ecad-electrical",
@@ -2014,7 +2011,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-model", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in a library"),
             ("ecad-model", dep("anyhow", "dev".into(), Value::Null), &none, 0, "anyhow in a library's tests"),
             ("ecad-desktop", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
-            ("ecad-cli", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
+            ("ecad-mcp", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
             ("ecad-app", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the app library"),
             ("ecad-engine", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the Engine"),
             ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in xtask"),
@@ -2046,7 +2043,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-app", "use cadcraft_engine::Document;", 1),
             ("ecad-desktop", "fn f(e: &cadcraft_engine::Entity) {}", 1),
             ("ecad-mcp", "use cadcraft_engine as e;", 1),
-            ("ecad-cli", "use ecad_engine::cad::Entity;", 0),
+            ("ecad-mcp", "use ecad_engine::cad::Entity;", 0),
             ("ecad-app", "// cadcraft_engine::Document in a comment", 0),
             ("ecad-app", "use cadcraft_ui_egui::App;", 0),
             ("ecad-electrical", "use cadcraft_io::dxf;", 1),
@@ -2164,14 +2161,14 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
     #[test]
     fn app_and_programs_do_not_use_the_engine_directly() {
         let rows: &[(&str, &str, Value, usize, &str)] = &[
-            ("ecad-cli", "cadcraft-engine", Value::Null, 1, "a program on the engine"),
+            ("ecad-mcp", "cadcraft-engine", Value::Null, 1, "a program on the engine"),
             ("ecad-app", "cadcraft-engine", Value::Null, 1, "the app on the engine"),
             ("ecad-app", "cadcraft-engine", "dev".into(), 0, "the app's tests on the engine"),
             ("ecad-app", "ecad-desktop", Value::Null, 1, "the app on a program"),
             ("ecad-app", "ecad-desktop", "dev".into(), 1, "the app's tests on a program"),
             ("ecad-app", "cadcraft-ui-egui", Value::Null, 0, "the app on CADCraft's window"),
             ("ecad-desktop", "ecad-app", Value::Null, 0, "a program on the app"),
-            ("ecad-mcp", "ecad-cli", Value::Null, 0, "a program on another program"),
+            ("ecad-mcp", "ecad-desktop", Value::Null, 0, "a program on another program"),
             ("ecad-mcp", "cadcraft-mcp", Value::Null, 0, "a program on CADCraft's MCP"),
             ("ecad-engine", "cadcraft-engine", Value::Null, 0, "the Engine on the engine"),
             ("ecad-engine", "cadcraft-io", Value::Null, 0, "the Engine on CADCraft's io"),
@@ -2182,7 +2179,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-engine", "ecad-mcp", Value::Null, 1, "the Engine on a program"),
             ("ecad-electrical", "ecad-engine", Value::Null, 1, "Core on the Engine"),
             ("ecad-model", "ecad-app", Value::Null, 1, "Core on the app"),
-            ("ecad-inspect", "ecad-cli", Value::Null, 1, "Core on a program"),
+            ("ecad-model", "ecad-mcp", Value::Null, 1, "Core on a program"),
             ("ecad-xtask", "cadcraft-engine", Value::Null, 0, "xtask on the engine"),
         ];
         for (krate, dep, kind, n, what) in rows {

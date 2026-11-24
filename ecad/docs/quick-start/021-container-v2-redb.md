@@ -20,8 +20,7 @@ history as version 1 JSON Lines. The debugger gains **Storage** and **Branches**
   snapshots, versions and revisions, the append-only API, damage),
   `ecad/crates/ecad-file/tests/all/container_crash.rs` (power loss, torn writes and process kills,
   in the slow set), `ecad/crates/ecad-model/tests/all/ledger_base.rs` (a project opened from a
-  snapshot undoes and rebuilds exactly as a replayed one), `ecad/apps/ecad-cli/tests/all/cli_contracts.rs`
-  (`ecad upgrade`), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
+  snapshot undoes and rebuilds exactly as a replayed one), `ecad/dev/ecad-inspector/tests/all/cli_contracts.rs` (every `ecadinspect`
   view, `export-jsonl` read back by version 1; moved there by brief 029), and the
   debugger checks in `ecad/crates/ecad-engine/tests/all/debugger.rs` and
   `ecad/crates/ecad-app/tests/all/debugger.rs`.

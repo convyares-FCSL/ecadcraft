@@ -10,8 +10,8 @@ JSON Lines version 1 format is gone, and with it:
 
 - the app's **Convert this project?** offer when a version 1 file is opened: such a file is now
   refused as "not an ECAD project file";
-- `ecad upgrade` (`ecad` has no commands in this version; `ecad inspect` still says where the
-  developer tool is);
+- `ecad upgrade` (the `ecad` command line has since been removed; headless use goes through
+  `ecad-mcp`);
 - `ecadinspect … export-jsonl` and the inspector page's **Export JSONL** button. The page's
   **Raw** and **Readable** views (History log, row expand; Tables, row expand) show every stored
   row instead;

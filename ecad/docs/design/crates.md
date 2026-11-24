@@ -60,7 +60,7 @@ layer where §4 says so). Engine and UI kit are **siblings**: neither uses the o
 | **Engine** | The link to CADCraft: draws pages from the model, turns edits into transactions, runs commands. | `ecad-engine` |
 | **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-widgets` (ecad-ui and ecad-tokens merged in 0.2.3; the screen tokens are its `tokens` module) |
 | **App** | The ECAD application: shell, workspaces, panels, dialogs, lists, tabs, on a CADCraft window. | `ecad-app` (new, from ecad-trial) |
-| **Programs** | Things a person or agent starts: one `main` each, thin. | `ecad-desktop` (ecad-trial's binary), `ecad-cli`, `ecad-mcp` |
+| **Programs** | Things a person or agent starts: one `main` each, thin. | `ecad-desktop` (ecad-trial's binary), `ecad-mcp` |
 | **Dev** | Developer and test tools under `ecad/dev/`. Never shipped. | `ecad-bench`, `ecad-inspector`, `xtask` (`dev/xtask`) |
 
 **ECAD is desktop-only (owner ruling, 2026-11-15).** There is no web or browser product, so no
@@ -266,7 +266,7 @@ program ever needs the same rows, they move then.
 | `ecad-mcp`: `lib.rs` (server), `bridge` (TCP client), `launch`, `args`, `demo`, `main` | Programs | The MCP program. | Uses `cadcraft-mcp` (the protocol host) and `ecad_engine::cad::Session`. |
 | `ecad-bench` (6,237 lines, in `crates/`) | Dev, `dev/ecad-bench` | A benchmark, never shipped. | A folder move. Dev may use `cadcraft-engine` directly. |
 | `ecad-inspect` (324 lines) | Core (no move) | The product uses it: `Project`'s event log and the MCP `ecad_inspect` tool. | — |
-| `ecad-cli` (70 lines) | Programs (no move) | `ecad` on the command line. | — |
+| `ecad-cli` (70 lines) | Removed | Headless use goes through `ecad-mcp`. | — |
 
 ---
 
@@ -612,7 +612,7 @@ All decisions below are approved. The owner answered the five calls on 2026-11-1
    interaction forms.
 4. **UI kit** = ecad-ui and ecad-tokens (screen tokens). It is a sibling of Engine; neither uses
    the other. This is today's rule.
-5. **Programs** = ecad-desktop, ecad-cli, ecad-mcp; Program→Program dependencies are allowed.
+5. **Programs** = ecad-desktop, ecad-mcp; Program→Program dependencies are allowed.
 6. **Dev** = ecad-bench (moved from `crates/` to `dev/`), ecad-inspector and xtask.
 7. **The apps stop using `cadcraft-engine` directly**, through `ecad_engine::cad` (code review
    finding 9). App may use `cadcraft-ui-egui`, and ecad-mcp may use `cadcraft-mcp`.
