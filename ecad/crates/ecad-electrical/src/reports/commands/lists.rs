@@ -12,21 +12,31 @@ use crate::error::CmdError;
 use crate::reports::kept::{CableColumn, ReportModels};
 use crate::reports::{self, Group, Table};
 
-/// `bom`'s `columns` for this call: whether the article column is
-/// shown (`None`: as the project's report settings say).
+/// `bom`'s `columns` for this call: whether the article column is shown, and the rating columns
+/// (`rating.<word>`) in order (`None`: as the project's report settings say).
 ///
 /// # Errors
 /// A column that is not optional.
-pub(crate) fn bom_columns(columns: Option<&[String]>) -> Result<Option<bool>, CmdError> {
+pub(crate) fn bom_columns(columns: Option<&[String]>) -> Result<Option<(bool, Vec<&'static str>)>, CmdError> {
     let Some(cols) = columns else { return Ok(None) };
     let mut article = false;
+    let mut ratings: Vec<&'static str> = Vec::new();
     for c in cols {
-        match c.as_str() {
-            "article" => article = true,
-            _ => return Err(CmdError::refused("`columns` lists optional columns: [\"article\"]")),
+        let word = c
+            .strip_prefix(ecad_model::objects::devices::RATING_OF_PREFIX)
+            .and_then(|w| reports::bom::rating_column_words(w))
+            .and_then(|w| w.first().copied());
+        match (c.as_str(), word) {
+            ("article", _) => article = true,
+            (_, Some(w)) if !ratings.contains(&w) => ratings.push(w),
+            _ => {
+                return Err(CmdError::refused(
+                    "`columns` lists optional columns: \"article\" and \"rating.<word>\" (a rating field word, each once)",
+                ));
+            }
         }
     }
-    Ok(Some(article))
+    Ok(Some((article, ratings)))
 }
 
 /// `limit`, `after`, `excel_safe` and `path` of a report command, read.
@@ -88,17 +98,18 @@ pub(crate) fn bom_ids_json(o: &ReportModels, group: Group, nested: bool) -> Vec<
         .collect()
 }
 
-/// The JSON keys of `bom`'s columns: with a `line` column when kits are `nested`, and the article
-/// number when the `article` column is shown.
-pub(crate) fn bom_keys(nested: bool, article: bool) -> Vec<&'static str> {
-    let mut keys = vec!["location", "qty", "unit", "tags"];
+/// The JSON keys of `bom`'s columns: with a `line` column when kits are `nested`, the article
+/// number when the `article` column is shown, then each rating column (`rating.<word>`).
+pub(crate) fn bom_keys(nested: bool, article: bool, ratings: &[&str]) -> Vec<String> {
+    let mut keys: Vec<String> = ["location", "qty", "unit", "tags"].map(String::from).to_vec();
     if nested {
-        keys.push("line");
+        keys.push("line".into());
     }
-    keys.extend(["description", "maker", "part_number"]);
+    keys.extend(["description", "maker", "part_number"].map(String::from));
     if article {
-        keys.push("article_number");
+        keys.push("article_number".into());
     }
+    keys.extend(ratings.iter().map(|w| format!("{}{w}", ecad_model::objects::devices::RATING_OF_PREFIX)));
     keys
 }
 
@@ -186,7 +197,8 @@ pub struct BomParams {
     /// Location (default) or part.
     #[serde(default)]
     group: Option<Group>,
-    /// Optional columns for this call: ["article"].
+    /// Optional columns for this call: "article" and "rating.<word>" (a rating field word:
+    /// "rating.current").
     #[serde(default)]
     columns: Option<Vec<String>>,
     /// "flat" or "nested" for this call.
@@ -220,11 +232,13 @@ impl Generic for BomParams {
         let lines = self.lines.map(|l| l == Lines::Nested);
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
         let o = cx.derived.reports(cx.doc);
-        let view = reports::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
+        let (article, ratings) = columns.unwrap_or_else(|| (o.view.article, o.view.ratings.clone()));
+        let view = reports::BomView { article, ratings, nested: lines.unwrap_or(o.view.nested) };
         let nested = view.nested && group == Group::Location;
+        let keys = bom_keys(nested, view.article, &view.ratings);
         let t = o.bom_table_with(group, view, true);
         let ids = bom_ids_json(o, group, nested);
-        let keys = bom_keys(nested, view.article);
+        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
         Ok(report_result(&t, &keys, &ids, pg, "BOM"))
     }
 }

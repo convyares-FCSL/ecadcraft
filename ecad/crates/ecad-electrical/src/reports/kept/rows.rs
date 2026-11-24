@@ -141,6 +141,7 @@ impl ReportModels {
             }
             _ => None,
         };
+        let ratings = rating_cells(&es);
         BomRow {
             location,
             qty,
@@ -152,6 +153,7 @@ impl ReportModels {
             part_number: first.part_number.clone(),
             article_number: best.map(|b| b.0.to_string()),
             article_flag,
+            ratings,
             entries: es.iter().map(|e| (e.owner, e.line)).collect(),
             item: es.iter().all(|e| e.is_item()),
             devices,
@@ -236,6 +238,7 @@ impl ReportModels {
                     part_number: Some(pn),
                     article_number: None,
                     article_flag: None,
+                    ratings: Vec::new(),
                     entries: Vec::new(),
                     item: true,
                     line: None,
@@ -372,4 +375,34 @@ impl ReportModels {
     pub fn wire(&self, w: WireId) -> Option<&WireRow> {
         self.wires.get(&w)
     }
+}
+
+/// Per rating field word the entries `es` have: the most common value (ties: the first in tag
+/// order), flagged when two differ, as the article number is.
+fn rating_cells(es: &[&Entry]) -> Vec<(&'static str, String, Option<String>)> {
+    let mut words: Vec<&'static str> = Vec::new();
+    for (w, _) in es.iter().flat_map(|e| e.ratings.iter()) {
+        if !words.contains(w) {
+            words.push(w);
+        }
+    }
+    words
+        .into_iter()
+        .filter_map(|w| {
+            let mut counts: Vec<(&str, usize, &Entry)> = Vec::new();
+            for e in es {
+                let Some((_, v)) = e.ratings.iter().find(|(x, _)| *x == w) else { continue };
+                match counts.iter_mut().find(|(x, _, _)| *x == v.as_str()) {
+                    Some(c) => c.1 += 1,
+                    None => counts.push((v.as_str(), 1, e)),
+                }
+            }
+            let (best, _, eb) = *counts.iter().enumerate().max_by(|(i, a), (j, b)| a.1.cmp(&b.1).then(j.cmp(i))).map(|(_, x)| x)?;
+            let flag = counts.iter().find(|x| x.0 != best).map(|(other, _, eo)| {
+                let label = crate::reports::bom::rating_column_label(w).to_lowercase();
+                format!("{} and {} have a different {label} ({best}, {other}).", eb.tag, eo.tag)
+            });
+            Some((w, best.to_string(), flag))
+        })
+        .collect()
 }

@@ -168,6 +168,8 @@ pub struct Entry {
     pub maker: Option<String>,
     pub part_number: Option<String>,
     pub article_number: Option<String>,
+    /// A device's main part: its set rating fields as shown, by field word.
+    pub ratings: Vec<(&'static str, String)>,
     /// Per device, or per sub-item when `for` names some.
     pub qty: Qty,
     pub metres: bool,
@@ -357,6 +359,9 @@ pub struct BomRow {
     /// with `article_flag` saying which differ).
     pub article_number: Option<String>,
     pub article_flag: Option<String>,
+    /// Per rating field word its entries have: the most common value (ties: the first in tag
+    /// order), and a flag when two differ.
+    pub ratings: Vec<(&'static str, String, Option<String>)>,
     /// The entries counted, `(component, line)`; empty for strip terminal and
     /// accessory rows.
     pub entries: Vec<(Owner, u8)>,
@@ -399,17 +404,19 @@ impl BomRow {
     }
 }
 
-/// The BOM's report settings (`bom.column.article`, `bom.lines`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// The BOM's report settings (`bom.column.article`, `bom.column.rating`, `bom.lines`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BomView {
     pub article: bool,
+    /// The rating columns: field words, in order.
+    pub ratings: Vec<&'static str>,
     pub nested: bool,
 }
 
 impl BomView {
     /// The project's settings.
     pub fn of(doc: &Document) -> BomView {
-        BomView { article: bom::article_column(doc), nested: bom::lines_nested(doc) }
+        BomView { article: bom::article_column(doc), ratings: bom::rating_columns(doc), nested: bom::lines_nested(doc) }
     }
 }
 

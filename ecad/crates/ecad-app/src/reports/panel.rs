@@ -164,6 +164,8 @@ pub struct Reports {
 pub const COLUMNS: &str = "ecad.reports.columns";
 pub const COLUMN_ARTICLE: &str = "ecad.reports.columns.article";
 pub const COLUMN_NESTED: &str = "ecad.reports.columns.nested";
+/// The Columns menu's Rating submenu; each of its checkboxes is `ecad.reports.columns.rating.<word>`.
+pub const COLUMN_RATING: &str = "ecad.reports.columns.rating";
 pub const ADD_ITEM: &str = "ecad.reports.additem";
 /// The status words for an item row (it is on no page).
 pub const ITEM_NO_PAGE: &str = "Items are on no page.";
@@ -235,13 +237,13 @@ impl Reports {
             return;
         }
         self.gos.clear();
-        self.view = o.view;
+        self.view = o.view.clone();
         self.items.clear();
         self.csv = None;
         if self.tab == Tab::Bom {
             self.items =
                 o.bom(self.group).iter().map(|r| if r.entries.len() == 1 { r.entries.first().and_then(|e| e.0.loose()) } else { None }).collect();
-            self.csv = Some(o.bom_table_with(self.group, o.view, true));
+            self.csv = Some(o.bom_table_with(self.group, o.view.clone(), true));
         }
         self.table = match (self.tab, self.cores_of) {
             (Tab::Bom, _) => o.bom_table(self.group),
@@ -322,6 +324,27 @@ impl Reports {
                     *out = Some(Out::Run(format!("setdefault {}", serde_json::json!({"key": "bom.column.article", "level": "project", "value": v}))));
                     ui.close();
                 }
+                ui.menu_button("Rating \u{25b8}", |ui| {
+                    let choices = ecad_electrical::reports::bom::rating_column_choices();
+                    for (word, label) in &choices {
+                        // A header two words share says which it is.
+                        let text =
+                            if choices.iter().filter(|(_, l)| l == label).count() > 1 { format!("{label} ({word})") } else { (*label).to_string() };
+                        let mut on = self.view.ratings.contains(word);
+                        if Checkbox::new(&mut on, &text).show(ui).accessible_name(format!("{COLUMN_RATING}.{word}")).changed() {
+                            let words: Vec<&str> =
+                                choices.iter().map(|(w, _)| *w).filter(|w| if w == word { on } else { self.view.ratings.contains(w) }).collect();
+                            let v = if words.is_empty() { "none".to_string() } else { words.join(", ") };
+                            *out = Some(Out::Run(format!(
+                                "setdefault {}",
+                                serde_json::json!({"key": "bom.column.rating", "level": "project", "value": v})
+                            )));
+                            ui.close();
+                        }
+                    }
+                })
+                .response
+                .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, COLUMN_RATING));
                 if self.group == Group::Location {
                     let mut nested = self.view.nested;
                     if Checkbox::new(&mut nested, "Lines under devices").show(ui).accessible_name(COLUMN_NESTED).changed() {

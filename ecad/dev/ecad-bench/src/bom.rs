@@ -101,8 +101,8 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
         let built = detached.reports();
         [false, true].iter().all(|a| {
             [false, true].iter().all(|n| {
-                let v = BomView { article: *a, nested: *n };
-                [Group::Location, Group::Part].iter().all(|g| kept.bom_table_with(*g, v, true) == built.bom_table_with(*g, v, true))
+                let v = BomView { article: *a, ratings: Vec::new(), nested: *n };
+                [Group::Location, Group::Part].iter().all(|g| kept.bom_table_with(*g, v.clone(), true) == built.bom_table_with(*g, v.clone(), true))
             })
         }) && kept.check_counts() == built.check_counts()
             && kept.bom_sheets() == built.bom_sheets()

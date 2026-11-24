@@ -367,7 +367,7 @@ fn the_output_commands_keep_their_rule_words() {
             r#"`proposal` must be one of "propose", "move", "keep", or null"#,
         ),
         ("bom", json!({"group": "x"}), r#"`group` must be one of "location", "part", or null"#),
-        ("bom", json!({"columns": ["x"]}), "`columns` lists optional columns: [\"article\"]"),
+        ("bom", json!({"columns": ["x"]}), "`columns` lists optional columns: \"article\" and \"rating.<word>\" (a rating field word, each once)"),
         ("printbook", json!({"scope": "some"}), scope),
         ("printbook", json!({"scope": {}}), scope),
         ("printbook", json!({"colour": "pink"}), r#"`colour` must be one of "mono", "colour", or null"#),

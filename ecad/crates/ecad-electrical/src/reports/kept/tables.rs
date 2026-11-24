@@ -6,7 +6,7 @@ impl ReportModels {
     /// The BOM as a table (`Location` or `Locations` first), as the window shows it, in the
     /// project's report settings.
     pub fn bom_table(&self, group: Group) -> Table {
-        self.bom_table_with(group, self.view, false)
+        self.bom_table_with(group, self.view.clone(), false)
     }
 
     /// The BOM as a table in `view`. `csv`: `Qty` a plain number and a `Unit`
@@ -26,6 +26,7 @@ impl ReportModels {
         if view.article {
             headers.push("Article number");
         }
+        headers.extend(view.ratings.iter().map(|w| crate::reports::bom::rating_column_label(w)));
         let mut t = Table { headers, rows: Vec::new() };
         for r in self.bom_with(group, nested) {
             let who = self.row_who(&r);
@@ -60,6 +61,13 @@ impl ReportModels {
                 cells.push(match &r.article_flag {
                     Some(why) => Cell { text: if a.is_empty() { "?".into() } else { a }, flag: Some(why.clone()) },
                     None => Cell::ok(a),
+                });
+            }
+            for w in &view.ratings {
+                cells.push(match r.ratings.iter().find(|(x, _, _)| x == w) {
+                    Some((_, v, Some(why))) => Cell { text: v.clone(), flag: Some(why.clone()) },
+                    Some((_, v, None)) => Cell::ok(v.clone()),
+                    None => Cell::ok(String::new()),
                 });
             }
             t.rows.push(cells);

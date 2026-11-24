@@ -69,10 +69,10 @@ fn same_as_built(h: &mut H) {
     });
     for article in [false, true] {
         for nested in [false, true] {
-            let v = BomView { article, nested };
+            let v = BomView { article, ratings: vec!["current", "power"], nested };
             for g in [Group::Location, Group::Part] {
-                assert_eq!(kept.bom_table_with(g, v, false), built.bom_table_with(g, v, false), "{g:?} {v:?}");
-                assert_eq!(kept.bom_table_with(g, v, true), built.bom_table_with(g, v, true), "{g:?} {v:?} csv");
+                assert_eq!(kept.bom_table_with(g, v.clone(), false), built.bom_table_with(g, v.clone(), false), "{g:?} {v:?}");
+                assert_eq!(kept.bom_table_with(g, v.clone(), true), built.bom_table_with(g, v.clone(), true), "{g:?} {v:?} csv");
             }
         }
     }
@@ -668,4 +668,38 @@ fn an_item_value_that_does_not_parse_is_checked() {
     f.h.s.execute("bomitem", &json!({"item": item.hex(), "set": {"unit": "m", "qty": "3.6"}})).unwrap();
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(rows.iter().find(|r| r["description"] == "Cable tray").unwrap()["qty"], json!(3.6));
+}
+
+/// Rating columns: off by default, `columns: ["rating.<word>"]` for one call, `bom.column.rating`
+/// for the project; a row shows its devices' most common value and flags two that differ, as the
+/// article number does; a word that is no rating field is refused.
+#[test]
+fn rating_columns_follow_the_article_column() {
+    let mut h = H::new(0x00d4_0410);
+    let ms: Vec<DeviceId> = [(60.0, 100.0), (160.0, 100.0)].iter().map(|at| id(&crate::common::place(&mut h, "motor3", *at), "component")).collect();
+    for m in &ms {
+        h.run("setprop", json!({"component": m.hex(), "key": "part_number", "value": "M-7K5"})).unwrap();
+        h.run("setprop", json!({"component": m.hex(), "key": "rating.current", "value": "15.2 A"})).unwrap();
+    }
+    h.run("setprop", json!({"component": ms[0].hex(), "key": "rating.power", "value": "7.5 kW"})).unwrap();
+    let rows = bom(&mut h, json!({}));
+    assert!(row(&rows, "M-7K5").get("rating.current").is_none(), "off by default");
+    let head = h.head();
+    let rows = bom(&mut h, json!({"columns": ["rating.current", "rating.power"]}));
+    assert_eq!((row(&rows, "M-7K5")["rating.current"].clone(), row(&rows, "M-7K5")["rating.power"].clone()), (json!("15.2 A"), json!("7.5 kW")));
+    assert_eq!(h.head(), head, "a call's columns write nothing");
+    // Two values: flagged.
+    h.run("setprop", json!({"component": ms[1].hex(), "key": "rating.current", "value": "16 A"})).unwrap();
+    let r = row(&bom(&mut h, json!({"columns": ["rating.current"]})), "M-7K5").clone();
+    assert_eq!(r["rating.current"], Value::Null, "flagged cells read null: {r}");
+    assert!(r["flags"].as_array().unwrap().contains(&json!("rating.current")), "{r}");
+    // The project's setting.
+    h.run("setdefault", json!({"key": "bom.column.rating", "level": "project", "value": "current"})).unwrap();
+    let t = h.cfg(|p| p.reports().bom_table(Group::Location));
+    assert_eq!(t.headers.last(), Some(&"Rated current"));
+    same_as_built(&mut h);
+    for bad in [json!({"columns": ["rating.speed"]}), json!({"columns": ["rating.current", "rating.current"]})] {
+        assert!(h.run("bom", bad.clone()).is_err(), "{bad}");
+    }
+    assert!(h.run("setdefault", json!({"key": "bom.column.rating", "level": "project", "value": "current, speed"})).is_err());
 }

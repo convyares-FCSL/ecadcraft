@@ -629,6 +629,61 @@ pub(crate) fn article_column(doc: &Document) -> bool {
     ecad_model::naming::words::flag(ecad_model::registry::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
+/// The BOM's rating columns (`bom.column.rating`): field words, in order; none when unset or not
+/// readable.
+pub(crate) fn rating_columns(doc: &Document) -> Vec<&'static str> {
+    rating_column_words(&ecad_model::registry::resolve(doc, &defaults::bom::COLUMN_RATING, Scope::project()).text()).unwrap_or_default()
+}
+
+/// The rating columns `text` names: `none`, or rating field words of any group separated by
+/// commas, each once; `None` when a word is no group's field.
+pub(crate) fn rating_column_words(text: &str) -> Option<Vec<&'static str>> {
+    use ecad_model::Word;
+    use ecad_model::objects::devices::DeviceGroup;
+    if text.trim().eq_ignore_ascii_case("none") {
+        return Some(Vec::new());
+    }
+    let mut out: Vec<&'static str> = Vec::new();
+    for w in text.split(',').map(str::trim) {
+        let word = DeviceGroup::ALL.iter().find_map(|g| g.rating_fields().iter().find(|f| f.word.eq_ignore_ascii_case(w)))?.word;
+        if out.contains(&word) {
+            return None;
+        }
+        out.push(word);
+    }
+    Some(out)
+}
+
+/// Every rating column the BOM can show: each rating field word of any group once, with its
+/// header, in group order.
+pub fn rating_column_choices() -> Vec<(&'static str, &'static str)> {
+    use ecad_model::Word;
+    use ecad_model::objects::devices::DeviceGroup;
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for f in DeviceGroup::ALL.iter().flat_map(|g| g.rating_fields()) {
+        if !out.iter().any(|(w, _)| *w == f.word) {
+            out.push((f.word, rating_column_label(f.word)));
+        }
+    }
+    out
+}
+
+/// A rating column's header: the label most groups with that field give it (`Rated current`),
+/// the first group's on a tie.
+pub(crate) fn rating_column_label(word: &str) -> &'static str {
+    use ecad_model::Word;
+    use ecad_model::objects::devices::DeviceGroup;
+    let labels: Vec<&'static str> = DeviceGroup::ALL.iter().filter_map(|g| g.rating_field(word)).map(|f| f.label).collect();
+    let count = |l: &&str| labels.iter().filter(|x| *x == l).count();
+    let mut best: Option<&'static str> = None;
+    for l in &labels {
+        if best.is_none_or(|b| count(l) > count(&b)) {
+            best = Some(l);
+        }
+    }
+    best.unwrap_or("Rating")
+}
+
 /// Whether part lines are listed under their device (`bom.lines = nested`).
 pub(crate) fn lines_nested(doc: &Document) -> bool {
     ecad_model::registry::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)

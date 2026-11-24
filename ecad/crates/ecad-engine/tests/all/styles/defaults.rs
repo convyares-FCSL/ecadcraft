@@ -51,6 +51,8 @@ fn other_value(e: &Entry) -> Option<String> {
                 "-",
                 // Brief 057: a bundling factor.
                 "0.8",
+                // The BOM's rating columns.
+                "current, power",
             ]
             .iter()
             .map(|s| s.to_string())

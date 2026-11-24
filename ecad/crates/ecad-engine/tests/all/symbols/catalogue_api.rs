@@ -147,7 +147,8 @@ fn prefixes_are_registered_defaults() {
     }
     // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
     // device rating: exactly these keys are excepted (with the motor voltage tolerance of the supply
-    // check) and the rating-line templates (which fields the drawing shows, not a value); the 034
+    // check), the rating-line templates (which fields the drawing shows, not a value) and the BOM's
+    // rating columns (which fields it lists, not a value); the 034
     // ruling holds for everything else.
     const BRIEF_057: [&str; 11] = [
         "rating.wire_basis",
@@ -163,9 +164,10 @@ fn prefixes_are_registered_defaults() {
         "rating.supply_tolerance",
     ];
     assert!(
-        ecad_drawing_style::REGISTRY
-            .entries()
-            .all(|x| !x.key.contains("rating") || BRIEF_057.contains(&x.key) || x.key.starts_with("rating.template.")),
+        ecad_drawing_style::REGISTRY.entries().all(|x| !x.key.contains("rating")
+            || BRIEF_057.contains(&x.key)
+            || x.key.starts_with("rating.template.")
+            || x.key == "bom.column.rating"),
         "ratings have no registry default (ruling)"
     );
 }

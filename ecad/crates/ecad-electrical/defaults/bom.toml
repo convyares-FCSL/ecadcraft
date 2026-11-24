@@ -6,5 +6,6 @@
 
 [values]
 "bom.column.article" = "no"
+"bom.column.rating" = "none"
 "bom.lines" = "flat"
 "bom.item.unit" = "pcs"
