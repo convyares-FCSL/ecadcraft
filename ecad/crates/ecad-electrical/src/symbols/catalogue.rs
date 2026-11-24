@@ -3,18 +3,34 @@
 use super::*;
 use crate::plc::rack::CardType as CT;
 use ecad_model::Join;
+use ecad_model::objects::devices::PoleKind;
 
 const fn def_id(n: u128) -> DefinitionId {
     DefinitionId(0x0000_ecad_0018_5ea1_0000_0000_0001_0000 + n)
 }
 
-/// A catalogue entry of the [`Family::Basic`] family with no quiet points; [`Starter::of`] and
-/// [`Starter::quiet_at`] set the rest.
+/// A catalogue entry of the [`Family::Basic`] family with no quiet points; [`Starter::of`],
+/// [`Starter::quiet_at`] and [`Starter::with_poles`] set the rest. A contact draws one pole, normally
+/// open when it makes.
 pub(super) const fn st(key: StarterKey, name: &'static str, aliases: &'static [&'static str], kind: Kind, id: DefinitionId) -> Starter {
-    Starter { key, name, aliases, kind, id, family: Family::Basic, quiet: Quiet::None }
+    let poles: &'static [(PoleKind, bool)] = match kind {
+        Kind::Contact { make: true } => &[(PoleKind::No, false)],
+        Kind::Contact { make: false } => &[(PoleKind::Nc, false)],
+        Kind::TerminalBlock | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless | Kind::ConnectorHalf { .. } => &[],
+    };
+    Starter { key, name, aliases, kind, id, family: Family::Basic, quiet: Quiet::None, poles }
 }
 
+/// Three normally-open power poles: a contactor's main contacts.
+const POWER3: &[(PoleKind, bool)] = &[(PoleKind::No, true); 3];
+/// Four normally-open power poles.
+const POWER4: &[(PoleKind, bool)] = &[(PoleKind::No, true); 4];
+
 impl Starter {
+    pub(super) const fn with_poles(self, poles: &'static [(PoleKind, bool)]) -> Starter {
+        Starter { poles, ..self }
+    }
+
     pub(super) const fn of(self, family: Family) -> Starter {
         Starter { family, ..self }
     }
@@ -85,7 +101,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Coil, "Contactor / relay coil", &["coil", "relay", "contactor"], HEAD, def_id(1)),
     st(K::No, "NO contact", &["make", "normally open", "contact"], Kind::Contact { make: true }, def_id(2)),
     st(K::Nc, "NC contact", &["break", "normally closed", "contact"], Kind::Contact { make: false }, def_id(3)),
-    st(K::Power3, "Power contacts, 3-pole", &["main contacts", "contactor"], PART, def_id(4)),
+    st(K::Power3, "Power contacts, 3-pole", &["main contacts", "contactor"], PART, def_id(4)).with_poles(POWER3),
     st(K::Mcb1, "MCB 1-pole", &["breaker", "circuit breaker"], HEAD, def_id(5)),
     st(K::Mcb2, "MCB 2-pole", &["breaker", "circuit breaker"], HEAD, def_id(6)),
     st(K::Fuse, "Fuse", &["fuse"], HEAD, def_id(7)),
@@ -106,7 +122,7 @@ pub const STARTERS: &[Starter] = &[
     // ---- Contacts and protection.
     st(K::Co, "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
     st(K::Swco, "Switch, change-over", &["change-over", "switch", "toggle"], Kind::ChangeOver, cp(2)).of(Family::Contacts),
-    st(K::Power4, "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).of(Family::Contacts),
+    st(K::Power4, "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).with_poles(POWER4).of(Family::Contacts),
     st(K::Rcbo2, "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], HEAD, cp(4)).of(Family::Protection),
     st(K::Rcd2, "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(5)).of(Family::Protection),
     st(K::Rcd4, "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),

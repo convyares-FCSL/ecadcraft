@@ -1,6 +1,5 @@
 //! Which objects a representation belongs to and what it is in them: groups, classes, devices and their drawn poles.
 
-use crate::symbols::{Kind, Starter, StarterKey as K};
 use ecad_model::objects::devices::PoleKind;
 use ecad_model::{CableId, DeviceId, Document, Form, PageId, Pt, Representation, RepresentationId, Subject};
 
@@ -36,17 +35,6 @@ pub enum Class {
     Other,
 }
 
-/// The poles a starter symbol carries (code, not format).
-pub(crate) fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
-    match (s.key, s.kind) {
-        (K::Power3, _) => vec![(PoleKind::No, true); 3],
-        // Pack re-run, bug 11: the 4-pole set is a contactor's power contacts too.
-        (K::Power4, _) => vec![(PoleKind::No, true); 4],
-        (_, Kind::Contact { make }) => vec![(if make { PoleKind::No } else { PoleKind::Nc }, false)],
-        _ => Vec::new(),
-    }
-}
-
 /// The class of a component representation by its symbol alone (a second head is made `Other`
 /// by [`device`]): a head by its type ([`crate::symbols::reps::rep_type`]), a child when its symbol carries
 /// poles.
@@ -55,7 +43,7 @@ pub(super) fn raw_class(doc: &Document, r: &Representation) -> Class {
         return Class::Head;
     }
     match crate::devices::tags::rep_starter(doc, r) {
-        Some(s) if !poles_of(s).is_empty() => Class::Child,
+        Some(s) if !s.poles.is_empty() => Class::Child,
         _ => Class::Other,
     }
 }
@@ -141,7 +129,7 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
         }
         children.push(rid);
         let Some(s) = crate::devices::tags::rep_starter(doc, r) else { continue };
-        let kinds = poles_of(s);
+        let kinds = s.poles;
         let pts = crate::devices::merge::shown_connection_points(doc, c, r);
         let at = anchor(doc, r);
         for (i, (kind, power)) in kinds.iter().enumerate() {

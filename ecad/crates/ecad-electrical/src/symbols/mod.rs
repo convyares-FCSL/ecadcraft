@@ -513,6 +513,9 @@ pub struct Starter {
     /// Its connection points that may stay unwired without an `Unconnected` check:
     /// spare connector pins, spare fuse outputs, a card's supply points.
     pub quiet: Quiet,
+    /// The contact poles it draws, in order: normally open or closed, and whether a power pole.
+    /// A contact's one pole follows from its kind; a pole set declares its own.
+    pub poles: &'static [(ecad_model::objects::devices::PoleKind, bool)],
 }
 
 /// A catalogue family.
@@ -601,7 +604,7 @@ impl Starter {
     pub fn part_role(&self) -> PartRole {
         match self.kind {
             Kind::ConnectorHalf { .. } if crate::connectors::is_pin_starter(self) => PartRole::Pin,
-            Kind::Fixed { exclusive: false } if !crate::references::devices::classify::poles_of(self).is_empty() => PartRole::Contact,
+            Kind::Fixed { exclusive: false } if !self.poles.is_empty() => PartRole::Contact,
             k @ (Kind::ConnectorHalf { .. }
             | Kind::Fixed { .. }
             | Kind::Contact { .. }
