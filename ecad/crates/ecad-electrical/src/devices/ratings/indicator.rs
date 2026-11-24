@@ -7,7 +7,8 @@
 //! - `steady`, `flashing`, `rotating`, `audible` and `meter` say how it signals; without one the
 //!   indicator keeps its own.
 //! - `24 V DC` (also `24VDC`) is the rated voltage; a voltage without AC or DC is asked about. `2 W` and `0,5 kW` are the power; a bare number is asked about (V or W?).
-//! - A current is refused: an indicator's rating has no current field.
+//! - A current is refused: an indicator's rated current comes from its datasheet and is set by
+//!   itself (`rating.current`), not in the rating text.
 //! - Any other word (`see datasheet`, `LED`) is no rating: the note.
 //!
 //! This module excludes the protection reader (its parent) and the demand calculation.
@@ -173,7 +174,9 @@ pub fn read_indicator(indicator: &Indicator, text: &str) -> Read<Indicator> {
 
 fn build(indicator: &Indicator, f: &Found) -> Result<Indicator, Read<Indicator>> {
     if f.amps {
-        return Err(Read::Refused("an indicator's rating has no current; give its colour, voltage and power, for example red, 24 V DC, 2 W".into()));
+        return Err(Read::Refused(
+            "an indicator's rating text has no current; set its rated current by itself (rating.current), and give its colour, voltage and power here, for example red, 24 V DC, 2 W".into(),
+        ));
     }
     if let Some(x) = f.bare {
         return Err(Read::Ask(format!("a unit for {x}: V (rated voltage) or W (power)?")));
@@ -251,7 +254,7 @@ mod tests {
             ("24", "ask: a unit for 24: V (rated voltage) or W (power)?"),
             ("24 V", "ask: whether 24 V is AC or DC"),
             ("DC", "ask: the voltage, for example 24 V DC"),
-            ("red 0.1 A", "refused: an indicator's rating has no current"),
+            ("red 0.1 A", "refused: an indicator's rating text has no current; set its rated current by itself"),
             ("black", "refused: an indicator is red, yellow, green, blue or white"),
             ("red green", "refused: 'red green' does not read: it gives two colours"),
             ("flashing steady", "refused: 'flashing steady' does not read: it gives two ways"),

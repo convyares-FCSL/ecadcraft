@@ -441,8 +441,8 @@ power.
 
 - `RD flashing 24VDC 2W` reads as **red, flashing, 24 V DC, 2 W**. Without a signal word the lamp
   keeps its own.
-- Asked, never guessed: `24 V` (AC or DC?) and a bare `24` (V or W?). Refused: a current (`0.1 A`),
-  and a colour that no indicator has (`black`). Other text (`LED`, `amber`) is kept as the note.
+- Asked, never guessed: `24 V` (AC or DC?) and a bare `24` (V or W?). Refused: a current (`0.1 A`:
+  the rated current is set by itself, below), and a colour that no indicator has (`black`). Other text (`LED`, `amber`) is kept as the note.
 - An unrated lamp now gets the Checks warning **no-rating** (the demo's lamps too).
 - From its datasheet, set one field at a time: its **Rated current** in mA (`rating.current`,
   `20 mA` or `0.02 A`, up to 10 A: what it draws from a PLC output or a supply) and its **IP
