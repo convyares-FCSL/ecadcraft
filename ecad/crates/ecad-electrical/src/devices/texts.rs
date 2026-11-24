@@ -20,6 +20,8 @@ pub enum TextOf {
     Slot(u8),
     /// A PLC card body's caption, its rack and slot.
     Caption,
+    /// A motor's or indicator's rating line beside a symbol without text slots.
+    Rating,
     /// A channel cell's channel number, address and description
     /// (written turned 90° when `rotated`).
     ChannelNo,
@@ -100,7 +102,7 @@ pub fn kind_of(of: TextOf) -> ecad_model::look::TextKind {
         TextOf::Address => TextKind::Address,
         TextOf::ChannelNo => TextKind::PointLabel,
         TextOf::PartNumber => TextKind::PartNumber,
-        TextOf::Slot(_) => TextKind::Description,
+        TextOf::Slot(_) | TextOf::Rating => TextKind::Description,
     }
 }
 
@@ -307,6 +309,16 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         if framed {
             continue;
         }
+        // A motor or indicator drawn without text slots shows its rating line beside the symbol; the tag
+        // block keeps clear of it.
+        if def.texts.is_empty()
+            && let Some(t) = rating_text(doc, c, rid, def, &pl, m, own(c, TextKind::Description))
+        {
+            let style = ecad_model::look::TextStyle { height: t.text.height, ..m.text_style(doc, TextKind::Description) };
+            let w = m.width(doc, TextKind::Description, style, &t.text.value);
+            fixed.push(crate::devices::text_place::text_box(w, t.text.height, t.text.at, t.text.halign, t.text.valign));
+            out.push(t);
+        }
         // A symbol with text slots places each device text at its
         // slot instead of in a tag block.
         if !def.texts.is_empty() {
@@ -392,6 +404,30 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         }
     }
     out
+}
+
+/// The rating line of representation `rid` of device `c`, a motor or an indicator drawn by a symbol
+/// without text slots: the fields the project's template for its group shows
+/// ([`crate::devices::ratings::line`]), to the right of the symbol on the page (the anchor rule of
+/// the symbol catalogue's rating text), however the symbol is turned or mirrored.
+fn rating_text(
+    doc: &Document, c: DeviceId, rid: RepresentationId, def: &Definition, pl: &Placement, m: &dyn Look, own: Option<ecad_model::look::OwnStyle>,
+) -> Option<PageText> {
+    use ecad_model::objects::devices::DeviceGroup;
+    let d = doc.devices().get(&c)?;
+    if !matches!(d.device_type.group(), DeviceGroup::Motor | DeviceGroup::Indicator) {
+        return None;
+    }
+    let value = crate::devices::ratings::line(doc, d).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())?;
+    let (lo, hi) = placed_box(def, pl)?;
+    let at = Pt::new(hi.x + crate::symbols::anchors::ANCHOR_GAP, (lo.y + hi.y) / 2.0);
+    let height = own.as_ref().map_or_else(|| m.text_style(doc, ecad_model::look::TextKind::Description).height, |o| o.style.height);
+    Some(PageText {
+        text: DerivedText { rep: rid, of: TextOf::Rating, value, at, height, halign: HAlign::Left, valign: VAlign::Middle, aci: None, own },
+        shown: true,
+        moved: false,
+        overlaps: false,
+    })
 }
 
 /// The texts a project symbol's slots place for representation `rid` of device `c`: the tag where its show rule says,

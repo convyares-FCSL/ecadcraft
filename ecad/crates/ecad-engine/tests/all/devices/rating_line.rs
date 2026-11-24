@@ -6,6 +6,8 @@ use ecad_model::{DeviceId, Word};
 use serde_json::json;
 
 use crate::common::{H, id};
+use cadcraft_engine::doc::EntityKind;
+use ecad_engine::history::event_log::EventKind;
 
 fn line(h: &mut H, c: DeviceId) -> Option<String> {
     let doc = h.doc();
@@ -47,4 +49,38 @@ fn a_template_picks_and_orders_the_fields_the_drawing_shows() {
     let n: DeviceId = id(&crate::common::place(&mut h, "motor3", (200.0, 100.0)), "component");
     h.run("setprop", json!({"component": n.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
     assert_eq!(line(&mut h, n).as_deref(), Some("see datasheet"));
+}
+
+/// The drawn texts of `page` whose value is `value`: their handles.
+fn drawn(h: &mut H, page: ecad_model::PageId, value: &str) -> Vec<cadcraft_engine::doc::Handle> {
+    h.pv(|p, pg| pg.entities_of(p, page)).iter().filter(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == value)).map(|e| e.handle).collect()
+}
+
+/// A built-in motor and lamp draw their rating line beside the symbol. Changing the group's template
+/// redraws it through the commit's update path: the same text, rewritten in place (its handle
+/// kept), no page rebuilt; undo brings the old line back.
+#[test]
+fn a_template_change_redraws_the_rating_line_in_place() {
+    let mut h = H::new(0x00d4_0302);
+    let page = h.first_page();
+    h.project.open_page(&mut h.s, page).unwrap();
+    let m: DeviceId = id(&crate::common::place(&mut h, "motor3", (100.0, 100.0)), "component");
+    h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5 kW 400 V 15.2 A 50 Hz DOL"})).unwrap();
+    let l: DeviceId = id(&crate::common::place(&mut h, "lamp", (200.0, 100.0)), "component");
+    h.run("setprop", json!({"component": l.hex(), "key": "rating", "value": "green flashing 24 V DC"})).unwrap();
+    let lamp_line = line(&mut h, l).unwrap();
+    assert_eq!(drawn(&mut h, page, &lamp_line).len(), 1, "the lamp's line {lamp_line:?} is drawn");
+    let before = drawn(&mut h, page, "7.5 kW, 400 V, 15.2 A, 50 Hz, DOL");
+    assert_eq!(before.len(), 1, "the motor's line is drawn once");
+    let rebuilt = h.p(|p| p.events.count(EventKind::ProjectionRebuilt));
+    let passes = ecad_electrical::devices::texts::text_passes(page);
+    h.s.execute("setdefault", &json!({"key": "rating.template.motor", "level": "project", "value": "current, power"})).unwrap();
+    assert!(ecad_electrical::devices::texts::text_passes(page) > passes, "the page's texts were worked out again");
+    assert_eq!(drawn(&mut h, page, "15.2 A, 7.5 kW"), before, "the same text, rewritten");
+    assert!(drawn(&mut h, page, "7.5 kW, 400 V, 15.2 A, 50 Hz, DOL").is_empty());
+    assert_eq!(drawn(&mut h, page, &lamp_line).len(), 1, "another group's line stays");
+    assert_eq!(h.p(|p| p.events.count(EventKind::ProjectionRebuilt)), rebuilt, "no page rebuilt");
+    h.s.execute("undo", &json!({})).unwrap();
+    assert_eq!(drawn(&mut h, page, "7.5 kW, 400 V, 15.2 A, 50 Hz, DOL"), before);
+    h.check();
 }

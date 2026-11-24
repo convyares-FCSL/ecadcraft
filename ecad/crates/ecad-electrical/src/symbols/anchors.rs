@@ -47,7 +47,7 @@ pub struct Anchor {
 
 /// The gap between a symbol's box and its text, and one line's step, in millimetres.
 /// Geometry of the anchor rule, not a text size: the text styles decide sizes.
-const ANCHOR_GAP: f64 = 2.0;
+pub(crate) const ANCHOR_GAP: f64 = 2.0;
 const ANCHOR_LINE: f64 = 4.0;
 
 /// The text anchors of `s`: the default rule from its box, with the overrides of

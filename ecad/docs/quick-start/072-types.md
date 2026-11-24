@@ -187,7 +187,7 @@ Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspecto
 #### The rating line on the drawing
 
 The rating a symbol draws is made from the typed fields by its group's **rating line template**:
-which fields show, and in what order. Each group has one (Standards ▸ Defaults ▸ Rating,
+which fields show, and in what order. Each group has one (Standards ▸ Defaults,
 `rating.template.<group>`, at the standard or the project level): a list of field words,
 separated by commas. Built in, it shows the nameplate fields and the ones that say how the device
 is used here (a motor's starting, a lamp's flashing); a field taken from a datasheet is kept but
@@ -208,7 +208,16 @@ every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fill
 the Properties panel, answers and reports keep every field. A word the group has no field for, or
 a word given twice, is refused.
 
-Tests: `devices::rating_line` in ecad-engine (automated, not tried by hand).
+Where it shows: a project symbol with a rating text slot draws it there; a motor or indicator
+drawn by a symbol without text slots (the built-in `motor3`, `motor1` and `lamp`) draws it to the
+right of the symbol however the symbol is turned, and its tag block keeps clear of it. Changing a template
+redraws the lines at once, and undo puts them back.
+
+To try it: place a `motor3`, type `7.5 kW 400 V 15.2 A 50 Hz DOL` as its rating in Properties, then
+set "Rating line: motor" in Standards ▸ Defaults to `current, power`.
+
+Tests: `devices::rating_line` in ecad-engine, including the redraw on a template change
+(automated, not tried by hand).
 
 ### Lane B, step 3: switching devices' ratings are typed
 
@@ -316,8 +325,8 @@ wiresettings {"potentials": [{"name": "L1", "prefix": "L1-", "numbered": true,
   filled in until the link is clicked. `setprop rated_voltage` sets it (`400 V` or `400`; empty
   clears it).
 - Checks warns **supply-mismatch** when a motor does not fit its supply: a rated voltage further
-  from the supply's than the project's **Motor voltage tolerance** (Standards ▸ Defaults ▸
-  Rating, `rating.supply_tolerance`, 5 % unless changed), a rated frequency other than the
+  from the supply's than the project's **Motor voltage tolerance** (Standards ▸ Defaults,
+  `rating.supply_tolerance`, 5 % unless changed), a rated frequency other than the
   supply's (when both are known), a three-phase motor on a single-phase supply, a motor on DC,
   or a single-phase motor on a three-phase supply typed without its line-to-neutral voltage
   (`supply line-to-neutral voltage unknown`). When the supplied potentials on a motor's nets
