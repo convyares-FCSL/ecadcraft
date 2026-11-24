@@ -143,6 +143,12 @@ before (`pins`, `pin_names`, `half.s.maker`, `ignore.connector-family`); what ch
   `ignore.` takes `connector-family` or `connector-size` only.
 - Each change records one `ModifyDevice`; the inspector's log shows the connector's data.
 - A file whose device holds one of these keys among its properties opens read-only.
+- From its datasheet, set one field at a time: **Rated current per contact**
+  (`rating.current`, `16 A`: checked against each pin's circuit), **Rated voltage**
+  (`rating.voltage`, `400 V`: mains and 24 V must not share a type by mistake), **IP rating
+  (mated)** (`rating.ip_rating`, `IP67`) and **Largest cross-section** (`rating.cross_section_max`,
+  `2.5 mm²`). A connector has no rating line: they show in the Device tab, `deviceprops`'
+  `rating_fields` and a BOM rating column.
 
 To try it: place a D-sub 9 socket, set its Pins to 9 and a half's maker in the Properties panel,
 then undo and redo. Nobody has tried it by hand yet.
@@ -217,7 +223,8 @@ shows only when a template adds it. A device with no typed rating draws its note
 
 Datasheet fields a template may add: an indicator's `current` and `ip_rating`; a power supply's
 `input_current` and `efficiency` (shown `eff 90 %`); a sensor's `output_current`,
-`no_load_current` and `ip_rating`.
+`no_load_current` and `ip_rating`. A connector's fields (all from its datasheet) have no rating
+line.
 
 `setdefault {"key": "rating.template.motor", "level": "project", "value": "current, power"}` makes
 every motor draw `15.2 A, 7.5 kW`. Typing a rating (`7.5 kW, 15.2 A`) still fills the fields once;

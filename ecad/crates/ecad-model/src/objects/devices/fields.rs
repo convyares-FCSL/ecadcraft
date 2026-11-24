@@ -16,7 +16,7 @@
 //! fields themselves, which each group declares beside its data.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, Rpm, VoltAmps, Volts, Watts};
+use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Mm2, Percent, RatedVoltage, Rpm, VoltAmps, Volts, Watts};
 use crate::naming::words::Word;
 use crate::objects::devices::{
     DutyType, EfficiencyClass, FuseClass, FuseSize, IndicatorColour, InsulationClass, IpCode, Phases, Poles, ResidualType, SignalType, Starting,
@@ -37,6 +37,8 @@ pub enum FieldType {
     Frequency,
     /// A rotational speed.
     Speed,
+    /// A conductor cross-section.
+    CrossSection,
     Percent,
     /// A number from 0 to 1 (a power factor).
     Ratio,
@@ -59,6 +61,7 @@ impl FieldType {
             FieldType::ApparentPower => "apparent_power",
             FieldType::Frequency => "frequency",
             FieldType::Speed => "speed",
+            FieldType::CrossSection => "cross_section",
             FieldType::Percent => "percent",
             FieldType::Ratio => "ratio",
             FieldType::IpCode => "ip_code",
@@ -78,6 +81,7 @@ impl FieldType {
             FieldType::ApparentPower => VoltAmps::SYMBOL,
             FieldType::Frequency => Hertz::SYMBOL,
             FieldType::Speed => Rpm::SYMBOL,
+            FieldType::CrossSection => Mm2::SYMBOL,
             FieldType::Percent => Percent::SYMBOL,
             FieldType::Ratio | FieldType::IpCode | FieldType::Choice(_) | FieldType::Combined => "",
         }
@@ -95,6 +99,7 @@ impl FieldType {
             FieldType::ApparentPower => "250 VA",
             FieldType::Frequency => "50 Hz",
             FieldType::Speed => "1450 rpm",
+            FieldType::CrossSection => "2.5 mm²",
             FieldType::Percent => "91 %",
             FieldType::Ratio => "0.85",
             FieldType::IpCode => "IP65",
@@ -116,6 +121,7 @@ impl FieldType {
             | FieldType::ApparentPower
             | FieldType::Frequency
             | FieldType::Speed
+            | FieldType::CrossSection
             | FieldType::Percent
             | FieldType::Ratio
             | FieldType::IpCode
@@ -228,6 +234,7 @@ quantity_value!(
     crate::objects::devices::power_supply::volt_amps
 );
 quantity_value!(Hertz, FieldType::Frequency, ["hz" => 1.0], "a frequency, such as 50 Hz", |v: Hertz| v.to_string());
+quantity_value!(Mm2, FieldType::CrossSection, ["mm²" => 1.0, "mm2" => 1.0], "a cross-section, such as 2.5 mm²", |v: Mm2| v.to_string());
 quantity_value!(Rpm, FieldType::Speed, ["rpm" => 1.0, "1/min" => 1.0], "a speed, such as 1450 rpm", |v: Rpm| v.to_string());
 quantity_value!(Percent, FieldType::Percent, ["%" => 1.0], "a percentage, such as 91 %", |v: Percent| v.to_string());
 

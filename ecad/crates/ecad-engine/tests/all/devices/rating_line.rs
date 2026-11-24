@@ -14,12 +14,13 @@ fn line(h: &mut H, c: DeviceId) -> Option<String> {
     ecad_electrical::devices::ratings::line(&doc, &doc.devices()[&c])
 }
 
-/// Every group's built-in template is its plate and design fields, in the model's order.
+/// Every group's built-in template is its plate and design fields, in the model's order. A group
+/// whose fields all come from a datasheet (a connector) has no rating line and no template.
 #[test]
 fn the_built_in_templates_are_the_plate_and_design_fields() {
     let mut h = H::new(0x00d4_0300);
     let doc = h.doc();
-    for g in <DeviceGroup as Word>::ALL.iter().copied().filter(|g| !g.rating_fields().is_empty()) {
+    for g in <DeviceGroup as Word>::ALL.iter().copied().filter(|g| !g.default_template().is_empty()) {
         let key = format!("rating.template.{}", g.word());
         let e = ecad_drawing_style::REGISTRY.find(&key).unwrap_or_else(|| panic!("{key} is registered"));
         let built_in = ecad_model::registry::resolve(&doc, e, ecad_model::registry::Scope::project()).text();

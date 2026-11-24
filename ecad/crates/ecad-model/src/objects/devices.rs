@@ -98,7 +98,8 @@ impl DeviceGroup {
             DeviceGroup::Motor => motor::FIELDS,
             DeviceGroup::Load => load::FIELDS,
             DeviceGroup::Indicator => indicator::FIELDS,
-            DeviceGroup::TerminalStrip | DeviceGroup::Connector | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => &[],
+            DeviceGroup::Connector => CONNECTOR_FIELDS,
+            DeviceGroup::TerminalStrip | DeviceGroup::PlcRack | DeviceGroup::PlcModule | DeviceGroup::General => &[],
         }
     }
 
@@ -417,7 +418,7 @@ pub use terminal_strip::{PositionLabel, TerminalStrip};
 ///   starter (a half or pin) or the `connector` command, never worked out from its symbol. A
 ///   one-piece connector (a bulkhead, `rj45`) is Connector-typed with `mating` false.
 /// - `ignored` are the Checks rows its person chose to ignore.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connector {
     pub family: ConnectorFamily,
@@ -433,6 +434,18 @@ pub struct Connector {
     pub mating: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub ignored: std::collections::BTreeSet<ConnectorCheck>,
+    /// Its rated current per contact, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_current: Option<crate::geometry::units::Amps>,
+    /// Its rated voltage, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<crate::geometry::units::Volts>,
+    /// Its degree of protection when mated, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip_rating: Option<IpCode>,
+    /// The largest conductor its contacts take, from its datasheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cross_section_max: Option<crate::geometry::units::Mm2>,
 }
 
 impl Connector {
@@ -496,6 +509,13 @@ impl Connector {
         if self.pin_names.len() > usize::from(MAX_PINS) {
             return Some(format!("a connector has at most {MAX_PINS} pin names"));
         }
+        let within = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
+        if self.rated_current.is_some_and(|a| !within(a.0, CONNECTOR_MAX_AMPS))
+            || self.rated_voltage.is_some_and(|v| !within(v.0, CONNECTOR_MAX_VOLTS))
+            || self.cross_section_max.is_some_and(|s| !within(s.0, CONNECTOR_MAX_MM2))
+        {
+            return Some("a rating value of a connector is out of range".to_string());
+        }
         let mut seen = std::collections::BTreeSet::new();
         for n in &self.pin_names {
             if n.as_str().trim().is_empty() || !seen.insert(n.as_str().to_lowercase()) {
@@ -508,6 +528,27 @@ impl Connector {
 
 /// Most pins a connector has.
 pub const MAX_PINS: u8 = 64;
+/// The largest rated current per contact of a connector, in amperes.
+const CONNECTOR_MAX_AMPS: f64 = 1000.0;
+/// The largest rated voltage of a connector, in volts.
+const CONNECTOR_MAX_VOLTS: f64 = 1500.0;
+/// The largest cross-section a connector's contact takes, in square millimetres.
+const CONNECTOR_MAX_MM2: f64 = 300.0;
+
+/// A connector's rating fields, all from its datasheet: it has no rating line of its own, so they
+/// show in the Device tab, answers and BOM columns.
+static CONNECTOR_FIELDS: &[RatingField] = &[
+    rating_field!("current", "Rated current per contact", Datasheet, crate::geometry::units::Amps, DeviceType::Connector(c) => c.rated_current),
+    rating_field!("voltage", "Rated voltage", Datasheet, crate::geometry::units::Volts, DeviceType::Connector(c) => c.rated_voltage),
+    rating_field!("ip_rating", "IP rating (mated)", Datasheet, IpCode, DeviceType::Connector(c) => c.ip_rating),
+    rating_field!(
+        "cross_section_max",
+        "Largest cross-section",
+        Datasheet,
+        crate::geometry::units::Mm2,
+        DeviceType::Connector(c) => c.cross_section_max
+    ),
+];
 /// Most characters of a pin name.
 pub const MAX_PIN_NAME: usize = 8;
 /// A pin name (`PE`, `13`).
