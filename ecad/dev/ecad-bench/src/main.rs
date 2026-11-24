@@ -55,7 +55,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    // `--part <measure|outputs|strips|text|wires|plc> <file>`: one group of rows on a written
+    // `--part <measure|reports|strips|text|wires|plc|release> <file>`: one group of rows on a written
     // project, printed as it is measured; the full table needs a tier run.
     if let [flag, part, file] = args.as_slice()
         && flag == "--part"

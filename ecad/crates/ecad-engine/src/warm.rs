@@ -67,6 +67,11 @@ impl Warm {
         self.inline = inline;
     }
 
+    /// Whether builds run on the calling thread (headless runs; other off-thread work follows it).
+    pub fn inline(&self) -> bool {
+        self.inline
+    }
+
     /// Install what finished, start what is still missing, and say whether the report models and
     /// the Checks list are both kept now.
     pub fn pump(&mut self, p: &mut Project) -> bool {

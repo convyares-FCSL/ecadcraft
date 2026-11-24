@@ -8,6 +8,11 @@
 //!   the Checks kept, then undone; **orphanwork**: of that, the orphan rows re-derived for the
 //!   cable (`checks::cables::reference_checks`), the only work the release check adds to the edit (target: under 1 ms
 //!   over the same edit without it).
+//! - **prerelrev**: the pending revision issued, then the Release dialog's view of that issued
+//!   revision (`prerelease {rev}`): its state read and its report models and Checks built from
+//!   scratch. The app builds it off the UI thread; this is the work it moves there.
+//!   **prerelrevui**: of that, what stays on the UI thread under the project lock (the state read
+//!   and copied, `release::prepare`).
 //!
 //! On the 25-page project only ([`measure_print`]):
 //! - **print**: Print Book of every page, to memory, and the book's size in bytes.
@@ -34,6 +39,8 @@ pub struct MeasuredRelease {
     pub prerelease_ms: f64,
     pub orphanupd_ms: f64,
     pub orphanwork_ms: f64,
+    pub prerelrev_ms: f64,
+    pub prerelrevui_ms: f64,
     /// Rows in the check.
     pub rows: usize,
 }
@@ -116,6 +123,26 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
         }
         out.orphanupd_ms = median(&mut upd);
         out.orphanwork_ms = median(&mut work);
+        let rev = run(&mut s, "prerelease", json!({}))?["rev"].as_str().unwrap_or_default().to_string();
+        run(&mut s, "issuerevision", json!({"date": "2026-11-24"}))?;
+        let mut issued = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "prerelease", json!({"rev": rev}))?;
+            issued.push(ms(t));
+        }
+        out.prerelrev_ms = median(&mut issued);
+        let mut ui = Vec::new();
+        for _ in 0..runs {
+            ui.push(project.configure(&mut s, |p| {
+                let t = Instant::now();
+                let built = ecad_engine::releases::release::prepare(p, Some(&rev), false, ecad_electrical::releases::release::MAX_ROWS);
+                let took = ms(t);
+                drop(built);
+                took
+            })?);
+        }
+        out.prerelrevui_ms = median(&mut ui);
         drop(project);
         drop(s);
         Ok(out)

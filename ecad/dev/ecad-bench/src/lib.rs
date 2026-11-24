@@ -188,7 +188,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
     Ok(rows)
 }
 
-/// Measure one group of rows (`measure`, `reports`, `strips`, `text`, `wires` or `plc`) on the
+/// Measure one group of rows (`measure`, `reports`, `strips`, `text`, `wires`, `plc` or `release`) on the
 /// written project at `path`, and return them as text.
 ///
 /// # Errors
@@ -203,6 +203,7 @@ pub fn measure_part(part: &str, path: &Path) -> Result<String, String> {
         "text" => text::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         "wires" => wires_nets::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         "plc" => plc::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
+        "release" => release::measure(path, runs, &scratch).map(|m| format!("{m:#?}")),
         other => Err(format!("unknown part {other}")),
     };
     measure::release_lock_file(path);

@@ -174,6 +174,10 @@ pub struct App {
     pub debugger: Debugger,
     /// The kept views' first builds, on the background pool (issue 48).
     pub warm: ecad_engine::warm::Warm,
+    /// The Release dialog's view of an issued revision, built on the background pool (its rev),
+    /// and the rev and state it was asked for.
+    pub release_build: ecad_engine::background::Jobs<(String, ecad_engine::releases::release::View)>,
+    pub release_asked: Option<(String, ecad_engine::background::At)>,
     /// The Project panel.
     pub panel: ProjectPanel,
     /// The symbol search window, opened from the ECAD tab's Find Symbol.
@@ -396,6 +400,8 @@ impl App {
             developer: developer::Developer::default(),
             debugger: Debugger::default(),
             warm: ecad_engine::warm::Warm::default(),
+            release_build: Default::default(),
+            release_asked: None,
             panel: ProjectPanel::default(),
             search: crate::library::search::SymbolSearch::default(),
             library: library::Library::default(),

@@ -54,8 +54,8 @@ const PROBES: &[(&str, &str)] = &[("dev/ecad-bench/src/views.rs", "bench probe t
 const ALLOWED: usize = 3;
 
 /// The calls that work out views of a state from scratch, outside `Views` (`.detached(`,
-/// `.report_models(`).
-const FRESH_CALLS: &[&str] = &[".detached(", ".report_models("];
+/// `.report_models(`, and `Detached::build(` for a build moved off the UI thread).
+const FRESH_CALLS: &[&str] = &[".detached(", ".report_models(", "Detached::build("];
 
 /// Every file allowed to work out views from scratch, how many times, and why: a state the
 /// project does not keep, or a check that must not trust the kept views. A
@@ -365,7 +365,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             out.extend(found.into_iter().map(|f| format!("    {f}")));
         }
     }
-    let what = "from-scratch view calls (`.detached(`, `.report_models(`)";
+    let what = "from-scratch view calls (`.detached(`, `.report_models(`, `Detached::build(`)";
     for (rel, sites) in fresh_found {
         let allowed = FRESH_BUILDS.iter().find(|(p, _, _)| *p == rel).map_or(0, |(_, n, _)| *n);
         let fix = "read the kept view, or add the file to FRESH_BUILDS with its reason";
@@ -409,6 +409,7 @@ mod tests {
         let rows: &[(&str, usize)] = &[
             ("let d = p.derived().detached(&then);", 1),
             ("let o = engine_views().report_models(doc);", 1),
+            ("let d = ecad_electrical::views::Detached::build(inputs, &then);", 1),
             ("pub fn detached(&self, doc: &Document) -> Detached {", 0),
             ("// views.detached(doc) in a comment", 0),
         ];

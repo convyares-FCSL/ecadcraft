@@ -780,32 +780,35 @@ pub struct View {
     json_rows: Vec<Vec<Value>>,
 }
 
+/// The groups, counts and JSON rows of `rows` (checks of state `doc`), `limit` JSON rows a group.
+fn fill_rows(doc: &Document, rows: &[Check], limit: usize, v: &mut View) {
+    let groups = grouped(rows);
+    for g in Group::ALL {
+        if let Some(r) = groups.get(&g) {
+            v.groups.push((g, r.iter().map(|c| ((*c).clone(), c.locator(doc))).collect()));
+            v.json_rows.push(r.iter().take(limit).map(|c| c.to_json(doc)).collect());
+        }
+    }
+    (v.errors, v.warnings, v.info) = counts(rows);
+    v.provisional = ecad_electrical::releases::release::provisional_count(rows);
+}
+
 /// The [`View`] of `rev` (an issued rev, or `None` for the pending one); `accept` as the dialog's
-/// tick. Reads the kept Checks and report models for the pending revision (no rescan); builds an
-/// issued revision's state and models on request.
+/// tick. Read under the project lock, it returns what builds the view: the pending revision reads
+/// the kept Checks and report models (no rescan) and is done; an issued revision's state is read
+/// and copied, and the returned build works out its report models and check from that copy
+/// (seconds on a large project, so the app runs it on the background pool). The build reads no
+/// project.
 ///
 /// # Errors
 /// An issued `rev` that is not on this line, or its state could not be read.
-pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> Result<View, String> {
+pub fn prepare(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> Result<impl FnOnce() -> View + Send + 'static, String> {
     let issued_rev = rev.map(|r| issued_row(p, r)).transpose()?;
     let mut v = View::default();
-    let to_rows = |doc: &Document, rows: &[Check], v: &mut View| {
-        let groups = grouped(rows);
-        for g in Group::ALL {
-            if let Some(r) = groups.get(&g) {
-                v.groups.push((g, r.iter().map(|c| ((*c).clone(), c.locator(doc))).collect()));
-                v.json_rows.push(r.iter().take(limit).map(|c| c.to_json(doc)).collect());
-            }
-        }
-        (v.errors, v.warnings, v.info) = counts(rows);
-        v.provisional = ecad_electrical::releases::release::provisional_count(rows);
-    };
+    let mut then = None;
     match &issued_rev {
         Some(row) => {
-            let (_, _, then) = crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
-            let detached = p.derived().detached(&then);
-            let rows = crate::checks::all_with(&then, p.tolerance, detached.reports());
-            to_rows(&then, &rows, &mut v);
+            then = Some(crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?.2);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
             v.fields = row.six();
@@ -818,7 +821,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             v.warning = nothing_changed(p);
             v.since = unchanged_since(p);
             let doc = p.ledger.document();
-            to_rows(doc, &rows, &mut v);
+            fill_rows(doc, &rows, limit, &mut v);
             v.rev = revisions::pending_rev(doc);
             v.fields = revisions::pending(doc).map(|r| r.six()).unwrap_or_default();
             if v.fields[0].is_empty() {
@@ -840,7 +843,15 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     v.writes.push(("checks".into(), format!("{base} checks.csv")));
     v.writes.push(("manifest".into(), MANIFEST.into()));
     v.existing = v.folder.as_deref().filter(|f| f.exists()).map(read_old);
-    Ok(v)
+    let (inputs, tolerance) = (p.derived().inputs().clone(), p.tolerance);
+    Ok(move || {
+        if let Some(then) = then {
+            let detached = ecad_electrical::views::Detached::build(inputs, &then);
+            let rows = crate::checks::all_with(&then, tolerance, detached.reports());
+            fill_rows(&then, &rows, limit, &mut v);
+        }
+        v
+    })
 }
 
 impl View {
@@ -890,7 +901,7 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
     let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)?.map_or(DEFAULT_ROWS, |n| n as usize).clamp(1, MAX_ROWS);
     let want = opt_typed(params, "rev", "text such as \"A\"", |v| v.as_str().map(str::to_string))?;
     let accept = params.get("accept").and_then(Value::as_str) == Some("errors");
-    Ok(view(p, want.as_deref(), accept, limit)?.json())
+    Ok(prepare(p, want.as_deref(), accept, limit)?().json())
 }
 
 /// What the Release dialog's view of the pending revision depends on:

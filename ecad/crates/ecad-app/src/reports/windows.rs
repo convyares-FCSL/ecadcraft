@@ -214,7 +214,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let Some(d) = &self.dialogs.release else { return };
         let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
-        let warm = &mut self.warm;
+        let (warm, jobs, asked) = (&mut self.warm, &mut self.release_build, &mut self.release_asked);
         let r = p.configure(&mut self.cad.session, |p| {
             // The kept Checks and report models the pending view reads are built on the
             // background pool; the dialog says "Running…" until they are (issue 48).
@@ -226,7 +226,28 @@ impl App {
             if key.is_some() && (rev.is_some() || key == ecad_engine::releases::release::dialog_key(p, accept)) {
                 return Ok(None);
             }
-            let v = ecad_engine::releases::release::view(p, rev.as_deref(), accept, ecad_electrical::releases::release::MAX_ROWS)?;
+            // An issued revision's report models and check take seconds on a large project: they
+            // are worked out on the background pool from a copy of its state, and the dialog says
+            // "Running…" until they land (a result for another rev or state is dropped).
+            if let Some(want) = &rev
+                && !warm.inline()
+            {
+                let now = p.at();
+                for (r, v) in jobs.take(now).into_iter().flatten() {
+                    if r == *want {
+                        return Ok(Some((v, 0)));
+                    }
+                }
+                if asked.as_ref().is_some_and(|(r, at)| r == want && *at == now) && jobs.running() > 0 {
+                    return Ok(None);
+                }
+                let prepared = ecad_engine::releases::release::prepare(p, Some(want), accept, ecad_electrical::releases::release::MAX_ROWS)?;
+                let r = want.clone();
+                jobs.spawn(now, move || (r, prepared()));
+                *asked = Some((want.clone(), now));
+                return Ok(None);
+            }
+            let v = ecad_engine::releases::release::prepare(p, rev.as_deref(), accept, ecad_electrical::releases::release::MAX_ROWS)?();
             // The kept lists exist now: the key is read after the view built them.
             let k = if rev.is_some() { 0 } else { ecad_engine::releases::release::dialog_key(p, accept).unwrap_or(0) };
             Ok::<_, String>(Some((v, k)))
@@ -279,6 +300,10 @@ impl App {
             return;
         }
         self.refresh_release();
+        // Frames come while an issued revision's view is still being worked out.
+        if self.dialogs.release.as_ref().is_some_and(|d| d.view.is_none() && d.error.is_none()) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         let answer = self.dialogs.release.as_mut().and_then(|d| d.show(ctx));
         match answer {
             Some(crate::history::release_dialog::Out::Run(line)) => {

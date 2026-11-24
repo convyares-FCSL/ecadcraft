@@ -111,5 +111,17 @@ fn the_release_dialog_checks_releases_and_asks_before_replacing() {
     click(&mut h, "ecad.release.exists.keep-both");
     assert!(dir.join("release").join("Rev A (2)").join("release.json").exists());
     assert_eq!(head(&mut h), before, "nothing recorded");
+
+    // As the desktop runs it: an issued revision's check is worked out on the background pool,
+    // the dialog saying Running… until it lands.
+    h.state_mut().dialogs.release = None;
+    h.state_mut().warm.set_inline(false);
+    h.state_mut().open_release(Some("A".into()));
+    assert!(h.state().dialogs.release.as_ref().is_some_and(|d| d.view.is_none() && d.error.is_none()), "Running… first");
+    assert!(h.state_mut().release_build.wait(std::time::Duration::from_secs(60)), "the build ends");
+    h.run_steps(3);
+    let v = h.state().dialogs.release.as_ref().and_then(|d| d.view.clone()).expect("the view landed");
+    assert_eq!((v.rev.as_str(), v.issued.as_deref()), ("A", Some("A")));
+    h.state_mut().warm.set_inline(true);
     let _ = std::fs::remove_dir_all(&dir);
 }

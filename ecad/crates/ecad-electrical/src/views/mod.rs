@@ -130,6 +130,12 @@ pub struct Detached {
 }
 
 impl Detached {
+    /// The views of state `doc` built with `inputs` ([`Views::inputs`]), on any thread.
+    pub fn build(inputs: EngineInputs, doc: &Document) -> Detached {
+        let reports = ReportsView::build(doc, &*inputs.look);
+        Detached { inputs, reports }
+    }
+
     /// The report models of that state.
     pub fn reports(&self) -> &crate::reports::kept::ReportModels {
         self.reports.model()
@@ -426,7 +432,7 @@ impl Views {
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
     pub fn detached(&self, doc: &Document) -> Detached {
-        Detached { inputs: self.inputs.clone(), reports: ReportsView::build(doc, &*self.inputs.look) }
+        Detached::build(self.inputs.clone(), doc)
     }
 
     /// The report models of another state `doc`, worked out from scratch, when it has a page drawn
