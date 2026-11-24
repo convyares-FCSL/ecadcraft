@@ -433,7 +433,7 @@ fn a_strip_s_fuse_position_ratings_are_typed() {
     use ecad_model::geometry::units::Amps;
     use ecad_model::objects::devices::{Fuse, FuseClass, PositionLabel, TerminalStrip};
     let mut s = TerminalStrip::default();
-    s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(6.3)), class: Some(FuseClass::T), breaking: None });
+    s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(6.3)), class: Some(FuseClass::T), ..Fuse::default() });
     let d = Device { device_type: DeviceType::TerminalStrip(s.clone()), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(json, serde_json::json!({"terminal_strip": {"fuses": {"3": {"rated_current": 6.3, "class": "t"}}}}));

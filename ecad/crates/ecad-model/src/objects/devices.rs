@@ -387,7 +387,7 @@ pub use contacts::{ContactEntry, ContactLabel, ContactPoles, ContactSet, Contact
 
 pub use power_supply::{PowerSupply, Psu, Transformer};
 
-pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
+pub use protection::{Breaker, Fuse, FuseBank, FuseClass, FuseSize, Poles, Protection, ProtectionKind, Rcbo, Rcd, ResidualType, TripCurve};
 
 pub use switching::{Control, Operator, OperatorKind, Switching};
 

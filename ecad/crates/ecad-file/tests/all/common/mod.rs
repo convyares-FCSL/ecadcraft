@@ -248,7 +248,8 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
             },
         ])
     };
-    let fuse = || Fuse { rated_current: Some(Amps(10.0)), class: Some(FuseClass::Gg), breaking: Some(KiloAmps(50.0)) };
+    let fuse =
+        || Fuse { rated_current: Some(Amps(10.0)), class: Some(FuseClass::Gg), size: None, breaking: Some(KiloAmps(50.0)), rated_voltage: None };
     let rack: DeviceId = f.ids.fresh();
     let types = vec![
         (
@@ -301,6 +302,7 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 curve: Some(TripCurve::C),
                 breaking: Some(KiloAmps(6.0)),
                 poles: Some(Poles::Three),
+                rated_voltage: None,
                 contacts: contacts(),
             })),
         ),
@@ -309,7 +311,10 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
             DeviceType::Protection(Protection::Rcd(Rcd {
                 rated_current: Some(Amps(40.0)),
                 residual: Some(MilliAmps(30.0)),
+                residual_type: None,
+                conditional_short_circuit: None,
                 poles: Some(Poles::Four),
+                rated_voltage: None,
                 contacts: contacts(),
             })),
         ),
@@ -319,8 +324,10 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 rated_current: Some(Amps(20.0)),
                 curve: Some(TripCurve::B),
                 residual: Some(MilliAmps(30.0)),
+                residual_type: None,
                 breaking: Some(KiloAmps(10.0)),
                 poles: Some(Poles::OneN),
+                rated_voltage: None,
                 contacts: contacts(),
             })),
         ),

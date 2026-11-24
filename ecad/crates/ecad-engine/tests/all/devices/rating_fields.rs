@@ -23,7 +23,9 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, bool)> {
 fn every_rating_field_is_a_row_set_through_its_type() {
     let mut h = H::new(0x00d4_0401);
     let mut seen = BTreeSet::new();
-    for (n, symbol) in ["motor3", "lamp", "heater", "fuse", "mcb1", "rcbo2", "psu", "trafo", "coil", "prox3", "fusebank4"].into_iter().enumerate() {
+    for (n, symbol) in
+        ["motor3", "lamp", "heater", "fuse", "mcb1", "rcd2", "rcbo2", "psu", "trafo", "coil", "prox3", "fusebank4"].into_iter().enumerate()
+    {
         let c: DeviceId = id(&crate::common::place(&mut h, symbol, (40.0 + 40.0 * n as f64, 100.0)), "component");
         let group = h.doc().devices()[&c].device_type.group();
         let shown = rows(&mut h, c);
@@ -102,7 +104,7 @@ fn the_rating_reader_fills_every_nameplate_field() {
     use ecad_model::objects::devices::FieldSource;
     let mut h = H::new(0x00d4_0403);
     let mut read = BTreeSet::new();
-    for (n, symbol) in ["motor3", "lamp", "heater", "fuse", "mcb1", "rcbo2", "psu", "trafo", "coil", "prox3"].into_iter().enumerate() {
+    for (n, symbol) in ["motor3", "lamp", "heater", "fuse", "mcb1", "rcd2", "rcbo2", "psu", "trafo", "coil", "prox3"].into_iter().enumerate() {
         let c: DeviceId = id(&crate::common::place(&mut h, symbol, (40.0 + 40.0 * n as f64, 160.0)), "component");
         let group = h.doc().devices()[&c].device_type.group();
         let plate: Vec<_> = group.rating_fields().iter().filter(|f| f.source == FieldSource::Plate && f.ty != FieldType::Combined).collect();

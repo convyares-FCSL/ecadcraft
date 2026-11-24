@@ -6,6 +6,9 @@
 //!
 //! # Semantics
 //! - Text that reads as the group's rating fills its fields: `B16` on an MCB is curve B, 16 A.
+//!   A protective device also reads its rated voltage with AC or DC (`230 V AC`), a fuse its size
+//!   (`10x38`, `NH00`), an RCD or RCBO its residual type after `type` (`type A`) and an RCD its
+//!   conditional short-circuit current after `Inc` (`Inc 10 kA`).
 //! - Ambiguous text is asked about, never guessed ([`Read::Ask`]): a bare `16` on an MCB needs its
 //!   curve; a bare `30` on an RCD needs its unit.
 //! - Values the group does not have are refused ([`Read::Refused`]): a curve on a fuse.
@@ -24,9 +27,9 @@ use ecad_model::Device;
 
 use crate::error::CmdError;
 use ecad_model::Word;
-use ecad_model::geometry::units::{Amps, KiloAmps, MilliAmps};
-use ecad_model::objects::devices::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
-use ecad_model::objects::devices::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
+use ecad_model::geometry::units::{Amps, Current, KiloAmps, MilliAmps, RatedVoltage, Volts};
+use ecad_model::objects::devices::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA, MAX_VOLTS};
+use ecad_model::objects::devices::{Breaker, Fuse, FuseClass, FuseSize, Poles, Protection, ProtectionKind, Rcbo, Rcd, ResidualType, TripCurve};
 use ecad_model::objects::devices::{DeviceType, FieldSource, Load, RatingNote};
 
 pub mod dataset;
@@ -73,18 +76,31 @@ enum Tok {
     Poles(Poles),
     /// The word `curve` (before its letter).
     CurveWord,
+    /// A voltage, with AC or DC when run on (`230vac`).
+    Volts(f64, Option<Current>),
+    /// `AC` or `DC` (after a voltage).
+    Current(Current),
+    Size(FuseSize),
+    /// The word `type` (before a residual type).
+    TypeWord,
+    Residual(ResidualType),
+    /// `Inc`: the next current in kA is the conditional short-circuit current.
+    IncWord,
 }
 
 /// The pieces of `text`, or `None` when a piece is no rating word.
 fn tokens(text: &str) -> Option<Vec<Tok>> {
     let mut out: Vec<Tok> = Vec::new();
     for lower in parse::pieces(text) {
-        // A unit after a bare number: `16 A`, `30 mA`, `6 kA`.
+        // A unit after a bare number: `16 A`, `30 mA`, `6 kA`, `230 V`.
         if let Some(Tok::Bare(x)) = out.last().copied() {
             let unit = match lower.as_str() {
                 "a" => Some(Tok::Amps(x)),
                 "ma" => Some(Tok::MilliAmps(x)),
                 "ka" => Some(Tok::KiloAmps(x)),
+                "v" => Some(Tok::Volts(x, None)),
+                "vac" => Some(Tok::Volts(x, Some(Current::Ac))),
+                "vdc" => Some(Tok::Volts(x, Some(Current::Dc))),
                 _ => None,
             };
             if let Some(t) = unit {
@@ -93,6 +109,14 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
                 continue;
             }
         }
+        // A residual type after `type`: `type A`, `type AC`.
+        if out.last() == Some(&Tok::TypeWord)
+            && let Some(r) = ResidualType::parse(&lower)
+        {
+            out.pop();
+            out.push(Tok::Residual(r));
+            continue;
+        }
         out.extend(piece_tokens(&lower)?);
     }
     Some(out)
@@ -100,8 +124,19 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
 
 /// One piece's tokens: a word, a number with its unit, or a curve letter with its current (`C16`).
 fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
-    if lower == "curve" {
-        return Some(vec![Tok::CurveWord]);
+    let word = match lower {
+        "curve" => Some(Tok::CurveWord),
+        "type" => Some(Tok::TypeWord),
+        "inc" => Some(Tok::IncWord),
+        "ac" => Some(Tok::Current(Current::Ac)),
+        "dc" => Some(Tok::Current(Current::Dc)),
+        _ => None,
+    };
+    if let Some(w) = word {
+        return Some(vec![w]);
+    }
+    if let Some(s) = FuseSize::read(lower) {
+        return Some(vec![Tok::Size(s)]);
     }
     if let Some(p) = Poles::parse(lower) {
         return Some(vec![Tok::Poles(p)]);
@@ -119,13 +154,24 @@ fn piece_tokens(lower: &str) -> Option<Vec<Tok>> {
     {
         return match number_token(rest)? {
             Tok::Amps(x) | Tok::Bare(x) => Some(vec![Tok::Curve(c), Tok::Amps(x)]),
-            Tok::MilliAmps(_) | Tok::KiloAmps(_) | Tok::Curve(_) | Tok::Class(_) | Tok::Poles(_) | Tok::CurveWord => None,
+            Tok::MilliAmps(_)
+            | Tok::KiloAmps(_)
+            | Tok::Curve(_)
+            | Tok::Class(_)
+            | Tok::Poles(_)
+            | Tok::CurveWord
+            | Tok::Volts(..)
+            | Tok::Current(_)
+            | Tok::Size(_)
+            | Tok::TypeWord
+            | Tok::Residual(_)
+            | Tok::IncWord => None,
         };
     }
     number_token(lower).map(|t| vec![t])
 }
 
-/// A lower-case number with an optional unit: `16`, `16a`, `30ma`, `6ka`.
+/// A lower-case number with an optional unit: `16`, `16a`, `30ma`, `6ka`, `230v`, `24vdc`.
 fn number_token(lower: &str) -> Option<Tok> {
     let (x, unit) = parse::number_unit(lower)?;
     match unit {
@@ -133,6 +179,9 @@ fn number_token(lower: &str) -> Option<Tok> {
         "a" => Some(Tok::Amps(x)),
         "ma" => Some(Tok::MilliAmps(x)),
         "ka" => Some(Tok::KiloAmps(x)),
+        "v" => Some(Tok::Volts(x, None)),
+        "vac" => Some(Tok::Volts(x, Some(Current::Ac))),
+        "vdc" => Some(Tok::Volts(x, Some(Current::Dc))),
         _ => None,
     }
 }
@@ -147,6 +196,11 @@ struct Found {
     curve: Option<TripCurve>,
     class: Option<FuseClass>,
     poles: Option<Poles>,
+    volts: Option<(f64, Option<Current>)>,
+    size: Option<FuseSize>,
+    residual_type: Option<ResidualType>,
+    /// After `Inc`.
+    inc: Option<f64>,
 }
 
 fn once<T>(slot: &mut Option<T>, v: T, what: &str) -> Result<(), Problem> {
@@ -159,7 +213,10 @@ fn once<T>(slot: &mut Option<T>, v: T, what: &str) -> Result<(), Problem> {
 
 fn found(toks: &[Tok]) -> Result<Found, Problem> {
     let mut f = Found::default();
-    for t in toks {
+    let mut i = 0;
+    while let Some(t) = toks.get(i) {
+        let prev = i.checked_sub(1).and_then(|j| toks.get(j)).copied();
+        i += 1;
         match *t {
             Tok::Amps(x) => once(&mut f.amps, x, "rated currents")?,
             Tok::Bare(x) => once(&mut f.bare, x, "numbers with no unit")?,
@@ -169,6 +226,21 @@ fn found(toks: &[Tok]) -> Result<Found, Problem> {
             Tok::Class(c) => once(&mut f.class, c, "fuse classes")?,
             Tok::Poles(p) => once(&mut f.poles, p, "pole counts")?,
             Tok::CurveWord => {}
+            Tok::Volts(x, c) => once(&mut f.volts, (x, c), "rated voltages")?,
+            Tok::Current(c) => match (prev, f.volts.as_mut()) {
+                (Some(Tok::Volts(_, None)), Some(v)) => v.1 = Some(c),
+                _ => return Err(Problem::Refused("AC or DC is given apart from its voltage; write it after it, for example 230 V AC".into())),
+            },
+            Tok::Size(s) => once(&mut f.size, s, "fuse sizes")?,
+            Tok::Residual(r) => once(&mut f.residual_type, r, "residual types")?,
+            Tok::TypeWord => return Err(Problem::Ask("the residual type (AC, A, F or B), for example type A".into())),
+            Tok::IncWord => match toks.get(i) {
+                Some(Tok::KiloAmps(x)) => {
+                    i += 1;
+                    once(&mut f.inc, *x, "conditional short-circuit currents")?;
+                }
+                _ => return Err(Problem::Ask("the conditional short-circuit current in kA, for example Inc 10 kA".into())),
+            },
         }
     }
     Ok(f)
@@ -184,6 +256,22 @@ fn kilo(x: f64) -> Result<KiloAmps, Problem> {
     (x.is_finite() && x > 0.0 && x <= MAX_BREAKING_KA)
         .then_some(KiloAmps(x))
         .ok_or_else(|| Problem::Refused(format!("a breaking capacity is more than 0 and at most {MAX_BREAKING_KA} kA")))
+}
+
+fn inc(x: f64) -> Result<KiloAmps, Problem> {
+    (x.is_finite() && x > 0.0 && x <= MAX_BREAKING_KA)
+        .then_some(KiloAmps(x))
+        .ok_or_else(|| Problem::Refused(format!("a conditional short-circuit current is more than 0 and at most {MAX_BREAKING_KA} kA")))
+}
+
+/// A rated voltage with AC or DC; one without either is asked about.
+fn rated_voltage(v: Option<(f64, Option<Current>)>) -> Result<Option<RatedVoltage>, Problem> {
+    match v {
+        None => Ok(None),
+        Some((x, None)) => Err(Problem::Ask(format!("whether {x} V is AC or DC, for example {x} V AC"))),
+        Some((x, Some(current))) if x.is_finite() && x > 0.0 && x <= MAX_VOLTS => Ok(Some(RatedVoltage { volts: Volts(x), current })),
+        Some((_, Some(_))) => Err(Problem::Refused(format!("a rated voltage is more than 0 and at most {MAX_VOLTS} V"))),
+    }
 }
 
 fn milli(x: f64) -> Result<MilliAmps, Problem> {
@@ -250,6 +338,14 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
     let rated = f.amps.map(amps).transpose()?;
     let breaking = f.kilo.map(kilo).transpose()?;
     let residual = f.milli.map(milli).transpose()?;
+    let rated_voltage = rated_voltage(f.volts)?;
+    let conditional_short_circuit = f.inc.map(inc).transpose()?;
+    if conditional_short_circuit.is_some() && kind != ProtectionKind::Rcd {
+        return Err(no("conditional short-circuit current (Inc)"));
+    }
+    if f.size.is_some() && !matches!(kind, ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::FuseBank) {
+        return Err(no("fuse size"));
+    }
     match kind {
         ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::FuseBank => {
             if f.curve.is_some() {
@@ -261,17 +357,20 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
             if f.poles.is_some() {
                 return Err(no("poles"));
             }
+            if f.residual_type.is_some() {
+                return Err(no("residual type"));
+            }
             if rated.is_none() {
                 return Err(Problem::Ask(AMPS_Q.into()));
             }
-            let fuse = Fuse { rated_current: rated, class: f.class, breaking };
+            let fuse = Fuse { rated_current: rated, class: f.class, size: f.size, breaking, rated_voltage };
             Ok(if kind == ProtectionKind::FuseTerminalBlock { Protection::FuseTerminalBlock(fuse) } else { Protection::Fuse(fuse) })
         }
         ProtectionKind::Mcb | ProtectionKind::Rcbo => {
             if f.class.is_some() {
                 return Err(no("fuse class"));
             }
-            if residual.is_some() && kind == ProtectionKind::Mcb {
+            if (residual.is_some() || f.residual_type.is_some()) && kind == ProtectionKind::Mcb {
                 return Err(Problem::Refused("an MCB has no residual current; an RCBO has".into()));
             }
             match (rated, f.curve) {
@@ -280,9 +379,18 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
                 (Some(_), Some(_)) => {}
             }
             Ok(if kind == ProtectionKind::Mcb {
-                Protection::Mcb(Breaker { rated_current: rated, curve: f.curve, breaking, poles: f.poles, ..Breaker::default() })
+                Protection::Mcb(Breaker { rated_current: rated, curve: f.curve, breaking, poles: f.poles, rated_voltage, ..Breaker::default() })
             } else {
-                Protection::Rcbo(Rcbo { rated_current: rated, curve: f.curve, residual, breaking, poles: f.poles, ..Rcbo::default() })
+                Protection::Rcbo(Rcbo {
+                    rated_current: rated,
+                    curve: f.curve,
+                    residual,
+                    residual_type: f.residual_type,
+                    breaking,
+                    poles: f.poles,
+                    rated_voltage,
+                    ..Rcbo::default()
+                })
             })
         }
         ProtectionKind::Rcd => {
@@ -298,7 +406,15 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
             if residual.is_none() {
                 return Err(Problem::Ask("the residual current, for example 30 mA".into()));
             }
-            Ok(Protection::Rcd(Rcd { rated_current: rated, residual, poles: f.poles, ..Rcd::default() }))
+            Ok(Protection::Rcd(Rcd {
+                rated_current: rated,
+                residual,
+                residual_type: f.residual_type,
+                conditional_short_circuit,
+                poles: f.poles,
+                rated_voltage,
+                ..Rcd::default()
+            }))
         }
     }
 }
@@ -590,6 +706,16 @@ mod tests {
             (K::Fuse, "4", "4 A"),
             (K::Fuse, "16 A gG 50 kA", "16 A, gG, 50 kA"),
             (K::Fuse, "6,3A", "6.3 A"),
+            (K::Fuse, "16 A gG 10x38 400 V AC", "16 A, gG, 10x38, 400 V AC"),
+            (K::Fuse, "NH00 63A gG 120kA 500VAC", "63 A, gG, NH00, 120 kA, 500 V AC"),
+            (K::Fuse, "2 A F 6.3x32", "2 A, F, 6.3x32"),
+            (K::FuseTerminalBlock, "6,3 A T 5x20 250 V AC", "6.3 A, T, 5x20, 250 V AC"),
+            (K::Mcb, "C16 6kA 1P+N 230V AC", "curve C, 16 A, 6 kA, 1P+N, 230 V AC"),
+            (K::Mcb, "B10 24 V DC", "curve B, 10 A, 24 V DC"),
+            (K::Rcd, "40A 30mA type A Inc 10 kA 4P 400VAC", "40 A, 30 mA, type A, Inc 10 kA, 4P, 400 V AC"),
+            (K::Rcd, "30 mA TYPE b", "30 mA, type B"),
+            (K::Rcbo, "C13 30mA type AC 6kA", "curve C, 13 A, 30 mA, type AC, 6 kA"),
+            (K::Rcbo, "B16 30 mA type F", "curve B, 16 A, 30 mA, type F"),
         ] {
             let got = shown(kind, text);
             assert_eq!(got, want, "{text}");
@@ -612,6 +738,18 @@ mod tests {
             (K::Mcb, "C16 B", "refused: 'C16 B' does not read: it gives two curves"),
             (K::Mcb, "C0", "refused: a rated current"),
             (K::Fuse, "7000 A", "refused: a rated current"),
+            (K::Mcb, "C16 230 V", "ask: whether 230 V is AC or DC"),
+            (K::Fuse, "4 A 2000 V AC", "refused: a rated voltage"),
+            (K::Mcb, "C16 AC 230 V", "refused: 'C16 AC 230 V' does not read: AC or DC is given apart"),
+            (K::Mcb, "C16 10x38", "refused: fuse size is not a rating of a MCB"),
+            (K::Mcb, "C16 type A", "refused: an MCB has no residual"),
+            (K::Fuse, "4 A type A", "refused: residual type is not a rating of a fuse"),
+            (K::Rcd, "30 mA type", "ask: the residual type"),
+            (K::Rcd, "30 mA type Z", "ask: the residual type"),
+            (K::Rcd, "30 mA Inc", "ask: the conditional short-circuit current"),
+            (K::Rcd, "30 mA Inc 0 kA", "refused: a conditional short-circuit current"),
+            (K::Rcbo, "C16 30 mA Inc 6 kA", "refused: conditional short-circuit current (Inc) is not a rating of a RCBO"),
+            (K::Rcd, "30 mA type A type B", "refused: '30 mA type A type B' does not read: it gives two residual types"),
         ] {
             let got = shown(kind, text);
             assert!(got.starts_with(start), "{text}: {got}");

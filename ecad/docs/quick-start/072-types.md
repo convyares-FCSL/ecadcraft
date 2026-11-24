@@ -176,13 +176,25 @@ shown back from them:
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
   `rating.<n>`, opens read-only.
+- From the nameplate, every kind also takes its **Rated voltage** with AC or DC (`230 V AC`,
+  `24 V DC`; a voltage without either is asked about): a device rated for 230 V AC must not
+  protect a 400 V or a DC circuit. A fuse (a fuse terminal, each fuse of a bank) takes its **Fuse
+  size** (`5x20`, `6.3x32`, `10x38`, `14x51`, `22x58`, `NH000` to `NH4`), which picks the holder
+  and the spare. An RCD or RCBO takes its **Residual type** after `type` (`type AC`, `A`, `F` or
+  `B`: a drive or a DC load needs F or B). An RCD takes its **Conditional short-circuit current**
+  after `Inc` (`Inc 10 kA`): it breaks no fault itself, so its fault rating is with the device
+  before it. `40A 30mA type A Inc 10 kA 4P 400VAC` on an RCD reads as **40 A, 30 mA, type A, Inc
+  10 kA, 4P, 400 V AC**. Each is also a row of its own (`rating.voltage`, `rating.size`,
+  `rating.residual_type`, `rating.conditional_short_circuit`). Refused: a size on a breaker, a
+  residual type on a fuse or an MCB, `Inc` on anything but an RCD.
 
 To try it: place an MCB, type `B16` as its rating in the Properties panel (shown as
 `curve B, 16 A`), then `16` (refused, asks for the curve), then `see datasheet` (kept as a note,
 and Checks shows "no rating"). Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector, and
-`rating::reader` in ecad-electrical (automated, not tried by hand).
+`rating::reader` in ecad-electrical; the four nameplate fields above through
+`devices::rating_fields` in ecad-engine (automated, not tried by hand).
 
 #### The rating line on the drawing
 
@@ -196,7 +208,7 @@ shows only when a template adds it. A device with no typed rating draws its note
 | Group | Field words (built-in order) |
 | --- | --- |
 | `power_supply` | `voltages`, `current`, `power` (a power supply's, in W), `apparent_power` (a transformer's, in VA), `frequency` and `impedance_voltage` (a transformer's, `uk 4 %`) |
-| `protection` | `curve`, `current`, `class`, `residual`, `breaking`, `poles`, `outputs` |
+| `protection` | `curve`, `current`, `class`, `size`, `residual`, `residual_type`, `breaking`, `conditional_short_circuit`, `poles`, `voltage`, `outputs` |
 | `switching` | `control`, `ac3_current`, `ac3_power` |
 | `sensor` | `supply` |
 | `motor` | `power`, `voltage`, `current`, `frequency`, `power_factor`, `efficiency`, `starting` |

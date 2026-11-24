@@ -1,12 +1,15 @@
 //! A protective device's rating: typed fields per kind, never a stored display string.
 //!
 //! # Semantics
-//! Each kind holds only the fields it has: a fuse its rated current, class and breaking capacity;
-//! a fuse terminal a fuse's; an MCB its rated current, curve, breaking capacity and poles; an RCD its rated current, residual
-//! current and poles; an RCBO an MCB's fields and a residual current; a fuse bank a fuse per output.
+//! Each kind holds only the fields it has: a fuse its rated current, class, size ([`FuseSize`]),
+//! breaking capacity and rated voltage; a fuse terminal a fuse's; an MCB its rated current, curve,
+//! breaking capacity, poles and rated voltage; an RCD its rated current, residual current and
+//! type ([`ResidualType`]), conditional short-circuit current (`Inc`: an RCD breaks no fault of
+//! its own, so its fault rating is with the device before it), poles and rated voltage; an RCBO an
+//! MCB's fields and a residual current and type; a fuse bank a fuse per output.
 //! Every field may be empty (not typed yet); [`Protection::is_unrated`] says when all are.
-//! [`fmt::Display`] writes the set fields in a fixed order (`curve B, 16 A, 6 kA, 2P`), which is
-//! what the drawing and every command's answer show.
+//! [`fmt::Display`] writes the set fields in a fixed order (`curve B, 16 A, 6 kA, 2P, 230 V AC`),
+//! which is what the drawing and every command's answer show.
 //!
 //! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader) and the
 //! protection calculations.
@@ -21,7 +24,7 @@ use crate::DeviceType;
 use crate::objects::devices::fields::FieldType;
 use crate::objects::devices::{FieldSource, RatingField};
 
-use crate::geometry::units::{Amps, KiloAmps, MilliAmps};
+use crate::geometry::units::{Amps, KiloAmps, MilliAmps, RatedVoltage};
 
 /// The largest rated current a protective device takes, in amperes.
 pub const MAX_AMPS: f64 = 6300.0;
@@ -29,6 +32,8 @@ pub const MAX_AMPS: f64 = 6300.0;
 pub const MAX_RESIDUAL_MA: f64 = 3000.0;
 /// The largest breaking capacity, in kiloamperes.
 pub const MAX_BREAKING_KA: f64 = 200.0;
+/// The highest rated voltage of a protective device, in volts (low voltage, DC included).
+pub const MAX_VOLTS: f64 = 1500.0;
 /// The highest fuse output number of a fuse bank.
 pub(crate) const MAX_OUTPUT: u8 = 99;
 
@@ -176,12 +181,13 @@ impl Protection {
         let amps = |a: Option<Amps>| a.is_some_and(|a| !(a.0.is_finite() && a.0 > 0.0 && a.0 <= MAX_AMPS));
         let ka = |k: Option<KiloAmps>| k.is_some_and(|k| !(k.0.is_finite() && k.0 > 0.0 && k.0 <= MAX_BREAKING_KA));
         let ma = |m: Option<MilliAmps>| m.is_some_and(|m| !(m.0.is_finite() && m.0 > 0.0 && m.0 <= MAX_RESIDUAL_MA));
-        let fuse = |f: &Fuse| amps(f.rated_current) || ka(f.breaking);
+        let volts = |v: Option<RatedVoltage>| v.is_some_and(|v| !(v.volts.0.is_finite() && v.volts.0 > 0.0 && v.volts.0 <= MAX_VOLTS));
+        let fuse = |f: &Fuse| amps(f.rated_current) || ka(f.breaking) || volts(f.rated_voltage);
         let bad = match self {
             Protection::Fuse(f) | Protection::FuseTerminalBlock(f) => fuse(f),
-            Protection::Mcb(b) => amps(b.rated_current) || ka(b.breaking),
-            Protection::Rcd(r) => amps(r.rated_current) || ma(r.residual),
-            Protection::Rcbo(r) => amps(r.rated_current) || ka(r.breaking) || ma(r.residual),
+            Protection::Mcb(b) => amps(b.rated_current) || ka(b.breaking) || volts(b.rated_voltage),
+            Protection::Rcd(r) => amps(r.rated_current) || ma(r.residual) || ka(r.conditional_short_circuit) || volts(r.rated_voltage),
+            Protection::Rcbo(r) => amps(r.rated_current) || ka(r.breaking) || ma(r.residual) || volts(r.rated_voltage),
             Protection::FuseBank(b) => {
                 if b.outputs.keys().any(|n| *n == 0 || *n > MAX_OUTPUT) {
                     return Some(format!("a fuse bank's outputs are 1 to {MAX_OUTPUT}"));
@@ -216,7 +222,15 @@ fn show<T: fmt::Display>(x: Option<T>) -> Option<String> {
     x.map(|x| x.to_string())
 }
 
-/// A fuse's rating: `6.3 A, T`, `16 A, gG, 50 kA`.
+fn residual_type_words(r: Option<ResidualType>) -> Option<String> {
+    r.map(|r| format!("type {}", r.label()))
+}
+
+fn inc_words(k: Option<KiloAmps>) -> Option<String> {
+    k.map(|k| format!("Inc {k}"))
+}
+
+/// A fuse's rating: `6.3 A, T`, `16 A, gG, 10x38, 50 kA, 400 V AC`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Fuse {
@@ -224,13 +238,27 @@ pub struct Fuse {
     pub rated_current: Option<Amps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<FuseClass>,
+    /// Its size, which picks the holder and the spare.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<FuseSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breaking: Option<KiloAmps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<RatedVoltage>,
 }
 
 impl fmt::Display for Fuse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        join(f, &[show(self.rated_current), self.class.map(|c| c.label().to_string()), show(self.breaking)])
+        join(
+            f,
+            &[
+                show(self.rated_current),
+                self.class.map(|c| c.label().to_string()),
+                self.size.map(|s| s.label().to_string()),
+                show(self.breaking),
+                show(self.rated_voltage),
+            ],
+        )
     }
 }
 
@@ -246,6 +274,8 @@ pub struct Breaker {
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<RatedVoltage>,
     /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
@@ -253,11 +283,20 @@ pub struct Breaker {
 
 impl fmt::Display for Breaker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        join(f, &[curve_words(self.curve), show(self.rated_current), show(self.breaking), self.poles.map(|p| p.label().to_string())])
+        join(
+            f,
+            &[
+                curve_words(self.curve),
+                show(self.rated_current),
+                show(self.breaking),
+                self.poles.map(|p| p.label().to_string()),
+                show(self.rated_voltage),
+            ],
+        )
     }
 }
 
-/// An RCD's rating: `40 A, 30 mA, 4P`.
+/// An RCD's rating: `40 A, 30 mA, type A, Inc 10 kA, 4P, 400 V AC`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rcd {
@@ -266,7 +305,14 @@ pub struct Rcd {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub residual: Option<MilliAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residual_type: Option<ResidualType>,
+    /// Its conditional short-circuit current (`Inc`), with the device named before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conditional_short_circuit: Option<KiloAmps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<RatedVoltage>,
     /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
@@ -274,11 +320,21 @@ pub struct Rcd {
 
 impl fmt::Display for Rcd {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        join(f, &[show(self.rated_current), show(self.residual), self.poles.map(|p| p.label().to_string())])
+        join(
+            f,
+            &[
+                show(self.rated_current),
+                show(self.residual),
+                residual_type_words(self.residual_type),
+                inc_words(self.conditional_short_circuit),
+                self.poles.map(|p| p.label().to_string()),
+                show(self.rated_voltage),
+            ],
+        )
     }
 }
 
-/// An RCBO's rating: `curve C, 13 A, 30 mA, 6 kA, 2P`.
+/// An RCBO's rating: `curve C, 13 A, 30 mA, type A, 6 kA, 2P, 230 V AC`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rcbo {
@@ -289,9 +345,13 @@ pub struct Rcbo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub residual: Option<MilliAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residual_type: Option<ResidualType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rated_voltage: Option<RatedVoltage>,
     /// Its auxiliary contacts.
     #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
     pub contacts: crate::objects::devices::ContactSet,
@@ -301,7 +361,15 @@ impl fmt::Display for Rcbo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         join(
             f,
-            &[curve_words(self.curve), show(self.rated_current), show(self.residual), show(self.breaking), self.poles.map(|p| p.label().to_string())],
+            &[
+                curve_words(self.curve),
+                show(self.rated_current),
+                show(self.residual),
+                residual_type_words(self.residual_type),
+                show(self.breaking),
+                self.poles.map(|p| p.label().to_string()),
+                show(self.rated_voltage),
+            ],
         )
     }
 }
@@ -374,6 +442,82 @@ impl FuseClass {
 }
 
 crate::word_enum! {
+    /// A fuse's size (IEC 60269): a cartridge's diameter by length in millimetres (`10x38`) or an
+    /// NH blade fuse's size (`NH00`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum FuseSize {
+        #[strum(serialize = "5x20")]
+        Mm5x20,
+        #[strum(serialize = "6_3x32")]
+        Mm6x32,
+        #[strum(serialize = "10x38")]
+        Mm10x38,
+        #[strum(serialize = "14x51")]
+        Mm14x51,
+        #[strum(serialize = "22x58")]
+        Mm22x58,
+        Nh000,
+        Nh00,
+        Nh0,
+        Nh1,
+        Nh2,
+        Nh3,
+        Nh4,
+    }
+}
+
+impl FuseSize {
+    /// As written on a drawing: `10x38`, `6.3x32`, `NH00`.
+    pub fn label(self) -> &'static str {
+        match self {
+            FuseSize::Mm5x20 => "5x20",
+            FuseSize::Mm6x32 => "6.3x32",
+            FuseSize::Mm10x38 => "10x38",
+            FuseSize::Mm14x51 => "14x51",
+            FuseSize::Mm22x58 => "22x58",
+            FuseSize::Nh000 => "NH000",
+            FuseSize::Nh00 => "NH00",
+            FuseSize::Nh0 => "NH0",
+            FuseSize::Nh1 => "NH1",
+            FuseSize::Nh2 => "NH2",
+            FuseSize::Nh3 => "NH3",
+            FuseSize::Nh4 => "NH4",
+        }
+    }
+
+    /// The size `text` names, by its word or its label, case aside (`10x38`, `6.3x32`, `nh00`).
+    pub fn read(text: &str) -> Option<FuseSize> {
+        let t = text.trim();
+        <FuseSize as crate::Word>::parse(t).or_else(|| <FuseSize as crate::Word>::ALL.iter().copied().find(|s| s.label().eq_ignore_ascii_case(t)))
+    }
+}
+
+crate::word_enum! {
+    /// What residual current an RCD or RCBO detects (IEC 60755, IEC 62423): `AC` sinusoidal only,
+    /// `A` also pulsating DC, `F` also mixed frequencies (a single-phase drive), `B` also smooth DC
+    /// (a three-phase drive, a DC load).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum ResidualType {
+        Ac,
+        A,
+        F,
+        B,
+    }
+}
+
+impl ResidualType {
+    /// As written on a drawing: `AC`, `A`.
+    pub fn label(self) -> &'static str {
+        match self {
+            ResidualType::Ac => "AC",
+            ResidualType::A => "A",
+            ResidualType::F => "F",
+            ResidualType::B => "B",
+        }
+    }
+}
+
+crate::word_enum! {
     /// A protective device's poles: `1P`, `1P+N`, `2P`, `3P`, `3P+N`, `4P`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum Poles {
@@ -437,12 +581,29 @@ pub(super) static FIELDS: &[RatingField] = &[
         DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.class
     ),
     rating_field!(
+        "size",
+        "Fuse size",
+        Plate,
+        FuseSize,
+        DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.size
+    ),
+    rating_field!(
         "residual",
         "Residual current",
         Plate,
         MilliAmps,
         DeviceType::Protection(Protection::Rcd(x)) => x.residual,
         DeviceType::Protection(Protection::Rcbo(x)) => x.residual
+    ),
+    rating_field!(
+        "residual_type",
+        "Residual type",
+        Plate,
+        ResidualType,
+        show |r: ResidualType| format!("type {}", r.label()),
+        after ["type"],
+        DeviceType::Protection(Protection::Rcd(x)) => x.residual_type,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.residual_type
     ),
     rating_field!(
         "breaking",
@@ -454,6 +615,15 @@ pub(super) static FIELDS: &[RatingField] = &[
         DeviceType::Protection(Protection::Rcbo(x)) => x.breaking
     ),
     rating_field!(
+        "conditional_short_circuit",
+        "Conditional short-circuit current",
+        Plate,
+        KiloAmps,
+        show |k: KiloAmps| format!("Inc {k}"),
+        after ["inc"],
+        DeviceType::Protection(Protection::Rcd(x)) => x.conditional_short_circuit
+    ),
+    rating_field!(
         "poles",
         "Poles",
         Plate,
@@ -461,6 +631,16 @@ pub(super) static FIELDS: &[RatingField] = &[
         DeviceType::Protection(Protection::Mcb(x)) => x.poles,
         DeviceType::Protection(Protection::Rcd(x)) => x.poles,
         DeviceType::Protection(Protection::Rcbo(x)) => x.poles
+    ),
+    rating_field!(
+        "voltage",
+        "Rated voltage",
+        Plate,
+        RatedVoltage,
+        DeviceType::Protection(Protection::Fuse(x) | Protection::FuseTerminalBlock(x)) => x.rated_voltage,
+        DeviceType::Protection(Protection::Mcb(x)) => x.rated_voltage,
+        DeviceType::Protection(Protection::Rcd(x)) => x.rated_voltage,
+        DeviceType::Protection(Protection::Rcbo(x)) => x.rated_voltage
     ),
     RatingField {
         word: "outputs",

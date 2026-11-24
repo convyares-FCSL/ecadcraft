@@ -18,7 +18,7 @@
 
 use crate::geometry::units::{Amps, Current, Hertz, KiloAmps, MilliAmps, Percent, RatedVoltage, VoltAmps, Volts, Watts};
 use crate::naming::words::Word;
-use crate::objects::devices::{FuseClass, IndicatorColour, IpCode, Poles, SignalType, Starting, TripCurve};
+use crate::objects::devices::{FuseClass, FuseSize, IndicatorColour, IpCode, Poles, ResidualType, SignalType, Starting, TripCurve};
 
 /// What a rating field's value is, for whoever describes the field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,3 +298,5 @@ choice_value!(SignalType, SignalType::word);
 choice_value!(FuseClass, FuseClass::label);
 choice_value!(Poles, Poles::label);
 choice_value!(TripCurve, TripCurve::letter);
+choice_value!(FuseSize, FuseSize::label);
+choice_value!(ResidualType, ResidualType::label);
