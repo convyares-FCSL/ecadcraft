@@ -259,13 +259,53 @@ current, power factor (`cos φ 0.85`, also `pf 0.85`), efficiency (`eff 91 %`) a
 
 - `7,5kW 15.2A Y-D` reads as **7.5 kW, 15.2 A, star-delta**; `370 W` as **0.37 kW**.
 - Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. Other text (`IE3`,
-  `see datasheet`) is kept as the note. A motor's rated voltage and frequency came later: see
-  [d4-device-data.md](d4-device-data.md).
+  `see datasheet`) is kept as the note.
 - An unrated motor now gets the Checks warning **no-rating** (the demo's `-M01` too).
 
 To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y-D` as its rating
 (shown as `7.5 kW, 15.2 A, star-delta`, and the warning goes), then `7.5` (refused, asks kW or A).
 Nobody has tried it by hand yet.
+
+#### A motor's rated voltage and frequency, and its supply
+
+A motor's nameplate also holds its **rated voltage** and **rated frequency**: `7.5 kW 400 V 15.2 A
+50 Hz` reads as **7.5 kW, 400 V, 15.2 A, 50 Hz**. A DC voltage (`24 VDC`) is refused.
+
+What feeds a motor is the **supply** typed on a row of the potentials table: its voltages exactly
+as typed, never one worked out from another. `400/230 V 3~ 50 Hz` is a three-phase supply with
+both its line-to-line and line-to-neutral voltages; `400 V 3~` has only the line-to-line one;
+`230 V 1~ 60 Hz` is single-phase; `24 V DC` is DC. The phases or DC must be said. Nothing is read
+from the potential's name: a row with no supply is not known. The app has no potentials editor
+yet, so the supply is set with `wiresettings` (as text or as fields), and `wiresettings {}` shows
+it:
+
+```
+wiresettings {"potentials": [{"name": "L1", "prefix": "L1-", "numbered": true,
+  "supply": "400/230 V 3~ 50 Hz"}, ...]}
+```
+
+- The Device tab of one motor shows **Rated voltage**. Empty, on a net whose potential has a
+  supply, it offers **Use 400 V** (hover: `From L1: 400/230 V 3~ 50 Hz`): a three-phase motor is
+  offered the line-to-line voltage, a single-phase motor the line-to-neutral one. Nothing is
+  filled in until the link is clicked. `setprop rated_voltage` sets it (`400 V` or `400`; empty
+  clears it).
+- Checks warns **supply-mismatch** when a motor does not fit its supply: a rated voltage further
+  from the supply's than the project's **Motor voltage tolerance** (Standards ▸ Defaults ▸
+  Rating, `rating.supply_tolerance`, 5 % unless changed), a rated frequency other than the
+  supply's (when both are known), a three-phase motor on a single-phase supply, a motor on DC,
+  or a single-phase motor on a three-phase supply typed without its line-to-neutral voltage
+  (`supply line-to-neutral voltage unknown`). When the supplied potentials on a motor's nets
+  disagree, nothing is compared.
+- Why 5 %: a motor is built to run continuously within about ±5 % of its rated voltage (zone A
+  of IEC 60034-1). A project that accepts the wider ±10 % band, or wants a tighter check, changes
+  the tolerance.
+
+To try it: give L1 the supply above, place `motor3`, draw a wire from one of its points and set its
+potential to L1, select the motor (the Device tab offers **Use 400 V**), then type `230` as its
+Rated voltage (Checks shows **supply-mismatch**). Nobody has tried it by hand yet.
+
+Tests: `devices::supply` in ecad-engine and ecad-electrical, `connectivity::supply` in ecad-model,
+`supply_contracts` in ecad-mcp (automated, not tried by hand).
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…motor…`), and `rating::reader::motor` in ecad-electrical (automated, not tried by hand).

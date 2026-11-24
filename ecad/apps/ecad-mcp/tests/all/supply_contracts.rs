@@ -29,7 +29,7 @@ fn supplied_table(c: &mut Client) -> Vec<Value> {
     let mut table = c.exec("wiresettings", json!({}))["potentials"].as_array().cloned().unwrap_or_default();
     for row in &mut table {
         if row["name"] == "L1" {
-            row["supply"] = json!({"current": "ac", "nominal": 400, "phases": "three", "frequency": 50});
+            row["supply"] = json!("400/230 V 3~ 50 Hz");
         }
     }
     table

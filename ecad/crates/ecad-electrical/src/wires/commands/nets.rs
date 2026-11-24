@@ -130,6 +130,14 @@ pub struct CategoryParams {
     value: Option<Option<String>>,
 }
 
+/// A supply as typed text or as fields.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+enum SupplyInput {
+    Text(String),
+    Fields(ecad_model::connectivity::supply::Supply),
+}
+
 /// One row of the potentials table.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -143,11 +151,12 @@ struct PotentialRowParam {
     /// Whether its wires are numbered (default true).
     #[serde(default)]
     numbered: Option<bool>,
-    /// What feeds it: `{current: "ac", nominal: 400, phases: "three", frequency?: 50}` (nominal is
-    /// line-to-line on three phases, line-to-neutral on one) or `{current: "dc", nominal: 24}`.
+    /// What feeds it, as typed (`"400/230 V 3~ 50 Hz"`, `"230 V 1~"`, `"24 V DC"`) or as fields
+    /// (`{system: "ac3", line_to_line: 400, line_to_neutral?: 230, frequency?: 50}`,
+    /// `{system: "ac1", line_to_neutral: 230, frequency?: 50}`, `{system: "dc", nominal: 24}`).
     /// Absent: not known.
     #[serde(default)]
-    supply: Option<ecad_model::connectivity::supply::Supply>,
+    supply: Option<SupplyInput>,
     /// Refused: colours belong to wire categories now.
     #[serde(default)]
     colour: Option<Value>,
@@ -399,17 +408,30 @@ impl Generic for WiresettingsParams {
     const TITLE: &'static str = "Wire Settings";
 
     fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let rows = self.potentials.map(|rows| {
-            rows.into_iter()
-                .map(|r| PotentialRow {
-                    name: r.name,
-                    prefix: r.prefix,
-                    numbered: r.numbered,
-                    supply: r.supply,
-                    colours: r.colour.is_some() || r.cross_section.is_some(),
-                })
-                .collect()
-        });
+        let rows = self
+            .potentials
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|r| {
+                        let supply = match r.supply {
+                            None => None,
+                            Some(SupplyInput::Fields(s)) => Some(s),
+                            Some(SupplyInput::Text(t)) => Some(
+                                crate::devices::supply::read(&t)
+                                    .map_err(|e| CmdError::refused(format!("{}: '{t}' does not read: {e}", r.name.trim())))?,
+                            ),
+                        };
+                        Ok(PotentialRow {
+                            name: r.name,
+                            prefix: r.prefix,
+                            numbered: r.numbered,
+                            supply,
+                            colours: r.colour.is_some() || r.cross_section.is_some(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, CmdError>>()
+            })
+            .transpose()?;
         let change = WireSettingsChange {
             scheme: self.scheme.map(wiring::Scheme::from),
             digits: self.digits,

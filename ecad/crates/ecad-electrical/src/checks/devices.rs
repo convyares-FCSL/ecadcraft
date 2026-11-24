@@ -62,7 +62,8 @@ pub(crate) fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn 
     // A motor's rating against the supply typed on its potentials.
     if let Some(m) = crate::devices::supply::motor_of(doc, c)
         && let Some(fed) = crate::devices::supply::fed(doc, c)
-        && let Some(which) = crate::devices::supply::motor_mismatch(&crate::devices::tags::tag_words(doc, c), m, &fed)
+        && let Some(which) =
+            crate::devices::supply::motor_mismatch(&crate::devices::tags::tag_words(doc, c), m, &fed, crate::devices::supply::tolerance(doc))
     {
         let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
         out.push(Check { kind: Kind::SupplyMismatch, page, at, object: Object::Device(c), which, fix: None });

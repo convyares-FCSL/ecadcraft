@@ -1,18 +1,18 @@
-//! A potential's supply: the voltage, AC or DC, the phases and the frequency of what feeds it.
+//! A potential's supply: its system (three-phase, single-phase or DC), its voltages as typed, and
+//! its frequency.
 //!
 //! # Semantics
 //! - A row of the potentials table ([`super::wiring::PotentialDef`]) may carry a [`Supply`]; none
 //!   means not known, and nothing is inferred from the potential's name.
-//! - The nominal voltage of an AC three-phase supply is its line-to-line voltage (`400 V`, as
-//!   IEC 60038 names a 230/400 V system by 400 V); of an AC single-phase supply, the voltage
-//!   between its line and neutral (`230 V`); of a DC supply, the voltage between its poles.
-//! - [`Supply::line_to_line`] and [`Supply::line_to_neutral`] give what a three-phase and a
-//!   single-phase load on it see; a load's rating is compared with them, never the other way
-//!   round.
+//! - Every voltage is the one the person typed; none is computed from another. A three-phase
+//!   supply has its line-to-line voltage and may have its line-to-neutral voltage
+//!   (`400/230 V 3~`); a single-phase supply has its line-to-neutral voltage (`230 V 1~`); a DC
+//!   supply the voltage between its poles (`24 V DC`).
+//! - The text form ([`fmt::Display`]) is the one people type: `400/230 V 3~ 50 Hz`, `400 V 3~`,
+//!   `230 V 1~ 50 Hz`, `24 V DC`.
 //!
-//! This module excludes tracing a supply through a transformer or a power supply (a potential's
-//! supply is the one typed on it) and the checks that compare a device with it
-//! (`ecad-electrical`'s checks).
+//! This module excludes reading the typed text (`ecad-electrical`), tracing a supply through a
+//! transformer or a power supply, and the checks that compare a device with it.
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use std::fmt;
@@ -20,14 +20,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::units::{Hertz, Volts};
-use crate::objects::devices::Phases;
 
-/// The highest nominal voltage of a supply, in volts (1 MV).
+/// The highest voltage of a supply, in volts (1 MV).
 pub const MAX_VOLTS: f64 = 1_000_000.0;
-/// The three-phase systems named by their two voltages (IEC 60038 and North American practice):
-/// line-to-neutral, line-to-line.
-const SYSTEMS: [(f64, f64); 7] = [(230.0, 400.0), (400.0, 690.0), (120.0, 208.0), (277.0, 480.0), (220.0, 380.0), (240.0, 415.0), (347.0, 600.0)];
-
 /// The highest supply frequency, in hertz (1 kHz).
 const MAX_HERTZ: f64 = 1_000.0;
 
@@ -37,23 +32,29 @@ const MAX_HERTZ: f64 = 1_000.0;
 /// ```
 /// use ecad_model::connectivity::supply::Supply;
 /// use ecad_model::geometry::units::{Hertz, Volts};
-/// use ecad_model::objects::devices::Phases;
-/// let s = Supply::Ac { nominal: Volts(400.0), phases: Phases::Three, frequency: Some(Hertz(50.0)) };
-/// assert_eq!(s.to_string(), "400 V AC 3~ 50 Hz");
-/// assert_eq!(s.line_to_neutral(), Some(Volts(230.0)));
+/// let s = Supply::Ac3 { line_to_line: Volts(400.0), line_to_neutral: Some(Volts(230.0)), frequency: Some(Hertz(50.0)) };
+/// assert_eq!(s.to_string(), "400/230 V 3~ 50 Hz");
 /// assert_eq!(
 ///     serde_json::to_string(&s).unwrap(),
-///     r#"{"current":"ac","nominal":400.0,"phases":"three","frequency":50.0}"#
+///     r#"{"system":"ac3","line_to_line":400.0,"line_to_neutral":230.0,"frequency":50.0}"#
 /// );
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(tag = "current", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "system", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Supply {
-    /// Alternating current.
-    Ac {
-        /// Line-to-line on three phases, line-to-neutral on one.
-        nominal: Volts,
-        phases: Phases,
+    /// Three-phase AC.
+    Ac3 {
+        line_to_line: Volts,
+        /// Not known when absent: never computed from the line-to-line voltage.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        line_to_neutral: Option<Volts>,
+        /// Not known when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frequency: Option<Hertz>,
+    },
+    /// Single-phase AC, between a line and neutral.
+    Ac1 {
+        line_to_neutral: Volts,
         /// Not known when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         frequency: Option<Hertz>,
@@ -66,83 +67,61 @@ pub enum Supply {
 }
 
 impl Supply {
-    /// The nominal voltage as typed.
-    pub fn nominal(&self) -> Volts {
-        match self {
-            Supply::Ac { nominal, .. } | Supply::Dc { nominal } => *nominal,
-        }
-    }
-
     /// The frequency, when AC and known.
     pub fn frequency(&self) -> Option<Hertz> {
         match self {
-            Supply::Ac { frequency, .. } => *frequency,
+            Supply::Ac3 { frequency, .. } | Supply::Ac1 { frequency, .. } => *frequency,
             Supply::Dc { .. } => None,
         }
     }
 
-    /// The phases, when AC.
-    pub fn phases(&self) -> Option<Phases> {
+    /// The voltages it has, as typed.
+    fn voltages(&self) -> [Option<Volts>; 2] {
         match self {
-            Supply::Ac { phases, .. } => Some(*phases),
-            Supply::Dc { .. } => None,
-        }
-    }
-
-    /// The voltage between two lines: the nominal of an AC three-phase supply; none otherwise.
-    pub fn line_to_line(&self) -> Option<Volts> {
-        match self {
-            Supply::Ac { nominal, phases: Phases::Three, .. } => Some(*nominal),
-            Supply::Ac { phases: Phases::Single, .. } | Supply::Dc { .. } => None,
-        }
-    }
-
-    /// The voltage between a line and neutral: the nominal of an AC single-phase supply; on three
-    /// phases, the named pair's of a standard system (`400 V` gives `230 V`), else the
-    /// nominal divided by √3; none for DC.
-    pub fn line_to_neutral(&self) -> Option<Volts> {
-        match self {
-            Supply::Ac { nominal, phases: Phases::Single, .. } => Some(*nominal),
-            Supply::Ac { nominal, phases: Phases::Three, .. } => {
-                Some(Volts(SYSTEMS.iter().find(|(_, ll)| (ll - nominal.0).abs() < 0.5).map_or(nominal.0 / 3f64.sqrt(), |(ln, _)| *ln)))
-            }
-            Supply::Dc { .. } => None,
+            Supply::Ac3 { line_to_line, line_to_neutral, .. } => [Some(*line_to_line), *line_to_neutral],
+            Supply::Ac1 { line_to_neutral, .. } => [Some(*line_to_neutral), None],
+            Supply::Dc { nominal } => [Some(*nominal), None],
         }
     }
 
     /// What is wrong with it, in words: a voltage or frequency that is not a number above zero, or
-    /// beyond [`MAX_VOLTS`] or 1 kHz.
+    /// beyond [`MAX_VOLTS`] or 1 kHz; a line-to-neutral voltage not below the line-to-line.
     pub fn problem(&self) -> Option<String> {
-        let v = self.nominal().0;
-        if !(v.is_finite() && v > 0.0 && v <= MAX_VOLTS) {
+        let ok = |x: f64, max: f64| x.is_finite() && x > 0.0 && x <= max;
+        if self.voltages().into_iter().flatten().any(|v| !ok(v.0, MAX_VOLTS)) {
             return Some(format!("A supply's voltage is more than 0 and at most {MAX_VOLTS} V."));
         }
-        match self.frequency() {
-            Some(Hertz(f)) if !(f.is_finite() && f > 0.0 && f <= MAX_HERTZ) => {
-                Some(format!("A supply's frequency is more than 0 and at most {MAX_HERTZ} Hz."))
+        if self.frequency().is_some_and(|f| !ok(f.0, MAX_HERTZ)) {
+            return Some(format!("A supply's frequency is more than 0 and at most {MAX_HERTZ} Hz."));
+        }
+        match self {
+            Supply::Ac3 { line_to_line, line_to_neutral: Some(ln), .. } if ln.0 >= line_to_line.0 => {
+                Some("A supply's line-to-neutral voltage is below its line-to-line voltage.".into())
             }
-            Some(_) | None => None,
+            Supply::Ac3 { .. } | Supply::Ac1 { .. } | Supply::Dc { .. } => None,
         }
     }
 }
 
-/// `400 V AC 3~ 50 Hz`, `230 V AC 1~`, `24 V DC`.
+/// `400/230 V 3~ 50 Hz`, `400 V 3~`, `230 V 1~ 50 Hz`, `24 V DC`.
 impl fmt::Display for Supply {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = crate::geometry::units::number_text;
         match self {
-            Supply::Ac { nominal, phases, frequency } => {
-                let n = match phases {
-                    Phases::Single => 1,
-                    Phases::Three => 3,
-                };
-                write!(f, "{nominal} AC {n}~")?;
-                if let Some(hz) = frequency {
-                    write!(f, " {hz}")?;
+            Supply::Ac3 { line_to_line, line_to_neutral, .. } => {
+                write!(f, "{}", n(line_to_line.0, ""))?;
+                if let Some(ln) = line_to_neutral {
+                    write!(f, "/{}", n(ln.0, ""))?;
                 }
-                Ok(())
+                write!(f, " V 3~")?;
             }
-            Supply::Dc { nominal } => write!(f, "{nominal} DC"),
+            Supply::Ac1 { line_to_neutral, .. } => write!(f, "{} 1~", n(line_to_neutral.0, "V"))?,
+            Supply::Dc { nominal } => write!(f, "{} DC", n(nominal.0, "V"))?,
         }
+        if let Some(hz) = self.frequency() {
+            write!(f, " {}", n(hz.0, "Hz"))?;
+        }
+        Ok(())
     }
 }
 
@@ -151,34 +130,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn line_voltages_follow_the_phases() {
-        let three = Supply::Ac { nominal: Volts(400.0), phases: Phases::Three, frequency: None };
-        let one = Supply::Ac { nominal: Volts(230.0), phases: Phases::Single, frequency: Some(Hertz(60.0)) };
-        let dc = Supply::Dc { nominal: Volts(24.0) };
-        assert_eq!(three.line_to_line(), Some(Volts(400.0)));
-        assert_eq!(one.line_to_line(), None);
-        assert_eq!(one.line_to_neutral(), Some(Volts(230.0)));
-        // A system not in the list: √3.
-        let odd = Supply::Ac { nominal: Volts(500.0), phases: Phases::Three, frequency: None };
-        assert_eq!(odd.line_to_neutral().map(|v| v.0.round()), Some(289.0));
-        assert_eq!((dc.line_to_line(), dc.line_to_neutral()), (None, None));
-        assert_eq!(dc.to_string(), "24 V DC");
-        assert_eq!(one.to_string(), "230 V AC 1~ 60 Hz");
+    fn the_text_form_writes_what_was_typed() {
+        let three = Supply::Ac3 { line_to_line: Volts(400.0), line_to_neutral: None, frequency: None };
+        let one = Supply::Ac1 { line_to_neutral: Volts(230.0), frequency: Some(Hertz(60.0)) };
+        assert_eq!(three.to_string(), "400 V 3~");
+        assert_eq!(one.to_string(), "230 V 1~ 60 Hz");
+        assert_eq!(Supply::Dc { nominal: Volts(24.0) }.to_string(), "24 V DC");
     }
 
     #[test]
     fn a_supply_out_of_range_is_named() {
         assert!(Supply::Dc { nominal: Volts(0.0) }.problem().is_some());
         assert!(Supply::Dc { nominal: Volts(f64::NAN) }.problem().is_some());
-        let hz = Supply::Ac { nominal: Volts(230.0), phases: Phases::Single, frequency: Some(Hertz(-50.0)) };
-        assert!(hz.problem().is_some());
+        assert!(Supply::Ac1 { line_to_neutral: Volts(230.0), frequency: Some(Hertz(-50.0)) }.problem().is_some());
+        let upside_down = Supply::Ac3 { line_to_line: Volts(230.0), line_to_neutral: Some(Volts(400.0)), frequency: None };
+        assert!(upside_down.problem().is_some());
         assert_eq!(Supply::Dc { nominal: Volts(24.0) }.problem(), None);
     }
 
     #[test]
-    fn a_dc_supply_refuses_phases() {
-        assert!(serde_json::from_str::<Supply>(r#"{"current":"dc","nominal":24.0,"phases":"three"}"#).is_err());
-        let s: Supply = serde_json::from_str(r#"{"current":"dc","nominal":24}"#).unwrap();
+    fn a_dc_supply_refuses_ac_fields() {
+        assert!(serde_json::from_str::<Supply>(r#"{"system":"dc","nominal":24.0,"frequency":50}"#).is_err());
+        let s: Supply = serde_json::from_str(r#"{"system":"dc","nominal":24}"#).unwrap();
         assert_eq!(s, Supply::Dc { nominal: Volts(24.0) });
     }
 }

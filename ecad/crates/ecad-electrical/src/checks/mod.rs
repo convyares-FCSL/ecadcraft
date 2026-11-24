@@ -860,6 +860,13 @@ impl Scope {
                     }
                 }
             }
+            // The motor voltage tolerance: every motor is checked again.
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. }
+                if key.raw == crate::defaults::rating::SUPPLY_TOLERANCE.key =>
+            {
+                self.relocate = true;
+                self.devices.extend(doc.devices().iter().filter(|(_, d)| matches!(d.device_type, ecad_model::DeviceType::Motor(_))).map(|(c, _)| *c));
+            }
             // Page numbers, folders and the page order change where rows say they are (brief
             // not what they find: the rows are copied again.
             Effect::Page { before: None, .. }

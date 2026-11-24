@@ -44,6 +44,9 @@ pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::C
 pub static VOLTAGE: Entry = entry("rating.voltage", "Supply voltage (V)", Kind::Number { min: 1.0, max: 1000.0 });
 pub static SYSTEM: Entry = entry("rating.system", "Supply system", Kind::Choice(<SupplySystem as ecad_model::Word>::WORDS));
 pub static VD_LIMIT: Entry = entry("rating.vd_limit", "Volt-drop limit (%)", Kind::Number { min: 0.5, max: 20.0 });
+/// How far a motor's rated voltage may be from its supply's before Checks flags it.
+pub(crate) static SUPPLY_TOLERANCE: Entry = entry("rating.supply_tolerance", "Motor voltage tolerance (%)", Kind::Number { min: 0.0, max: 50.0 });
 
 /// Every entry of this file, in the order Standards ▸ Defaults lists them.
-pub static ENTRIES: &[&Entry] = &[&WIRE_BASIS, &CABLE_BASIS, &PANEL_TEMPERATURE, &AMBIENT, &TABLE, &BUNDLING, &METHOD, &VOLTAGE, &SYSTEM, &VD_LIMIT];
+pub static ENTRIES: &[&Entry] =
+    &[&WIRE_BASIS, &CABLE_BASIS, &PANEL_TEMPERATURE, &AMBIENT, &TABLE, &BUNDLING, &METHOD, &VOLTAGE, &SYSTEM, &VD_LIMIT, &SUPPLY_TOLERANCE];

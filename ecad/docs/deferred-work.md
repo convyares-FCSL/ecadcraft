@@ -84,6 +84,15 @@ started.
   rows (`title_block/house.rs`), cover page sizes (`front.rs`), the terminal strip drawing look
   (`strip_page.rs`), drawing line weights (`ecad-tokens/src/line.rs`, with plot styles).
 
+## A potentials editor in the app: 0.2.4 (owner, 2026-11-24)
+
+- **What:** a view of the potentials table (name, prefix, numbered, supply) in project settings.
+  Today the table is set only with `wiresettings`; no settings sheet shows potentials, so the
+  supply cannot simply be a column of an existing view.
+- **Also look at:** the project defaults `rating.voltage` and `rating.system` (the volt-drop
+  calculation's supply) overlap with the supply typed on a potential; decide whether the volt-drop
+  calculation reads the circuit's potential instead.
+
 ## Also deferred (recorded elsewhere)
 
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration

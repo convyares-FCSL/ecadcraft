@@ -400,14 +400,14 @@ pub fn written(ledger: &mut Ledger) -> Vec<u8> {
     backend.bytes()
 }
 
-/// The default wiring with a supply on L1 (400 V AC, three phases, 50 Hz) and on 24V (DC).
+/// The default wiring with a supply on L1 (400/230 V 3~ 50 Hz) and on 24V (DC).
 fn supplied() -> ecad_model::connectivity::wiring::WiringSettings {
     use ecad_model::connectivity::supply::Supply;
     use ecad_model::geometry::units::{Hertz, Volts};
     let mut w = ecad_model::connectivity::wiring::WiringSettings::default();
     for p in &mut w.potentials {
         p.supply = match p.name.as_str() {
-            "L1" => Some(Supply::Ac { nominal: Volts(400.0), phases: ecad_model::objects::devices::Phases::Three, frequency: Some(Hertz(50.0)) }),
+            "L1" => Some(Supply::Ac3 { line_to_line: Volts(400.0), line_to_neutral: Some(Volts(230.0)), frequency: Some(Hertz(50.0)) }),
             "24V" => Some(Supply::Dc { nominal: Volts(24.0) }),
             _ => None,
         };

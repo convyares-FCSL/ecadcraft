@@ -146,8 +146,9 @@ fn prefixes_are_registered_defaults() {
         assert!(ecad_model::naming::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");
     }
     // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
-    // device rating: exactly these keys are excepted; the 034 ruling holds for everything else.
-    const BRIEF_057: [&str; 10] = [
+    // device rating: exactly these keys are excepted (with the motor voltage tolerance of the supply
+    // check); the 034 ruling holds for everything else.
+    const BRIEF_057: [&str; 11] = [
         "rating.wire_basis",
         "rating.cable_basis",
         "rating.panel_temperature",
@@ -158,6 +159,7 @@ fn prefixes_are_registered_defaults() {
         "rating.voltage",
         "rating.system",
         "rating.vd_limit",
+        "rating.supply_tolerance",
     ];
     assert!(
         ecad_drawing_style::REGISTRY.entries().all(|x| !x.key.contains("rating") || BRIEF_057.contains(&x.key)),

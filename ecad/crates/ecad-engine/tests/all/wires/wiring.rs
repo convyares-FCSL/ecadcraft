@@ -599,21 +599,30 @@ fn a_potential_carries_its_typed_supply() {
     let mut table: Vec<Value> = h.run("wiresettings", json!({})).unwrap()["potentials"].as_array().unwrap().clone();
     for row in &mut table {
         if row["name"] == "L1" {
-            row["supply"] = json!({"current": "ac", "nominal": 400, "phases": "three", "frequency": 50});
+            row["supply"] = json!("400/230 V 3~ 50 Hz");
         }
     }
     h.run("wiresettings", json!({"potentials": table.clone()})).unwrap();
     let shown = h.run("wiresettings", json!({})).unwrap();
     let l1 = shown["potentials"].as_array().unwrap().iter().find(|r| r["name"] == "L1").unwrap().clone();
-    assert_eq!(l1["supply"], json!({"current": "ac", "nominal": 400.0, "phases": "three", "frequency": 50.0}));
+    assert_eq!(l1["supply"], json!({"system": "ac3", "line_to_line": 400.0, "line_to_neutral": 230.0, "frequency": 50.0}));
     let supply = h.doc().settings().wiring.potential("L1").and_then(|d| d.supply);
-    assert_eq!(supply.and_then(|s| s.line_to_line()), Some(ecad_model::geometry::units::Volts(400.0)));
+    assert_eq!(supply.map(|s| s.to_string()).as_deref(), Some("400/230 V 3~ 50 Hz"));
+    // Typed text that does not say the phases: refused, naming the potential.
+    let mut vague = table.clone();
+    for r in &mut vague {
+        if r["name"] == "L1" {
+            r["supply"] = json!("400 V");
+        }
+    }
+    let e = h.run("wiresettings", json!({"potentials": vague})).unwrap_err();
+    assert!(e.to_string().starts_with("L1: '400 V' does not read: say the phases"), "{e}");
     // Out of range: refused, naming the potential.
     let bad: Vec<Value> = table
         .into_iter()
         .map(|mut r| {
             if r["name"] == "L1" {
-                r["supply"] = json!({"current": "dc", "nominal": 0});
+                r["supply"] = json!({"system": "dc", "nominal": 0});
             }
             r
         })
