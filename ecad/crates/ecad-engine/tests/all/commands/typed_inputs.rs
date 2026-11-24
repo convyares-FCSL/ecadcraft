@@ -81,6 +81,8 @@ fn closed_word_sets_are_listed() {
         ("conflicts", r#"aspect?: "function"|"location""#),
         ("locationbox", r#"proposal?: "propose"|"move"|"keep""#),
         ("pageprops", r#"proposal?: "propose"|"move"|"keep""#),
+        ("cablenew", r#"shield?: "none"|"overall"|"pairs"|"overall+pairs"|null"#),
+        ("bomitem", r#"unit?: "pcs"|"m"|null"#),
         ("projectprops", r#"proposal?: "propose"|"move"|"keep""#),
         ("setdefault", r#"level?: "standard"|"project"|"page"|"object""#),
         ("setstyle", r#"catalogue: "cable"|"frame"|"location"|"page"|"ratingtable"|"text"|"wire""#),
@@ -1045,6 +1047,17 @@ fn the_cable_manager_commands_refuse_input_uniformly() {
         ),
         ("cablenew", json!({"length": true}), "`length` must be text, or null"),
         ("cablenew", json!({"from": "+CAB1"}), "`from` must be an object, or null"),
+        ("cablenew", json!({"shield": "lead"}), "`shield` must be one of \"none\", \"overall\", \"pairs\", \"overall+pairs\", or null"),
+        (
+            "cableedit",
+            json!({"cable": "-W01", "set": {"shield": "lead"}}),
+            "`set.shield` must be one of \"none\", \"overall\", \"pairs\", \"overall+pairs\", or null",
+        ),
+        (
+            "cableedit",
+            json!({"cable": "-W01", "set": {"from": {"colour": 1}}}),
+            "`set.from.colour` is not a field of `set.from`; it takes `function`, `gland`, `location`",
+        ),
         ("cableedit", json!({"set": {}}), "`cable` (text) is required"),
         ("cableedit", json!({"cable": "-W01"}), "`set` (object) is required"),
         ("cableremove", json!({}), "`cable` (text) is required"),
@@ -1060,7 +1073,6 @@ fn the_cable_manager_commands_refuse_input_uniformly() {
 fn the_cable_manager_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
         ("cablenew", json!({"length": "x"}), "Length must be a number of metres from"),
-        ("cablenew", json!({"shield": "lead"}), "Shield is none, overall, pairs or overall+pairs."),
         ("cablenew", json!({"maker": "x".repeat(65)}), "Maker is at most 64 characters."),
         ("cablenew", json!({"cable_type": "H07X"}), "No cable type \"H07X\" in this project's standards."),
         ("cablenew", json!({"tag": "-W01"}), "-W01 is already the tag of -W01 (cable). Choose another tag."),
@@ -1183,6 +1195,8 @@ fn the_bom_commands_refuse_input_uniformly() {
         ("partline", json!({"component": "00000000000000000000000000000001", "line": "x"}), "`line` must be a whole number, or null"),
         ("partline", json!({"component": "00000000000000000000000000000001", "remove": "yes"}), "`remove` must be true or false, or null"),
         ("bomitem", json!({"description": true}), "`description` must be text, or null"),
+        ("bomitem", json!({"description": "Rail", "unit": "kg"}), "`unit` must be one of \"pcs\", \"m\", or null"),
+        ("bomitem", json!({"item": "00000000000000000000000000000001", "set": {"unit": "kg"}}), "`set.unit` must be one of \"pcs\", \"m\", or null"),
         ("bomitem", json!({"colour": "red"}), "`colour` is not a parameter of this command; it takes "),
         ("article", json!({"article_number": "A1"}), "`part_number` (text) is required"),
         ("article", json!({"part_number": "P1"}), "`article_number` (text, or null) is required"),
@@ -1329,8 +1343,13 @@ fn the_title_block_commands_refuse_input_uniformly() {
         ("titleblocks", json!({"id": "x"}), "`id` is not a parameter of this command; it takes none"),
         ("titleblock", json!({"id": 5}), "`id` must be text, or null"),
         ("titleblock", json!({"id": "sheet", "fields": 1}), "`fields` must be an object, or null"),
-        ("titleblock", json!({"new": {"sheet": "A3", "colour": 1}}), "`colour` is not a parameter of this command; it takes "),
+        (
+            "titleblock",
+            json!({"new": {"sheet": "A3", "colour": 1}}),
+            "`new.colour` is not a field of `new`; it takes `from`, `layer`, `name`, `sheet`",
+        ),
         ("titleblock", json!({"new": "A3"}), "`new` must be an object, or null"),
+        ("titleblock", json!({"new": {"sheet": "A3", "layer": "x"}}), "`new.layer` must be one of \"project\", \"standard\", or null"),
     ];
     let mut h = H::new(7048);
     for (cmd, params, says) in rows {
@@ -1351,7 +1370,6 @@ fn the_title_block_commands_keep_their_rule_words() {
         ("titleblock", json!({"id": id, "sheet": "Q9"}), ""),
         ("titleblock", json!({"id": id, "body": {"nonsense": 1}}), "The body does not read as a title block: "),
         ("titleblock", json!({"new": {"sheet": "A3", "name": "mine"}}), "A frame style is already called \"mine\"; choose another name."),
-        ("titleblock", json!({"new": {"sheet": "A3", "layer": "x"}}), "`new` must be an object, or null"),
         ("titleblock", json!({"new": {"sheet": "A3", "layer": "standard"}}), "This project uses IEC (built in)."),
         ("titleblock", json!({"new": {"sheet": "A3", "name": ""}}), "A style needs a name (1 to 64 characters, no control characters)."),
     ];

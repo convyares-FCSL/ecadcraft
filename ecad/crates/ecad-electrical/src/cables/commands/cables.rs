@@ -594,9 +594,9 @@ pub struct CablenewParams {
     /// The length in metres.
     #[serde(default, deserialize_with = "nullable")]
     length: Option<Option<TextOrNumber>>,
-    /// The shield: none, overall, pairs or overall+pairs.
+    /// The shield.
     #[serde(default, deserialize_with = "nullable")]
-    shield: Option<Option<TextOrNumber>>,
+    shield: Option<Option<Shield>>,
     /// The maker.
     #[serde(default, deserialize_with = "nullable")]
     maker: Option<Option<TextOrNumber>>,
@@ -651,7 +651,7 @@ impl From<CablenewParams> for CableInput {
             kind: TextOrNumber::nullable_text(p.kind),
             cores: TextOrNumber::nullable_text(p.cores),
             length: TextOrNumber::nullable_text(p.length),
-            shield: TextOrNumber::nullable_text(p.shield),
+            shield: p.shield.map(|s| s.map(|s| s.word().to_string())),
             maker: TextOrNumber::nullable_text(p.maker),
             part_number: TextOrNumber::nullable_text(p.part_number),
             description: TextOrNumber::nullable_text(p.description),

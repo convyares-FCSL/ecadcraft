@@ -51,7 +51,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
         let k = v["cable"].as_str().unwrap().to_string();
         let (_, ops) = one_by_agent(&mut c, "cableedit", json!({"cable": k, "set": {"length": 12}}), "Edit cable");
         assert_eq!(ops.len(), 1, "{ops:?}");
-        refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"colour": 1}}), "is not a parameter of this command");
+        refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"colour": 1}}), "`set.colour` is not a field of `set`");
         // More wires than free cores: refused.
         refused_writes_nothing(&mut c, "cableslash", json!({"from": [-5, 25], "to": [35, 25], "cable": k}), "free cores");
         // Three wires: assigned.

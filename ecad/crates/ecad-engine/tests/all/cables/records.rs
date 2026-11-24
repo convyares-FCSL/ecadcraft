@@ -89,7 +89,7 @@ fn the_shield_is_the_cables_field() {
     let head = h.head();
     for bad in [json!("tartan"), json!("overall\u{202e}"), json!("x".repeat(5000))] {
         let e: String = h.run("cableedit", json!({"cable": k.hex(), "set": {"shield": bad}})).unwrap_err();
-        assert!(e.contains("Shield is none, overall, pairs or overall+pairs") || e.contains("control or invisible"), "{e}");
+        assert!(e.starts_with("`set.shield` must be one of"), "{e}");
         assert_eq!(h.head(), head);
     }
     // Lane D c3: `setprop shield` writes the field, in one ModifyCable; never a property.

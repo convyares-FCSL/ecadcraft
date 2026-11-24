@@ -8,7 +8,8 @@
 //!
 //! A parameter that does not read is refused in one uniform wording, built from its name and the
 //! kind its schema gives ([`parse`]): "`conductor` (hex id) is required", "`at` must be a point
-//! [x, y]", "`colour` is not a parameter of this command; it takes …". The JSON Schema comes from
+//! [x, y]", "`colour` is not a parameter of this command; it takes …". A field of an object
+//! parameter is named by its path: "`set.shield` must be one of …". The JSON Schema comes from
 //! the same struct ([`schema`]), so what an agent reads cannot drift from what the command takes.
 //!
 //! Excludes: running a command (the engine's runner and its session commands).
@@ -55,36 +56,89 @@ const FIELD: &str = "{field}";
 /// Most characters of an unknown parameter's name a refusal echoes.
 const MAX_NAME_SHOWN: usize = 64;
 
+/// Most levels of nested objects a refusal looks into.
+const MAX_DEPTH: usize = 8;
+
 /// The uniform wording of serde's refusal `text` of `obj` as `P`.
 fn explain<P: DeserializeOwned + JsonSchema>(obj: &Map<String, Value>, text: &str) -> String {
-    let schema = schema::<P>();
-    if let Some(f) = quoted_after(text, "missing field `") {
-        return format!("`{f}` ({}) is required", kind(&schema, f).0);
+    let root = schema::<P>();
+    // Whether removing `key` from the object at `path` changes the refusal.
+    let at_fault = |path: &[String], key: &str| {
+        let mut whole = obj.clone();
+        let mut here = &mut whole;
+        for p in path {
+            match here.get_mut(p) {
+                Some(Value::Object(o)) => here = o,
+                _ => return false,
+            }
+        }
+        here.remove(key);
+        match P::deserialize(&Value::Object(whole)) {
+            Ok(_) => true,
+            Err(e) => e.to_string() != text,
+        }
+    };
+    explain_at(&root, &root, obj, &mut Vec::new(), text, &at_fault).unwrap_or_else(|| text.to_string())
+}
+
+/// The refusal `text` worded for the object `obj` at `path`, whose schema is `node`; `None` when
+/// nothing there is at fault.
+fn explain_at(
+    root: &Value, node: &Value, obj: &Map<String, Value>, path: &mut Vec<String>, text: &str, at_fault: &dyn Fn(&[String], &str) -> bool,
+) -> Option<String> {
+    let props = node["properties"].as_object();
+    let known = |f: &str| props.is_some_and(|p| p.contains_key(f));
+    if let Some(f) = quoted_after(text, "missing field `").filter(|f| known(f) && !obj.contains_key(*f)) {
+        return Some(format!("{} ({}) is required", named(path, f), kind(root, node, f).0));
     }
-    if let Some(f) = quoted_after(text, "unknown field `") {
+    if let Some(f) = quoted_after(text, "unknown field `").filter(|f| obj.contains_key(*f) && !known(f)) {
         // The name is echoed, so a very long one is cut (it may be any length).
         let f = match f.char_indices().nth(MAX_NAME_SHOWN) {
             Some((i, _)) => format!("{}\u{2026}", &f[..i]),
             None => f.to_string(),
         };
-        let takes: Vec<String> = schema["properties"].as_object().into_iter().flatten().map(|(k, _)| format!("`{k}`")).collect();
-        return format!("`{f}` is not a parameter of this command; it takes {}", if takes.is_empty() { "none".into() } else { takes.join(", ") });
+        let takes: Vec<String> = props.into_iter().flatten().map(|(k, _)| format!("`{k}`")).collect();
+        let takes = if takes.is_empty() { "none".into() } else { takes.join(", ") };
+        return Some(match path.is_empty() {
+            true => format!("`{f}` is not a parameter of this command; it takes {takes}"),
+            false => format!("{} is not a field of `{}`; it takes {takes}", named(path, &f), path.join(".")),
+        });
     }
-    // The parameter at fault: the first whose removal changes the refusal (serde stops at the first
+    // The entry at fault: the first whose removal changes the refusal (serde stops at the first
     // bad entry, before it looks for missing ones, so removing any other leaves the same text).
-    let culprit = obj.keys().find(|k| {
-        let mut rest = obj.clone();
-        rest.remove(*k);
-        match P::deserialize(&Value::Object(rest)) {
-            Ok(_) => true,
-            Err(e) => e.to_string() != text,
-        }
-    });
-    match culprit {
-        Some(k) if text.contains(FIELD) => text.replace(FIELD, &format!("`{k}`")),
-        Some(k) => format!("`{k}` must be {}", kind(&schema, k).1),
-        None => text.to_string(),
+    let k = obj.keys().find(|k| at_fault(path, k))?;
+    if text.contains(FIELD) {
+        return Some(text.replace(FIELD, &named(path, k)));
     }
+    // An object whose schema has fields: the fault is one of them.
+    if let (Some(Value::Object(inner)), Some(sub)) = (obj.get(k), fields_of(root, &node["properties"][k.as_str()]))
+        && path.len() < MAX_DEPTH
+    {
+        path.push(k.clone());
+        let nested = explain_at(root, sub, inner, path, text, at_fault);
+        path.pop();
+        if nested.is_some() {
+            return nested;
+        }
+    }
+    Some(format!("{} must be {}", named(path, k), kind(root, node, k).1))
+}
+
+/// Field `f` of the object at `path`, in backquotes: `` `set.shield` ``.
+fn named(path: &[String], f: &str) -> String {
+    match path.is_empty() {
+        true => format!("`{f}`"),
+        false => format!("`{}.{f}`", path.join(".")),
+    }
+}
+
+/// The object schema with fields that sub-schema `s` is (or one of its alternatives is).
+fn fields_of<'a>(root: &'a Value, s: &'a Value) -> Option<&'a Value> {
+    let s = resolve(root, s);
+    if s["properties"].is_object() {
+        return Some(s);
+    }
+    ["anyOf", "oneOf"].iter().filter_map(|k| s[*k].as_array()).flatten().map(|a| resolve(root, a)).find(|a| a["properties"].is_object())
 }
 
 /// The name in backquotes right after `prefix` in `text`.
@@ -92,10 +146,10 @@ fn quoted_after<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
     text.strip_prefix(prefix)?.split('`').next()
 }
 
-/// What parameter `name` of `schema` is, as (a noun, a phrase): ("hex id", "a hex id").
-fn kind(schema: &Value, name: &str) -> (String, String) {
-    let field = resolve(schema, &schema["properties"][name]);
-    let (k, nullable) = describe(schema, field);
+/// What field `name` of the object schema `node` is, as (a noun, a phrase): ("hex id", "a hex id").
+fn kind(root: &Value, node: &Value, name: &str) -> (String, String) {
+    let field = resolve(root, &node["properties"][name]);
+    let (k, nullable) = describe(root, field);
     match nullable {
         true => (format!("{}, or null", k.0), format!("{}, or null", k.1)),
         false => k,
@@ -466,6 +520,17 @@ mod tests {
         on: Option<bool>,
         #[serde(default, deserialize_with = "nullable")]
         value: Option<Option<String>>,
+        #[serde(default)]
+        set: Option<Set>,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    #[allow(dead_code)]
+    struct Set {
+        name: String,
+        #[serde(default)]
+        on: Option<bool>,
     }
 
     fn says(v: Value) -> Option<String> {
@@ -492,7 +557,14 @@ mod tests {
             (json!({"conductor": "00000000000000000000000000000001", "many": ["x"]}), "`many` must be a list of hex ids, or null"),
             (
                 json!({"conductor": "00000000000000000000000000000001", "colour": 1}),
-                "`colour` is not a parameter of this command; it takes `at`, `conductor`, `many`, `on`, `value`",
+                "`colour` is not a parameter of this command; it takes `at`, `conductor`, `many`, `on`, `set`, `value`",
+            ),
+            (json!({"conductor": "00000000000000000000000000000001", "set": 1}), "`set` must be an object, or null"),
+            (json!({"conductor": "00000000000000000000000000000001", "set": {}}), "`set.name` (text) is required"),
+            (json!({"conductor": "00000000000000000000000000000001", "set": {"name": "a", "on": "yes"}}), "`set.on` must be true or false, or null"),
+            (
+                json!({"conductor": "00000000000000000000000000000001", "set": {"name": "a", "colour": 1}}),
+                "`set.colour` is not a field of `set`; it takes `name`, `on`",
             ),
         ];
         for (v, want) in rows {

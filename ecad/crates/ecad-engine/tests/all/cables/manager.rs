@@ -114,7 +114,7 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
         (json!({"cores": "4Q1.5"}), "Cores:"),
         (json!({"cable_type": "H07X"}), "No cable type"),
         (json!({"from": {"gland": "M20 and a very long text"}}), "at most 16"),
-        (json!({"colour": 1}), "is not a parameter of this command"),
+        (json!({"colour": 1}), "`set.colour` is not a field of `set`"),
     ] {
         let e = h.run("cableedit", json!({"cable": k.hex(), "set": set})).unwrap_err();
         assert!(e.contains(words), "{set}: {e}");

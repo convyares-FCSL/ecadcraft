@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Bounded, OrNull, TextOrNumber, nullable};
+use crate::commands::input::{Bounded, OrNull, Said, TextOrNumber, Words, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::locations::designations::{Aspect, Pending};
@@ -399,6 +399,23 @@ pub(crate) fn plan_article(doc: &Document, part_number: &str, maker: Option<&str
 /// A field as typed: absent (unchanged), null (cleared) or a value.
 type FieldValue = Option<Option<TextOrNumber>>;
 
+/// A unit as typed: absent (unchanged), null (cleared: pieces) or a unit.
+type UnitValue = Option<Option<Said<ItemUnit>>>;
+
+/// A unit as a call names it: pcs or m, or their long forms (piece, metres, meter…), in any case.
+impl Words for ItemUnit {
+    const WORDS: &'static [&'static str] = &["pcs", "m"];
+
+    fn read(text: &str) -> Option<ItemUnit> {
+        parse_unit(text).ok().map(|metres| if metres { ItemUnit::Metres } else { ItemUnit::Pcs })
+    }
+}
+
+/// `unit` as the field's text (`None`: cleared).
+fn unit_text(unit: UnitValue) -> FieldValue {
+    unit.map(|u| u.map(|u| TextOrNumber::Text(ecad_model::Word::word(u.0).to_string())))
+}
+
 /// The fields given, each with its value as text (`None`: cleared).
 fn given<K>(fields: impl IntoIterator<Item = (K, FieldValue)>) -> Vec<(K, Option<String>)> {
     fields.into_iter().filter_map(|(k, v)| v.map(|v| (k, v.map(|t| t.text())))).collect()
@@ -428,9 +445,9 @@ pub(crate) struct LineParams {
     /// How many (pieces, or metres with unit m).
     #[serde(default, deserialize_with = "nullable")]
     qty: FieldValue,
-    /// pcs or m.
+    /// Pieces or metres.
     #[serde(default, deserialize_with = "nullable")]
-    unit: FieldValue,
+    unit: UnitValue,
     /// With `set` only: the kit the line belongs to (an add names it with the call's `kit`).
     #[serde(default, deserialize_with = "nullable")]
     kit: FieldValue,
@@ -487,9 +504,9 @@ pub(crate) struct ItemParams {
     /// What the item is.
     #[serde(default, deserialize_with = "nullable")]
     description: FieldValue,
-    /// pcs or m.
+    /// Pieces or metres.
     #[serde(default, deserialize_with = "nullable")]
-    unit: FieldValue,
+    unit: UnitValue,
     /// How many (pieces, or metres with unit m).
     #[serde(default, deserialize_with = "nullable")]
     qty: FieldValue,
@@ -524,9 +541,9 @@ pub struct BomitemParams {
     /// A new item: what it is.
     #[serde(default, deserialize_with = "nullable")]
     description: FieldValue,
-    /// A new item: pcs or m.
+    /// A new item: pieces or metres.
     #[serde(default, deserialize_with = "nullable")]
-    unit: FieldValue,
+    unit: UnitValue,
     /// A new item: how many (pieces, or metres with unit m).
     #[serde(default, deserialize_with = "nullable")]
     qty: FieldValue,
@@ -567,7 +584,7 @@ impl LineParams {
             (Field::Description, self.description),
             (Field::ArticleNumber, self.article_number),
             (Field::Qty, self.qty),
-            (Field::Unit, self.unit),
+            (Field::Unit, unit_text(self.unit)),
             (Field::Kit, self.kit),
             (Field::For, self.r#for),
             (Field::Half, self.half),
@@ -579,7 +596,7 @@ impl ItemParams {
     fn fields(self) -> ItemFields {
         given([
             ("description", self.description),
-            ("unit", self.unit),
+            ("unit", unit_text(self.unit)),
             ("qty", self.qty),
             ("location", self.location),
             ("part_number", self.part_number),

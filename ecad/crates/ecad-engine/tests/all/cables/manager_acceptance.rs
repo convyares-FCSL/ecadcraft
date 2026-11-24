@@ -474,8 +474,8 @@ fn hostile_new() -> Vec<(Value, &'static str)> {
     vec![
         (json!({"colour": 1}), "is not a parameter of this command"),
         (Value::Object(long_key), "is not a parameter of this command"),
-        (json!({"from": {"colour": "red"}}), "is not a parameter of this command"),
-        (json!({"to": {"location": "+F", "extra": 1}}), "is not a parameter of this command"),
+        (json!({"from": {"colour": "red"}}), "`from.colour` is not a field of `from`"),
+        (json!({"to": {"location": "+F", "extra": 1}}), "`to.extra` is not a field of `to`"),
         (json!({"tag": big.clone()}), ""),
         (json!({"tag": "-W\u{0007}1"}), ""),
         (json!({"tag": {"a": 1}}), ""),
@@ -496,7 +496,7 @@ fn hostile_new() -> Vec<(Value, &'static str)> {
         (json!({"length": "inf"}), "Length must be"),
         (json!({"length": "1e400"}), "Length must be"),
         (json!({"length": true}), ""),
-        (json!({"shield": "lead"}), "Shield is"),
+        (json!({"shield": "lead"}), "`shield` must be one of"),
         (json!({"shield": 3}), ""),
         (json!({"cable_type": "H07X"}), "No cable type"),
         (json!({"cable_type": big.clone()}), "No cable type"),
@@ -750,7 +750,7 @@ fn r8_a_refusal_in_the_middle_of_several_fields_writes_none_of_them() {
         "cableedit",
         json!({"cable": k.hex(), "set": {"length": 12, "maker": "Good", "from": {"location": "+CAB1", "gland": "M20"}, "shield": "lead"}}),
     );
-    assert!(e.contains("Shield"), "{e}");
+    assert!(e.starts_with("`set.shield` must be one of"), "{e}");
     // A new planned code adds a list entry: refused later, that entry is not written either.
     let e = refused(&mut h, "cablenew", json!({"from": {"location": "+NEWPLACE"}, "length": "x"}));
     assert!(e.contains("Length"), "{e}");
