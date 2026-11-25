@@ -166,15 +166,7 @@ pub(crate) fn plan_fence_typed(
             let given = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             ops.push(Op::CreateDevice {
                 id: c,
-                device: crate::devices::with_given(
-                    ecad_model::Device {
-                        description: crate::devices::description_of("Terminal"),
-                        definition: Some(def),
-                        device_type: starter.device_type(),
-                        ..ecad_model::Device::default()
-                    },
-                    &given,
-                )?,
+                device: crate::devices::with_given(crate::terminal_strips::terminal_blocks::new_block_device(starter, def), &given)?,
             });
             (c, given.shown(), 1, legacy)
         }

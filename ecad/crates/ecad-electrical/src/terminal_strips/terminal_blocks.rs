@@ -273,6 +273,17 @@ pub fn index_of(t: &BlockType) -> usize {
     TYPES.iter().position(|x| std::ptr::eq(x, t)).unwrap_or(0)
 }
 
+/// A new terminal block's device, made from `starter` with definition `def` (no tag yet): its
+/// kind is seeded from the symbol it is made from, and stored from then on.
+pub fn new_block_device(starter: &crate::symbols::Starter, def: ecad_model::DefinitionId) -> ecad_model::Device {
+    ecad_model::Device {
+        description: crate::devices::description_of("Terminal"),
+        definition: Some(def),
+        device_type: starter.device_type(),
+        ..ecad_model::Device::default()
+    }
+}
+
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
 /// `None`: the whole terminal); `connection_point`, `terminal_block_pe`, `termdisc`, `terminalblockfuse` → level 1.
 pub fn of_starter(key: StarterKey) -> Option<(&'static BlockType, Option<u32>)> {

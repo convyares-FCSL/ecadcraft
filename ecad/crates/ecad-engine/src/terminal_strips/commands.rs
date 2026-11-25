@@ -82,12 +82,7 @@ pub(crate) fn place_level(
                 ops.push(Op::CreateDevice {
                     id: c,
                     device: ecad_electrical::devices::with_given(
-                        ecad_model::Device {
-                            description: ecad_electrical::devices::description_of("Terminal"),
-                            definition: Some(def),
-                            device_type: starter.device_type(),
-                            ..ecad_model::Device::default()
-                        },
+                        ecad_electrical::terminal_strips::terminal_blocks::new_block_device(starter, def),
                         &t,
                     )?,
                 });

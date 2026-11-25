@@ -1,110 +1,65 @@
-//! What **kind of device** something is comes from `Device.device_type`
-//! (typed data), never from the starter symbol that draws it. This guard counts the places that
-//! look a starter symbol up from stored data: `of_definition(` (a definition's starter) and
-//! `rep_starter(` (the starter a representation draws).
+//! What **kind of device** something is comes from `Device.device_type` (typed data), never from
+//! the symbol that draws it. The one way from a symbol to a kind is `Starter::device_type()`, and it
+//! is `pub(crate)` in ecad-electrical, so the compiler keeps every other crate from asking a symbol.
+//! Inside ecad-electrical this guard keeps the calls to the places that make a definition or a
+//! device ([`SEED_FILES`]): there the kind is seeded from the symbol once and stored from then on.
 //!
-//! A starter lookup is right when the question is about the *drawing*: which symbol this
-//! representation is (a PLC cell, a PE terminal, a connector pin), what its labels or texts are.
-//! The count is kept per file: a file on [`ALLOWED`] may have exactly that many (a ratchet: lower
-//! the count when one goes, remove the entry at 0), every other file none. Each entry says why its
-//! lookups are drawing questions and not device kinds. A new lookup in another file fails: ask the
-//! device's `device_type` instead, or add the file here with the reason.
+//! Looking a symbol up for a *drawing* question (which symbol a representation is, its labels, its
+//! pieces) is not a kind question and is not checked.
 //!
-//! Textual, like the other guards: over the product crates' `src/`, outside `//` comments and
-//! outside a file's trailing `#[cfg(test)]` module; a function's own declaration is not a lookup.
+//! Textual, like the other guards: over ecad-electrical's `src/`, outside `//` comments and outside a
+//! file's trailing `#[cfg(test)]` module; a function's own declaration is not a call.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde_json::Value;
 
-/// The names of the lookups.
-const NAMES: &[&str] = &["of_definition", "rep_starter"];
+/// The crate whose sources are read.
+const ELECTRICAL_SRC: &str = "crates/ecad-electrical/src/";
 
-/// The files that still look a starter symbol up, how many times, and why each is a drawing
-/// question. The count only falls.
+/// The files that seed a kind from a symbol, and why. No counts: any other file that calls
+/// `device_type()` fails, and a listed file that no longer does must leave the list.
 #[rustfmt::skip]
-const ALLOWED: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/inspector/mod.rs", 1, "the placed symbol's prefix entry in the defaults scope (the symbol's, not the device's)"),
-    ("crates/ecad-electrical/src/checks/nets.rs", 1, "a symbol marks some of its own connection points quiet (a drawing property)"),
-    ("crates/ecad-electrical/src/connectors/mod.rs", 1, "the side a connector half or pin representation draws (gap: a stored side on the representation)"),
-    ("crates/ecad-electrical/src/devices/hover.rs", 1, "the symbol's short name in a hover line (drawing question)"),
-    ("crates/ecad-electrical/src/devices/json.rs", 1, "the symbol key a representation draws in the device JSON (drawing question)"),
-    ("crates/ecad-electrical/src/devices/merge.rs", 3, "which symbol a representation is: erase and merge notes (drawing questions)"),
-    ("crates/ecad-electrical/src/devices/tags.rs", 2, "the head noun and symbol names in tag words (drawing questions)"),
-    ("crates/ecad-electrical/src/devices/texts.rs", 1, "the run rule of the symbol a representation draws (drawing question)"),
-    ("crates/ecad-electrical/src/plc/commands/mod.rs", 3, "which representations of a card are its body or cells (drawn pieces)"),
-    ("crates/ecad-electrical/src/plc/draw.rs", 3, "the cell or body piece a representation draws"),
-    ("crates/ecad-electrical/src/plc/mod.rs", 5, "which representation is a channel cell or card caption (drawn pieces)"),
-    ("crates/ecad-electrical/src/references/devices/classify.rs", 2, "the poles a drawn contact symbol shows (the catalogue's `poles` list)"),
-    ("crates/ecad-electrical/src/devices/text_place.rs", 1, "the symbols a tag run groups: like symbol with like (drawing question)"),
-    ("crates/ecad-electrical/src/symbols/catalogue.rs", 1, "the symbols catalogue itself: the starter a definition was made from"),
-    ("crates/ecad-electrical/src/symbols/project.rs", 3, "the symbols catalogue itself: registry key, mating half, bridge keys"),
-    ("crates/ecad-electrical/src/symbols/mod.rs", 1, "a new connection point's protective earth, from the symbol it is made from (read once, then stored)"),
-    ("crates/ecad-electrical/src/symbols/rules.rs", 1, "the ways a fuse bank's head symbol draws, against its stored ways (symbol-mismatch)"),
-    ("crates/ecad-electrical/src/terminal_strips/commands/terminal_strips.rs", 1, "an embedded definition made from a given starter"),
-    ("crates/ecad-electrical/src/terminal_strips/terminal_blocks.rs", 3, "the terminal block symbol (type and levels) a representation draws"),
-    ("crates/ecad-engine/src/plc/commands/page.rs", 1, "whether the definition about to be placed is a rack card (the device does not exist yet)"),
+const SEED_FILES: &[(&str, &str)] = &[
+    ("crates/ecad-electrical/src/symbols/mod.rs", "a definition made from a starter records the type it declares"),
+    ("crates/ecad-electrical/src/devices/placing.rs", "a device placed from a symbol"),
+    ("crates/ecad-electrical/src/plc/channels.rs", "a PLC card made for a channel symbol"),
+    ("crates/ecad-electrical/src/connectors/mod.rs", "a connector made from a connector symbol"),
+    ("crates/ecad-electrical/src/terminal_strips/terminal_blocks.rs", "a terminal block made from a terminal symbol"),
+    ("crates/ecad-electrical/src/plc/rack.rs", "the card type a card body symbol draws (which drawn piece it is)"),
 ];
 
-/// Whether `line` uses one of the lookups as a whole word (called or passed as a function): not
-/// its declaration or an import, and not a longer name such as `kind_of_definition`.
-fn looks_up(line: &str) -> bool {
-    let t = line.trim_start();
-    if t.contains("fn ") || t.starts_with("use ") || t.starts_with("pub use ") {
-        return false;
-    }
-    NAMES.iter().any(|n| {
-        line.match_indices(n).any(|(i, _)| {
-            let before = line.get(..i).and_then(|b| b.chars().last());
-            let after = line.get(i + n.len()..).and_then(|a| a.chars().next());
-            before.is_none_or(|c| !(c.is_alphanumeric() || c == '_')) && after.is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
-        })
-    })
-}
-
-/// The lines of `code` that look a starter up.
-fn places(code: &str) -> Vec<usize> {
-    code.lines().enumerate().filter(|(_, l)| looks_up(l)).map(|(i, _)| i + 1).collect()
+/// Whether `line` calls `device_type()` (not declares it).
+fn calls(line: &str) -> bool {
+    !line.contains("fn device_type") && line.contains(".device_type()")
 }
 
 /// The guard's problems, if any.
 pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut by_file: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-    for (_, class, dir, _) in super::classed_packages(meta)? {
-        let (true, Some(dir)) =
-            (matches!(class, super::Class::Core | super::Class::Engine | super::Class::UiKit | super::Class::App | super::Class::Programs), dir)
-        else {
-            continue;
-        };
-        let mut paths = Vec::new();
-        super::rust_files(&dir.join("src"), &mut paths);
-        for f in paths {
-            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-            let found = places(&super::engine_guards::product_code(&text));
-            if !found.is_empty() {
-                by_file.insert(f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/"), found);
-            }
+    let mut paths = Vec::new();
+    super::rust_files(&root.join(ELECTRICAL_SRC), &mut paths);
+    for f in paths {
+        let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+        let found: Vec<usize> = super::engine_guards::product_code(&text).lines().enumerate().filter(|(_, l)| calls(l)).map(|(i, _)| i + 1).collect();
+        if !found.is_empty() {
+            by_file.insert(f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/"), found);
         }
     }
-    let what = "starter-symbol lookups (`of_definition(`, `rep_starter(`)";
-    let fix = "read the device's `device_type`; a drawing question goes on starter_guards::ALLOWED with its reason";
     let mut out = Vec::new();
-    for (rel, found) in &by_file {
-        let allowed = ALLOWED.iter().find(|(p, _, _)| p == rel).map_or(0, |(_, n, _)| *n);
-        if let Some(p) = super::ratchet_problem(rel, found.len(), allowed, what, fix) {
-            out.push(p);
-            if found.len() > allowed {
-                out.extend(found.iter().map(|l| format!("    {rel}:{l}")));
-            }
+    for (rel, lines) in &by_file {
+        if !SEED_FILES.iter().any(|(p, _)| p == rel) {
+            out.push(format!(
+                "{rel}: asks a symbol what kind of device it is (`device_type()`); read the device's `device_type`, or seed it where a device is made (SEED_FILES)"
+            ));
+            out.extend(lines.iter().map(|l| format!("    {rel}:{l}")));
         }
     }
-    for (rel, allowed, _) in ALLOWED {
-        if !by_file.contains_key(*rel)
-            && let Some(p) = super::ratchet_problem(rel, 0, *allowed, what, fix)
-        {
-            out.push(p);
+    for (rel, why) in SEED_FILES {
+        if !by_file.contains_key(*rel) {
+            out.push(format!("{rel}: in SEED_FILES ({why}) but no longer calls `device_type()`; remove the entry"));
         }
     }
     Ok(out)
@@ -115,16 +70,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_lookup_is_found_but_not_a_declaration() {
-        assert_eq!(places("let s = rep_starter(doc, r);\npub fn rep_starter(doc: &D) {}\nlet k = of_definition(d);"), vec![1, 3]);
-        assert!(
-            places(
-                "let x = starter_of(d);
-let k = kind_of_definition(d);
-use a::of_definition;"
-            )
-            .is_empty()
-        );
-        assert_eq!(places(".and_then(ecad_electrical::symbols::catalogue::of_definition)"), vec![1]);
+    fn a_call_is_found_but_not_a_declaration_or_a_field() {
+        assert!(calls("device_type: starter.device_type(),"));
+        assert!(!calls("pub(crate) fn device_type(&self) -> DeviceType {"));
+        assert!(!calls("let t = &device.device_type;"));
     }
 }

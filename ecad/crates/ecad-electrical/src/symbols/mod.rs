@@ -625,8 +625,10 @@ impl Starter {
         }
     }
 
-    /// What a device this starter begins is: the type its definition declares.
-    pub fn device_type(&self) -> DeviceType {
+    /// What a device this starter begins is: the type its definition declares. Read only when a
+    /// definition or a device is made (the seed, stored from then on); a device's kind is its
+    /// `device_type`, never its symbol's. Crate-private, so no other crate can ask a symbol.
+    pub(crate) fn device_type(&self) -> DeviceType {
         let t = crate::plc::types::starter_type(self.key);
         // A protective device's kind is its symbol's.
         if let DeviceType::Protection(_) = t {

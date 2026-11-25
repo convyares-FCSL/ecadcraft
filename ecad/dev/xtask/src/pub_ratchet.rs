@@ -23,8 +23,9 @@ const ALLOWED: &[(&str, usize)] = &[
     // through `App`'s fields.
     ("ecad-app", 89),
     ("ecad-drawing-style", 1),
-    // Two of these (`DashBudget`, `FlagShape`) are reached by other crates only through a return value.
-    ("ecad-electrical", 175),
+    // Two of these (`DashBudget`, `FlagShape`) are reached by other crates only through a return value; two
+    // (`of_definition`, `rep_starter`) were named only by the old starter guard.
+    ("ecad-electrical", 177),
     ("ecad-engine", 24),
     ("ecad-file", 23),
     // Three of these (`FieldSource`, `LayoutError`, `ValueTextError`) are reached by other crates only through a
