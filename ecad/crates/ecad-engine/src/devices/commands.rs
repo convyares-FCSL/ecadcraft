@@ -63,7 +63,7 @@ pub(crate) struct PlaceParams {
     /// A starter symbol's key (see `symbols`), or a project symbol's.
     #[serde(default)]
     pub(crate) symbol: Option<String>,
-    /// Without `symbol`: the definition to place (default: the built-in two-point coil, A1 and A2).
+    /// Without `symbol`: the definition to place (default: the built-in Two-point coil, A1 and A2).
     #[serde(default)]
     pub(crate) definition: Option<DefinitionId>,
     /// The device to add the symbol to, as a hex id (a connector: its id or tag).

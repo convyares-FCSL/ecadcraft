@@ -658,3 +658,21 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `place` with no symbol embeds the built-in Two-point coil once and reuses it; nothing saved or
+/// shown calls it an experiment.
+#[test]
+fn place_without_a_symbol_embeds_and_reuses_the_two_point_coil() {
+    let mut h = new_h();
+    let a = h.run("place", json!({"at": [100, 0]})).unwrap();
+    let b = h.run("place", json!({"at": [150, 0]})).unwrap();
+    let doc = h.doc();
+    let coils: Vec<_> = doc.definitions().iter().filter(|(_, d)| d.name == "Two-point coil").map(|(id, _)| *id).collect();
+    assert_eq!(coils.len(), 1, "embedded once, then reused");
+    for v in [&a, &b] {
+        let c = id::<DeviceId>(v, "component");
+        assert_eq!(doc.devices().get(&c).and_then(|d| d.definition), coils.first().copied(), "{v}");
+        assert!(!v.to_string().to_lowercase().contains("experiment"), "{v}");
+    }
+    assert!(doc.definitions().values().all(|d| !d.name.to_lowercase().contains("experiment")));
+}
