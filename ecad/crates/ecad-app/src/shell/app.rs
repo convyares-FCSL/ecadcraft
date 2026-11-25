@@ -1,4 +1,4 @@
-//! The `App` struct: the harness state around CADCraft's [`CadApp`], its start-up, per-frame logic and window
+//! The `App` struct: the app's state around CADCraft's [`CadApp`], its start-up, per-frame logic and window
 //! title, with the small types that belong to it (status, branch info, name box, file dialog, held close).
 
 use std::path::PathBuf;
@@ -29,10 +29,10 @@ pub trait StartMarks {
 }
 
 /// Window title.
-pub const TITLE: &str = "ECAD desktop (experiment)";
+pub const TITLE: &str = "ECADCraft";
 
-/// The experiment line at the top of the Project panel (one small line).
-pub const NOTE: &str = "ECAD desktop (experiment): keep .ecad files in a local folder.";
+/// The note at the top of the Project panel (one small line).
+pub const NOTE: &str = "ECADCraft: keep .ecad files in a local folder.";
 /// Said wherever snapshots are mentioned.
 pub const SNAPSHOT_NOTE: &str =
     "Inspector snapshots are diagnostic files for the developer inspector, not saved ECAD projects; they cannot be reopened.";
@@ -50,7 +50,7 @@ pub fn status_line(s: &Status) -> String {
 
 /// Lines echoed at the command line when a project is created.
 pub(crate) const INTRO: &[&str] = &[
-    "ECAD desktop (experiment): the PROJECT panel on the left lists the pages (click one to show it) and has \
+    "ECADCraft: the PROJECT panel on the left lists the pages (click one to show it) and has \
 New, Open, Save and Save As.",
     "ECAD tools are in Tool Sets > ECAD: Convert to Device, Add Connection Point, Place Symbol, Wire, Connect and \
 Disconnect work by clicking (follow the prompts at the command line; Enter finishes, Esc cancels).",
@@ -163,7 +163,7 @@ pub fn window_title(info: Option<&BranchInfo>) -> String {
 /// What ECAD's style depends on: CADCraft re-applies its own fonts and style when one changes.
 type EcadStyleKey = (&'static str, cadcraft_ui_egui::theme::ThemePref, Option<egui::Theme>, ecad_widgets::Theme);
 
-/// The harness state around CADCraft's [`CadApp`].
+/// The app's state around CADCraft's [`CadApp`].
 pub struct App {
     pub cad: CadApp,
     pub(crate) project: Option<ProjectHandle>,
@@ -332,7 +332,7 @@ pub const HOVER_ID: &str = "ecad.hover";
 pub(crate) const HOVER_DELAY: f64 = 0.5;
 
 impl App {
-    /// A harness with one new ECAD project. `snapshots`: where exported snapshots go (none when
+    /// The app with one new ECAD project. `snapshots`: where exported snapshots go (none when
     /// `None`).
     ///
     /// # Errors
@@ -345,7 +345,7 @@ impl App {
         Ok(t)
     }
 
-    /// A harness opening the project file at `path`. If it cannot be opened, a new project is
+    /// The app opening the project file at `path`. If it cannot be opened, a new project is
     /// created instead and the reason is shown.
     ///
     /// # Errors
@@ -515,7 +515,7 @@ impl App {
                     self.request_save_as();
                 }
             } else {
-                self.cad.session.echo("Plain CADCraft drawings cannot be saved in the ECAD desktop app.");
+                self.cad.session.echo("Plain CADCraft drawings cannot be saved in ECADCraft.");
             }
         }
         self.report_saves();
@@ -571,7 +571,7 @@ impl App {
         }
     }
 
-    /// Lay out the harness dialogs, the debugger (when open), the shell with
+    /// Lay out the app's dialogs, the debugger (when open), the shell with
     /// CADCraft's drawing in its main view, the floating windows and the hover tooltip.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         // ECAD's fonts and style first: on the first frame nothing is laid out yet, so egui takes

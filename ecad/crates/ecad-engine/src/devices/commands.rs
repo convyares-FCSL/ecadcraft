@@ -1,6 +1,6 @@
 //! The JSON forms of the commands `place` (every form), `symbols` and
-//! `devices` (read only), `deviceprops`, `devicedelete`, `ecaddelete` and `tagsettings`; and the
-//! experiments' `convertcomponent` and `addconnectionpoint`.
+//! `devices` (read only), `deviceprops`, `devicedelete`, `ecaddelete` and `tagsettings`; and
+//! `convertcomponent` and `addconnectionpoint`, which make a device from plain drawing.
 //!
 //! The interactive forms ([`crate::devices::interact`]) commit through exactly these. `place` is a thin shim:
 //! [`PlaceParams`] reads the JSON, the rules in [`ecad_electrical::devices::commands::place`] say
@@ -63,7 +63,7 @@ pub(crate) struct PlaceParams {
     /// A starter symbol's key (see `symbols`), or a project symbol's.
     #[serde(default)]
     pub(crate) symbol: Option<String>,
-    /// Without `symbol`: the definition to place (default the experiment's coil).
+    /// Without `symbol`: the definition to place (default: the built-in two-point coil, A1 and A2).
     #[serde(default)]
     pub(crate) definition: Option<DefinitionId>,
     /// The device to add the symbol to, as a hex id (a connector: its id or tag).
@@ -256,8 +256,8 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
     })
 }
 
-/// `place {at, rotation?, mirror?, definition?}` without a starter symbol (the experiment): the
-/// definition, or the built-in coil.
+/// `place {at, rotation?, mirror?, definition?}` without a starter symbol: the definition, or the
+/// built-in coil.
 fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result<Value> {
     let at = params.at.0;
     let degrees = params.rotation.unwrap_or_default();
@@ -316,7 +316,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
     })
 }
 
-// ---------------------------------------------------------------- drawn components (experiments)
+// ---------------------------------------------------------------- devices made from plain drawing
 
 /// Plain geometry (default: the selection) becomes one new component, drawn.
 #[derive(Deserialize, JsonSchema)]

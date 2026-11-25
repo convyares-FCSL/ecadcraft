@@ -23,7 +23,7 @@ macro_rules! default_folder {
 
 /// What the app is, in full.
 pub const BANNER: &str = concat!(
-    "ECAD DESKTOP (experiment). Projects are saved as .ecad files. Keep them in a local folder (for example ",
+    "ECADCraft. Projects are saved as .ecad files. Keep them in a local folder (for example ",
     crate::default_folder!(),
     "); other locations are unverified."
 );

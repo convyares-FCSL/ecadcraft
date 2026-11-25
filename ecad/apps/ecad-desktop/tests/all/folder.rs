@@ -1,4 +1,5 @@
-//! The default projects folder, the banner that names it, and the usage text: platform-neutral words.
+//! The default projects folder, the banner that names it, and the usage text: platform-neutral words
+//! and one product name.
 
 use ecad_desktop::folder::{BANNER, DEFAULT_FOLDER};
 use ecad_desktop::{Invocation, USAGE, parse_args};
@@ -10,6 +11,9 @@ fn the_default_folder_is_the_platforms_and_the_words_are_neutral() {
     assert!(BANNER.contains(DEFAULT_FOLDER));
     assert!(!BANNER.contains("Linux"), "platform-neutral: {BANNER}");
     assert!(!USAGE.contains("Linux"), "platform-neutral: {USAGE}");
+    for text in [BANNER, USAGE] {
+        assert!(text.contains("ECADCraft") && !text.to_lowercase().contains("experiment"), "one product name: {text}");
+    }
     assert_eq!(ecad_desktop::host::host().default_folder, DEFAULT_FOLDER);
 }
 

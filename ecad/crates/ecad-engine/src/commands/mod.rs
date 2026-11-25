@@ -316,8 +316,8 @@ pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
 }
 
-/// The experiment's built-in definition: a two-terminal coil, 10 × 20, terminals A1 (top) and A2
-/// (bottom).
+/// The built-in definition `place` uses without a symbol: a two-point coil, 10 × 20, connection
+/// points A1 (top) and A2 (bottom).
 pub(crate) fn builtin_coil() -> Definition {
     let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
     Definition {

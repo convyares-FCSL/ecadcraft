@@ -1,6 +1,6 @@
 [package]
 name = "ecad-desktop"
-description = "ECAD desktop program: command line, window and start-up around ecad-app (experiment only)"
+description = "ECAD desktop program: command line, window and start-up around ecad-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

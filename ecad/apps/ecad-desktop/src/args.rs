@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// Command-line usage.
 pub const USAGE: &str = concat!(
     "usage: ecad-desktop [--snapshots <dir>] [--control <port>] [--cad-ui] [<project.ecad>]\n\n\
-ECAD desktop program (experiment). Opens <project.ecad> if given, otherwise starts a new\n\
+ECADCraft. Opens <project.ecad> if given, otherwise starts a new\n\
 project. Save and Save As write .ecad project files; keep them in a local folder such as ",
     crate::default_folder!(),
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\

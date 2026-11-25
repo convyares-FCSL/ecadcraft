@@ -671,7 +671,7 @@ fn copy_batch(
             Source::Clipboard { serial, handle } => {
                 let snap = cx.clips.get(serial).ok_or("the clipboard was filled before this project recorded it; copy again")?;
                 if snap.page != cx.page {
-                    return Err("pasting onto another page is not supported in the experiment yet".into());
+                    return Err("pasting onto another page is not supported yet; paste on the page you copied from".into());
                 }
                 (&snap.doc, &snap.map, *handle)
             }
