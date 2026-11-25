@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [reference/file-format.md](../../reference/file-format.md).
+
 # EEP-0004: Container evolution: index, snapshot chunks, checkpoints
 
 | Field | Value |

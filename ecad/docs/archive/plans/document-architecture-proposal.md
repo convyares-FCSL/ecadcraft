@@ -1,3 +1,5 @@
+Historical record (2026-10-12). Not current; see [developer/architecture.md](../../developer/architecture.md).
+
 # ECAD document architecture and integration proposal
 
 > **Status:** revision 4.1. Revision 2 was approved as the basis for the bounded integration

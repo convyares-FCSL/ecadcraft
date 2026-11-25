@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [the archive index](../README.md).
+
 # EEP-0003: The `.ecad` format, version 2: compact binary encoding
 
 | Field | Value |

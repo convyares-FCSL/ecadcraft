@@ -1,3 +1,5 @@
+Historical record (2026-11-09). Not current; see [reference/file-format.md](../../reference/file-format.md).
+
 # EEP-0002: The `.ecad` project file format, version 1 (history)
 
 | Field | Value |

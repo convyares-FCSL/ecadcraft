@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [the archive index](../README.md).
+
 # ECAD features
 
 A **feature** is a whole user-facing capability, developed on one long-lived branch

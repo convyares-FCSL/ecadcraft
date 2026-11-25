@@ -1,3 +1,5 @@
+Historical record (2026-10-15). Not current; see [roadmap.md](../../roadmap.md).
+
 > **Deferred, not adopted.** This is the proposal of PR #5 ("Docs: upstream sync policy proposal
 > (no deletions)"), copied verbatim from commit `fc3eab6` (PR head `8a6d10f`, branch
 > `docs/upstream-sync-policy`). The owner approved its direction on 2026-10-12, deferred its

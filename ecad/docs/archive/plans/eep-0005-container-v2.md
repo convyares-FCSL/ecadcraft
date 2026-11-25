@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [reference/file-format.md](../../reference/file-format.md).
+
 # EEP-0005: The `.ecad` container, version 2
 
 | Field | Value |

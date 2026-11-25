@@ -1,3 +1,5 @@
+Historical record (2026-10-12). Not current; see [design/decisions.md](../../design/decisions.md).
+
 # Decision log
 
 One line per decision, newest last: date, decision, reason. Fixed decisions from the concept spec

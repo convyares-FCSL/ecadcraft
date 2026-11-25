@@ -1,3 +1,5 @@
+Historical record (2026-10-15). Not current; see [roadmap.md](../../roadmap.md).
+
 # Deferred work
 
 Work the owner has decided to postpone, with what is needed to pick it up again. Nothing listed

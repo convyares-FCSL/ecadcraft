@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [reference/file-format.md](../../reference/file-format.md).
+
 # Specifications
 
 - [EEP-0002](eep-0002.md): the `.ecad` project file format, version 1 (read and converted; new projects are version 2).

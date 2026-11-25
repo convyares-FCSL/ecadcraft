@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [roadmap.md](../../roadmap.md).
+
 # Road to ECAD v0.1
 
 > [!update] 2026-11-11
