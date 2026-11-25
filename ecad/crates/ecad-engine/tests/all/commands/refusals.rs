@@ -156,7 +156,7 @@ fn ecad_edits_wait_for_a_running_command() {
     h.cmdline("move all  0,0");
     let b = before(&mut h);
     let r = h.run("setprop", json!({"component": c1.hex(), "key": "tag", "value": "-K1"}));
-    assert!(r.unwrap_err().contains("TX-05"));
+    assert_eq!(r.err().as_deref(), Some("finish or cancel the current command first"));
     h.s.cancel();
     unchanged(&mut h, &b, "SETPROP during MOVE");
 }

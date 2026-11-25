@@ -75,58 +75,54 @@ const FREE_TEXT: PropRule = PropRule { what: "free text", claims: |_, _, _| true
 /// key on an object decides it. Both the one-object and the several-device paths walk it.
 pub static PROP_RULES: &[PropRule] = &[
     PropRule {
-        what: "function or location (brief 052)",
+        what: "function or location",
         claims: |_, o, k| is_component(o) && crate::locations::commands::locations::aspect_property(k).is_some(),
         build: Build::Aspect,
     },
-    PropRule { what: "tag (design 026)", claims: |_, o, k| k == TAG_KEY && tagged(o), build: Build::Tag },
-    PropRule { what: "device property (design 018)", claims: |_, o, k| is_device_property(o, k), build: Build::Device(device_value) },
+    PropRule { what: "tag", claims: |_, o, k| k == TAG_KEY && tagged(o), build: Build::Tag },
+    PropRule { what: "device property", claims: |_, o, k| is_device_property(o, k), build: Build::Device(device_value) },
     PropRule {
-        what: "wire, junction or continuation (briefs 022, 049)",
+        what: "wire, junction or continuation",
         claims: |doc, o, k| !matches!(crate::wires::commands::wires::setprop_rule(doc, o, k, None), Ok(None)),
         build: Build::Value(wire_value),
     },
     PropRule {
-        what: "strip offer (brief 028)",
+        what: "strip offer",
         claims: |doc, o, k| k == crate::terminal_strips::OFFER_KEY && strip(doc, o).is_some(),
         build: Build::Value(offer_value),
     },
     PropRule {
-        what: "PE row part (brief 028)",
+        what: "PE row part",
         claims: |_, o, k| is_component(o) && (k == crate::terminal_strips::PE_PART_KEY || k == crate::terminal_strips::PE_MAKER_KEY),
         build: Build::Value(pe_value),
     },
     PropRule {
-        what: "connector (brief 044)",
+        what: "connector",
         claims: |doc, o, k| component(o).is_some_and(|c| crate::connectors::setprop_value(doc, c, k, None).is_some()),
         build: Build::Value(connector_value),
     },
     PropRule {
-        what: "strip terminal defaults (brief 036)",
+        what: "strip terminal defaults",
         claims: |doc, o, k| ecad_model::naming::keys::in_area(k, ecad_model::naming::keys::Area::TerminalBlock) && strip(doc, o).is_some(),
         build: Build::Value(connection_point_default_value),
     },
     PropRule {
-        what: "level label (brief 036)",
+        what: "level label",
         claims: |doc, o, k| k.starts_with(crate::terminal_strips::terminal_blocks::LABEL_PREFIX) && strip(doc, o).is_some(),
         build: Build::Value(level_label_value),
     },
     PropRule {
-        what: "PLC card (brief 045)",
+        what: "PLC card",
         claims: |doc, o, k| component(o).is_some_and(|c| crate::plc::setprop_rule(doc, c, k, None).is_some()),
         build: Build::Value(plc_value),
     },
+    PropRule { what: "rating", claims: |_, o, k| is_component(o) && crate::symbols::rules::is_rating_key(k), build: Build::Value(rating_value) },
     PropRule {
-        what: "rating (brief 034)",
-        claims: |_, o, k| is_component(o) && crate::symbols::rules::is_rating_key(k),
-        build: Build::Value(rating_value),
-    },
-    PropRule {
-        what: "parts and items (brief 047)",
+        what: "parts and items",
         claims: |_, o, k| component(o).is_some() && crate::reports::bom::is_bom_key(k),
         build: Build::Value(bom_value),
     },
-    PropRule { what: "strip accessories, or free text (brief 030)", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
+    PropRule { what: "strip accessories, or free text", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
     FREE_TEXT,
 ];
 

@@ -934,11 +934,10 @@ const fn search_only(
 /// ECAD commands no action shows, each with the reason (nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
-    // No panel shows user fields or device links yet;
-    // the device inspector will take them. Until then, commands and MCP only.
-    ("userfield", "None yet: the R9 device inspector's user fields (design 072 §2.8)"),
-    ("linkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
-    ("unlinkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
+    // No panel shows user fields or device links yet; until the device inspector does, commands and MCP only.
+    ("userfield", "None yet: commands and agents set user fields"),
+    ("linkdevices", "None yet: commands and agents link devices"),
+    ("unlinkdevices", "None yet: commands and agents link devices"),
     // The inspector's Location and Function rows, and
     // Settings ▸ Project info's Functions and locations card.
     ("setlocation", "Inspector ▸ Device: Location rows"),
@@ -949,7 +948,7 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("designationedit", "Settings ▸ Project info: a code or description cell"),
     ("designationmerge", "Settings ▸ Project info: Merge into…"),
     ("designationremove", "Settings ▸ Project info: Remove"),
-    ("setdefault", "Settings ▸ Standards (U4c)"),
+    ("setdefault", "Settings ▸ Standards"),
     // The standard header and the style detail on Settings ▸ Standards.
     ("standard", "Settings ▸ Standards: the standard header"),
     ("setstyle", "Settings ▸ Standards: a style's detail"),
@@ -964,9 +963,9 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("titleblocks", "a read; Library ▸ Title blocks lists them"),
     ("titleblock", "Library ▸ Title blocks: + Title block and the editor's Save"),
     ("titleblockimport", "Library ▸ Title blocks: Import DXF and the Logo tool"),
-    ("category", "the wire inspector's Category row (brief 050b)"),
-    ("canvassheet", "the person's paper or dark sheet choice (U4a), display only"),
-    ("agentaccess", "Settings ▸ Agent access (U4d)"),
+    ("category", "the wire inspector's Category row"),
+    ("canvassheet", "the person's paper or dark sheet choice, display only"),
+    ("agentaccess", "Settings ▸ Agent access"),
     ("cablereferences", "a read for agents and tests; the cable wheel's go-to uses the references"),
     ("devices", "a read; the Devices tab and Lists show it"),
     ("tagsettings", "Project settings"),
@@ -1007,9 +1006,9 @@ pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
     ("closerevision", "Project menu ▸ Revisions"),
     ("undoissue", "Project menu ▸ Revisions"),
     ("cablecores", "Lists ▸ Reports"),
-    ("textstyle", "Settings ▸ Standards (U4c)"),
+    ("textstyle", "Settings ▸ Standards"),
     ("pagetexts", "a read for agents"),
-    ("defaults", "Settings ▸ Standards (U4c)"),
+    ("defaults", "Settings ▸ Standards"),
     ("references", "a read for agents"),
     ("plcracks", "a read; Lists ▸ PLC draws its tiles"),
     ("iolist", "a read; Lists ▸ PLC shows it"),

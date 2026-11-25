@@ -51,17 +51,17 @@ const STATION_KEYS: [&str; 5] = [NETWORK, NETWORK_ADDRESS, CPU_FAMILY, ADDRESS_S
 /// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
     PropRule {
-        what: "PLC module fields (072 C)",
+        what: "PLC module fields",
         claims: |doc, o, k| module(doc, o).is_some() && (MODULE_KEYS.contains(&k) || k == PROTOCOL || channels::parse_ch_key(k).is_some()),
         build: Build::Record(plan_module),
     },
     PropRule {
-        what: "PLC station fields (072 C)",
+        what: "PLC station fields",
         claims: |doc, o, k| station(doc, o).is_some() && STATION_KEYS.contains(&k),
         build: Build::Record(plan_station),
     },
     PropRule {
-        what: "PLC field on a device that is not a module or station (072 C)",
+        what: "PLC field on a device that is not a module or station",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && is_field_key(k),
         build: Build::Value(not_plc),
     },
