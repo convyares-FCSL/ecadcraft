@@ -6,7 +6,7 @@ Electrical CAD has been painful for too long. Today's tools make you build datab
 
 It is not an AutoCAD clone, and it is not trying to replace EPLAN for large teams. It is built for the person most ECAD serves badly: the **lone electrical designer**, or a small team of two or three, with no CAD administrator and no time for setup.
 
-> **Status: pre-alpha, desktop-only.** The last release is `ecad-v0.2.0` (14 November 2026); this branch carries the next one, `0.3.0-dev`. ECAD runs natively on Windows and Linux. There is no web build. The ECAD code is in [`ecad/`](ecad/) and runs on the CADCraft drawing engine. The model and file format are still being shaped, so do not use it for production drawings yet. To build and try it, see [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md).
+> **Status: pre-alpha, desktop-only.** The last release is `ecad-v0.2.0` (14 November 2026); this branch carries the next one, `0.3.0-dev`. ECAD runs natively on Windows and Linux. There is no web build. The ECAD code is in [`ecad/`](ecad/) and runs on the CADCraft drawing engine. The model and file format are still being shaped, so do not use it for production drawings yet. To build and try it, see [`ecad/docs/user/quick-start.md`](ecad/docs/user/quick-start.md).
 
 ## What works today
 
@@ -93,11 +93,11 @@ Near releases are firm; later ones are headlines and will change.
 | 0.4.0 | `.ecadlib` libraries, parts catalogue, standards as data |
 | 0.5.0 and 0.6.0 | Manufacturer data; a leaner project file pipeline |
 
-The plan in full is [`ecad/docs/roadmap.md`](ecad/docs/roadmap.md), and [`ecad/docs/features.md`](ecad/docs/features.md) says which branch holds each feature. The original concept spec is [`docs/concept-spec.md`](docs/concept-spec.md) and design decisions are logged in [`docs/decisions.md`](docs/decisions.md). [`ROADMAP.md`](ROADMAP.md) is the roadmap of the CADCraft engine, not of ECAD.
+The plan in full is [`ecad/docs/roadmap.md`](ecad/docs/roadmap.md), and the binding design decisions are in [`ecad/docs/design/decisions.md`](ecad/docs/design/decisions.md). Every ECAD doc is listed in [`ecad/docs/README.md`](ecad/docs/README.md). [`ROADMAP.md`](ROADMAP.md) is the roadmap of the CADCraft engine, not of ECAD.
 
 ## Try ECAD
 
-The desktop program is `ecad-desktop`. **How to build, run and try it, and what has been tried so far:** [`ecad/docs/quick-start.md`](ecad/docs/quick-start.md), the single maintained guide.
+The desktop program is `ecad-desktop`. **How to build, run and try it:** [`ecad/docs/user/quick-start.md`](ecad/docs/user/quick-start.md), then the user guides by feature in [`ecad/docs/user/`](ecad/docs/user/).
 
 ## Building
 
@@ -113,7 +113,7 @@ To open a saved project: `cargo run --release -p ecad-desktop -- path/to/project
 
 ## Development workflow
 
-- `main` is the released baseline and `dev` is integration. Each feature is developed on its own long-lived branch cut from `dev` (`feature/<name>`, listed in [`ecad/docs/features.md`](ecad/docs/features.md)) and reaches `dev` by one pull request when it works. `dev` reaches `main` through a QA gate: the full suite, screenshots, the benchmark and the owner's own click-through test.
+- `main` is the released baseline and `dev` is integration. Each feature is developed on its own long-lived branch cut from `dev` (`feature/<name>`) and reaches `dev` by one pull request when it works. `dev` reaches `main` through a QA gate: the full suite, screenshots, the benchmark and the owner's own click-through test.
 - Pull requests into `dev` run a quick check (fmt, clippy with all targets, and the fast tests of the crates that changed); the full suite (`cargo xtask ci`, with the slow tests, on Linux and Windows) runs on pull requests into `main`. Rules for contributors and agents: [`ecad/CLAUDE.md`](ecad/CLAUDE.md).
 - ECAD crates carry unit tests next to the code and one integration test executable per crate under `tests/all/`. Checks are scoped to what you changed (`cargo xtask test-changed`).
 - Production code never panics: no `unwrap`, `expect`, `panic!` or `unsafe`; errors are `Result`s. See [`CLAUDE.md`](CLAUDE.md) for the full engine conventions inherited from CADCraft.
@@ -124,7 +124,7 @@ Contributions, ideas and real-world pain points are very welcome, especially fro
 
 - Open an issue to discuss a feature or report a problem before large changes.
 - Keep pull requests small and focused, with tests.
-- Record design decisions in `docs/decisions.md` (one line each, with the reason).
+- Record design decisions in `ecad/docs/design/decisions.md`, by topic, as rules true today.
 - Dependencies must be MIT, Apache-2.0 or BSD compatible. No GPL.
 
 ## Licence

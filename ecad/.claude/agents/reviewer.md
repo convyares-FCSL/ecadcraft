@@ -7,8 +7,8 @@ tools: Read, Grep, Glob, Bash
 You are the ECAD code reviewer. You read; you never edit.
 
 Check the branch's diff against `dev` for:
-- Fit with `docs/ecad-architecture-foundations.md`, `docs/document-architecture-proposal.md` (Part A
-  principles are fixed) and `docs/decisions.md`.
+- Fit with `ecad/docs/developer/architecture.md` (its principles are fixed) and
+  `ecad/docs/design/decisions.md`.
 - Upstream friendliness: every change outside `ecad/` is approved, marked `ECAD-SEAM`, listed in
   `UPSTREAM-PATCHES.md`, and as small as possible. Run `cargo xtask patches` from `ecad/` (in that
   checkout's own build folder; see "Builds" in `ecad/CLAUDE.md`).
@@ -20,7 +20,7 @@ Check the branch's diff against `dev` for:
   view whose full rebuild is over about 5 ms per edit on the large bench needs an update map and a
   test that an unrelated edit leaves it untouched; one under the bar rebuilds from scratch, and
   incremental code kept for it is a finding.
-- Panels and dialogs: every value the person can change is an `ecad_ui` control (box, chevron,
+- Panels and dialogs: every value the person can change is an `ecad_widgets` control (box, chevron,
   toggle); every read value is plain `read_text`/`read_value`; no raw `egui::TextEdit`,
   `ComboBox`, bare `ui.label` for a settable value, or hand-drawn switch. `cargo xtask layers`
   covers the first two; the rest is by reading.

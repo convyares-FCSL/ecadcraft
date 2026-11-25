@@ -26,7 +26,7 @@ pub(crate) const LOCAL_STYLE: &[&str] = &[
     "Color32::YELLOW",
 ];
 
-/// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
+/// Raw egui value controls (`docs/developer/ui-components.md`): panels and dialogs use
 /// `ecad_widgets::control` (text entry, number with unit, selector, toggle, value box) instead, so
 /// anything the person can change looks editable and a read value never looks like an input.
 pub(crate) const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];

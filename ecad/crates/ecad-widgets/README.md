@@ -30,7 +30,7 @@ from local values (`cargo xtask layers` checks this, and refuses new raw `egui::
 ## Key types
 `control::TextEntry`, `control::Select`, `prim::Button`, `prim::Segmented`, `table::Table`,
 `tokens::Shell`, `tokens::Icon`. A missing component is added here and to `showcase` (see
-`docs/design/components.md`).
+`docs/developer/ui-components.md`).
 
 ## How to test
 ```bash
@@ -38,4 +38,4 @@ cargo test -p ecad-widgets
 ```
 Tests are in `tests/all/` and run egui headlessly. Slow tests are marked `#[ignore = "slow: …"]`.
 The doc-sync test (`tokens::doc_sync`) compares every row of the token tables in
-`docs/design/tokens.md` with the token constants, so edit the doc and the code together.
+`docs/reference/tokens.md` with the token constants, so edit the doc and the code together.

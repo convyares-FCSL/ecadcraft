@@ -26,4 +26,4 @@ Programs rules: no `cadcraft-engine` directly and no Dev crate. It uses `ecad-ap
 cargo test -p ecad-desktop
 ```
 Its tests are in `tests/all/` (command line, start-up timing, default folder) and `src/window.rs`. To run the program and try it, see
-[`docs/quick-start.md`](../../docs/quick-start.md) (`cargo run --release -p ecad-desktop`).
+[`docs/user/quick-start.md`](../../docs/user/quick-start.md) (`cargo run --release -p ecad-desktop`).

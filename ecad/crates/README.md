@@ -1,8 +1,8 @@
 # ECAD crates: the overall structure
 
 ECAD is a Cargo workspace in `ecad/` (`crates/`, `apps/`, `dev/`). Every crate belongs to
-one of six **layers**, and a crate may use only crates in the layers above it. The full reasoning
-is in [`docs/design/crates.md`](../docs/design/crates.md); the binding decisions on names, crates, layers and
+one of six **layers**, and a crate may use only crates in the layers above it. The full description
+is in [`docs/developer/architecture.md`](../docs/developer/architecture.md); the binding decisions on names, crates, layers and
 source layout are in [`docs/design/decisions.md`](../docs/design/decisions.md). ECAD is desktop-only: there is no web
 build.
 
@@ -72,12 +72,12 @@ else of ours.
   dates in the comments of any `src/` or of a crate's built-in data (`defaults/*.toml`). History lives in git and
   `docs/`.
 
-To change a rule, edit the table in `dev/xtask/src/main.rs` and the matching section of
-[`docs/design/crates.md`](../docs/design/crates.md) (§4), and tell the owner: layers are a recorded
+To change a rule, edit the table in `dev/xtask/src/layers.rs` and the matching section of
+[`docs/developer/architecture.md`](../docs/developer/architecture.md), and tell the owner: layers are a recorded
 decision.
 
 ## Working on a crate
 
 Each README ends with how to test that crate. Everyday checks are scoped to what you changed
 (`cargo xtask test-changed`); see [`CLAUDE.md`](../CLAUDE.md) for the full process and
-[`docs/quick-start.md`](../docs/quick-start.md) to run the app.
+[`docs/user/quick-start.md`](../docs/user/quick-start.md) to run the app.

@@ -2,7 +2,7 @@
 
 Layer: App
 
-> **How to build, run and try it:** [`docs/quick-start.md`](../../docs/quick-start.md), the single
+> **How to build, run and try it:** [`docs/user/quick-start.md`](../../docs/user/quick-start.md), the single
 > maintained guide. The program that runs this crate is `ecad-desktop`.
 
 ## Purpose

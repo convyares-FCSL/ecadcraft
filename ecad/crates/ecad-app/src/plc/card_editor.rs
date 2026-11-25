@@ -230,8 +230,8 @@ fn field(
     placeholder: &str, hint: &str,
 ) {
     let invalid = st.error.as_ref().is_some_and(|(k, _)| *k == key);
-    // Function and location are values with a hint (components.md): the code and where it comes
-    // from, in a box that opens its entry when clicked.
+    // Function and location are values with a hint: the code and where it comes from, in a box
+    // that opens its entry when clicked.
     let boxed = matches!(key, "function" | "location");
     let name = format!("{PANEL}.{key}");
     if boxed && st.editing != Some(key) {
@@ -249,7 +249,7 @@ fn field(
     let Some(entry) = st.fields.get_mut(key) else { return };
     let r = w::row(ui, label, |ui| {
         ui.add_enabled_ui(writable, |ui| {
-            // The card's ID is its key identity value: bold (components.md).
+            // The card's ID is its key identity value: bold.
             TextEntry::new(&mut entry.1, &name).id(id).placeholder(placeholder).hint(hint).bold(key == "tag").invalid(invalid.then_some("")).show(ui)
         })
         .inner

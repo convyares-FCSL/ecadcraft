@@ -25,4 +25,4 @@ writes a project file. Left out: drawing checks and attaching to a running app.
 ```bash
 cargo test -p ecad-inspector
 ```
-Tests are in `tests/all/`. To run the tool, see [`docs/quick-start.md`](../../docs/quick-start.md).
+Tests are in `tests/all/`. To run the tool, see [`docs/developer/debugger.md`](../../docs/developer/debugger.md) ("The inspector").

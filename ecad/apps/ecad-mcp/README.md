@@ -31,4 +31,4 @@ cargo test -p ecad-mcp
 Tests are in `tests/all/`, one file per area; `mcp_contracts.rs` drives commands through `execute`.
 Every generic command that may edit has a row in `generic_commands_contracts.rs` (refused with writes
 off, one transaction by the agent with writes on); a new or changed session command gets a test of
-its own. To try it by hand, see [`docs/quick-start.md`](../../docs/quick-start.md).
+its own. To try it by hand, see [`docs/user/quick-start.md`](../../docs/user/quick-start.md).

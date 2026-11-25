@@ -18,8 +18,8 @@ What it does today (the plan, release by release, is in [`docs/roadmap.md`](docs
 
 ## Run it
 
-**To build, run and try the app, see [`docs/quick-start.md`](docs/quick-start.md)**, the single
-maintained guide. The desktop program is `ecad-desktop` (`cargo run --release -p ecad-desktop`).
+**To build, run and try the app, see [`docs/user/quick-start.md`](docs/user/quick-start.md)**; the
+user guides by feature are in [`docs/user/`](docs/user/). The desktop program is `ecad-desktop` (`cargo run --release -p ecad-desktop`).
 
 ## Structure
 
@@ -43,14 +43,16 @@ How and when each check runs is in [`CLAUDE.md`](CLAUDE.md).
 
 ## Docs
 
-- [`docs/quick-start.md`](docs/quick-start.md): run and try the app.
-- [`docs/roadmap.md`](docs/roadmap.md) and [`docs/features.md`](docs/features.md): what is planned and which branch holds each feature.
-- [`docs/glossary.md`](docs/glossary.md): the words used in everything a person sees.
-- [`docs/design/decisions.md`](docs/design/decisions.md): the binding structure decisions (names, crates, layers,
-  source layout, docs); the target tree is [`docs/design/layout.md`](docs/design/layout.md).
-- [`docs/deferred-work.md`](docs/deferred-work.md): postponed work.
-- [`../docs/document-architecture-proposal.md`](../docs/document-architecture-proposal.md): the architecture.
-- [`docs/experiment-report.md`](docs/experiment-report.md): the report of the first integration experiment (October 2026), kept as history.
+Every doc is listed in [`docs/README.md`](docs/README.md). The main ones:
+
+- [`docs/user/`](docs/user/): the user guides, starting with [`quick-start.md`](docs/user/quick-start.md).
+- [`docs/developer/architecture.md`](docs/developer/architecture.md): crates, layers and the document model.
+- [`docs/agents/`](docs/agents/): MCP, the control channel and the command reference.
+- [`docs/reference/glossary.md`](docs/reference/glossary.md): the words used in everything a person sees.
+- [`docs/design/decisions.md`](docs/design/decisions.md): the binding decisions; the source layout is
+  [`docs/design/layout.md`](docs/design/layout.md).
+- [`docs/roadmap.md`](docs/roadmap.md): what is planned, and the deferred work.
+- [`docs/archive/`](docs/archive/README.md): the history (briefs, designs, quick starts, reviews), kept as written.
 - [`UPSTREAM.md`](UPSTREAM.md) is the CADCraft commit in use; upstream files change only through the patches in [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
 
 Format versions are independent of the product version.

@@ -1,5 +1,5 @@
 //! `ecad-bench`: the project load benchmark. Run it through `cargo xtask bench`, which builds it
-//! in release; see the crate documentation and `ecad/docs/quick-start.md`.
+//! in release; see the crate documentation and `ecad/docs/user/quick-start.md`.
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 

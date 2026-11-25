@@ -21,10 +21,10 @@ ecad-electrical = { workspace = true }
 ecad-drawing-style = { workspace = true }
 # Brief 037: the style, fonts and primitives of ECAD's interface.
 ecad-widgets = { path = "../../crates/ecad-widgets" }
-# The sheet colours the canvas paints (design 065 §1.1).
+# The sheet colours the canvas paints.
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
-# remembers the window's size and position (brief 023).
+# remembers the window's size and position.
 eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence"] }
 serde_json = { workspace = true }
 # Brief 038: the shell state and page views in eframe storage.
@@ -36,12 +36,12 @@ egui = { version = "0.37", default-features = false }
 log = "0.4"
 
 [dev-dependencies]
-# Every test run checks invariants in full as well (verify mode, brief 013).
+# Every test run checks invariants in full as well (verify mode).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
-# The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature);
-# brief 035's bridge tests make an ECAD command panic (fault injection).
+# The UI tests apply ops directly with `apply_ops` (test-only feature); the bridge tests make an
+# ECAD command panic (fault injection).
 ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
-# The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
+# The tests name engine types beyond `ecad_engine::cad`; the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }

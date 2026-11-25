@@ -1,6 +1,6 @@
 //! The debugger panel in the app, without a window: closed by default, opened from the banner,
 //! rebuilt only when something changes, never waiting for a busy project, and following the
-//! quick-start guide's worked example (place, wire, save, move, undo, save).
+//! worked example of `ecad/docs/developer/debugger.md`, "The debugger" (place, wire, save, move, undo, save).
 
 use std::path::PathBuf;
 
@@ -115,7 +115,7 @@ fn a_busy_project_keeps_the_previous_snapshot_marked_stale() {
     assert_eq!(t.debugger.stale(), None, "the next refresh succeeds");
 }
 
-/// The quick-start guide's worked example (section 8): what to inspect when placing, wiring,
+/// The worked example of `ecad/docs/developer/debugger.md`, "The debugger": what to inspect when placing, wiring,
 /// saving, moving and undoing.
 #[test]
 fn the_quick_start_debugger_example_runs_headless() {

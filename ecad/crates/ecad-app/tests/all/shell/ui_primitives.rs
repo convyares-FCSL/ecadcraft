@@ -78,7 +78,7 @@ fn the_showcase_screenshot_for_the_owner() {
 }
 
 /// The value components' gallery (`ecad_widgets::showcase::components`, style guide
-/// `docs/design/components.md`): every component is there in every state, on Graphite and on the
+/// `docs/developer/ui-components.md`): every component is there in every state, on Graphite and on the
 /// light shell, and an editable value answers as an input while a read value does not. Writes
 /// `components-dark.png` and `components-light.png` to `$ECAD_TESTER_SHOTS` when it names a folder.
 #[test]

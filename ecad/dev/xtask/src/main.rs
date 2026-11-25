@@ -761,7 +761,7 @@ mod tests {
             ]
         );
         assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-engine", "ecad-mcp"]);
-        assert!(pick("ecad/docs/quick-start.md").is_empty());
+        assert!(pick("ecad/docs/user/quick-start.md").is_empty());
         // The demo's command list is embedded by ecad-mcp (#53: the app's tests no longer open it).
         assert_eq!(pick("ecad/examples/demo/commands.jsonl"), ["ecad-mcp"]);
         assert_eq!(pick("Cargo.toml").len(), meta["workspace_members"].as_array().map_or(0, Vec::len));

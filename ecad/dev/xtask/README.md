@@ -26,7 +26,7 @@ metadata` and runs `cargo`. `anyhow` is allowed here.
 ## Key types
 There are none to start from; the entry point is `main` in `src/main.rs`. Each rule family's tables
 (lists with reasons, no counts) sit at the top of its module. To change a layer rule, edit `TABLE` in
-`src/layers.rs` and the layer table in `docs/design/crates.md`.
+`src/layers.rs` and the layer table in `docs/developer/architecture.md`.
 
 ## How to test
 ```bash
