@@ -37,7 +37,9 @@ fn every_reference(doc: &Document, m: &dyn ecad_model::look::Look) -> std::colle
 
 /// The references view on every transaction of `tier`'s churned history with five undos and five
 /// redos at its end, against the whole document. Returns how many transactions were compared.
-fn references_view_agrees(tier: Tier) -> usize {
+/// Every transaction goes through the view; every `stride`-th one (and the last) is compared with
+/// a whole rebuild. Returns how many were compared.
+fn references_view_agrees(tier: Tier, stride: usize) -> usize {
     use views::{Inputs, ReferencesView};
     let mut g = generate(tier, Variant::Churned).unwrap();
     for undo in [true, true, true, true, true, false, false, false, false, false] {
@@ -51,12 +53,16 @@ fn references_view_agrees(tier: Tier) -> usize {
     let mut view = ReferencesView::build(&Document::default());
     let mut doc = Document::default();
     let mut checked = 0;
-    for tx in g.ledger.log() {
+    let log = g.ledger.log();
+    for (i, tx) in log.iter().enumerate() {
         let before = doc.clone();
         for op in &tx.ops {
             op.apply(&mut doc).unwrap();
         }
         let out = view.commit(&before, &doc, &tx.ops, &inputs);
+        if i % stride != 0 && i + 1 != log.len() {
+            continue;
+        }
         let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
         let (shown_before, shown_after) = (every_reference(&before, &*metrics), every_reference(&doc, &*metrics));
         if let PageSet::Only(pages) = &out.pages {
@@ -78,14 +84,16 @@ fn references_view_agrees(tier: Tier) -> usize {
 /// Step 5: `ReferencesView` on the small tier's recorded history.
 #[test]
 fn the_references_view_follows_the_whole_document_on_the_small_corpus() {
-    let n = references_view_agrees(tier("small").unwrap());
+    let n = references_view_agrees(tier("small").unwrap(), 1);
     assert!(n > 10, "{n} transactions");
 }
 
-/// Step 5: `ReferencesView` on the medium tier's recorded history (design 064 §10).
+/// Step 5: `ReferencesView` on the medium tier's recorded history (design 064 §10), compared with a
+/// whole rebuild every 50th transaction: comparing each one rebuilds every reference thousands of
+/// times.
 #[test]
 #[ignore = "slow: generates the medium bench project"]
 fn the_references_view_follows_the_whole_document_on_the_medium_corpus() {
-    let n = references_view_agrees(tier("medium").unwrap());
+    let n = references_view_agrees(tier("medium").unwrap(), 50);
     assert!(n > 10, "{n} transactions");
 }
