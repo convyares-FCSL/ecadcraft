@@ -93,8 +93,8 @@ pub const NOT_A_REFERENCE: &str = "Select a cable reference (its point or text),
 /// Said when the selected reference is an orphan.
 pub(crate) const ORPHAN: &str = "This reference has no other end (orphan).";
 
-/// Project `page` of `p` into a fresh drawing, as its page window would show it (cable views and
-/// reference texts included). Hold the project only for this call.
+/// Project `page` of `p` into a fresh drawing, as its page window would show it (cable views,
+/// reference texts and the sheet it is shown on included). Hold the project only for this call.
 ///
 /// # Errors
 /// Unknown page, or an item that cannot be drawn.
@@ -111,21 +111,25 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
         &p.display.views,
         p.tolerance,
         crate::project::engine_views().report_models(doc).as_ref(),
+        p.display.sheet,
     )
     .map(|(d, _)| d)
 }
 
 /// Project `page` of `doc` (another state of a project, such as an issued revision)
-/// into a fresh drawing with no cable views.
+/// into a fresh drawing with no cable views, in the colours of sheet `colours`.
 ///
 /// # Errors
 /// Unknown page, or an item that cannot be drawn.
-pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) -> Result<Drawing, String> {
+pub fn preview_drawing_of(
+    doc: &ecad_model::Document, page: PageId, tol: f64, colours: &'static ecad_model::palette::Sheet,
+) -> Result<Drawing, String> {
     if !doc.pages().contains_key(&page) {
         return Err("That page is not in this revision.".into());
     }
     let reports = crate::project::engine_views().report_models(doc);
-    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol, reports.as_ref()).map(|(d, _)| d)
+    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol, reports.as_ref(), colours)
+        .map(|(d, _)| d)
 }
 
 /// Rasterise `drawing` at `view` into an image of `width` × `height` pixels on `background`, with

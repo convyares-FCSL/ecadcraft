@@ -203,7 +203,7 @@ fn apply_styles_an_entity_like_the_page_does() {
     use ecad_model::look::TextKind;
     let mut doc = ecad_model::Document::default();
     let mut e: Entity = ecad_engine::devices::draw::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
-    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Tag);
+    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Tag, &ecad_model::palette::sheet::PAPER);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (2.5, "ECAD-BOLD"));
     let stroke = ecad_engine::styles::draw::Fonts::resolve(&doc).bold_lineweight;
@@ -219,11 +219,11 @@ fn apply_styles_an_entity_like_the_page_does() {
     doc.edit_parts(|parts| {
         parts.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(ecad_model::StyleRef::Builtin("grid".into()), rec);
     });
-    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Grid);
+    ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Grid, &ecad_model::palette::sheet::PAPER);
     let EntityKind::Text(t) = &e.kind else { unreachable!() };
     assert_eq!((t.height, t.style.as_str()), (3.0, "ECAD-GRID"));
     // text_width measures one kind, the same as from a held Look.
-    let draw = ecad_engine::styles::draw::DrawStyles::new(&doc);
+    let draw = ecad_engine::styles::draw::DrawStyles::new(&doc, &ecad_model::palette::sheet::PAPER);
     let w = ecad_engine::styles::draw::width_in(draw.fonts_for(TextKind::Grid), draw.style(TextKind::Grid), "ABC");
     assert_eq!(ecad_engine::styles::draw::text_width(&doc, TextKind::Grid, "ABC"), w);
 }

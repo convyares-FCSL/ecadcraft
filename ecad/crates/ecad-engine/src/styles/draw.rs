@@ -18,28 +18,28 @@ pub(crate) fn install_family(d: &mut cadcraft_engine::doc::Drawing, doc: &Docume
     put_style(d, &family_style_name(family, Weight::Bold), &f.bold);
 }
 
-/// Style a text entity of `kind` as this project draws it (the one entry point for the other modules):
-/// its height, its style name (the project font, or the kind's own font), and
-/// for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
+/// Style a text entity of `kind` as this project draws it on `sheet` (the one entry point for the
+/// other modules): its height, its style name (the project font, or the kind's own font), its
+/// style's colour on that sheet, and for bold drawn in the stroke-font fallback the bold lineweight. The drawing must hold the
 /// styles: [`install`] (or [`install_draw`]) writes them. A caller styling many entities holds a
 /// [`DrawStyles`] and calls [`DrawApply::apply`] instead (one resolution per page, not per entity).
-pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
+pub fn apply(doc: &Document, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, sheet: &ecad_model::palette::Sheet) {
     let s = text_style(doc, kind);
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.height = s.height;
     }
     let bold_lineweight = fonts::Fonts::of_kind_with(doc, kind, &EngineMetrics).bold_lineweight;
-    style_entity(e, s, bold_lineweight);
+    style_entity(e, s, bold_lineweight, sheet);
 }
 
-/// Set `s`'s style name on a text entity, and the bold lineweight when bold is drawn in the
-/// stroke font.
-fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_lineweight: Option<u16>) {
+/// Set `s`'s style name on a text entity, its colour on `sheet`, and the bold lineweight when bold
+/// is drawn in the stroke font.
+fn style_entity(e: &mut cadcraft_engine::doc::Entity, s: TextStyle, bold_lineweight: Option<u16>, sheet: &ecad_model::palette::Sheet) {
     if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
         t.style = s.style_name.to_string();
     }
     // A style's colour (ink otherwise; a mono print prints ink regardless).
-    if let Some(rgb) = s.colour.and_then(|c| crate::cables::draw::text_colour_rgb(c, crate::cables::draw::projection_sheet())) {
+    if let Some(rgb) = s.colour.and_then(|c| crate::cables::draw::text_colour_rgb(c, sheet)) {
         e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
     }
     if let (Weight::Bold, Some(lw)) = (s.weight, bold_lineweight) {
@@ -122,7 +122,8 @@ impl Fonts {
 /// (`ECAD-TAG`, `ECAD-TAG-BOLD`…). Any drawing ECAD builds calls it; a drawing that already has
 /// the same styles is unchanged.
 pub fn install(d: &mut cadcraft_engine::doc::Drawing, doc: &Document) {
-    install_draw(d, &DrawStyles::new(doc));
+    // Style names only: no colour is drawn here.
+    install_draw(d, &DrawStyles::new(doc, &ecad_model::palette::sheet::PAPER));
 }
 
 /// [`install`] with the look already resolved.
@@ -157,23 +158,29 @@ fn put_style(d: &mut cadcraft_engine::doc::Drawing, name: &str, font: &String) {
     }
 }
 
-/// [`fonts::DrawStyles`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]), and how a
-/// derived text entity takes it; it reads as the rules' type ([`std::ops::Deref`]).
+/// [`fonts::DrawStyles`] resolved on this machine with CADCraft's fonts ([`EngineMetrics`]) for
+/// one sheet, and how a derived text entity takes it; it reads as the rules' type
+/// ([`std::ops::Deref`]).
 #[derive(Debug, Clone, PartialEq)]
-pub struct DrawStyles(pub fonts::DrawStyles);
+pub struct DrawStyles {
+    /// Every kind's style and the fonts.
+    pub rules: fonts::DrawStyles,
+    /// The sheet the texts are drawn on: a style's colour code takes that sheet's colour.
+    pub sheet: &'static ecad_model::palette::Sheet,
+}
 
 impl std::ops::Deref for DrawStyles {
     type Target = fonts::DrawStyles;
 
     fn deref(&self) -> &fonts::DrawStyles {
-        &self.0
+        &self.rules
     }
 }
 
 impl DrawStyles {
-    /// Resolve every kind's style and the fonts of `doc`.
-    pub fn new(doc: &Document) -> DrawStyles {
-        DrawStyles(fonts::DrawStyles::with(doc, &EngineMetrics))
+    /// Resolve every kind's style and the fonts of `doc`, for texts drawn on `sheet`.
+    pub fn new(doc: &Document, sheet: &'static ecad_model::palette::Sheet) -> DrawStyles {
+        DrawStyles { rules: fonts::DrawStyles::with(doc, &EngineMetrics), sheet }
     }
 }
 
@@ -189,13 +196,13 @@ pub(crate) trait DrawApply {
     fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle);
 }
 
-impl DrawApply for fonts::DrawStyles {
+impl DrawApply for DrawStyles {
     fn apply(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind) {
-        style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight);
+        style_entity(e, self.style(kind), self.fonts_for(kind).bold_lineweight, self.sheet);
     }
 
     fn apply_own(&self, e: &mut cadcraft_engine::doc::Entity, kind: TextKind, own: &OwnStyle) {
-        style_entity(e, own.style, self.fonts_for(kind).bold_lineweight);
+        style_entity(e, own.style, self.fonts_for(kind).bold_lineweight, self.sheet);
         if let cadcraft_engine::doc::EntityKind::Text(t) = &mut e.kind {
             t.style.clone_from(&own.name);
         }

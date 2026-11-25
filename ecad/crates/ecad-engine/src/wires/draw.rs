@@ -19,15 +19,15 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
 /// Draw the page's wires and cores in their colour codes: the route entity
 /// takes the first colour, and a two-colour code adds the second colour's 2 mm on / 2 mm off
 /// dashes over it on [`DASH_LAYER`], mapped to the conductor like its label (picking a dash
-/// picks the wire, [`crate::cables::draw::pick_routes`]). Colours are those of the sheet the page is
-/// projected for ([`crate::cables::draw::projection_sheet`]). An unknown code leaves the route in ink.
+/// picks the wire, [`crate::cables::draw::pick_routes`]). Colours are those of `sheet`, the sheet the
+/// page is projected for. An unknown code leaves the route in ink.
 /// Derived on every projection of the page, never stored.
 pub(crate) fn colour_routes(
     doc: &Document, page: PageId, d: &mut cadcraft_engine::doc::Drawing, ents: &mut Vec<Entity>, map: &mut crate::project::HandleMap,
-    prev: &crate::project::HandleMap,
+    prev: &crate::project::HandleMap, sheet: &ecad_model::palette::Sheet,
 ) {
     use cadcraft_engine::doc::color::Color;
-    let routes = crate::cables::draw::coloured_routes(doc, page, Some(map), crate::cables::draw::projection_sheet());
+    let routes = crate::cables::draw::coloured_routes(doc, page, Some(map), sheet);
     if routes.is_empty() {
         return;
     }

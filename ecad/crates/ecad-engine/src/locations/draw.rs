@@ -46,10 +46,11 @@ pub(crate) fn styled_label_entity(
 }
 
 /// Draw the outlines of `page`'s boxes in their location style
-/// (line type, weight and colour) instead of the stored item style. `item_handle` finds a box
-/// item's entity among `ents`.
+/// (line type, weight and colour on `sheet`) instead of the stored item style. `item_handle` finds
+/// a box item's entity among `ents`.
 pub(crate) fn style_boxes(
     doc: &Document, page: PageId, ents: &mut [cadcraft_engine::doc::Entity], item_handle: impl Fn(ItemId) -> Option<cadcraft_engine::doc::Handle>,
+    sheet: &ecad_model::palette::Sheet,
 ) {
     let boxes = boxes_on(doc, page);
     if boxes.is_empty() {
@@ -61,7 +62,7 @@ pub(crate) fn style_boxes(
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.linetype = draw.linetype.into();
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(draw.lineweight).unwrap_or(25));
-        if let Some(rgb) = crate::cables::draw::colour_rgb(&draw.colour, crate::cables::draw::projection_sheet()) {
+        if let Some(rgb) = crate::cables::draw::colour_rgb(&draw.colour, sheet) {
             e.common.color = cadcraft_engine::doc::color::Color::True(rgb);
         }
     }

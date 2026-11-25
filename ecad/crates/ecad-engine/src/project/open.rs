@@ -67,6 +67,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,
@@ -90,7 +91,7 @@ impl Project {
                 tag_high: ecad_electrical::devices::tags::TagHigh::default(),
                 designation_uses: ecad_electrical::locations::designations::Uses::default(),
             },
-            defaults: super::parts::Defaults { last_placed: None, last_continuation: None, last_caption: None, wire_potential: None },
+            defaults: super::parts::Defaults::default(),
             asks: super::parts::AppAsks {
                 open_reports: false,
                 agent_access_request: None,
@@ -163,6 +164,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,
@@ -186,7 +188,7 @@ impl Project {
                 tag_high: ecad_electrical::devices::tags::TagHigh::starting_at(tag_high),
                 designation_uses: ecad_electrical::locations::designations::Uses::default(),
             },
-            defaults: super::parts::Defaults { last_placed: None, last_continuation: None, last_caption: None, wire_potential: None },
+            defaults: super::parts::Defaults::default(),
             asks: super::parts::AppAsks {
                 open_reports: false,
                 agent_access_request: None,
@@ -301,6 +303,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,
@@ -324,7 +327,7 @@ impl Project {
                 tag_high: ecad_electrical::devices::tags::TagHigh::starting_at(std::mem::take(&mut o.tag_high)),
                 designation_uses: ecad_electrical::locations::designations::Uses::default(),
             },
-            defaults: super::parts::Defaults { last_placed: None, last_continuation: None, last_caption: None, wire_potential: None },
+            defaults: super::parts::Defaults::default(),
             asks: super::parts::AppAsks {
                 open_reports: false,
                 agent_access_request: None,

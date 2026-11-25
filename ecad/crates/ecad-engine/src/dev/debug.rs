@@ -502,6 +502,7 @@ impl Project {
             tolerance: self.tolerance,
             hidden_text: self.display.show_hidden_text,
             pending: self.frame.pending,
+            colours: self.display.sheet,
         }
     }
 }

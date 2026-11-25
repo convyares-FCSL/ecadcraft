@@ -111,7 +111,7 @@ pub(crate) fn verify_page_shown(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
     reports: Option<&ReportModels>,
 ) -> Verification {
-    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, 0, reports)
+    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, 0, reports, &ecad_model::palette::sheet::PAPER)
 }
 
 /// [`verify_page_shown`] for a project whose title block marks a pending revision (the frame is
@@ -119,7 +119,7 @@ pub(crate) fn verify_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    sheet: usize, reports: Option<&ReportModels>,
+    sheet: usize, reports: Option<&ReportModels>, colours: &'static ecad_model::palette::Sheet,
 ) -> Verification {
     let mut v = Verification::default();
     let fans = crate::cables::views::drawings_on_page(doc, page, fan, tol);
@@ -127,7 +127,7 @@ pub(crate) fn verify_page_pending(
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
     let mut tees_shown: Vec<(ecad_model::RouteId, Pt)> = Vec::new();
-    let draw = crate::styles::draw::DrawStyles::new(doc);
+    let draw = crate::styles::draw::DrawStyles::new(doc, colours);
     for f in fans.values() {
         for part in &f.parts {
             let e = part_entity(&draw, part, Handle(0));
@@ -149,7 +149,7 @@ pub(crate) fn verify_page_pending(
     for part in crate::references::draw::devices::parts_on_page(doc, page) {
         let mut e = crate::project::device_reference_entity(&draw, &part, Handle(0));
         // A continuation's other-end text in Ink 2, as the page draws it.
-        crate::continuations::draw::colour(doc, &part, &mut e);
+        crate::continuations::draw::colour(doc, &part, &mut e, colours);
         *fan_expected.entry(computed_key(&e)).or_default() += 1;
     }
     // PLC card frames, derived the same way.
@@ -170,7 +170,7 @@ pub(crate) fn verify_page_pending(
     }
     // The sheet frame, derived like the cable parts.
     // Generated pages and Total in sheets come from the same function.
-    let frame_rgb = crate::pages::frame::line_colour(doc, page);
+    let frame_rgb = crate::pages::frame::line_colour(doc, page, colours);
     for part in crate::pages::generated::shown_parts(doc, page, reports, pending, sheet) {
         *fan_expected.entry(computed_key(&crate::pages::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
@@ -178,7 +178,7 @@ pub(crate) fn verify_page_pending(
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
     // A two-colour wire's dashes, derived from its route like the labels.
     let budget = ecad_electrical::cables::words::dash_budget(doc, page);
-    for r in crate::cables::draw::coloured_routes(doc, page, Some(map), crate::cables::draw::projection_sheet()) {
+    for r in crate::cables::draw::coloured_routes(doc, page, Some(map), colours) {
         if !budget.dashed.contains(&r.rep) {
             continue;
         }

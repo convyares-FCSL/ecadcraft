@@ -172,7 +172,8 @@ fn mark(d: &mut Draw, cell: &Cell, r: R) {
 pub(crate) fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendFit) {
     let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
-    let draws = DrawStyles::new(doc);
+    // Sizes and fonts only: the parts take their colours from the frame.
+    let draws = DrawStyles::new(doc, &ecad_model::palette::sheet::PAPER);
     let draw = |kind| ecad_drawing_style::text::fonts::text_draw_of(&draws, kind, input.unit);
     let cover_draw = draw(TextKind::Cover);
     let Layout {

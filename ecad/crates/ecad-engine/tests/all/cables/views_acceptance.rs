@@ -994,6 +994,7 @@ fn ac3_degenerate_reference_routes_fall_back_without_panic() {
             &set,
             1e-6,
             ecad_engine::project::engine_views().report_models(&d).as_ref(),
+            &ecad_model::palette::sheet::PAPER,
         );
         if let Ok((_, map)) = r {
             assert_eq!(map.fan_handles().next().is_some(), !fails, "{name}");

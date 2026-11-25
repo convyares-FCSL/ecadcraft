@@ -186,7 +186,7 @@ pub fn build_in(
     for page in pages {
         let parts = crate::pages::generated::parts_of_pending(doc, *page, reports, pending);
         // A print is on white paper: wire colours for the paper sheet.
-        let (d, map) = crate::cables::draw::with_paper(|| project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts))?;
+        let (d, map) = project_page_framed(doc, *page, &base_drawing(), &HandleMap::default(), fan, tol, &parts, &ecad_model::palette::sheet::PAPER)?;
         for l in &d.layers {
             if scratch.layer(&l.name).is_none() {
                 scratch.layers.push(l.clone());

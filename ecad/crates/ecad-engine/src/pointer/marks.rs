@@ -17,7 +17,7 @@ const CROSSING_PX: f32 = 5.0;
 /// every cable reference point, magenta when linked and red for an orphan, with no end mark on a
 /// wire end that leaves toward a reference. Display only.
 pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
-    // Colours and sizes from `ecad-tokens` by meaning, on the sheet in use. An orphan
+    // Colours and sizes from `ecad-tokens` by meaning, on the sheet the project is shown on. An orphan
     // reference (error) and an end that looks connected (warning) are painted by the app in
     // shapes these marks lack (`draw::painted_marks`); none of them is an entity, so none prints.
     use ecad_model::palette::marker::{CONNECTION_POINT_PX, LOOSE_END_PX, WIRE_END_ATTACHED_PX};
@@ -25,7 +25,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     if p.pages.get(&page).is_none_or(|v| v.unavailable) {
         return Vec::new();
     }
-    let sheet = crate::cables::draw::sheet();
+    let sheet = p.display.sheet;
     let colour = |m: ecad_model::palette::Meaning| crate::cables::draw::rgb(sheet.color(m));
     let doc = p.ledger.document();
     let positions = connection_point_positions(doc, page);

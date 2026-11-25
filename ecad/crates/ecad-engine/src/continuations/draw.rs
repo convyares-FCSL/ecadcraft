@@ -21,11 +21,11 @@ pub fn shown(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<String>) 
 }
 
 /// Colour a drawn continuation part (canvas colours): an
-/// arrow's other-end text in Ink 2 of the sheet the page is projected for, as zone labels, pin
-/// labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
-pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity) {
+/// arrow's other-end text in Ink 2 of `sheet`, the sheet the page is projected for, as zone labels,
+/// pin labels and references are; the bracket and caption stay ByLayer (ink). Other parts unchanged.
+pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity, sheet: &ecad_model::palette::Sheet) {
     if part.index == ecad_electrical::continuations::REF_INDEX && ecad_electrical::continuations::arrow(doc, part.rep).is_some() {
-        let ink2 = crate::cables::draw::projection_sheet().color(ecad_model::palette::Meaning::Ink2);
+        let ink2 = sheet.color(ecad_model::palette::Meaning::Ink2);
         e.common.color = cadcraft_engine::doc::color::Color::True(crate::cables::draw::rgb(ink2));
     }
 }
@@ -60,7 +60,7 @@ mod tests {
             bar: false,
         };
         let h = cadcraft_engine::doc::Handle(0x42);
-        let draw = crate::styles::draw::DrawStyles::new(&ecad_model::Document::default());
+        let draw = crate::styles::draw::DrawStyles::new(&ecad_model::Document::default(), &ecad_model::palette::sheet::PAPER);
         let mut before = crate::devices::draw::text_entity_with(
             "100-B-3",
             Pt::new(1.0, 2.0),
@@ -71,7 +71,7 @@ mod tests {
             ecad_electrical::devices::TAG_LAYER,
         );
         // And in the Reference text style, as every reference text.
-        crate::styles::draw::DrawApply::apply(&draw.0, &mut before, ecad_model::look::TextKind::Reference);
+        crate::styles::draw::DrawApply::apply(&draw, &mut before, ecad_model::look::TextKind::Reference);
         assert_eq!(format!("{:?}", crate::project::device_reference_entity(&draw, &part, h)), format!("{before:?}"));
     }
 }

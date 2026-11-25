@@ -4,8 +4,9 @@
 //! paints what CADCraft's marks cannot: the sheet's surround and shadow, the 5 mm dot grid, the
 //! error and warning markers, the provisional underline, the dashed outlines of a device's other
 //! placements on the page, and the companion leader line. Wire colours are drawing content (they
-//! print in colour mode), so the page's projection draws them for the sheet in use
-//! (`canvassheet`); a picked dash is swapped for its wire here.
+//! print in colour mode), so the page's projection draws them for the sheet the project is shown
+//! on (`canvassheet`, kept in the project's display state); a picked dash is swapped for its wire
+//! here.
 //!
 //! # Semantics
 //! - Everything painted here is overlay: egui shapes over the page, never entities, so none of it
@@ -166,9 +167,14 @@ fn apply_preferences(t: &mut App) {
     let tokens = sheet.tokens();
     t.cad.options.model_background = Some(ecad_widgets::color(tokens.sheet));
     t.cad.options.selection_color = Some(ecad_widgets::color(tokens.selection));
-    // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
-    if (ecad_engine::cables::draw::sheet().sheet == ecad_model::palette::sheet::DARK.sheet) != sheet.is_dark() {
-        let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() }));
+    // The project is projected in the colours of the sheet it is shown on: tell it, and redraw,
+    // on a change. With no page window open there is nothing to redraw; the sheet is kept for the
+    // next page shown.
+    if let Some(p) = t.project.clone()
+        && p.read(&mut t.cad.session, |p, _| *p.display.sheet != *tokens).unwrap_or(false)
+        && t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() })).is_err()
+    {
+        let _ = p.configure(&mut t.cad.session, |p| p.display.sheet = tokens);
     }
     let chrome = t.shell.state.cad_chrome;
     t.cad.ui.show_viewcube = chrome;

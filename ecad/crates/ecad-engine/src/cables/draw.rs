@@ -1,6 +1,7 @@
 //! The engine half of how a cable looks on a page: text measured with the
 //! drafting font CADCraft draws text with ([`font_width`]), the box a reference end's marker covers
-//! ([`marker_box`]), and the canvas: the sheet in use, coloured routes and painted marks.
+//! ([`marker_box`]), and the canvas: the sheet a project is shown on, coloured routes and painted
+//! marks.
 //!
 //! The fan, the marker and the core labels themselves are computed over the document in
 //! [`ecad_electrical::cables::layout`], with [`font_width`] passed in to measure text.
@@ -27,58 +28,6 @@ pub fn marker_box(at: Pt, text: &str, side: FlagSide, h: f64) -> (Pt, Pt) {
 
 // ---------------------------------------------------------------- the canvas
 
-/// The dark sheet is in use: a viewing preference of the person, set by the
-/// app, never stored in the project. Process-wide, as there is one window.
-static DARK_SHEET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Use the dark sheet (`true`) or the paper sheet (`false`, the default) for ECAD's overlay marks.
-pub fn set_dark_sheet(dark: bool) {
-    DARK_SHEET.store(dark, std::sync::atomic::Ordering::Relaxed);
-}
-
-/// The sheet in use: [`ecad_model::palette::sheet::PAPER`] unless [`set_dark_sheet`] chose the dark one.
-pub fn sheet() -> &'static ecad_model::palette::Sheet {
-    if DARK_SHEET.load(std::sync::atomic::Ordering::Relaxed) { &ecad_model::palette::sheet::DARK } else { &ecad_model::palette::sheet::PAPER }
-}
-
-thread_local! {
-    /// A sheet the projection uses instead of the one in use ([`with_paper`]: printing).
-    static PROJECTION_SHEET: std::cell::Cell<Option<&'static ecad_model::palette::Sheet>> = const { std::cell::Cell::new(None) };
-}
-
-/// The sheet a page is projected for: [`sheet`], or paper while [`with_paper`] runs.
-pub(crate) fn projection_sheet() -> &'static ecad_model::palette::Sheet {
-    PROJECTION_SHEET.with(std::cell::Cell::get).unwrap_or_else(sheet)
-}
-
-/// Keeps the sheet [`pin_sheet`] read for this thread until it is dropped.
-#[derive(Debug)]
-pub(crate) struct SheetPin(Option<&'static ecad_model::palette::Sheet>);
-
-impl Drop for SheetPin {
-    fn drop(&mut self) {
-        PROJECTION_SHEET.with(|c| c.set(self.0));
-    }
-}
-
-/// Read the sheet once and keep it for this thread until the pin drops: a page's projection and
-/// its check then agree on every colour. Without it, a sheet switch on another thread
-/// (`canvassheet`, which is process-wide) between the projection and the check made a rebuilt
-/// page fail its check and become unavailable (CI on PR 88, `history_ui`).
-pub(crate) fn pin_sheet() -> SheetPin {
-    let s = projection_sheet();
-    SheetPin(PROJECTION_SHEET.with(|c| c.replace(Some(s))))
-}
-
-/// Run `f` with pages projected for the paper sheet (a print is on white paper, whatever sheet
-/// the screen shows).
-pub(crate) fn with_paper<R>(f: impl FnOnce() -> R) -> R {
-    let before = PROJECTION_SHEET.with(|c| c.replace(Some(&ecad_model::palette::sheet::PAPER)));
-    let r = f();
-    PROJECTION_SHEET.with(|c| c.set(before));
-    r
-}
-
 /// The selection with every wire dash replaced by its wire's route (picking a dash picks the
 /// wire), or `None` when it holds no dash.
 pub fn pick_routes(p: &crate::Project, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> Option<Vec<cadcraft_engine::doc::Handle>> {
@@ -104,8 +53,10 @@ pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
     vec![cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::typed::<CanvassheetParams>).noundo()]
 }
 
-/// The sheet the app shows, for the colours ECAD draws in; the open page is redrawn when it changes. Display
-/// only: nothing is recorded.
+/// The sheet the project is shown on (its display's `sheet`, [`crate::project::Project::display`]), for the
+/// colours ECAD draws in; the open page is redrawn when it changes. Display only: nothing is
+/// recorded, and each project keeps its own (a window and an agent session in one process never
+/// share it).
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CanvassheetParams {
@@ -116,14 +67,16 @@ pub(crate) struct CanvassheetParams {
 impl crate::commands::input::Command for CanvassheetParams {
     fn run(self, s: &mut cadcraft_engine::Session) -> cadcraft_engine::Result<serde_json::Value> {
         let dark = self.dark;
-        let changed = DARK_SHEET.swap(dark, std::sync::atomic::Ordering::Relaxed) != dark;
-        if changed {
-            // The open page only: there is one page window, and a page is projected afresh when shown.
-            let _ = crate::commands::on_any_page(s, |p, pg| {
+        let sheet = if dark { &ecad_model::palette::sheet::DARK } else { &ecad_model::palette::sheet::PAPER };
+        let changed = crate::commands::on_any_page(s, |p, pg| {
+            let changed = *p.display.sheet != *sheet;
+            p.display.sheet = sheet;
+            if changed {
+                // The open page only: there is one page window, and a page is projected afresh when shown.
                 p.redraw_window(pg, Some("canvassheet"));
-                Ok(())
-            });
-        }
+            }
+            Ok(changed)
+        })?;
         Ok(serde_json::json!({"dark": dark, "changed": changed}))
     }
 }

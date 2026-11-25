@@ -33,6 +33,11 @@ pub struct Storage {
 pub struct Display {
     /// Cables shown in fan view; every other cable is traditional.
     pub views: BTreeSet<CableId>,
+    /// The sheet the pages are shown on (paper or dark, `canvassheet`): the colours the page
+    /// window is projected in and the overlay marks are drawn in. A viewing preference of this
+    /// session, per project; a print is projected for paper whatever it is. Paper when a project
+    /// is opened.
+    pub sheet: &'static ecad_model::palette::Sheet,
     /// Show Hidden Text: pages also draw their hidden derived texts, dimmed. Not undoable, never
     /// printed. Off when a project is opened.
     pub show_hidden_text: bool,
@@ -97,7 +102,9 @@ pub(crate) struct Indexes {
     pub(crate) designation_uses: ecad_electrical::locations::designations::Uses,
 }
 
-/// What this session's prompts offer as their defaults.
+/// What this session's prompts offer as their defaults, per project (a window and an agent
+/// session in one process keep their own).
+#[derive(Default)]
 pub struct Defaults {
     /// What the last placement placed (starter, device).
     pub(crate) last_placed: Option<ecad_electrical::commands::run::LastPlaced>,
@@ -107,6 +114,31 @@ pub struct Defaults {
     pub(crate) last_caption: Option<String>,
     /// The Wire tool's potential for new wires; `None` is `auto`.
     pub wire_potential: Option<String>,
+    /// The Location Box and Function Box tools draw a closed polyline (`true`) or a rectangle
+    /// (`false`, the default): the drawing mode last chosen.
+    pub(crate) box_polyline: bool,
+    /// The last location the Location Box tool gave, its next prompt's default.
+    pub(crate) last_location: Option<String>,
+    /// The last function the Function Box tool gave, its next prompt's default.
+    pub(crate) last_function: Option<String>,
+}
+
+impl Defaults {
+    /// The value the box tool of `aspect` last gave (Location Box, Function Box).
+    pub(crate) fn last_box_value(&self, aspect: ecad_electrical::locations::designations::Aspect) -> &Option<String> {
+        match aspect {
+            ecad_electrical::locations::designations::Aspect::Function => &self.last_function,
+            ecad_electrical::locations::designations::Aspect::Location => &self.last_location,
+        }
+    }
+
+    /// [`Defaults::last_box_value`], to change.
+    pub(crate) fn last_box_value_mut(&mut self, aspect: ecad_electrical::locations::designations::Aspect) -> &mut Option<String> {
+        match aspect {
+            ecad_electrical::locations::designations::Aspect::Function => &mut self.last_function,
+            ecad_electrical::locations::designations::Aspect::Location => &mut self.last_location,
+        }
+    }
 }
 
 /// What a command asks of the desktop app, and the app's answers.
