@@ -29,10 +29,15 @@ fn frame(t: &mut App, ctx: &eframe::egui::Context) {
     out.textures_delta.clear();
 }
 
-/// The shared steps: `shown` says whether the surface still waits; a commit lands while the builds
-/// run, the old results are dropped, and the next state's builds are applied one call later.
-fn drive(t: &mut App, refresh: &mut dyn FnMut(&mut App), waiting: &dyn Fn(&mut App) -> bool) {
-    refresh(t);
+/// The shared steps: `start` is the surface's first call, which only starts the builds; `waiting`
+/// says whether the surface still waits; a commit lands while the builds run, the old results are
+/// dropped, and the next state's builds are applied one call later.
+///
+/// The first check follows `start` alone: any later call takes builds that already finished, and
+/// on a busy machine the pool can finish a small project's builds before the test thread runs again.
+fn drive(t: &mut App, start: &mut dyn FnMut(&mut App), refresh: &mut dyn FnMut(&mut App), waiting: &dyn Fn(&mut App) -> bool) {
+    start(t);
+    assert_eq!(t.warm.running(), 2, "both first builds started, none taken");
     assert!(waiting(t), "the first build is running, not done");
     ok(t, r#"place {"at":[100,0],"rotation":90}"#);
     assert!(t.warm.wait(WAIT));
@@ -49,7 +54,7 @@ fn drive(t: &mut App, refresh: &mut dyn FnMut(&mut App), waiting: &dyn Fn(&mut A
 fn the_checks_tab_waits_for_its_first_build_and_drops_a_result_a_commit_overtook() {
     let mut t = new_app();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
-    drive(&mut t, &mut |t| t.refresh_panel(), &|t| t.panel.checks.building);
+    drive(&mut t, &mut |t| t.refresh_panel(), &mut |t| t.refresh_panel(), &|t| t.panel.checks.building);
     assert!(t.panel.checks.copies >= 1, "the rows were copied once built");
 }
 
@@ -80,7 +85,6 @@ fn the_reports_window_waits_for_its_first_build_and_drops_a_result_a_commit_over
 fn the_pre_release_check_waits_for_its_first_build_and_drops_a_result_a_commit_overtook() {
     let mut t = new_app();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
-    t.open_release(None);
     // Once the kept lists are applied, the dialog's own view (its rows sorted and grouped) is
     // built on the pool too: a refresh that started it waits for it and takes it.
     let mut refresh = |t: &mut App| {
@@ -90,5 +94,5 @@ fn the_pre_release_check_waits_for_its_first_build_and_drops_a_result_a_commit_o
             t.refresh_release();
         }
     };
-    drive(&mut t, &mut refresh, &|t| t.dialogs.release.as_ref().is_some_and(|d| d.view.is_none()));
+    drive(&mut t, &mut |t| t.open_release(None), &mut refresh, &|t| t.dialogs.release.as_ref().is_some_and(|d| d.view.is_none()));
 }
