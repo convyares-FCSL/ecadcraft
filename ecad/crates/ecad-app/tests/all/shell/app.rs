@@ -487,7 +487,10 @@ fn the_quick_start_runs_headless() {
         format!("Project \"demo\": 2 pages, file {path}, no unsaved changes."),
         "the status line: project name, page count, file, no unsaved changes"
     );
-    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"), "the page window's title names the project and page");
+    assert!(
+        t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"),
+        "the page's tab (CADCraft's tab strip, shown by the developer switch) names the project and page"
+    );
     assert!(t.cad.session.log.iter().any(|l| l.starts_with("Saved:")));
     let saved = doc(&mut t);
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap();
