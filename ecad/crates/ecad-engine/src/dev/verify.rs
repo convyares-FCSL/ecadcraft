@@ -164,8 +164,9 @@ pub(crate) fn verify_page_pending(
     for (rep, value, at) in ecad_electrical::locations::labels_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::locations::draw::styled_label_entity(doc, &draw, rep, &value, at, Handle(0)))).or_default() += 1;
     }
-    // Wire labels, derived the same way.
-    for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden) {
+    // Wire labels, derived the same way, with the wire categories read once.
+    let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
+    for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden, &draws) {
         *fan_expected.entry(computed_key(&crate::wires::draw::label_entity(&draw, &l, Handle(0)))).or_default() += 1;
     }
     // The sheet frame, derived like the cable parts.
@@ -177,8 +178,8 @@ pub(crate) fn verify_page_pending(
     let mut problems: Vec<String> = Vec::new();
     let entities: HashMap<Handle, &Entity> = drawing.model.iter().map(|e| (e.handle, e.as_ref())).collect();
     // A two-colour wire's dashes, derived from its route like the labels.
-    let budget = ecad_electrical::cables::words::dash_budget(doc, page);
-    for r in crate::cables::draw::coloured_routes(doc, page, Some(map), colours) {
+    let budget = ecad_electrical::cables::words::dash_budget(doc, page, &draws);
+    for r in crate::cables::draw::coloured_routes(doc, page, Some(map), colours, &draws) {
         if !budget.dashed.contains(&r.rep) {
             continue;
         }

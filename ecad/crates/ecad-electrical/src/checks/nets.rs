@@ -151,15 +151,16 @@ pub(crate) fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) ->
     out
 }
 
-/// The checks of conductor `c`: a colour code the app cannot draw.
-pub(crate) fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
+/// The checks of conductor `c`: a colour code the app cannot draw. `draws`: the project's wire
+/// categories, read once by the caller's loop over conductors.
+pub(crate) fn conductor_checks(doc: &Document, draws: &crate::styles::wire::WireDraws, c: WireId) -> Vec<Check> {
     let mut out = Vec::new();
     if !doc.wires().contains_key(&c) {
         return out;
     }
     let which = conductor_words(doc, c);
     // A colour code the app cannot draw is drawn in ink and listed as information.
-    if let Some(code) = crate::cables::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
+    if let Some(code) = crate::cables::words::conductor_colour_in(doc, draws, c).filter(|code| code.list().len() > 2) {
         let (page, at) = conductor_place(doc, c, None);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
     }
@@ -168,7 +169,7 @@ pub(crate) fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
 
 /// The checks of `page` as a whole: the dash budget ([`crate::cables::words::dash_budget`]).
 pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
-    let left = crate::cables::words::dash_budget(doc, page).left_out;
+    let left = crate::cables::words::dash_budget(doc, page, &crate::styles::wire::WireDraws::new(doc)).left_out;
     if left.is_empty() {
         return Vec::new();
     }

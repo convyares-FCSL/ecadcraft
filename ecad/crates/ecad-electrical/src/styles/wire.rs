@@ -427,13 +427,14 @@ pub struct WireDraws {
 }
 
 impl WireDraws {
-    /// Read the categories of `doc`.
+    /// Read the categories of `doc`: one pass over them, so a loop over many wires (a page, a
+    /// report, the checks) builds this once and asks it per wire.
     pub fn new(doc: &Document) -> Self {
         let mut all: BTreeMap<String, Vec<StyleRef>> = BTreeMap::new();
-        for row in ecad_model::registry::styles::rows(doc, &CATALOGUE) {
-            let p = ecad_model::registry::styles::field(doc, &CATALOGUE, &row.id, &FIELDS[0], None);
+        for id in ecad_model::registry::styles::ids(doc, &CATALOGUE) {
+            let p = ecad_model::registry::styles::field(doc, &CATALOGUE, &id, &FIELDS[0], None);
             if let Some(name) = filled(&p) {
-                all.entry(name.trim().to_lowercase()).or_default().push(row.id);
+                all.entry(name.trim().to_lowercase()).or_default().push(id);
             }
         }
         let mut by_potential = BTreeMap::new();
@@ -517,7 +518,8 @@ impl WireDraws {
     }
 }
 
-/// [`WireDraws::draw`] for one conductor (reads the categories once).
+/// [`WireDraws::draw`] for one conductor (reads the categories once): for a reader of a single
+/// wire; a loop over wires builds one [`WireDraws`] and asks it.
 pub fn wire_draw(doc: &Document, c: WireId) -> WireDraw {
     WireDraws::new(doc).draw(doc, c)
 }

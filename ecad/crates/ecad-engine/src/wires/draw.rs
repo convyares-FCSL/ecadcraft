@@ -11,9 +11,12 @@ use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ec
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
 /// members' routes and their labels are not shown), measured with
-/// CADCraft's fonts ([`ecad_electrical::wires::labels::labels_measured`]).
-pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>) -> Vec<WireLabel> {
-    ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &LOOK)
+/// CADCraft's fonts ([`ecad_electrical::wires::labels::labels_measured`]); `draws`: the project's
+/// wire categories, read once for the page.
+pub fn labels_on_page_with(
+    doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, draws: &ecad_electrical::styles::wire::WireDraws,
+) -> Vec<WireLabel> {
+    ecad_electrical::wires::labels::labels_measured(doc, page, hidden, &LOOK, draws)
 }
 
 /// Draw the page's wires and cores in their colour codes: the route entity
@@ -24,10 +27,10 @@ pub fn labels_on_page_with(doc: &Document, page: PageId, hidden: &std::collectio
 /// Derived on every projection of the page, never stored.
 pub(crate) fn colour_routes(
     doc: &Document, page: PageId, d: &mut cadcraft_engine::doc::Drawing, ents: &mut Vec<Entity>, map: &mut crate::project::HandleMap,
-    prev: &crate::project::HandleMap, sheet: &ecad_model::palette::Sheet,
+    prev: &crate::project::HandleMap, sheet: &ecad_model::palette::Sheet, draws: &ecad_electrical::styles::wire::WireDraws,
 ) {
     use cadcraft_engine::doc::color::Color;
-    let routes = crate::cables::draw::coloured_routes(doc, page, Some(map), sheet);
+    let routes = crate::cables::draw::coloured_routes(doc, page, Some(map), sheet, draws);
     if routes.is_empty() {
         return;
     }
@@ -36,7 +39,7 @@ pub(crate) fn colour_routes(
     }
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     // The page's dash budget: past it a two-colour wire keeps its first colour only (Checks says).
-    let budget = ecad_electrical::cables::words::dash_budget(doc, page);
+    let budget = ecad_electrical::cables::words::dash_budget(doc, page, draws);
     let mut dashes = Vec::new();
     for r in routes {
         let Some(route) = r.handle else { continue };
@@ -60,8 +63,10 @@ pub(crate) fn colour_routes(
 /// Draw `page`'s wire routes in their category's line type and
 /// weight where these differ from the built-in (continuous, 0.25 mm), on screen and in print (a
 /// mono print keeps them: they are not colour). `item_handle` finds a route item's entity.
-pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], item_handle: impl Fn(ItemId) -> Option<Handle>) {
-    let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
+pub(crate) fn style_routes(
+    doc: &Document, page: PageId, draws: &ecad_electrical::styles::wire::WireDraws, ents: &mut [Entity],
+    item_handle: impl Fn(ItemId) -> Option<Handle>,
+) {
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for (_, r) in doc.representations_on(page) {
         let Subject::Route(x) = r.subject else { continue };
@@ -103,7 +108,7 @@ pub(crate) fn route_dashes(r: &crate::cables::draw::ColouredRoute, route: &Commo
 
 /// Every conductor label on `page`: one per route, on its longest segment.
 pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
-    labels_on_page_with(doc, page, &std::collections::BTreeSet::new())
+    labels_on_page_with(doc, page, &std::collections::BTreeSet::new(), &ecad_electrical::styles::wire::WireDraws::new(doc))
 }
 
 /// A label as an entity on [`LABEL_LAYER`].

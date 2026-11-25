@@ -178,12 +178,11 @@ pub struct DashBudget {
     pub left_out: Vec<WireId>,
 }
 
-/// The [`DashBudget`] of `page`.
-pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
+/// The [`DashBudget`] of `page`, with the project's wire categories `draws` read once for the page.
+pub fn dash_budget(doc: &Document, page: PageId, draws: &crate::styles::wire::WireDraws) -> DashBudget {
     let (on, off) = (f64::from(ecad_model::palette::wire::DASH_ON_MM), f64::from(ecad_model::palette::wire::DASH_OFF_MM));
     let mut out = DashBudget::default();
     let mut total: usize = 0;
-    let draws = crate::styles::wire::WireDraws::new(doc);
     // Each route on the page (the page index), in the colour of the wire it stands for.
     for route in doc.routes_on(page) {
         let (Some(points), Some((rep, _, _)), Some(c)) = (
@@ -194,7 +193,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
             continue;
         };
         // Only two-colour codes have dashes.
-        let Some(code) = conductor_colour_in(doc, &draws, c) else { continue };
+        let Some(code) = conductor_colour_in(doc, draws, c) else { continue };
         if code.list().len() != 2 {
             continue;
         }

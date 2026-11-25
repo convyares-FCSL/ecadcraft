@@ -11,7 +11,12 @@
 //! - A continuation is a tagless component made from the starter definition `continuation`,
 //!   with one connection point keyed `1`.
 //! - Labels use the project's label height and colour style (wiring settings) and are placed so
-//!   none touches another label or another wire (`labels_on_page_with`).
+//!   none touches another label or another wire (`labels_on_page_with`). Each place tried looks
+//!   only at the lines and labels filed near it (`label_grid`), so laying out a page grows with
+//!   its labels, not with their square.
+//! - A page's wires read the project's wire categories once for the whole page
+//!   ([`crate::styles::wire::WireDraws`], passed to every per-wire loop), so the size of the
+//!   category table costs nothing per wire.
 //!
 //! # Update map of the labels
 //! | Change | Labels |
@@ -33,6 +38,7 @@
 pub mod commands;
 pub mod hover;
 pub mod joining;
+pub(crate) mod label_grid;
 pub mod label_rule;
 pub mod labels;
 pub mod placing;

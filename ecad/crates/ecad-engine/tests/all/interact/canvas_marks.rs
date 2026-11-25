@@ -116,7 +116,8 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     let (mut h, w) = colour_page(0x40_0002, "GNYE");
     let page = h.first_page();
     let doc = h.doc();
-    let routes = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
+    let routes =
+        h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER, &ecad_electrical::styles::wire::WireDraws::new(&doc)));
     let r = routes.iter().find(|r| r.conductor == w).expect("the GNYE wire is coloured");
     assert_eq!((r.colours.solid, r.colours.dashes), (ecad_model::palette::wire::PE.paper.solid, ecad_model::palette::wire::PE.paper.dashes));
     assert!(r.handle.is_some(), "drawn on the page");
@@ -172,7 +173,11 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
 fn route_colour(h: &mut H, w: WireId) -> Option<Color> {
     let page = h.first_page();
     let doc = h.doc();
-    let handle = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER)).iter().find(|r| r.conductor == w)?.handle?;
+    let handle = h
+        .p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER, &ecad_electrical::styles::wire::WireDraws::new(&doc)))
+        .iter()
+        .find(|r| r.conductor == w)?
+        .handle?;
     h.pv(|p, pg| pg.entities_of(p, page)).iter().find(|e| e.handle == handle).map(|e| e.common.color)
 }
 
@@ -316,7 +321,7 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
         h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "GNYE"})).unwrap();
     }
     let doc = h.doc();
-    let budget = ecad_electrical::cables::words::dash_budget(&doc, page);
+    let budget = ecad_electrical::cables::words::dash_budget(&doc, page, &ecad_electrical::styles::wire::WireDraws::new(&doc));
     assert_eq!((budget.dashed.len(), budget.left_out.len()), (5, 2), "{budget:?}");
     assert!(budget.left_out.contains(wires.last().unwrap()), "the 100 km wire is left out");
     let ents = h.pv(|p, pg| pg.entities_of(p, page));

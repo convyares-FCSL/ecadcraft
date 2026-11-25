@@ -537,7 +537,7 @@ impl ReportModels {
         let net = conn.net_of_conductor(w).and_then(|id| conn.net(id));
         let pot = net.map(|n| ecad_model::connectivity::wiring::net_potential(doc, n));
         // The wire's category gives what the wire has none of its own.
-        let draw = crate::styles::wire::wire_draw(doc, w);
+        let draw = cx.draws.draw(doc, w);
         let cross_section = draw.cross_section.as_ref().map(|v| v.0.clone());
         let colour = draw.colour.as_ref().map(|v| v.0.to_string());
         let colour_own = draw.colour.as_ref().is_some_and(|v| v.1 == ecad_model::registry::Source::Object);

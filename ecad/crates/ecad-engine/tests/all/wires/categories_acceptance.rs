@@ -56,7 +56,8 @@ fn label(h: &mut H, page: PageId, c: WireId) -> Option<String> {
 /// The colour `c`'s route is drawn in on screen (`None`: ink).
 fn route_colour(h: &mut H, page: PageId, c: WireId) -> Option<Color> {
     let doc = h.doc();
-    let routes = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
+    let routes =
+        h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER, &ecad_electrical::styles::wire::WireDraws::new(&doc)));
     routes.iter().find(|r| r.conductor == c).map(|r| Color::True(crate::styles::acceptance::rgb(r.colours.solid)))
 }
 
@@ -566,4 +567,59 @@ fn b_users_of_a_category() {
     let r = rows.iter().find(|r| s(&r["id"]) == "dc24").unwrap();
     assert_eq!((r["users"]["explicit"].as_u64(), r["users"]["implicit"].as_u64()), (Some(1), Some(2)), "{r}");
     let _ = style_row(&mut h, "wire", "dc24");
+}
+
+/// A page drawn in a project with 800 wire categories: each wire is drawn in its own category's
+/// colour and labelled, and the page agrees with the document. The page reads the category table
+/// once for all its wires, so the table's size costs nothing per wire.
+#[test]
+fn a_page_draws_its_wires_in_their_categories_among_800() {
+    const CODES: [&str; 4] = ["BU", "RD", "GN", "BN"];
+    let mut h = H::new(0xB1_0800);
+    let page = h.first_page();
+    // Four categories through `setstyle`, then 796 copies of them as one edit (800 commands
+    // would make the test long, not the page).
+    let mut ids: Vec<String> =
+        CODES
+            .iter()
+            .enumerate()
+            .map(|(i, code)| {
+                let fields = json!({"colours": code, "size": format!("{i}.5")});
+                s(&h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": fields}))
+                    .unwrap()["id"])
+            })
+            .collect();
+    let first: Vec<ecad_model::StyleRef> = ids.iter().map(|x| ecad_model::StyleRef::parse(x).expect("an own style")).collect();
+    let ops: Vec<Op> = h.cfg(|p| {
+        (CODES.len()..800)
+            .map(|i| {
+                let of = &first[i % CODES.len()];
+                let rec =
+                    ecad_model::registry::styles::record(p.ledger.document(), ecad_model::StyleLayer::Project, ecad_model::StyleCatalogue::Wire, of)
+                        .expect("made above");
+                let id = ecad_model::StyleRef::Own(p.ids.fresh::<u128>());
+                let after = Some(ecad_model::objects::styles::StyleRecord::new(format!("C{i}"), rec.body.clone()));
+                Op::SetStyle { layer: ecad_model::StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Wire, id, before: None, after }
+            })
+            .collect()
+    });
+    for op in &ops {
+        if let Op::SetStyle { id, .. } = op {
+            ids.push(id.text());
+        }
+    }
+    h.cfg(|p| p.ledger.commit(ecad_model::Author::User, "Categories", ops)).unwrap();
+    h.check();
+    let wires: Vec<(WireId, &str)> = (0..40)
+        .map(|k| {
+            let w = wire_at(&mut h, f64::from(k) * 8.0, None);
+            let i = k as usize * 20 + 3;
+            h.run("category", json!({"conductor": w.hex(), "value": ids[i]})).unwrap();
+            (w, CODES[i % CODES.len()])
+        })
+        .collect();
+    for (w, code) in &wires {
+        assert_eq!(route_entity(&mut h, page, *w).common.color, code_colour(code), "{w:?} in its category's colour");
+        assert!(label(&mut h, page, *w).is_some(), "{w:?} is labelled");
+    }
 }

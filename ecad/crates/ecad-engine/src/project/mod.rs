@@ -451,10 +451,12 @@ pub(crate) fn project_page_kept(
         ents.push(e);
         map.insert_item(id, h);
     }
+    // The project's wire categories, read once for every wire of the page.
+    let draws = ecad_electrical::styles::wire::WireDraws::new(doc);
     // Wires and cores in their colours, two-colour ones with dashes (wires.rs).
-    crate::wires::draw::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev, colours);
+    crate::wires::draw::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev, colours, &draws);
     // Wire routes in their category's line type and weight.
-    crate::wires::draw::style_routes(doc, page, &mut ents, |i| map.item(i));
+    crate::wires::draw::style_routes(doc, page, &draws, &mut ents, |i| map.item(i));
     // Location box outlines in their location style.
     crate::locations::draw::style_boxes(doc, page, &mut ents, |i| map.item(i), colours);
     let mut groups = Vec::new();
@@ -572,7 +574,7 @@ pub(crate) fn project_page_kept(
     // Wire labels: derived on every draw of the page, never stored.
     // A cable in fan view hides its members' routes, and their labels with them:
     // display only, nothing is written.
-    for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden) {
+    for l in crate::wires::draw::labels_on_page_with(doc, page, &hidden, &draws) {
         if let Some(f) = l.own.as_ref().and_then(|o| o.family.as_deref()) {
             crate::styles::draw::install_family(&mut d, doc, f);
         }

@@ -343,6 +343,19 @@ pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
     out
 }
 
+/// The IDs of [`rows`], without their names or order: for a reader that looks every style up by
+/// ID, so reading them costs one pass over the records.
+pub fn ids(doc: &Document, cat: &Catalogue) -> Vec<StyleRef> {
+    let mut out: Vec<StyleRef> = cat.builtins.iter().map(|b| StyleRef::Builtin(b.id.to_string())).collect();
+    out.extend(records(doc, StyleLayer::Standard, cat.catalogue).filter(|(id, _)| cat.builtin(id).is_none()).map(|(id, _)| id.clone()));
+    out.extend(
+        records(doc, StyleLayer::Project, cat.catalogue)
+            .filter(|(id, _)| cat.builtin(id).is_none() && record(doc, StyleLayer::Standard, cat.catalogue, id).is_none())
+            .map(|(id, _)| id.clone()),
+    );
+    out
+}
+
 /// How many objects use a style.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Count {

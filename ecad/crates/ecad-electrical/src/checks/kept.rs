@@ -53,8 +53,9 @@ impl Checks {
                 ch.unnumbered.insert(id);
             }
         }
+        let draws = crate::styles::wire::WireDraws::new(doc);
         for c in doc.wires().keys() {
-            let v = conductor_checks(doc, *c);
+            let v = conductor_checks(doc, &draws, *c);
             ch.set(Key::Wire(*c), v);
         }
         for r in doc.routes().keys() {
@@ -232,9 +233,12 @@ impl Checks {
                 }
             }
         }
-        for c in &scope.wires {
-            let v = conductor_checks(doc, *c);
-            self.set(Key::Wire(*c), v);
+        if !scope.wires.is_empty() {
+            let draws = crate::styles::wire::WireDraws::new(doc);
+            for c in &scope.wires {
+                let v = conductor_checks(doc, &draws, *c);
+                self.set(Key::Wire(*c), v);
+            }
         }
         for r in &routes {
             let v = route_checks(doc, *r, &self.grid, tol);

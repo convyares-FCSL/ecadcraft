@@ -65,8 +65,7 @@ fn reading_angle(a: Pt, b: Pt) -> f64 {
     theta
 }
 
-/// An axis-aligned box `(lo, hi)`.
-type Bbox = (Pt, Pt);
+use crate::wires::label_grid::{Bbox, Grid, grown};
 
 /// The box round a label's text: baseline centre `at`, angle `theta`, width `w`, height `h`.
 fn text_box(at: Pt, theta: f64, w: f64, h: f64) -> Bbox {
@@ -142,7 +141,9 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
 /// Labels are placed in route order. Each takes the first place (`candidates`) where its box
 /// keeps [`LABEL_CLEARANCE`] from the labels already placed and from every other wire on the
 /// page; failing that, the first place clear of labels; failing that, the first place.
-pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn Look) -> Vec<WireLabel> {
+pub fn labels_measured(
+    doc: &Document, page: PageId, hidden: &std::collections::BTreeSet<ItemId>, m: &dyn Look, draws: &crate::styles::wire::WireDraws,
+) -> Vec<WireLabel> {
     // The wire label height, weight and width through the text styles.
     let style = m.text_style(doc, ecad_model::look::TextKind::WireLabel);
     let h = style.height;
@@ -164,7 +165,6 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     let mut texts: Vec<(usize, ecad_model::connectivity::wiring::Label)> = Vec::new();
     // Each wire's category gives its label's cross-section and
     // colour and its label rule.
-    let draws = crate::styles::wire::WireDraws::new(doc);
     let mut rules: Vec<String> = Vec::new();
     for (i, (rid, c, v)) in routes.iter().enumerate() {
         let Some((a, b)) = longest_segment(v) else { continue };
@@ -200,7 +200,17 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     }
     chosen_ix.sort_unstable();
     let chosen: Vec<(usize, ecad_model::connectivity::wiring::Label)> = chosen_ix.into_iter().filter_map(|k| texts.get(k).cloned()).collect();
-    let mut placed: Vec<Bbox> = Vec::new();
+    // The page's line segments and the labels placed so far, by cell: a place tried for a label
+    // is checked against what lies near it only.
+    let mut segments: Grid<(usize, Pt, Pt)> = Grid::default();
+    for (k, (_, _, v)) in routes.iter().enumerate() {
+        for s in v.windows(2) {
+            if let (Some(p), Some(q)) = (s.first(), s.get(1)) {
+                segments.insert((Pt::new(p.x.min(q.x), p.y.min(q.y)), Pt::new(p.x.max(q.x), p.y.max(q.y))), (k, *p, *q));
+            }
+        }
+    }
+    let mut placed: Grid<Bbox> = Grid::default();
     let mut out = Vec::new();
     for (i, label) in chosen {
         let Some((rid, c, v)) = routes.get(i) else { continue };
@@ -220,14 +230,16 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
             None => m.family_width(doc, None, style, &label.text),
         };
         let w = if w.is_finite() && w > 0.0 { w } else { label.text.chars().count() as f64 * h * 0.8 };
-        let others = || routes.iter().filter(|(r, _, _)| r != rid).flat_map(|(_, _, v)| v.windows(2));
         let tried: Vec<(Pt, Bbox)> = candidates(a, b, w, h).into_iter().filter(|p| p.is_finite()).map(|p| (p, text_box(p, theta, w, h))).collect();
-        let clear_of_labels = |bx: &Bbox| placed.iter().all(|q| !boxes_meet(bx, q, LABEL_CLEARANCE));
+        // Both tests need the boxes to meet within the clearance, so looking only at what is filed
+        // near the box grown by it finds every label and line that could touch.
+        let clear_of_labels = |bx: &Bbox| placed.near(&grown(bx, LABEL_CLEARANCE)).into_iter().all(|q| !boxes_meet(bx, q, LABEL_CLEARANCE));
         let clear_of_wires = |bx: &Bbox| {
-            others().all(|s| match (s.first(), s.get(1)) {
-                (Some(p), Some(q)) => !segment_meets(bx, *p, *q, LABEL_CLEARANCE / 2.0),
-                _ => true,
-            })
+            segments
+                .near(&grown(bx, LABEL_CLEARANCE / 2.0))
+                .into_iter()
+                .filter(|(k, _, _)| routes.get(*k).is_some_and(|(r, _, _)| r != rid))
+                .all(|(_, p, q)| !segment_meets(bx, *p, *q, LABEL_CLEARANCE / 2.0))
         };
         let pick = tried
             .iter()
@@ -235,7 +247,7 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
             .or_else(|| tried.iter().find(|(_, bx)| clear_of_labels(bx)))
             .or_else(|| tried.first());
         let Some((at, bx)) = pick else { continue };
-        placed.push(*bx);
+        placed.insert(*bx, *bx);
         out.push(WireLabel {
             conductor: *c,
             rep: *rid,

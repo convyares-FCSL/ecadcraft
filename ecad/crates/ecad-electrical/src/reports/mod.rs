@@ -55,16 +55,21 @@ fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
     v.map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty())
 }
 
-/// Each page's position in the book and shown number, worked out once per build or update
-/// (O(pages)), so a wire's places never read the book order again.
+/// Each page's position in the book and shown number, and the project's wire categories, worked
+/// out once per build or update (O(pages + categories)), so a wire's row never reads the book
+/// order or the category table again.
 pub struct PageCx {
     pages: std::collections::HashMap<PageId, (usize, String)>,
+    pub(crate) draws: crate::styles::wire::WireDraws,
 }
 
 impl PageCx {
     pub fn of(doc: &Document) -> PageCx {
         let b = ecad_model::document::book::Book::of(doc);
-        PageCx { pages: b.order.iter().enumerate().map(|(i, p)| (*p, (i, b.number(doc, *p)))).collect() }
+        PageCx {
+            pages: b.order.iter().enumerate().map(|(i, p)| (*p, (i, b.number(doc, *p)))).collect(),
+            draws: crate::styles::wire::WireDraws::new(doc),
+        }
     }
     fn pos(&self, p: PageId) -> usize {
         self.pages.get(&p).map_or(usize::MAX, |x| x.0)
