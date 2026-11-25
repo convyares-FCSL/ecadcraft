@@ -1,0 +1,12 @@
+# Where a symbol's texts go: tag runs, the tag gap, line pitch, clearance from wires.
+# Built-in defaults. Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"text.run.align" = 1.0
+"text.run.gap" = 15.0
+"text.tag.gap" = 0.6
+"text.line_pitch" = 1.25
+"text.wire_clearance" = 0.3

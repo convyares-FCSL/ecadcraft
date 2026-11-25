@@ -1,4 +1,4 @@
-//! The demo project (`cargo xtask demo`, owner request of 2026-11-08): a small control panel
+//! The demo project (`cargo xtask demo`): a small control panel
 //! built from a checked-in list of commands (`ecad/examples/demo/commands.jsonl`) through the
 //! same `execute` tool an MCP client uses, so the demo is rebuilt from source whenever the model or
 //! the file format changes and never goes stale.
@@ -33,7 +33,7 @@ pub fn run(mcp: &mut EcadMcp, script: &str) -> Result<usize, String> {
     mcp.handle(init).ok_or("the server did not answer initialize")?;
     mcp.handle(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
     let page1 = mcp
-        .with_session(|s, p| p.read(s, |p, _| p.ledger.document().page_order.first().map(|x| x.hex())))?
+        .with_session(|s, p| p.read(s, |p, _| p.ledger.document().page_order().first().map(|x| x.hex())))?
         .map_err(|e| e.to_string())?
         .ok_or("the project has no page")?;
     let mut vars: Map<String, Value> = Map::new();

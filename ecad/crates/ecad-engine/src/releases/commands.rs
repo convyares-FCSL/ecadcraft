@@ -1,0 +1,104 @@
+//! The release commands (`prerelease`, `release`); the release itself is [`crate::releases::release`].
+//!
+//! Both read their input through a params struct, so a parameter that does not read is
+//! refused at the edge in the uniform wording. The release (engine work: the checks, the reports,
+//! the files it writes) still takes its options as JSON: the shim writes the read parameters back
+//! (`serde_json::to_value`) and hands them over, and the release's own refusals keep their words.
+
+use cadcraft_engine::{CommandSpec, Session};
+use ecad_electrical::CmdError;
+use ecad_electrical::commands::input::Said;
+use ecad_electrical::defaults::print::PrintColour;
+use ecad_electrical::releases::release::{Accept, Existing, Provisional};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::commands::input::{Command, Typed};
+use crate::commands::{err, on_any_page, on_project};
+use crate::releases::release::{prerelease, release_issued, release_pending};
+
+/// The commands of this module with a typed input.
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<PrereleaseParams>("prerelease"), Typed::of::<ReleaseParams>("release")];
+
+/// The commands this module adds.
+pub(crate) fn specs() -> Vec<CommandSpec> {
+    vec![
+        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::typed::<PrereleaseParams>).noundo(),
+        CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>).noundo(),
+    ]
+}
+
+/// The read parameters as the release takes them.
+fn as_json<P: Serialize>(p: &P) -> cadcraft_engine::Result<Value> {
+    serde_json::to_value(p).map_err(|e| err(e.to_string()))
+}
+
+/// The pre-release check of the pending revision, or of an issued one. Read only.
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PrereleaseParams {
+    /// An issued revision (default the pending one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rev: Option<String>,
+    /// Rows per group (50, at most 2000).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    limit: Option<u64>,
+    /// Errors: the check's errors are accepted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accept: Option<Accept>,
+}
+
+impl Command for PrereleaseParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let params = as_json(&self)?;
+        on_any_page(s, |p, _| prerelease(p, &params).map_err(CmdError::refused))
+    }
+}
+
+/// Issues the pending revision and writes its release folder, or with `rev` writes an issued revision's folder
+/// again (recording nothing).
+#[derive(Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ReleaseParams {
+    /// An issued revision to write again (default: issue the pending one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rev: Option<String>,
+    /// The folder to write (default the project's release folder for the revision).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    folder: Option<String>,
+    /// The lists to write, by slot name (default all).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reports: Option<Vec<String>>,
+    /// Errors: release although the check found errors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    accept: Option<Accept>,
+    /// Provisional items: finalise (number them first) or issue (issue as they are).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provisional: Option<Provisional>,
+    /// When the folder exists: add the missing files, replace it, or keep both.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    existing: Option<Existing>,
+    /// Mono or colour (also `color` or `screen`; default the project's print setting).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    colour: Option<Said<PrintColour>>,
+    /// Draw lines with their weights (default true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lineweights: Option<bool>,
+}
+
+impl Command for ReleaseParams {
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+        let params = as_json(&self)?;
+        match self.rev {
+            Some(r) => {
+                let v = on_any_page(s, |p, _| release_issued(p, &params, &r, &mut |_, _| true).map_err(CmdError::refused))?;
+                if let Some(m) = v.get("message").and_then(Value::as_str) {
+                    s.echo(m.to_string());
+                }
+                Ok(v)
+            }
+            None => on_project(s, |p, pg, _| release_pending(p, pg, &params, &mut |_, _| true).map_err(CmdError::refused)),
+        }
+    }
+}

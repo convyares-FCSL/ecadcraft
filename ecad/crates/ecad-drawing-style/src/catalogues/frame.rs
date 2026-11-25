@@ -1,0 +1,211 @@
+//! The title block and frame style catalogue (`frame`).
+//!
+//! The built-in `sheet` ("Schematic sheet") is the house block: the frame at
+//! 0.5 mm, inner lines and grid at 0.25 mm, in ink, with grid labels on all four sides and centre
+//! marks. Its title block is computed for the page's sheet (`crate::title_blocks::house`). An own
+//! frame carries its block as the record's body and may set the sheet it is drawn for, and
+//! its margins: `ecad_model::document::sheet` reads those, so every page, reference and zone agrees.
+//! The title block's texts keep their own text-style choices.
+
+use ecad_model::document::sheet::{parse_frame_sheet, parse_margins};
+use ecad_model::geometry::units::Mm;
+use ecad_model::look::FrameDraw;
+use ecad_model::objects::styles::FrameStyle;
+use ecad_model::objects::styles::frame::{BlockAt, FrameMargins, FrameSheet};
+use ecad_model::objects::styles::text::StyleColour;
+use ecad_model::{Document, PageId, StyleRef, Word};
+
+use ecad_electrical::CmdError;
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Builtin, Catalogue, Field};
+use ecad_model::registry::{Kind, Value};
+
+/// The `sheet` field's word for "the page's own sheet".
+pub(crate) const PAGE_SHEET: &str = "page";
+
+fn sheet_ok(s: &str) -> bool {
+    s == PAGE_SHEET || parse_frame_sheet(s).is_some()
+}
+
+fn margins_ok(s: &str) -> bool {
+    parse_margins(s).is_some()
+}
+
+static FIELDS: [Field; 8] = [
+    Field {
+        key: "border_weight",
+        label: "Border weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "inner_weight",
+        label: "Inner line weight",
+        kind: Kind::Length { min: 0.13, max: 2.11 },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "line_colour",
+        label: "Line colour",
+        kind: Kind::Parsed { max_chars: 16, parse: crate::catalogues::is_colour },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    // The sheet the frame is drawn for (`page`: the page's own), its margins,
+    // its centre marks and where its block sits. The old `title_block` choice is retired: a
+    // stored value is listed as unknown.
+    Field {
+        key: "sheet",
+        label: "Sheet",
+        kind: Kind::Parsed { max_chars: 48, parse: sheet_ok },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field {
+        key: "margins",
+        label: "Margins",
+        kind: Kind::Parsed { max_chars: 48, parse: margins_ok },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    Field { key: "centre_marks", label: "Centre marks", kind: Kind::Flag, slot: Slot::new(&crate::defaults::data::DATA), over: None },
+    Field {
+        key: "block",
+        label: "Block position",
+        kind: Kind::Choice(<BlockAt as ecad_model::Word>::WORDS),
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+];
+
+static BUILTINS: [Builtin; 1] = [Builtin { id: "sheet", name: "Schematic sheet", slot: Slot::new(&crate::defaults::data::DATA) }];
+
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
+    vec![&crate::defaults::styles::FRAME]
+}
+
+/// The frame style catalogue.
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Frame,
+    plural: "Frames",
+    one: "Frame style",
+    fields: &FIELDS,
+    builtins: &BUILTINS,
+    choices,
+    project_field: None,
+    body,
+    typed: None,
+    adjust: None,
+    set: set_body,
+    implicit,
+    reach: ecad_model::registry::styles::no_reach,
+};
+
+/// The value field `key` of a frame style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Frame(t) => get(t, key),
+        _ => None,
+    }
+}
+
+fn weight(mm: f64) -> u16 {
+    (mm * 100.0).round().clamp(0.0, 211.0) as u16
+}
+
+/// The frame look of `page`: its frame (`ecad_model::document::sheet::frame_style`, the one resolver: page,
+/// page type, project, standard, built-in), with zones off when its page type turns them off.
+pub fn frame_draw(doc: &Document, page: PageId) -> FrameDraw {
+    let id = ecad_model::document::sheet::frame_style(doc, page);
+    let mut draw = draw_of(doc, &id);
+    draw.zones = ecad_model::document::sheet::page_type_zones(doc, page).unwrap_or(true);
+    draw
+}
+
+/// The look of frame style `id`.
+pub(crate) fn draw_of(doc: &Document, id: &StyleRef) -> FrameDraw {
+    let f = |k: &str| ecad_model::registry::styles::field_of(doc, &crate::catalogues::frame::CATALOGUE, id, k, None);
+    FrameDraw {
+        border: weight(f("border_weight").map_or(0.5, |r| r.number())),
+        inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),
+        colour: f("line_colour").map_or_else(|| "none".to_string(), |r| r.text()),
+        grid_labels: f("grid_labels").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false)),
+        centre_marks: f("centre_marks").is_none_or(|r| ecad_model::naming::words::flag(r.word()) != Some(false)),
+        // Own frames are drawn for one sheet, as made.
+        block: if id.is_builtin() && f("block").and_then(|r| <BlockAt as ecad_model::Word>::parse(r.word())) != Some(BlockAt::BottomRight) {
+            BlockAt::BottomFull
+        } else {
+            BlockAt::BottomRight
+        },
+        margins: f("margins").and_then(|r| parse_margins(&r.text())).unwrap_or_default(),
+        zones: true,
+    }
+}
+
+/// The value of field `key` that `f` sets, if it sets one.
+pub fn get<'a>(f: &'a FrameStyle, key: &str) -> Option<Value<'a>> {
+    match key {
+        "border_weight" => f.border_weight.map(|v| Value::Length(v.0)),
+        "inner_weight" => f.inner_weight.map(|v| Value::Length(v.0)),
+        "line_colour" => f.line_colour.map(Value::Colour),
+        "grid_labels" => f.grid_labels.map(Value::Flag),
+        "sheet" => f.sheet.map(|v| match v {
+            FrameSheet::Page => Value::Text(PAGE_SHEET),
+            FrameSheet::Sheet(s) => Value::Sheet(s),
+        }),
+        "margins" => f.margins.map(|m| Value::Margins(m.0)),
+        "centre_marks" => f.centre_marks.map(Value::Flag),
+        "block" => f.block.map(|v| Value::Choice(v.word())),
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `f` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(f: &mut FrameStyle, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    let mm = |v: &str| v.trim().parse::<f64>().ok().filter(|x| x.is_finite()).map(Mm).ok_or_else(|| bad("a length"));
+    let flag = |v: &str| ecad_model::naming::words::flag(v).ok_or_else(|| bad("yes or no"));
+    match (key, value) {
+        ("border_weight", None) => f.border_weight = None,
+        ("inner_weight", None) => f.inner_weight = None,
+        ("line_colour", None) => f.line_colour = None,
+        ("grid_labels", None) => f.grid_labels = None,
+        ("sheet", None) => f.sheet = None,
+        ("margins", None) => f.margins = None,
+        ("centre_marks", None) => f.centre_marks = None,
+        ("block", None) => f.block = None,
+        ("border_weight", Some(v)) => f.border_weight = Some(mm(v)?),
+        ("inner_weight", Some(v)) => f.inner_weight = Some(mm(v)?),
+        ("line_colour", Some(v)) => f.line_colour = Some(StyleColour::parse(v).ok_or_else(|| bad("none, a colour code or #rrggbb"))?),
+        ("grid_labels", Some(v)) => f.grid_labels = Some(flag(v)?),
+        ("sheet", Some(v)) => f.sheet = Some(FrameSheet::parse(v).ok_or_else(|| bad("page or a sheet"))?),
+        ("margins", Some(v)) => f.margins = Some(FrameMargins(parse_margins(v).ok_or_else(|| bad("four margins l,r,b,t"))?)),
+        ("centre_marks", Some(v)) => f.centre_marks = Some(flag(v)?),
+        ("block", Some(v)) => f.block = Some(Word::parse(v).ok_or_else(|| bad("bottom_full or bottom_right"))?),
+        _ => return Err(CmdError::refused(format!("Frames have no field {key:?}."))),
+    }
+    Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::Frame(x) => set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string())),
+        other => Err(ecad_electrical::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}
+
+/// Pages with no frame of their own when the project's choice is `id`.
+fn implicit(doc: &Document, entry: &ecad_model::registry::Entry, id: &StyleRef) -> usize {
+    if ecad_model::registry::styles::chosen(doc, entry, ecad_model::registry::Scope::project()) != *id {
+        return 0;
+    }
+    doc.pages().values().filter(|p| !ecad_model::registry::styles::chooses(doc, entry, &p.display)).count()
+}

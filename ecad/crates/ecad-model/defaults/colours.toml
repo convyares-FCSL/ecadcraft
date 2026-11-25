@@ -1,0 +1,88 @@
+# The forms of each conductor base colour. One table per colour, keyed by the
+# colour's identity in `ConductorColour` (snake case). The 2-letter codes are IEC 60757's and are
+# what a project stores; the 3-letter codes, names and display hex values are ECAD's own choice.
+# The hex is for display only (swatches); drawings print the words.
+
+[black]
+name = "Black"
+code2 = "BK"
+code3 = "BLK"
+hex = "#000000"
+
+[brown]
+name = "Brown"
+code2 = "BN"
+code3 = "BRN"
+hex = "#8B4513"
+
+[red]
+name = "Red"
+code2 = "RD"
+code3 = "RED"
+hex = "#E00000"
+
+[orange]
+name = "Orange"
+code2 = "OG"
+code3 = "ORG"
+hex = "#FF8C00"
+
+[yellow]
+name = "Yellow"
+code2 = "YE"
+code3 = "YEL"
+hex = "#FFD700"
+
+[green]
+name = "Green"
+code2 = "GN"
+code3 = "GRN"
+hex = "#008000"
+
+[blue]
+name = "Blue"
+code2 = "BU"
+code3 = "BLU"
+hex = "#0000FF"
+
+[violet]
+name = "Violet"
+code2 = "VT"
+code3 = "VIO"
+hex = "#8A2BE2"
+
+[grey]
+name = "Grey"
+code2 = "GY"
+code3 = "GRY"
+hex = "#808080"
+
+[white]
+name = "White"
+code2 = "WH"
+code3 = "WHT"
+hex = "#FFFFFF"
+
+[pink]
+name = "Pink"
+code2 = "PK"
+code3 = "PNK"
+hex = "#FF69B4"
+
+[gold]
+name = "Gold"
+code2 = "GD"
+code3 = "GLD"
+hex = "#D4AF37"
+
+[turquoise]
+name = "Turquoise"
+code2 = "TQ"
+code3 = "TRQ"
+hex = "#40E0D0"
+
+[silver]
+name = "Silver"
+code2 = "SR"
+code3 = "SLV"
+hex = "#C0C0C0"

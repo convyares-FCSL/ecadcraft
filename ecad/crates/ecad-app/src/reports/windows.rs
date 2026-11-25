@@ -1,0 +1,394 @@
+//! Reports, Print Book and Release.
+
+use crate::shell;
+use crate::shell::app::*;
+use ecad_model::PageId;
+use eframe::egui::{self};
+use serde_json::json;
+
+impl App {
+    /// Open the Reports window.
+    /// Open Reports and show it: in Lists, or beside the page when Draw's companion is open.
+    pub fn reports_view(&mut self) {
+        self.open_reports();
+        self.shell.lists = shell::ListsView::Reports;
+        if !(self.shell.state.workspace == shell::Workspace::Draw && self.shell.state.companion.is_some()) {
+            self.set_workspace(shell::Workspace::Lists);
+        }
+    }
+
+    /// Show Publish on `tab`.
+    pub fn publish_view(&mut self, tab: shell::PublishTab) {
+        self.shell.publish = tab;
+        self.set_workspace(shell::Workspace::Publish);
+    }
+
+    pub fn open_reports(&mut self) {
+        if self.dialogs.reports.is_none() {
+            let stem = self.report_stem();
+            let mut r = crate::reports::panel::Reports::default();
+            r.stem = stem;
+            self.dialogs.reports = Some(r);
+        }
+    }
+
+    /// Open the Print Book dialog, scoped to `folder` when given.
+    pub fn open_print_book(&mut self, folder: Option<ecad_model::FolderId>) {
+        let Some(p) = self.project.clone() else { return };
+        let folders = p
+            .read(&mut self.cad.session, |p, _| {
+                let doc = p.ledger.document();
+                doc.folders().keys().map(|f| (*f, ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f));
+        let path = format!("{}.pdf", self.report_stem());
+        self.dialogs.print_book = Some(crate::reports::panel::PrintBook {
+            scope: if chosen.is_some() { crate::reports::panel::ScopeKind::Folder } else { crate::reports::panel::ScopeKind::All },
+            folders,
+            folder: chosen.unwrap_or(0),
+            path,
+            mono: true,
+            lineweights: true,
+            ..crate::reports::panel::PrintBook::default()
+        });
+    }
+
+    /// Bring the Reports window's copy up to date with the project's kept models. Until the report
+    /// models and the Checks list are built (on the background pool, first show) the window says
+    /// "Running…" and nothing is read.
+    pub(crate) fn refresh_reports(&mut self) {
+        let serial = self.seen.project_serial;
+        let writable = !self.header().read_only;
+        if let (Some(r), Some(p)) = (&mut self.dialogs.reports, self.project.clone()) {
+            r.writable = writable;
+            let warm = &mut self.warm;
+            let _ = p.configure(&mut self.cad.session, |p| {
+                r.building = !warm.pump(p);
+                if !r.building {
+                    r.sync(serial, p);
+                }
+            });
+        }
+    }
+
+    /// The Reports window and the Print Book dialog.
+    pub(crate) fn report_windows(&mut self, ctx: &egui::Context) {
+        if let Some(p) = self.project.clone()
+            && p.is_attached(&self.cad.session)
+            && p.configure(&mut self.cad.session, |p| std::mem::take(&mut p.asks.open_reports)).unwrap_or(false)
+        {
+            self.reports_view();
+        }
+        self.refresh_reports();
+        let out = self.dialogs.reports.as_mut().filter(|r| !r.hidden).and_then(|r| r.show(ctx));
+        match out {
+            Some(crate::reports::panel::Out::Close) => self.dialogs.reports = None,
+            Some(crate::reports::panel::Out::Export(path)) => self.export_report(&path),
+            Some(crate::reports::panel::Out::Run(line)) => {
+                let refusal = self.run_line(&line);
+                if let Some(r) = self.dialogs.reports.as_mut() {
+                    r.ran(refusal);
+                }
+            }
+            Some(crate::reports::panel::Out::GotoAt(page, at)) => self.goto_place(page, at),
+            // Double-clicking a cable shows its cores.
+            Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i))
+                if self.dialogs.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) =>
+            {
+                self.show_cores_of_row(i)
+            }
+            Some(crate::reports::panel::Out::Goto(tab, i) | crate::reports::panel::Out::Select(tab, i)) => self.goto_report_row(tab, i),
+            None => {}
+        }
+        self.print_window(ctx);
+        self.release_window(ctx);
+    }
+
+    /// Write the Reports tab as shown to `path` as CSV.
+    pub fn export_report(&mut self, path: &str) {
+        let path = self.report_path(path);
+        let Some(r) = &mut self.dialogs.reports else { return };
+        let t = r.shown_table();
+        let flagged = t.flagged();
+        let text = ecad_electrical::reports::csv(&t, true);
+        match path.and_then(|path| ecad_engine::export::printbook::write_file(&path, text.as_bytes()).map(|()| path)) {
+            Ok(path) => {
+                let marked = if flagged == 1 { "1 cell marked ?".to_string() } else { format!("{flagged} cells marked ?") };
+                let m = format!("Wrote {} rows to {path} ({marked}).", t.rows.len());
+                r.note = Some(m.clone());
+                r.export = None;
+                self.cad.session.echo(m);
+            }
+            Err(e) => r.note = Some(e),
+        }
+    }
+
+    /// Show the core list of the cable on shown row `i` of the Cables tab.
+    fn show_cores_of_row(&mut self, i: usize) {
+        let Some(k) = self.dialogs.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(p) = self.project.clone() else { return };
+        let cable = p.configure(&mut self.cad.session, |p| p.reports().cables().get(k).map(|c| c.cable)).ok().flatten();
+        if let (Some(r), Some(c)) = (&mut self.dialogs.reports, cable) {
+            r.cores_of = Some(c);
+        }
+    }
+
+    /// Reports on the Terminals tab for `strip` (Properties' **Show plan**).
+    pub fn show_plan(&mut self, strip: Option<ecad_model::DeviceId>) {
+        self.reports_view();
+        if let Some(r) = &mut self.dialogs.reports {
+            r.tab = crate::reports::panel::Tab::TerminalBlocks;
+            r.strip = strip;
+            r.cores_of = None;
+            r.invalidate();
+        }
+    }
+
+    /// Reports on the Cables tab with `cable`'s cores (Properties' **Show cores**).
+    pub fn show_cores(&mut self, cable: ecad_model::CableId) {
+        self.reports_view();
+        if let Some(r) = &mut self.dialogs.reports {
+            r.tab = crate::reports::panel::Tab::Cables;
+            r.cores_of = Some(cable);
+            r.invalidate();
+        }
+    }
+
+    /// Go to a Reports row: a BOM row's first device's main symbol, a wire's first route, a
+    /// cable's label box, a terminal. Nothing is recorded.
+    pub fn goto_report_row(&mut self, tab: crate::reports::panel::Tab, i: usize) {
+        enum To {
+            Symbol(ecad_model::RepresentationId),
+            Place(PageId, ecad_model::Pt),
+        }
+        let Some(k) = self.dialogs.reports.as_ref().and_then(|r| r.row_index(i)) else { return };
+        let Some(p) = self.project.clone() else { return };
+        let group = self.dialogs.reports.as_ref().map(|r| r.group).unwrap_or_default();
+        let connection_point = self.dialogs.reports.as_ref().and_then(|r| r.gos.get(k).copied().flatten());
+        let cores = self.dialogs.reports.as_ref().is_some_and(|r| r.cores_of.is_some());
+        let to = p
+            .configure(&mut self.cad.session, |p| {
+                let o = p.reports();
+                match tab {
+                    crate::reports::panel::Tab::Bom => {
+                        let row = o.bom(group).into_iter().nth(k)?;
+                        let c = *row.devices.first()?;
+                        o.device(c).and_then(|d| d.goto).map(|(rep, _, _)| To::Symbol(rep))
+                    }
+                    crate::reports::panel::Tab::Wires => o.wires().get(k).and_then(|w| w.go).map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::Cables if cores => None,
+                    crate::reports::panel::Tab::Cables => o.cables().get(k).and_then(|c| c.go).map(|(pg, at)| To::Place(pg, at)),
+                    crate::reports::panel::Tab::TerminalBlocks => connection_point.map(|(pg, at)| To::Place(pg, at)),
+                }
+            })
+            .ok()
+            .flatten();
+        match to {
+            Some(To::Symbol(rep)) => {
+                let _ = self.goto_symbol(rep);
+            }
+            Some(To::Place(page, at)) => self.goto_place(page, at),
+            None => {}
+        }
+    }
+
+    /// The Release badge: counted again only when the kept Checks or report models change.
+    pub(crate) fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
+        let p = self.project.clone()?;
+        p.read(&mut self.cad.session, |p, _| {
+            (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), crate::history::release_dialog::badge(p))
+        })
+        .ok()
+    }
+
+    /// Open the Release dialog: the pending revision, or `rev` written again.
+    pub fn open_release(&mut self, rev: Option<String>) {
+        let read_only = self.header().read_only;
+        self.dialogs.release = Some(crate::history::release_dialog::ReleaseDialog::new(rev, read_only));
+        self.refresh_release();
+    }
+
+    /// Take the dialog's view again when the project, its kept Checks or the tick changed.
+    pub fn refresh_release(&mut self) {
+        let Some(p) = self.project.clone() else { return };
+        let Some(d) = &self.dialogs.release else { return };
+        let (rev, accept, key) = (d.rev.clone(), d.accept, d.key);
+        let (warm, jobs, asked) = (&mut self.warm, &mut self.release_build, &mut self.release_asked);
+        let r = p.configure(&mut self.cad.session, |p| {
+            // The kept Checks and report models the pending view reads are built on the
+            // background pool; the dialog says "Running…" until they are (issue 48).
+            if rev.is_none() && !warm.pump(p) {
+                return Ok(None);
+            }
+            // An issued revision's view is built once (its state never changes); the pending one
+            // again only when what it shows can differ (`release::dialog_key`).
+            if key.is_some() && (rev.is_some() || key == ecad_engine::releases::release::dialog_key(p, accept)) {
+                return Ok(None);
+            }
+            // The view is built on the background pool: the pending revision's tens of thousands
+            // of rows are sorted and grouped there (only the shown rows are worded, when the
+            // result lands); an issued revision's report models and check are worked out from a
+            // copy of its state (seconds on a large project). The dialog says "Running…" until
+            // the first view lands, and keeps the last one meanwhile after that; a result for
+            // another rev, tick or state is dropped.
+            let key_now =
+                |p: &ecad_engine::Project| if rev.is_some() { 0 } else { ecad_engine::releases::release::dialog_key(p, accept).unwrap_or(0) };
+            if !warm.inline() {
+                let now = p.at();
+                for (r, a, v) in jobs.take(now).into_iter().flatten() {
+                    if r == rev && a == accept {
+                        return Ok(Some((v.finish(p.ledger.document()), key_now(p))));
+                    }
+                }
+                if asked.as_ref().is_some_and(|(r, a, at)| *r == rev && *a == accept && *at == now) && jobs.running() > 0 {
+                    return Ok(None);
+                }
+                let prepared = ecad_engine::releases::release::prepare(p, rev.as_deref(), accept, crate::history::release_dialog::ROWS_SHOWN)?;
+                let r = rev.clone();
+                jobs.spawn(now, move || (r, accept, prepared()));
+                *asked = Some((rev.clone(), accept, now));
+                return Ok(None);
+            }
+            let v = ecad_engine::releases::release::prepare(p, rev.as_deref(), accept, crate::history::release_dialog::ROWS_SHOWN)?();
+            // The kept lists exist now: the key is read after the view built them.
+            Ok::<_, String>(Some((v.finish(p.ledger.document()), key_now(p))))
+        });
+        match r {
+            Ok(Ok(Some((v, k)))) => {
+                if let Some(d) = &mut self.dialogs.release {
+                    d.set_view(v, k);
+                }
+            }
+            Ok(Ok(None)) => {}
+            Ok(Err(e)) | Err(e) => {
+                if let Some(d) = &mut self.dialogs.release {
+                    d.error = Some(e);
+                }
+            }
+        }
+    }
+
+    /// Release with the dialog's choices: `release` through the command path. A folder that
+    /// exists asks the folder-exists question; anything else refused stays in the dialog with its way out.
+    pub fn release_from_dialog(&mut self, params: serde_json::Value) -> Result<serde_json::Value, String> {
+        let r = self.run_value("release", params);
+        match &r {
+            Ok(_) => {
+                // The command echoed what it wrote.
+                self.dialogs.release = None;
+                if self.dialogs.revisions.is_some() {
+                    self.open_revisions();
+                }
+            }
+            Err(e) => {
+                if let Some(d) = &mut self.dialogs.release {
+                    if e.contains(" exists (") && e.contains("Give existing:") {
+                        d.exists = Some(e.clone());
+                        d.error = None;
+                    } else {
+                        d.exists = None;
+                        d.error = Some(e.clone());
+                    }
+                }
+            }
+        }
+        r
+    }
+
+    /// The Release dialog, live while open.
+    fn release_window(&mut self, ctx: &egui::Context) {
+        if self.dialogs.release.as_ref().is_none_or(|d| d.hidden) {
+            return;
+        }
+        self.refresh_release();
+        // Frames come while a view is being worked out.
+        if self.release_build.running() > 0 || self.dialogs.release.as_ref().is_some_and(|d| d.view.is_none() && d.error.is_none()) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let answer = self.dialogs.release.as_mut().and_then(|d| d.show(ctx));
+        match answer {
+            Some(crate::history::release_dialog::Out::Run(line)) => {
+                let e = self.run_line(&line);
+                if let Some(d) = &mut self.dialogs.release {
+                    d.error = e;
+                }
+            }
+            Some(crate::history::release_dialog::Out::Release(params)) => {
+                let _ = self.release_from_dialog(params);
+            }
+            Some(crate::history::release_dialog::Out::GoTo(c)) => {
+                let _ = self.goto_check(&c);
+            }
+            Some(crate::history::release_dialog::Out::ShowReports) => {
+                self.reports_view();
+                if let Some(r) = &mut self.dialogs.reports {
+                    r.tab = crate::reports::panel::Tab::Bom;
+                    r.only_flagged = true;
+                    r.invalidate();
+                }
+            }
+            Some(crate::history::release_dialog::Out::Finalise) => self.open_renumber(true, false, None),
+            Some(crate::history::release_dialog::Out::ShowChecks) => self.panel.tab = crate::pages::project_panel::Tab::Checks,
+            Some(crate::history::release_dialog::Out::SaveAs) => self.request_save_as(),
+            Some(crate::history::release_dialog::Out::WriteIssued(rev)) => {
+                self.open_release(Some(rev));
+                self.publish_view(shell::PublishTab::Release);
+            }
+            Some(crate::history::release_dialog::Out::Close) => self.dialogs.release = None,
+            None => {}
+        }
+    }
+
+    /// Print with the dialog's choices (Print): `printbook` through the command path.
+    pub fn print_from_dialog(&mut self) -> Result<serde_json::Value, String> {
+        let Some(d) = self.dialogs.print_book.clone() else { return Err("Print Book is not open".into()) };
+        let mut params = d.params();
+        params["path"] = json!(self.report_path(&d.path)?);
+        let r = self.run_value("printbook", params);
+        match &r {
+            Ok(_) => self.dialogs.print_book = None,
+            Err(e) => {
+                if let Some(d) = &mut self.dialogs.print_book {
+                    d.error = Some(e.clone());
+                }
+            }
+        }
+        r
+    }
+
+    /// The Print Book dialog: live counts, then `printbook` on Print.
+    fn print_window(&mut self, ctx: &egui::Context) {
+        let Some(d) = self.dialogs.print_book.as_ref().filter(|d| !d.hidden) else { return };
+        let scope = match d.scope {
+            crate::reports::panel::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
+            crate::reports::panel::ScopeKind::Folder => match d.folders.get(d.folder).map(|f| f.0) {
+                Some(f) => ecad_engine::export::printbook::Scope::Folder(f),
+                None => ecad_engine::export::printbook::Scope::All,
+            },
+            crate::reports::panel::ScopeKind::Pages => ecad_engine::export::printbook::Scope::Pages(d.pages.clone()),
+        };
+        if let Some(p) = self.project.clone()
+            && let Ok((sheets, unknown, flagged)) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::count(p, &scope))
+            && let Some(d) = &mut self.dialogs.print_book
+        {
+            d.sheets = sheets;
+            d.unknown = unknown;
+            d.flagged = flagged;
+        }
+        if let Some(p) = self.project.clone()
+            && let Ok(notes) = p.configure(&mut self.cad.session, |p| ecad_engine::export::printbook::notes(p, &scope))
+            && let Some(d) = &mut self.dialogs.print_book
+        {
+            d.notes = notes;
+        }
+        let answer = self.dialogs.print_book.as_mut().and_then(|d| d.show(ctx));
+        match answer {
+            Some(true) => {
+                let _ = self.print_from_dialog();
+            }
+            Some(false) => self.dialogs.print_book = None,
+            None => {}
+        }
+    }
+}

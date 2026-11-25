@@ -1,0 +1,31 @@
+//! Defaults (continuation cross-references): area `continuation`.
+//!
+//! Read them through [`crate::continuations`], not by key. The caption text's size, weight, font
+//! and visibility are the text kind `continuation_caption` (`defaults/text.rs`).
+
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
+
+const GROUP: &str = "Continuations";
+/// Standard and project.
+const SP: &[Level] = &[Level::Standard, Level::Project];
+
+const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
+    Entry { key, label, group: GROUP, kind, slot: Slot::new(&crate::defaults::data::DATA), levels: SP, project: ProjectSource::Property }
+}
+
+/// How many other ends an arrow lists before `+n`.
+pub(crate) static PLACES_MAX: Entry = entry("continuation.places.max", "Other ends shown before +n", Kind::Number { min: 1.0, max: 10.0 });
+/// The gap between an arrow's tip and its reference text.
+pub(crate) static REFERENCE_GAP: Entry = entry("continuation.reference.gap", "Gap from arrow tip to reference", Kind::Length { min: 0.0, max: 10.0 });
+/// The most space between neighbouring arrows under one caption.
+pub(crate) static CAPTION_RUN_GAP: Entry =
+    entry("continuation.caption.run_gap", "Most space between arrows under one caption", Kind::Length { min: 1.0, max: 200.0 });
+/// The gap between the farthest reference text and the caption bracket.
+pub(crate) static CAPTION_GAP: Entry =
+    entry("continuation.caption.gap", "Gap from references to caption bracket", Kind::Length { min: 0.0, max: 20.0 });
+/// The length of the ticks at the bracket's ends.
+pub(crate) static CAPTION_TICK: Entry = entry("continuation.caption.tick", "Caption bracket end tick", Kind::Length { min: 0.0, max: 10.0 });
+
+/// Every entry of this file, in the order `defaults` lists them.
+pub(crate) static ENTRIES: &[&Entry] = &[&PLACES_MAX, &REFERENCE_GAP, &CAPTION_RUN_GAP, &CAPTION_GAP, &CAPTION_TICK];

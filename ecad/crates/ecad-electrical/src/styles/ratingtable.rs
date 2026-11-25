@@ -1,0 +1,165 @@
+//! Rating tables: the `ratingtable` catalogue.
+//!
+//! A rating table is a user's data set of ratings and factors, entered by hand or imported from a
+//! CSV they are licensed to use. It lives in the project or in a standard, like any style. There
+//! are **no built-in entries, and ECAD ships no values**. The project chooses one
+//! with the registry key `rating.table` ([`crate::defaults::rating::TABLE`]).
+//!
+//! Fields: `source` (what the user says the values come from) and [`ROWS`] (the CSV, read by
+//! [`crate::devices::ratings::dataset`]). The rows field may hold up to
+//! [`crate::devices::ratings::dataset::MAX_BYTES`] ([`crate::styles::field_cap`]); it is read here, raw, not through
+//! [`ecad_model::registry::styles::field`] (it holds line breaks, which a text field refuses).
+
+use ecad_model::objects::styles::StyleLayer;
+use ecad_model::{Document, StyleRef};
+
+use ecad_model::objects::styles::{RatingTable, StyleBody};
+
+use crate::CmdError;
+use crate::devices::ratings::dataset::{self, Dataset};
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::styles::{Catalogue, Field};
+use ecad_model::registry::{Kind, Scope, Value};
+
+/// The field holding the CSV rows.
+pub const ROWS: &str = "rows";
+/// The field holding the source.
+pub const SOURCE: &str = "source";
+/// The longest source text.
+pub(crate) const MAX_SOURCE_CHARS: usize = 200;
+
+fn any_text(_: &str) -> bool {
+    true
+}
+
+static FIELDS: [Field; 2] = [
+    Field {
+        key: SOURCE,
+        label: "Source",
+        kind: Kind::Parsed { max_chars: MAX_SOURCE_CHARS, parse: any_text },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+    // Read raw by `rows_text`; listed so `style` knows the key.
+    Field {
+        key: ROWS,
+        label: "Rows",
+        kind: Kind::Parsed { max_chars: 1, parse: any_text },
+        slot: Slot::new(&crate::defaults::data::DATA),
+        over: None,
+    },
+];
+
+fn choices() -> Vec<&'static ecad_model::registry::Entry> {
+    vec![&crate::defaults::rating::TABLE]
+}
+
+/// The rating table catalogue: no built-in entries.
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::RatingTable,
+    plural: "Rating tables",
+    one: "Rating table",
+    fields: &FIELDS,
+    builtins: &[],
+    choices,
+    project_field: None,
+    body,
+    typed: None,
+    adjust: None,
+    set: set_body,
+    implicit: ecad_model::registry::styles::no_implicit,
+    reach: ecad_model::registry::styles::no_reach,
+};
+
+/// The value field `key` of a ratingtable style record holds.
+fn body<'a>(_: &'a ecad_model::Document, b: &'a ecad_model::objects::styles::StyleBody, key: &str) -> Option<Value<'a>> {
+    match b {
+        ecad_model::objects::styles::StyleBody::RatingTable(t) => get(t, key),
+        _ => None,
+    }
+}
+
+/// The project's chosen rating table, when it names one that exists.
+pub fn chosen(doc: &Document) -> Option<StyleRef> {
+    let r = ecad_model::registry::resolve(doc, &crate::defaults::rating::TABLE, Scope::project());
+    StyleRef::parse(&r.text()).filter(|id| ecad_model::registry::styles::exists(doc, &crate::styles::ratingtable::CATALOGUE, id))
+}
+
+/// The stored rows of table `id`: the project's record, else the standard's; within the cap.
+pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
+    for layer in [StyleLayer::Project, StyleLayer::Standard] {
+        if let Some(v) = ecad_model::registry::styles::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| match &r.body {
+            StyleBody::RatingTable(t) => t.rows.as_ref(),
+            _ => None,
+        }) && v.as_str().len() <= dataset::MAX_BYTES
+        {
+            return v.as_str();
+        }
+    }
+    ""
+}
+
+/// The source text of table `id` (empty when none was given).
+pub fn source(doc: &Document, id: &StyleRef) -> String {
+    ecad_model::registry::styles::field_of(doc, &crate::styles::ratingtable::CATALOGUE, id, SOURCE, None).map(|r| r.text()).unwrap_or_default()
+}
+
+/// A rating table read: its ID, name, source and rows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Table {
+    pub id: StyleRef,
+    pub name: String,
+    pub source: String,
+    pub data: Dataset,
+}
+
+/// Read table `id`.
+pub fn read(doc: &Document, id: &StyleRef) -> Table {
+    Table {
+        id: id.clone(),
+        name: ecad_model::registry::styles::name(doc, &crate::styles::ratingtable::CATALOGUE, id),
+        source: source(doc, id),
+        data: dataset::parse(rows_text(doc, id)),
+    }
+}
+
+/// The project's chosen table, read.
+pub(crate) fn chosen_table(doc: &Document) -> Option<Table> {
+    chosen(doc).map(|id| read(doc, &id))
+}
+
+/// The value of field `key` that `t` sets, if it sets one.
+pub fn get<'a>(t: &'a RatingTable, key: &str) -> Option<Value<'a>> {
+    match key {
+        SOURCE => t.source.as_ref().map(|v| Value::Text(v.as_str())),
+        // The rows are read by [`rows_text`], never as a field value (a table, not one value).
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `t` from its text. Rows written with CR LF line
+/// ends are stored with LF.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(t: &mut RatingTable, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |e: ecad_model::naming::text::TextError| CmdError::refused(format!("{key}: {e}"));
+    match (key, value) {
+        (SOURCE, None) => t.source = None,
+        (ROWS, None) => t.rows = None,
+        (SOURCE, Some(v)) => t.source = Some(ecad_model::naming::text::Text::new(v).map_err(bad)?),
+        (ROWS, Some(v)) => t.rows = Some(ecad_model::naming::text::LongText::new(&v.replace("\r\n", "\n")).map_err(bad)?),
+        _ => return Err(CmdError::refused(format!("Rating tables have no field {key:?}."))),
+    }
+    Ok(())
+}
+
+/// [`set`] on a record body of this catalogue.
+fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Option<&str>) -> Result<(), ecad_model::registry::styles::Refused> {
+    match b {
+        ecad_model::objects::styles::StyleBody::RatingTable(x) => {
+            set(x, key, value).map_err(|e| ecad_model::registry::styles::Refused(e.to_string()))
+        }
+        other => Err(crate::styles::wrong_body(other, CATALOGUE.one)),
+    }
+}

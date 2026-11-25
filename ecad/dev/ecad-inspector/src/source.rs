@@ -1,4 +1,4 @@
-//! Where the protocol reads from (design 029 §3.1, §4, §6): a [`Source`]. Today a
+//! Where the protocol reads from: a [`Source`]. Today a
 //! [`FileSource`], a `.ecad` file opened read-only by path or from dropped bytes. A live app
 //! session can be another source later.
 
@@ -7,12 +7,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
-use ecad_file::v2::verify::{VerifyReport, verify_chain, verify_stoppable};
-use ecad_file::v2::{ProjectV2, ReportV2, Store};
+use ecad_file::verify::{VerifyReport, verify_chain, verify_stoppable};
+use ecad_file::{Project, Report, Store};
 use ecad_model::Document;
 use serde_json::{Value, json};
 
-/// A refusal in words (design 029 §2.1): a stable `what`, a sentence `why` and a `way_out`.
+/// A refusal in words: a stable `what`, a sentence `why` and a `way_out`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
     pub what: &'static str,
@@ -43,12 +43,12 @@ pub struct SourceInfo {
 /// The project as the app opens it (model views).
 pub struct Opened {
     pub doc: Document,
-    pub report: ReportV2,
+    pub report: Report,
     /// The branch it opened on.
     pub branch: String,
 }
 
-/// The Verify started on load (design 029 §3.4).
+/// The Verify started on load.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VerifyState {
     /// Not run: the file has no store this build reads.
@@ -65,7 +65,7 @@ pub enum VerifyState {
 /// A source of everything the protocol shows.
 pub trait Source: Send + Sync {
     fn describe(&self) -> SourceInfo;
-    /// The file's own problem (design 029 §6 rows 1–8), if any: what still works is decided by
+    /// The file's own problem, if any: what still works is decided by
     /// [`Source::store`] and [`Source::opened`].
     fn problem(&self) -> Option<&Problem>;
     /// Raw views, history, chain and Verify; `None` when the bytes are not a database this build
@@ -90,7 +90,8 @@ const HEAD: usize = 4_096;
 
 /// The meta names this build reads, and what it reads (`summary`).
 const CONTAINER_VERSION: u64 = 2;
-const SCHEMA_VERSION: u64 = 1;
+/// The format number this reads (raw rows are shown for any other).
+const SCHEMA_VERSION: u64 = ecad_file::SCHEMA_VERSION;
 const CODEC: &str = "json/1";
 
 /// A `.ecad` file, read-only.
@@ -139,7 +140,7 @@ pub fn size_text(n: u64) -> String {
     }
 }
 
-/// What the first bytes say, before any database is opened (design 029 §6 rows 1–4).
+/// What the first bytes say, before any database is opened.
 fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
     if size == 0 || name.to_ascii_lowercase().ends_with(".lock") {
         let open = name.strip_suffix(".lock").unwrap_or(name);
@@ -149,33 +150,20 @@ fn classify_head(name: &str, size: u64, head: &[u8]) -> Option<Problem> {
             format!("Open `{open}` instead."),
         ));
     }
-    match ecad_file::v2::convert::sniff_bytes(head) {
-        ecad_file::v2::convert::Major::V2 => None,
-        ecad_file::v2::convert::Major::V1 => {
-            let text = String::from_utf8_lossy(head);
-            if text.contains("\"ecad-inspect/") {
-                return Some(Problem::new(
-                    "snapshot",
-                    "This is an inspector snapshot, not a project file.",
-                    "The page opens it in Snapshots mode itself.",
-                ));
-            }
-            let stem = name.strip_suffix(".ecad").unwrap_or(name);
-            Some(Problem::new(
-                "version-1",
-                "This is a version 1 project file; the inspector reads version 2.",
-                format!("Upgrade a copy: `ecad upgrade {name}` writes `{stem}.v2.ecad` beside it and never changes the original."),
-            ))
-        }
-        ecad_file::v2::convert::Major::Unknown => Some(Problem::new(
-            "not-ecad",
-            format!("Not an ECAD project file (it starts with `{}`).", hex(head.get(..4).unwrap_or(head))),
-            "Open a `.ecad` file.",
-        )),
+    if head.starts_with(ecad_file::disk::MAGIC) {
+        return None;
     }
+    if head.first() == Some(&b'{') && String::from_utf8_lossy(head).contains("\"ecad-inspect/") {
+        return Some(Problem::new("snapshot", "This is an inspector snapshot, not a project file.", "The page opens it in Snapshots mode itself."));
+    }
+    Some(Problem::new(
+        "not-ecad",
+        format!("Not an ECAD project file (it starts with `{}`).", hex(head.get(..4).unwrap_or(head))),
+        "Open a `.ecad` file.",
+    ))
 }
 
-/// What the meta rows say (design 029 §6 rows 5–7).
+/// What the meta rows say.
 fn classify_meta(store: &Store) -> Option<Problem> {
     let writer = meta(store, "writer").and_then(|v| v.as_str().map(String::from)).unwrap_or_else(|| "unknown".into());
     let format = meta(store, "format");
@@ -194,11 +182,11 @@ fn classify_meta(store: &Store) -> Option<Problem> {
     }
     let sv = meta(store, "schema_version").and_then(|v| v.as_u64()).unwrap_or(0);
     let codec = meta(store, "codec");
-    if sv == 0 || sv > SCHEMA_VERSION || codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
+    if sv != SCHEMA_VERSION || codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
         let c = codec.as_ref().and_then(Value::as_str).unwrap_or("none");
         return Some(Problem::new(
             "schema-version",
-            format!("Written by a newer ECAD (schema {sv}, codec {c}): rows shown raw, model not opened."),
+            format!("Written by another ECAD version (schema {sv}, this reads {SCHEMA_VERSION}; codec {c}): rows shown raw, model not opened."),
             format!("Run the `ecadinspect` from the ECAD version that wrote it (writer: `{writer}`)."),
         ));
     }
@@ -265,7 +253,7 @@ impl FileSource {
     /// Open the store, classify its meta, run the chain check, open the project on the same store
     /// (a second handle only when the project does not open, for the raw views), and start
     /// Verify.
-    fn load(&mut self, open: impl Fn() -> Result<Store, ecad_file::v2::StoreError>) {
+    fn load(&mut self, open: impl Fn() -> Result<Store, ecad_file::StoreError>) {
         let first = match open() {
             Ok(s) => s,
             Err(e) => {
@@ -283,7 +271,7 @@ impl FileSource {
             return;
         }
         self.chain = Some(verify_chain(&first));
-        let store = match ProjectV2::open(first, 0x1A5_EC7, "ecadinspect") {
+        let store = match Project::open(first, 0x1A5_EC7, "ecadinspect") {
             Ok(o) => {
                 let branch = o.project.branch_record().name.clone();
                 self.opened = Ok(Opened { doc: o.ledger.document().clone(), report: o.report, branch });
@@ -298,7 +286,7 @@ impl FileSource {
             }
         };
         self.store = Some(store.clone());
-        // Verify on its own thread (design 029 §3.4): nothing waits for it. A replaced source drops
+        // Verify on its own thread: nothing waits for it. A replaced source drops
         // its result with it.
         let slot = self.verify.clone();
         let stop = self.stop.clone();

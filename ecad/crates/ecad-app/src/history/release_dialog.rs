@@ -1,0 +1,364 @@
+//! The Release dialog: the pre-release check of the state to
+//! be issued, the pending revision's fields, the folder and what will be written, and the question
+//! when the folder exists. Non-modal: the user can fix things while it is open, and the check
+//! follows (the dialog's copy is taken again only when the kept Checks or the project change).
+//!
+//! Everything it does goes through the commands' JSON forms: `revision` for a field, `release`
+//! to release; the engine's [`ecad_engine::releases::release::View`] is what it shows.
+
+use std::collections::BTreeSet;
+
+use ecad_electrical::releases::release::Group;
+use ecad_engine::releases::release::View;
+use ecad_widgets::control::TextEntry;
+use ecad_widgets::dialog::action;
+use ecad_widgets::prim::{self, Button, Kind, Tone};
+use ecad_widgets::tokens::{size, space};
+use eframe::egui::{self, RichText};
+use serde_json::{Map, Value, json};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Severity};
+
+/// The window's id and accessible name.
+pub(crate) const RELEASE_ID: &str = "ecad.release";
+/// Rows shown per group before `Show all N in Checks`.
+pub(crate) const ROWS_SHOWN: usize = 5;
+/// The clean check's words.
+pub(crate) const NOTHING_OPEN: &str = "Nothing open. Ready to release.";
+
+/// What the dialog asks for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Out {
+    /// Run this command line (a pending field: `revision {…}`).
+    Run(String),
+    /// `release` with these parameters.
+    Release(Value),
+    /// Go to this row (the dialog stays open).
+    GoTo(Box<Check>),
+    /// Reports, BOM tab, Only ? (the `?` parts group).
+    ShowReports,
+    /// The Finalise numbering dialog (the Provisional group).
+    Finalise,
+    /// The Checks tab (`Show all N in Checks`).
+    ShowChecks,
+    /// Save As… (a project never saved).
+    SaveAs,
+    /// Write the last issued revision's folder again (nothing changed since it).
+    WriteIssued(String),
+    Close,
+}
+
+/// The dialog's state.
+#[derive(Debug, Clone, Default)]
+pub struct ReleaseDialog {
+    /// The shell's slot it fills (no title bar, not movable), or `None` to float.
+    pub host: Option<egui::Rect>,
+    /// Its workspace is not shown, so it is not drawn.
+    pub hidden: bool,
+    /// `None`: release the pending revision; `Some`: write that issued revision's folder.
+    pub rev: Option<String>,
+    /// The engine's view, taken again when [`ReleaseDialog::key`] changes.
+    pub view: Option<View>,
+    /// (head, Checks revision, report models revision, accept) the view was taken at.
+    pub key: Option<u64>,
+    /// `Release with 1 error` is ticked.
+    pub accept: bool,
+    /// The folder typed or browsed to; empty: the default.
+    pub folder: String,
+    /// The pending fields as typed, and as last sent.
+    pub fields: [String; 6],
+    orig: [String; 6],
+    /// Groups collapsed (Other starts collapsed).
+    pub collapsed: BTreeSet<Group>,
+    pub error: Option<String>,
+    /// The existing-folder question (the refusal's words), while it is asked.
+    pub exists: Option<String>,
+    /// The project is read-only: the pending revision cannot be released.
+    pub read_only: bool,
+}
+
+impl ReleaseDialog {
+    pub fn new(rev: Option<String>, read_only: bool) -> Self {
+        ReleaseDialog { rev, read_only, collapsed: BTreeSet::from([Group::Other]), ..ReleaseDialog::default() }
+    }
+
+    /// Take a fresh view, keeping what the user typed in a field and has not sent.
+    pub fn set_view(&mut self, v: View, key: u64) {
+        let typed: Vec<Option<String>> = self.fields.iter().zip(self.orig.iter()).map(|(f, o)| (f != o).then(|| f.clone())).collect();
+        self.fields = v.fields.clone();
+        self.orig = v.fields.clone();
+        for (i, t) in typed.into_iter().enumerate() {
+            if let (Some(t), Some(slot)) = (t, self.fields.get_mut(i)) {
+                *slot = t;
+            }
+        }
+        if self.folder.is_empty()
+            && let Some(f) = &v.folder
+        {
+            self.folder = f.to_string_lossy().into_owned();
+        }
+        self.view = Some(v);
+        self.key = Some(key);
+    }
+
+    /// The parameters of `release` from the dialog's choices (`existing` when answering the folder-exists question).
+    pub fn params(&self, existing: Option<&str>) -> Value {
+        let mut m = Map::new();
+        if let Some(r) = &self.rev {
+            m.insert("rev".into(), json!(r));
+        }
+        let default = self.view.as_ref().and_then(|v| v.folder.as_ref()).map(|f| f.to_string_lossy().into_owned());
+        if !self.folder.trim().is_empty() && Some(self.folder.trim()) != default.as_deref() {
+            m.insert("folder".into(), json!(self.folder.trim()));
+        }
+        if self.accept {
+            m.insert("accept".into(), json!("errors"));
+        }
+        if self.view.as_ref().is_some_and(|v| v.provisional > 0) {
+            m.insert("provisional".into(), json!("issue"));
+        }
+        if let Some(e) = existing {
+            m.insert("existing".into(), json!(e));
+        }
+        Value::Object(m)
+    }
+
+    /// Whether Release can be pressed, and why not.
+    pub fn blocked(&self) -> Option<String> {
+        let v = self.view.as_ref()?;
+        if self.rev.is_some() {
+            return None;
+        }
+        if [0, 2, 3].iter().any(|i| self.fields.get(*i).is_none_or(|f| f.trim().is_empty())) {
+            return Some(ecad_electrical::releases::revisions::FILL_FIRST.into());
+        }
+        if v.errors > 0 && !self.accept {
+            let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
+            return Some(format!("Fix the error, or tick Release with {n}."));
+        }
+        v.refusal.clone()
+    }
+
+    /// A check's tone: an error, a warning, or a note.
+    fn tone(s: Severity) -> Tone {
+        match s {
+            Severity::Error => Tone::Error,
+            Severity::Warning => Tone::Warning,
+            Severity::Info => Tone::Neutral,
+        }
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context) -> Option<Out> {
+        let mut out = None;
+        let mut open = true;
+        let Some(v) = self.view.clone() else {
+            // The pre-release check's kept lists are still being built (issue 48).
+            if self.error.is_some() {
+                return None;
+            }
+            let window = egui::Window::new("PRE-RELEASE CHECK")
+                .id(egui::Id::unique(RELEASE_ID))
+                .collapsible(false)
+                .default_width(size::DIALOG_M)
+                .open(&mut open);
+            crate::shell::hosted(window, self.host).show(ctx, |ui| prim::note(ui, crate::checks::panel::RUNNING, Tone::Neutral));
+            return (!open).then_some(Out::Close);
+        };
+        let title = match &self.rev {
+            Some(r) => format!("WRITE REV {}'S FOLDER", r.to_uppercase()),
+            None => format!("RELEASE REV {}", v.rev.to_uppercase()),
+        };
+        let window = egui::Window::new(title)
+            .id(egui::Id::unique(RELEASE_ID))
+            .collapsible(false)
+            .default_width(size::DIALOG_M)
+            .min_width(size::DIALOG_M)
+            .open(&mut open);
+        crate::shell::hosted(window, self.host).show(ctx, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
+            ui.spacing_mut().item_spacing.y = space::XXS;
+            // The revision fields: the pending row's, edited as in Revisions (one `revision`
+            // each on leaving it); an issued row's, read only.
+            let editable = self.rev.is_none() && !self.read_only;
+            prim::PropertyGrid::new().show(ui, |g| {
+                for (i, (f, label)) in
+                    ecad_electrical::releases::revisions::SIX.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
+                {
+                    let Some(val) = self.fields.get_mut(i) else { continue };
+                    let name = format!("ecad.release.{f}");
+                    let r = g.row(label, |ui| TextEntry::new(val, &name).read_only(!editable).show(ui));
+                    if r.lost_focus() && self.orig.get(i) != Some(val) {
+                        let value = if val.trim().is_empty() { Value::Null } else { Value::String(val.clone()) };
+                        let mut m = Map::new();
+                        m.insert((*f).into(), value);
+                        out = Some(Out::Run(format!("revision {}", Value::Object(m))));
+                        if let Some(o) = self.orig.get_mut(i) {
+                            *o = val.clone();
+                        }
+                    }
+                }
+                g.row("Folder", |ui| TextEntry::new(&mut self.folder, "ecad.release.folder").show(ui));
+                let writes: Vec<String> =
+                    v.writes.iter().filter(|(s, _)| s != "manifest").map(|(s, f)| if s == "book" { f.clone() } else { s.clone() }).collect();
+                g.row("Writes", |ui| prim::body(ui, &writes.join(" \u{b7} "), true))
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.writes"));
+            });
+            // A list the project gives none of, and why (`No terminal strips in this project.`).
+            for (slot, why) in &v.not_included {
+                prim::note(ui, &format!("{slot}: {why}"), Tone::Neutral);
+            }
+            if let Some(w) = v.exists_words() {
+                prim::note(ui, &w, Tone::Warning);
+            }
+            if let Some(w) = &v.warning {
+                ui.horizontal_wrapped(|ui| {
+                    prim::note(ui, w, Tone::Warning);
+                    if let Some(last) = v.since.clone()
+                        && ui.add(Button::new(&format!("Write Rev {last}'s folder again")).small()).clicked()
+                    {
+                        out = Some(Out::WriteIssued(last));
+                    }
+                });
+            }
+            ui.add_space(space::S);
+            prim::caption(ui, "CHECK");
+            if v.groups.is_empty() {
+                prim::note(ui, NOTHING_OPEN, Tone::Ok);
+            }
+            egui::ScrollArea::vertical().id_salt("ecad.release.rows").max_height(ROWS_HEIGHT).show(ui, |ui| {
+                for (g, total, rows) in &v.groups {
+                    let glyph = rows.first().map_or(Severity::Info, |(c, _)| c.severity());
+                    let mut open = !self.collapsed.contains(g);
+                    let title = format!("{} {}", severity_glyph(glyph), g.words());
+                    let count = total.to_string();
+                    let name = format!("ecad.release.group.{}", g.id());
+                    if prim::SectionHeader::new(&mut open, &title).summary(&count).name(&name).show(ui).clicked() {
+                        if open {
+                            self.collapsed.remove(g);
+                        } else {
+                            self.collapsed.insert(*g);
+                        }
+                    }
+                    if !open {
+                        continue;
+                    }
+                    if *g == Group::Provisional && self.rev.is_none() && v.provisional > 0 && !self.read_only {
+                        let r = ui.add(Button::new("Finalise numbering now").small()).accessible_name("ecad.release.finalise");
+                        if r.clicked() {
+                            out = Some(Out::Finalise);
+                        }
+                    }
+                    if *g == Group::Parts && ui.add(Button::new("Show in Reports").small()).accessible_name("ecad.release.reports").clicked() {
+                        out = Some(Out::ShowReports);
+                    }
+                    for (i, (c, place)) in rows.iter().take(ROWS_SHOWN).enumerate() {
+                        let text = format!("{} {:<34} {:<9} {}", severity_glyph(c.severity()), c.kind.words(), place, c.which);
+                        let ink = ecad_widgets::color(Self::tone(c.severity()).text());
+                        let r = ui
+                            .add(egui::Label::new(RichText::new(text).monospace().color(ink)).sense(egui::Sense::click()))
+                            .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.release.row.{}.{i}", g.id())));
+                        if r.on_hover_text("Show it: its page, centred, with a ring on it").clicked() && c.page.is_some() {
+                            out = Some(Out::GoTo(Box::new(c.clone())));
+                        }
+                    }
+                    if *total > ROWS_SHOWN && ui.add(Button::new(&format!("Show all {total} in Checks")).kind(Kind::Quiet).small()).clicked() {
+                        out = Some(Out::ShowChecks);
+                    }
+                }
+            });
+            if self.rev.is_none() && v.errors > 0 {
+                let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
+                let them = if v.errors == 1 { "it is" } else { "they are" };
+                let label = format!("Release with {n} ({them} listed in the folder's checks.csv)");
+                prim::Checkbox::new(&mut self.accept, &label)
+                    .show(ui)
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::Role::CheckBox, true, "ecad.release.accept"));
+            }
+            if let Some(e) = &self.error {
+                prim::note(ui, e, Tone::Error);
+            }
+            // The folder exists.
+            if let Some(q) = self.exists.clone() {
+                ui.separator();
+                prim::body(ui, &q, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.exists"));
+                ui.horizontal(|ui| {
+                    for (label, id) in [("Add missing files", "add-missing"), ("Replace", "replace"), ("Keep both", "keep-both")] {
+                        if ui.add(Button::new(label)).accessible_name(format!("ecad.release.exists.{id}")).clicked() {
+                            out = Some(Out::Release(self.params(Some(id))));
+                        }
+                    }
+                    if ui.add(Button::new("Cancel").kind(Kind::Quiet)).accessible_name("ecad.release.exists.cancel").clicked() {
+                        self.exists = None;
+                    }
+                });
+            }
+            // Why Release is greyed, in words, with its way out beside it.
+            let blocked = self.blocked().filter(|_| self.exists.is_none());
+            if let Some(why) = &blocked {
+                prim::note(ui, why, Tone::Warning).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, "ecad.release.why"));
+            }
+            ui.add_space(space::S);
+            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), size::CONTROL), egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let label = match (&self.rev, v.provisional) {
+                    (Some(r), _) => format!("Write Rev {r}'s folder"),
+                    (None, 0) => format!("Release Rev {}", v.rev),
+                    (None, n) => format!("Release Rev {} ({n} provisional)", v.rev),
+                };
+                let why = blocked.as_deref().or(self.exists.as_ref().map(|_| "Answer the question about the folder first."));
+                if action(ui, &label, Kind::Primary, "ecad.release.go", why).clicked() {
+                    out = Some(Out::Release(self.params(None)));
+                }
+                if action(ui, "Cancel", Kind::Secondary, "ecad.release.cancel", None).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    out = Some(Out::Close);
+                }
+                if self.rev.is_none()
+                    && v.refusal.as_deref() == Some(ecad_electrical::releases::release::SAVE_FIRST)
+                    && action(ui, "Save As\u{2026}", Kind::Secondary, "ecad.release.saveas", None).clicked()
+                {
+                    out = Some(Out::SaveAs);
+                }
+            });
+        });
+        if !open {
+            out = Some(Out::Close);
+        }
+        out
+    }
+}
+
+/// The height of the check's rows.
+const ROWS_HEIGHT: f32 = size::DIALOG_S - size::ROW_GROUP * 2.0;
+
+/// The glyph shown before a check row and its group: ● error, ▲ warning, · info.
+fn severity_glyph(s: Severity) -> &'static str {
+    match s {
+        Severity::Error => "\u{25cf}",
+        Severity::Warning => "\u{25b2}",
+        Severity::Info => "\u{b7}",
+    }
+}
+
+/// Open `folder` in the system's file manager (the host's).
+///
+/// # Errors
+/// The file manager could not be started.
+pub(crate) fn open_folder(folder: &std::path::Path) -> Result<(), String> {
+    (crate::shell::host::host().open_folder)(folder).map_err(|e| format!("Could not open {}: {e}", folder.display()))
+}
+
+/// The folders of issued rows, resolved against the project, and whether each exists.
+pub(crate) fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &ecad_engine::Project) {
+    for r in rows {
+        r.folder = r.released.as_deref().and_then(|v| ecad_engine::releases::release::from_recorded(p, v));
+        r.folder_exists = r.folder.as_deref().is_some_and(ecad_engine::releases::release::has_manifest);
+    }
+}
+
+/// The badge of the Project panel's Release button: errors (red), else warnings,
+/// from the counts the kept Checks and report models keep (O(1); no row is counted again);
+/// `None` when the Checks have not been kept yet (nothing is built for it).
+pub(crate) fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
+    let (e, w, _) = p.kept_checks()?.counts();
+    let (oe, ow, _) = p.kept_reports().map_or((0, 0, 0), ecad_electrical::reports::kept::ReportModels::check_counts);
+    Some((e + oe, w + ow))
+}

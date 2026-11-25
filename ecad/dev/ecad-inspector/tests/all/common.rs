@@ -1,21 +1,19 @@
-//! Fixtures shared by the inspector's tests: a small history written as a version 1 file and
-//! converted to version 2.
+//! Fixtures shared by the inspector's tests: small histories written as project files.
 #![allow(dead_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ecad_model::*;
-use ecad_store::{Medium, MemoryMedium};
 
-pub struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    pub fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let p = std::env::temp_dir().join(format!("ecad-inspector-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
-    pub fn path(&self, name: &str) -> PathBuf {
+    pub(crate) fn path(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
 }
@@ -26,10 +24,10 @@ impl Drop for TempDir {
     }
 }
 
-pub const PROJECT: ProjectId = ProjectId(0x00c1_1000_0000_0000_0000_0000_0000_0001);
+pub(crate) const PROJECT: ProjectId = ProjectId(0x00c1_1000_0000_0000_0000_0000_0000_0001);
 
 /// A small history: two pages, lines, a named version, an undo.
-pub fn history() -> Ledger {
+pub(crate) fn history() -> Ledger {
     let mut ids = IdAllocator::seeded(7);
     let mut l = Ledger::new(7);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -37,8 +35,8 @@ pub fn history() -> Ledger {
         Author::User,
         "New project",
         vec![
-            Op::AddPage { id: p1, page: Page::new("1"), index: 0 },
-            Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
+            Op::AddPage { id: p1, page: Page::titled("1").unwrap(), index: 0 },
+            Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
         ],
     )
@@ -51,48 +49,36 @@ pub fn history() -> Ledger {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page, style, kind } }]).unwrap();
         if i == 10 {
             let at = l.head();
-            l.commit(Author::User, "Name", vec![Op::NameVersion { name: "Ten".into(), at, description: None }]).unwrap();
+            l.commit(Author::User, "Name", vec![Op::NameVersion { name: ecad_model::PointName::version("Ten").unwrap(), at, description: None }])
+                .unwrap();
         }
     }
     l.undo(Author::User).unwrap();
     l
 }
 
-pub fn v1_bytes(l: &Ledger) -> Vec<u8> {
-    let f = ecad_file::ProjectFile::write_new(MemoryMedium::default(), PROJECT, l, Some(5), "test").unwrap();
-    f.into_medium().read_all().unwrap()
-}
-
 /// `ecadinspect <args>` (the text views): its output, or its error.
-pub fn run(args: &[&str]) -> std::result::Result<String, String> {
+pub(crate) fn run(args: &[&str]) -> std::result::Result<String, String> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut out = Vec::new();
-    ecad_inspector::cli::ecadinspect_with(&args, &mut out, &mut std::io::sink()).map(|()| String::from_utf8(out).unwrap())
+    ecad_inspector::cli::views(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
 }
 
-/// `history` written as a version 1 file `p.ecad` in `dir` and converted to `p2.ecad`, as
-/// `ecad upgrade` does; the version 2 path.
-pub fn upgraded(dir: &TempDir, l: &Ledger) -> PathBuf {
-    let src = dir.path("p.ecad");
-    std::fs::write(&src, v1_bytes(l)).unwrap();
-    let out = dir.path("p2.ecad");
-    convert(&src, &out);
-    out
+/// `history` written as the project file `p.ecad` in `dir`; its path.
+pub(crate) fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
+    let path = dir.path("p.ecad");
+    ecad_file::Project::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
+    path
 }
 
-/// `ecad upgrade <src> --out <out>`.
-pub fn convert(src: &Path, out: &Path) {
-    ecad_file::v2::convert::convert_file(src, Some(out), "test").unwrap();
-}
-
-pub const WRITER: &str = "ecad-inspector tests";
+pub(crate) const WRITER: &str = "ecad-inspector tests";
 
 /// The rich fixture (design 029 §8): main with two pages, three devices (two tagged `-K1`, a
 /// duplicate), connection points, two wires on one net, a cable, a revision issued as a version,
 /// and the tag text `TITLE` in a page title and a property; a branch `Option B` forked from main
 /// with edits of its own. Snapshots every 16 transactions. Returns the file's path.
-pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
-    use ecad_file::v2::{ProjectV2, Store};
+pub(crate) fn rich(dir: &TempDir, title: &str) -> PathBuf {
+    use ecad_file::{Project, Store};
     let mut ids = IdAllocator::seeded(0x1A5);
     let mut l = Ledger::new(11);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -100,22 +86,33 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         Author::User,
         "New project",
         vec![
-            Op::AddPage { id: p1, page: Page::new(title), index: 0 },
-            Op::AddPage { id: p2, page: Page::new("2"), index: 1 },
+            Op::AddPage { id: p1, page: Page::titled(title).unwrap(), index: 0 },
+            Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
         ],
     )
     .unwrap();
-    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<TerminalId>) {
-        let c: ComponentId = ids.fresh();
-        let mut props = ecad_model::doc::Properties::new();
-        props.insert("tag".into(), tag.into());
+    let device = |ids: &mut IdAllocator, tag: &str, points: &[&str]| -> (Vec<Op>, Vec<ConnectionPointId>) {
+        let c: DeviceId = ids.fresh();
+        let mut props = ecad_model::Properties::new();
         props.insert("note".into(), title.into());
-        let mut ops = vec![Op::CreateComponent { id: c, component: Component { properties: props, definition: None } }];
+        let mut ops = vec![Op::CreateDevice {
+            id: c,
+            device: Device { properties: props, ..Device::default() }.with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic),
+        }];
         let mut ts = Vec::new();
         for p in points {
-            let t: TerminalId = ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some((*p).into()), key: None } });
+            let t: ConnectionPointId = ids.fresh();
+            ops.push(Op::AddConnectionPoint {
+                id: t,
+                connection_point: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some((*p).into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
+            });
             ts.push(t);
         }
         (ops, ts)
@@ -124,21 +121,30 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let (k1b, _) = device(&mut ids, "-K1", &["A1"]);
     let (x1, x1t) = device(&mut ids, "-X1", &["3", "4"]);
     l.commit(Author::User, "Devices", [k1, k1b, x1].concat()).unwrap();
-    let wire = |ids: &mut IdAllocator, number: &str, a: TerminalId, b: TerminalId| -> (ConductorId, Op) {
-        let w: ConductorId = ids.fresh();
-        let mut props = ecad_model::doc::Properties::new();
-        props.insert("wire_number".into(), number.into());
-        props.insert("cross_section".into(), "1.5".into());
-        (w, Op::CreateConductor { id: w, conductor: Conductor { properties: props, ends: [Some(a), Some(b)] } })
+    // Whole wires, no routes (design 072 §4.2): one net, its order 1 then 2.
+    let net: NetId = ids.fresh();
+    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: ConnectionPointId, b: ConnectionPointId| -> (WireId, Op) {
+        let w: WireId = ids.fresh();
+        let wire = Wire {
+            net_order: order,
+            number: ecad_model::naming::text::Text::new(number).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false }),
+            size: ecad_model::objects::wire::WireSize::parse("1.5"),
+            ..Wire::new(net, ids.fresh(), a, b)
+        };
+        (w, Op::CreateWire { id: w, wire })
     };
-    let (w1, op1) = wire(&mut ids, "101", k1t[0], x1t[0]);
-    let (_, op2) = wire(&mut ids, "101", x1t[0], x1t[1]);
+    let (w1, op1) = wire(&mut ids, "101", 1, k1t[0], x1t[0]);
+    let (_, op2) = wire(&mut ids, "101", 2, x1t[0], x1t[1]);
     l.commit(Author::User, "Wires", vec![op1, op2]).unwrap();
     let cable: CableId = ids.fresh();
-    let mut cprops = ecad_model::doc::Properties::new();
-    cprops.insert("tag".into(), "-W1".into());
-    let cable_op =
-        Op::CreateCable { id: cable, cable: Cable { properties: cprops, members: vec![CableMember { conductor: w1, core: Some("1".into()) }] } };
+    let cable_op = Op::CreateCable {
+        id: cable,
+        cable: Cable {
+            tag: ecad_model::naming::tag::TagSlot::of_text(Some("-W1"), Default::default()),
+            cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())],
+            ..Default::default()
+        },
+    };
     l.commit(Author::User, "Cable", vec![cable_op]).unwrap();
     for i in 0..20 {
         let id: ItemId = ids.fresh();
@@ -147,20 +153,31 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page: p1, style, kind } }]).unwrap();
     }
     let at = l.head();
-    let set = |k: &str, v: &str| Op::SetProperty { object: ObjectRef::Project, key: k.into(), before: None, after: Some(v.into()) };
     l.commit(
         Author::User,
         "Issue A",
         vec![
-            set("rev.1.rev", "A"),
-            set("rev.1.description", "First issue"),
-            set("rev.1.issued", "Rev A"),
-            Op::NameVersion { name: "Rev A".into(), at, description: None },
+            ecad_model::Op::ModifyProject {
+                before: ecad_model::Project::default(),
+                after: ecad_model::Project {
+                    revisions: vec![ecad_model::Revision {
+                        rev: Some(ecad_model::Rev::Letter(1)),
+                        description: ecad_model::RevValue::new("First issue").ok(),
+                        drawn: ecad_model::RevValue::new("CV").ok(),
+                        date: ecad_model::document::project::parse_date("2026-11-22").ok(),
+                        issued: true,
+                        ..ecad_model::Revision::default()
+                    }],
+                    ..ecad_model::Project::default()
+                },
+            },
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key: "note".into(), before: None, after: Some("issued".into()) },
+            Op::NameVersion { name: ecad_model::PointName::Revision(ecad_model::Rev::Letter(1)), at, description: None },
         ],
     )
     .unwrap();
     let path = dir.path("rich.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, None, None, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let (b, _) = proj.create_branch("Option B", main, at, None, None).unwrap();
@@ -178,7 +195,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
 }
 
 /// One protocol request's reply, parsed.
-pub fn ask(src: Option<&dyn ecad_inspector::source::Source>, request: serde_json::Value) -> serde_json::Value {
+pub(crate) fn ask(src: Option<&dyn ecad_inspector::source::Source>, request: serde_json::Value) -> serde_json::Value {
     let reply = ecad_inspector::protocol::handle(src, &request.to_string());
     serde_json::from_str(&reply).unwrap()
 }

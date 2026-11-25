@@ -1,6 +1,6 @@
 [package]
 name = "ecad-file"
-description = "ECAD project and library files: versioned records, JSON Lines framing, integrity, reading and writing (proposal Part E)"
+description = "The ECAD project file format: records, canonical form and hash chain, the redb container's tables, snapshots, opening, saving and Verify"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,13 +15,16 @@ ecad-store = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# Chunks and history ranges are read in parallel (design 061, lane R11).
+rayon = { workspace = true }
 # SHA-256 for the history hash chain and content hashes (RustCrypto, MIT OR Apache-2.0).
 sha2 = { version = "0.10", default-features = false }
+# The container's engine: ecad-file defines the tables and reads and writes them; opening the
+# database and its transactions are ecad-store's (`ecad_store::db`).
 redb = { workspace = true }
-ruzstd = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd = { workspace = true }
+# Date text of the history graph (no clock: the caller passes the zone's offset).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).

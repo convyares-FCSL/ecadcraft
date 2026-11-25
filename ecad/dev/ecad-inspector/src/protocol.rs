@@ -1,4 +1,4 @@
-//! The inspector protocol, version 1 (design 029 §2).
+//! The inspector protocol, version 1.
 //!
 //! # Semantics
 //! - A request is one JSON object: `{"v": 1, "id": "7", "op": "devices", …}`. The reply is
@@ -16,11 +16,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_file::v2::Store;
-use ecad_file::v2::schema::VersionKind;
-use ecad_file::v2::store::TABLES as TABLES_ORDER;
-use ecad_file::v2::verify::VerifyReport;
-use ecad_model::{ComponentId, ConductorId, Document, Subject, TerminalId};
+use ecad_file::Store;
+use ecad_file::schema::RowKind;
+use ecad_file::store::TABLES as TABLES_ORDER;
+use ecad_file::verify::VerifyReport;
+use ecad_model::{ConnectionPointId, DeviceId, Document, Subject, WireId};
 use serde_json::{Map, Value, json};
 
 use crate::source::{Opened, Problem, Source, VerifyState, size_text};
@@ -34,7 +34,7 @@ pub const SERVER: &str = concat!("ecadinspect ", env!("CARGO_PKG_VERSION"));
 
 /// Every op version 1 answers (`open` and `reload` are handled by the transport, which owns the
 /// source).
-pub const OPS: [&str; 20] = [
+pub const OPS: [&str; 19] = [
     "hello",
     "summary",
     "project",
@@ -52,7 +52,6 @@ pub const OPS: [&str; 20] = [
     "check_chain",
     "invariants",
     "verify",
-    "export_jsonl",
     "open",
     "reload",
 ];
@@ -62,7 +61,7 @@ pub const PAGE: u64 = 200;
 pub const MAX_PAGE: u64 = 1_000;
 /// The most bytes of a stored row `row` returns raw.
 pub const MAX_RAW: usize = 64 * 1024;
-/// The largest reply (design 029 §5.1).
+/// The largest reply.
 pub const MAX_REPLY: usize = 256 * 1024 * 1024;
 /// The longest `id` and `q`.
 const MAX_ID: usize = 64;
@@ -182,11 +181,7 @@ pub fn reply_to(source: Option<&dyn Source>, req: &Request) -> String {
     if text.len() > MAX_REPLY {
         return error(
             &req.id,
-            &Problem::new(
-                "too-large",
-                format!("The reply is {} , over the limit of 256 MiB.", size_text(text.len() as u64)),
-                "Ask for fewer rows, or use `ecadinspect <file> export-jsonl --out <file>`.",
-            ),
+            &Problem::new("too-large", format!("The reply is {} , over the limit of 256 MiB.", size_text(text.len() as u64)), "Ask for fewer rows."),
         );
     }
     text
@@ -250,7 +245,6 @@ fn op(s: &dyn Source, req: &Request) -> Result<Value, Problem> {
         },
         "invariants" => model(s).map(|o| invariants(&o.doc)),
         "verify" => Ok(verify_json(&s.verify())),
-        "export_jsonl" => store(s).and_then(|st| export(st, req)),
         _ => Err(Problem::new("unknown-op", format!("Unknown op `{}`.", req.op), r#"Send {"v":1,"op":"hello"}."#)),
     }
 }
@@ -352,10 +346,6 @@ fn summary(s: &dyn Source) -> Value {
     });
     if let Some(p) = s.problem() {
         match p.what {
-            "version-1" => {
-                let line = s.head().split(|b| *b == b'\n').next().unwrap_or_default();
-                out["v1_header"] = json!(String::from_utf8_lossy(line));
-            }
             "not-ecad" | "unreadable" => {
                 out["head_hex"] = json!(text::hex(s.head().get(..64).unwrap_or(s.head())));
             }
@@ -396,12 +386,12 @@ fn summary(s: &dyn Source) -> Value {
             });
             let d = &o.doc;
             out["counts"] = json!({
-                "pages": d.pages.len(),
-                "devices": d.components.len(),
-                "wires": d.conductors.len(),
-                "cables": d.cables.len(),
+                "pages": d.pages().len(),
+                "devices": d.devices().len(),
+                "wires": d.wires().len(),
+                "cables": d.cables().len(),
                 "nets": d.connectivity().len(),
-                "items": d.items.len(),
+                "items": d.items().len(),
             });
         }
         Err(p) => out["open"] = json!({"state": "failed", "error": p.json()}),
@@ -412,11 +402,11 @@ fn summary(s: &dyn Source) -> Value {
 fn invariants(d: &Document) -> Value {
     let check = d.check();
     let index = d.check_index();
-    let mismatches = ecad_model::derive::mismatches(d, 1e-6);
+    let mismatches = ecad_model::connectivity::derive::mismatches(d, 1e-6);
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"wire": wire_name(d, m.conductor), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.connection_point), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -430,93 +420,142 @@ fn invariants(d: &Document) -> Value {
 // ------------------------------------------------------------------ model views
 
 fn page_number(d: &Document, p: ecad_model::PageId) -> String {
-    ecad_model::book::page_number(d, p)
+    ecad_model::document::book::page_number(d, p)
 }
 
-fn tag_of(props: &ecad_model::doc::Properties) -> Option<&String> {
-    props.get(ecad_model::tag::TAG_KEY)
+/// A device's tag as drawn: a provisional one with its `?`, so it is not the real tag of the same text.
+fn tag_of(d: &ecad_model::Device) -> Option<String> {
+    d.tag_shown()
 }
 
-fn device_name(d: &Document, c: ComponentId) -> String {
-    d.components.get(&c).and_then(|x| tag_of(&x.properties)).cloned().unwrap_or_else(|| format!("({})", c.short()))
+/// The name of what owns a connection point: a device's tag, or a drawing aid's name.
+fn owner_name(d: &Document, owner: ecad_model::ConnectionPointOwner) -> String {
+    match owner {
+        ecad_model::ConnectionPointOwner::Device(c) => device_name(d, c),
+        ecad_model::ConnectionPointOwner::Aid(a) => match d.aids().get(&a).and_then(|x| x.continuation_name()) {
+            Some(name) => format!("\u{2192}{name}"),
+            None => a.short(),
+        },
+    }
 }
 
-fn point_name(d: &Document, t: TerminalId) -> String {
-    match d.terminals.get(&t) {
+fn device_name(d: &Document, c: DeviceId) -> String {
+    d.devices().get(&c).and_then(tag_of).unwrap_or_else(|| format!("({})", c.short()))
+}
+
+fn point_name(d: &Document, t: ConnectionPointId) -> String {
+    match d.connection_points().get(&t) {
         Some(term) => {
-            let own = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
-            format!("{}:{own}", device_name(d, term.component))
+            let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
+            format!("{}:{own}", owner_name(d, term.owner))
         }
         None => format!("({})", t.short()),
     }
 }
 
-fn wire_number(d: &Document, c: ConductorId) -> Option<String> {
-    d.conductors.get(&c).and_then(|w| w.properties.get(ecad_model::connectivity::WIRE_NUMBER)).cloned()
+fn wire_number(d: &Document, c: WireId) -> Option<String> {
+    d.wires().get(&c).and_then(|w| w.number_text()).map(str::to_string)
 }
 
-fn wire_name(d: &Document, c: ConductorId) -> String {
+fn wire_name(d: &Document, c: WireId) -> String {
     wire_number(d, c).unwrap_or_else(|| format!("({})", c.short()))
 }
 
 fn project(d: &Document) -> Value {
     let mut props = Map::new();
-    let mut revisions: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
-    for (k, v) in &d.properties {
-        if let Some((n, field)) = k.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
-            revisions.entry(n.to_string()).or_default().insert(field.to_string(), json!(v));
-        } else {
-            props.insert(k.clone(), json!(v));
-        }
+    for (k, v) in d.display() {
+        props.insert(k.clone(), json!(v));
     }
+    // The revision rows, numbered from 1.
+    let revisions: BTreeMap<String, Value> = d.project().revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
+    // The location and function lists and the project's defaults.
+    let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
+        l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()
+    };
+    let entry = |id: String, code: &ecad_model::ListCode, tag: &Option<ecad_model::ListCode>, ds: &[ecad_model::ListDescription]| {
+        (id, code.to_string(), tag.as_ref().map(ToString::to_string), ds.iter().map(ToString::to_string).collect())
+    };
+    let locations = list(d.project().locations.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
+    let functions = list(d.project().functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
-        "properties": props,
+        "display": props,
+        "info": d.project().info,
+        // Each folder with its place and start number.
+        "folders": d.folder_order().iter().filter_map(|id| d.folders().get(id).map(|f| json!({
+            "id": id.to_string(),
+            "name": f.name,
+            "parent": f.parent.and_then(|p| d.folders().get(&p)).map(|p| p.name.clone()),
+            "start": f.start,
+        }))).collect::<Vec<_>>(),
+        "locations": locations,
+        "functions": functions,
+        "location": d.project().location.map(|l| location_code(d, l)),
+        "function": d.project().function.map(|f| function_code(d, f)),
         "revisions": revisions,
-        "reference_style": format!("{:?}", d.settings.reference_style),
-        "versions": d.versions,
+        "reference_style": format!("{:?}", d.settings().reference_style()),
+        // What one wire number counts.
+        "number_by": ecad_model::Word::word(d.settings().wiring.number_by),
+        "versions": d.versions().iter().map(|(p, at)| json!({"kind": match p.kind() { ecad_model::PointKind::Version => "Version", ecad_model::PointKind::Revision => "Revision" }, "name": p.key(), "shown": point_text(d, p), "at": at})).collect::<Vec<_>>(),
         "counts": {
-            "pages": d.pages.len(),
-            "folders": d.folders.len(),
-            "devices": d.components.len(),
-            "connection_points": d.terminals.len(),
-            "wires": d.conductors.len(),
-            "cables": d.cables.len(),
+            "pages": d.pages().len(),
+            "folders": d.folders().len(),
+            "devices": d.devices().len(),
+            "connection_points": d.connection_points().len(),
+            "wires": d.wires().len(),
+            "cables": d.cables().len(),
             "nets": d.connectivity().len(),
-            "definitions": d.definitions.len(),
-            "items": d.items.len(),
+            "definitions": d.definitions().len(),
+            "items": d.items().len(),
         },
     })
 }
 
+/// A location id as its code, or `? (id)` when the list has no such entry.
+fn location_code(d: &Document, id: ecad_model::LocationId) -> String {
+    d.project().location(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
+}
+
+/// A function id as its code, or `? (id)` when the list has no such entry.
+fn function_code(d: &Document, id: ecad_model::FunctionId) -> String {
+    d.project().function(id).map_or_else(|| format!("? ({id})"), |e| e.code.to_string())
+}
+
 fn pages(d: &Document) -> Vec<Value> {
     let mut items: BTreeMap<ecad_model::PageId, usize> = BTreeMap::new();
-    for it in d.items.values() {
+    for it in d.items().values() {
         *items.entry(it.page).or_default() += 1;
     }
-    let mut devices: BTreeMap<ecad_model::PageId, BTreeSet<ComponentId>> = BTreeMap::new();
-    let mut wires: BTreeMap<ecad_model::PageId, BTreeSet<ConductorId>> = BTreeMap::new();
-    for r in d.representations.values() {
+    let mut devices: BTreeMap<ecad_model::PageId, BTreeSet<DeviceId>> = BTreeMap::new();
+    let mut wires: BTreeMap<ecad_model::PageId, BTreeSet<WireId>> = BTreeMap::new();
+    for r in d.representations().values() {
         match r.subject {
-            Subject::Component(c) => {
+            Subject::Device(c) => {
                 devices.entry(r.page).or_default().insert(c);
             }
-            Subject::Conductor(c) => {
+            Subject::Wire(c) => {
                 wires.entry(r.page).or_default().insert(c);
             }
             _ => {}
         }
     }
-    d.page_order
+    d.page_order()
         .iter()
-        .filter_map(|id| d.pages.get(id).map(|p| (id, p)))
+        .filter_map(|id| d.pages().get(id).map(|p| (id, p)))
         .map(|(id, p)| {
-            let folder = ecad_model::book::folder_of(d, *id).and_then(|f| d.folders.get(&f)).map(|f| f.name.clone());
+            let folder = ecad_model::document::book::folder_of(d, *id).and_then(|f| d.folders().get(&f)).map(|f| f.name.clone());
             json!({
                 "id": id.to_string(),
                 "number": page_number(d, *id),
                 "title": p.title,
                 "folder": folder,
-                "properties": p.properties,
+                "kind": p.kind.generated_kind().map_or("schematic", ecad_model::Word::word),
+                "strip": p.kind.strip().map(|c| c.to_string()),
+                "page_type": p.page_type.as_ref().map(ToString::to_string),
+                "sheet": p.sheet.map(|s| s.text()),
+                "title_block": p.title_block.as_ref().map(ToString::to_string),
+                "location": p.location.map(|l| location_code(d, l)),
+                "function": p.function.map(|f| function_code(d, f)),
+                "display": p.display,
                 "items": items.get(id).copied().unwrap_or(0),
                 "devices": devices.get(id).map_or(0, BTreeSet::len),
                 "wires": wires.get(id).map_or(0, BTreeSet::len),
@@ -526,56 +565,64 @@ fn pages(d: &Document) -> Vec<Value> {
 }
 
 fn devices(d: &Document, detail: bool) -> Vec<Value> {
-    let mut tags: BTreeMap<&String, usize> = BTreeMap::new();
-    for c in d.components.values() {
-        if let Some(t) = tag_of(&c.properties) {
+    let mut tags: BTreeMap<String, usize> = BTreeMap::new();
+    for c in d.devices().values() {
+        if let Some(t) = tag_of(c) {
             *tags.entry(t).or_default() += 1;
         }
     }
-    let mut attached: BTreeMap<TerminalId, Vec<ConductorId>> = BTreeMap::new();
-    for (id, w) in &d.conductors {
-        for t in w.ends.iter().flatten() {
+    let mut attached: BTreeMap<ConnectionPointId, Vec<WireId>> = BTreeMap::new();
+    for (id, w) in d.wires() {
+        for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
         }
     }
-    let mut on_pages: BTreeMap<ComponentId, BTreeSet<usize>> = BTreeMap::new();
-    let order: BTreeMap<ecad_model::PageId, usize> = d.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    for r in d.representations.values() {
-        if let Subject::Component(c) = r.subject
+    let mut on_pages: BTreeMap<DeviceId, BTreeSet<usize>> = BTreeMap::new();
+    let order: BTreeMap<ecad_model::PageId, usize> = d.page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
+    for r in d.representations().values() {
+        if let Subject::Device(c) = r.subject
             && let Some(i) = order.get(&r.page)
         {
             on_pages.entry(c).or_default().insert(*i);
         }
     }
     let mut out: Vec<(String, Value)> = d
-        .components
+        .devices()
         .iter()
         .map(|(id, c)| {
-            let tag = tag_of(&c.properties).cloned();
+            let tag = tag_of(c);
             let points: Vec<Value> = d
-                .terminals_of(*id)
+                .connection_points_of(*id)
                 .map(|(t, term)| {
-                    let name = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+                    let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
-                    json!({"name": name, "wires": wires})
+                    // How many conductors it accepts.
+                    json!({"name": name, "wires": wires, "accepts": term.accepts.get()})
                 })
                 .collect();
             let pages: Vec<String> =
-                on_pages.get(id).into_iter().flatten().filter_map(|i| d.page_order.get(*i)).map(|p| page_number(d, *p)).collect();
+                on_pages.get(id).into_iter().flatten().filter_map(|i| d.page_order().get(*i)).map(|p| page_number(d, *p)).collect();
             let mut row = json!({
                 "id": id.to_string(),
                 "tag": tag,
+                "tag_state": c.tag.state().map(ecad_model::naming::words::Word::word),
                 "duplicate": tag.as_ref().is_some_and(|t| tags.get(t).copied().unwrap_or(0) > 1),
-                "function": c.properties.get(ecad_model::book::FUNCTION_KEY),
-                "location": c.properties.get(ecad_model::book::LOCATION_KEY),
-                "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
+                "function": c.function.id().map(|f| function_code(d, f)),
+                "function_state": place_word(&c.function),
+                "location": c.location.id().map(|l| location_code(d, l)),
+                "location_state": place_word(&c.location),
+                "definition": c.definition.and_then(|def| d.definitions().get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
             });
             if detail {
+                // The device's text fields, then what is left in its bag.
+                for f in ecad_model::TextField::ALL {
+                    row[f.key()] = json!(c.text(f));
+                }
                 row["properties"] = json!(c.properties);
             }
-            (tag.unwrap_or_default(), row)
+            (tag.unwrap_or_default().to_string(), row)
         })
         .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -587,17 +634,17 @@ fn nets(d: &Document) -> Vec<Value> {
         .connectivity()
         .nets()
         .map(|(_, n)| {
-            let number = ecad_model::wiring::net_number(d, n);
-            let pot = ecad_model::wiring::net_potential(d, n);
-            let (page, column) = ecad_model::wiring::net_place(d, n);
-            let points: Vec<String> = n.terminals.iter().map(|t| point_name(d, *t)).collect();
+            let number = ecad_model::connectivity::wiring::net_number(d, n);
+            let pot = ecad_model::connectivity::wiring::net_potential(d, n);
+            let (page, column) = ecad_model::connectivity::wiring::net_place(d, n);
+            let points: Vec<String> = n.connection_points.iter().map(|t| point_name(d, *t)).collect();
             let row = json!({
                 "number": number,
-                "fixed": ecad_model::wiring::net_fixed(n),
+                "fixed": ecad_model::connectivity::wiring::net_fixed(n),
                 "potential": pot.name,
                 "place": format!("{page}/{column}"),
                 "points": points,
-                "wires": n.conductors.len(),
+                "wires": n.wires.len(),
             });
             (number, row)
         })
@@ -607,24 +654,32 @@ fn nets(d: &Document) -> Vec<Value> {
 }
 
 fn wires(d: &Document) -> Vec<Value> {
-    let mut in_cable: BTreeMap<ConductorId, (String, Option<String>)> = BTreeMap::new();
-    for (id, k) in &d.cables {
-        let tag = tag_of(&k.properties).cloned().unwrap_or_else(|| format!("({})", id.short()));
-        for m in &k.members {
-            in_cable.insert(m.conductor, (tag.clone(), m.core.clone()));
+    let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
+    for (id, k) in d.cables() {
+        let tag = k.tag_shown().unwrap_or_else(|| format!("({})", id.short()));
+        for w in k.cores.iter().filter_map(|m| m.wire()) {
+            in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
     }
-    d.conductors
+    d.wires()
         .iter()
         .map(|(id, w)| {
-            let ends: Vec<String> = w.ends.iter().map(|e| e.map_or_else(|| "open".to_string(), |t| point_name(d, t))).collect();
+            let ends: Vec<String> = w.ends.iter().map(|t| point_name(d, *t)).collect();
             let cable = in_cable.get(id);
             json!({
                 "id": id.to_string(),
                 "number": wire_number(d, *id),
                 "ends": ends,
-                "cross_section": w.properties.get(ecad_model::wiring::CROSS_SECTION),
-                "colour": w.properties.get(ecad_model::wiring::COLOUR),
+                "net": w.net.to_string(),
+                "conductor": w.conductor.to_string(),
+                "net_order": w.net_order,
+                "order_fixed": w.order_fixed,
+                "size": w.size.map(|s| s.to_string()),
+                "colours": w.colours.as_ref().map(ToString::to_string),
+                "fixed": w.number_fixed(),
+                "potential": w.potential_name(),
+                "rating": w.rating.values().into_iter().map(|(k, v)| format!("{k}: {v}")).chain(w.load.map(|a| format!("load: {a}"))).collect::<Vec<_>>(),
+                "protected_by": w.protected_by.map(|p| protected_name(d, p)),
                 "cable": cable.map(|c| c.0.clone()),
                 "core": cable.and_then(|c| c.1.clone()),
             })
@@ -632,22 +687,67 @@ fn wires(d: &Document) -> Vec<Value> {
         .collect()
 }
 
+/// The device a wire or cable names as its protection, in words: `-F01:3`, or the id of a device
+/// that is not there.
+fn protected_name(d: &Document, p: ecad_model::objects::wire::ProtectedBy) -> String {
+    let device = if d.devices().contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
+    p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
+}
+
+/// Where a cable core is, in words: its wire, or the line it waits on with its landed end, or unplaced.
+fn core_place(d: &Document, p: ecad_model::CorePosition) -> String {
+    match p {
+        ecad_model::CorePosition::Wire(w) => wire_name(d, w),
+        ecad_model::CorePosition::Route { route, landed: Some(t) } => {
+            format!("line {} (no wire yet, landed at {})", route.short(), point_name(d, t))
+        }
+        ecad_model::CorePosition::Route { route, landed: None } => format!("line {} (no wire yet, no end landed)", route.short()),
+        ecad_model::CorePosition::Unplaced => "unplaced".into(),
+    }
+}
+
 fn cables(d: &Document) -> Vec<Value> {
-    d.cables
+    d.cables()
         .iter()
         .map(|(id, k)| {
-            let members: Vec<Value> = k.members.iter().map(|m| json!({"wire": wire_name(d, m.conductor), "core": m.core})).collect();
+            let members: Vec<Value> = k
+                .cores
+                .iter()
+                .map(|m| {
+                    let mut v = json!({
+                        "wire": core_place(d, m.position),
+                        "core": m.label_str(),
+                        "purpose": if m.is_spare() { "spare" } else { "in use" },
+                        "colours": m.colours.as_ref().map(ToString::to_string),
+                    });
+                    // Its named points on the cable's references.
+                    if !m.through.is_empty() {
+                        v["through"] = json!(m.through.iter().map(ToString::to_string).collect::<Vec<_>>());
+                    }
+                    v
+                })
+                .collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];
-            for m in &k.members {
-                if let Some(w) = d.conductors.get(&m.conductor) {
+            for m in &k.cores {
+                if let Some(w) = m.wire().and_then(|w| d.wires().get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = t.and_then(|t| d.terminals.get(&t)) {
-                            side.insert(device_name(d, term.component));
+                        if let Some(term) = d.connection_points().get(t) {
+                            side.insert(owner_name(d, term.owner));
                         }
                     }
                 }
             }
-            json!({"id": id.to_string(), "tag": tag_of(&k.properties), "members": members, "ends": ends})
+            json!({
+                "id": id.to_string(),
+                "tag": k.tag_shown(),
+                "tag_state": k.tag.state().map(ecad_model::naming::words::Word::word),
+                "description": k.description(),
+                "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
+                "shield": k.shield.map(ecad_model::naming::words::Word::word),
+                "protected_by": k.protected_by.map(|p| protected_name(d, p)),
+                "members": members,
+                "ends": ends,
+            })
         })
         .collect()
 }
@@ -662,7 +762,7 @@ fn branches(st: &Store) -> Result<Vec<Value>, Problem> {
         .map(|(id, b)| {
             let rows = r.tx_count(*id).map_err(engine)?;
             let fork = match (&b.parent, &b.fork_point) {
-                (Some(p), Some(f)) => json!({"parent": names.get(p).cloned().unwrap_or_else(|| p.clone()), "seq": f.seq}),
+                (Some(p), Some(f)) => json!({"parent": names.get(&p.hex()).cloned().unwrap_or_else(|| p.hex()), "seq": f.seq}),
                 _ => Value::Null,
             };
             Ok(json!({
@@ -691,7 +791,7 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
     let mut rows = Vec::new();
     if hi >= 1 && count > 0 {
         for (seq, flag, chain, body) in r.tx_range(id, lo..=hi).map_err(engine)?.into_iter().rev() {
-            let record = ecad_file::v2::pack::unpack(flag, &body);
+            let record = ecad_file::pack::unpack(flag, &body);
             let value = record.as_ref().ok().and_then(|b| serde_json::from_slice::<Value>(b).ok());
             let v = value.clone().unwrap_or(Value::Null);
             let mut row = json!({
@@ -715,21 +815,29 @@ fn log(st: &Store, s: &dyn Source, req: &Request) -> Result<Value, Problem> {
     Ok(json!({"branch": name, "total": head, "from": from.min(head), "rows": rows}))
 }
 
+/// A named point in words: a version's text, or `Rev B` as the project's scheme writes it.
+fn point_text(d: &Document, p: &ecad_model::PointName) -> String {
+    match p {
+        ecad_model::PointName::Version(v) => v.to_string(),
+        ecad_model::PointName::Revision(r) => format!("Rev {}", d.project().rev_scheme.show(*r)),
+    }
+}
+
 fn versions(st: &Store) -> Result<Vec<Value>, Problem> {
     let r = st.reader().map_err(engine)?;
     let mut out = Vec::new();
     for (id, b) in r.branches().map_err(engine)? {
-        for kind in [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge] {
+        for kind in [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge] {
             for v in r.versions(id, kind).map_err(engine)? {
                 out.push(json!({
                     "branch": b.name,
-                    "kind": format!("{kind:?}"),
+                    "kind": kind.name(),
                     "name": v.name,
                     "seq": v.point.seq,
                     "chunks": v.chunks.len(),
                     "undo": v.undo.len() as u64 + v.undo_hidden,
                     "redo": v.redo.len() as u64 + v.redo_hidden,
-                    "release": v.release.as_ref().map(|rel| json!(rel.fields)),
+                    "release": v.release.as_ref().map(|rel| json!(rel.revision)),
                     "description": v.description,
                     "merge": v.merge.as_ref().map(|m| json!({"source": m.source, "source_head": m.source_head.seq})),
                 }));
@@ -773,10 +881,10 @@ fn key_text(table: &str, key: &[u8]) -> String {
 }
 
 fn kind_name(byte: u8) -> String {
-    [VersionKind::User, VersionKind::Revision, VersionKind::Auto, VersionKind::Merge]
+    [RowKind::VERSION, RowKind::REVISION, RowKind::Auto, RowKind::Merge]
         .into_iter()
         .find(|k| k.byte() == byte)
-        .map_or_else(|| format!("kind {byte}"), |k| format!("{k:?}"))
+        .map_or_else(|| format!("kind {byte}"), |k| k.name().to_string())
 }
 
 fn table_of(req: &Request) -> Result<&'static str, Problem> {
@@ -850,37 +958,13 @@ fn row(st: &Store, req: &Request) -> Result<Value, Problem> {
     found.ok_or_else(|| Problem::new("not-found", format!("No row of `{table}` has the key {want}."), "List the keys with the `rows` op."))
 }
 
-/// A writer that refuses past `limit` bytes.
-struct Capped {
-    buf: Vec<u8>,
-    limit: usize,
-    over: bool,
-}
-
-impl std::io::Write for Capped {
-    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        if self.buf.len().saturating_add(b.len()) > self.limit {
-            self.over = true;
-            return Err(std::io::Error::other("over the reply limit"));
-        }
-        self.buf.extend_from_slice(b);
-        Ok(b.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-fn export(st: &Store, req: &Request) -> Result<Value, Problem> {
-    let branch = req.str("branch").unwrap_or("main");
-    // Half the reply limit: the text is escaped once more inside the reply.
-    let mut w = Capped { buf: Vec::new(), limit: MAX_REPLY / 2, over: false };
-    match text::export_branch_jsonl(st, req.bool("with_raw"), branch, &mut w) {
-        Ok((lines, left_out)) => Ok(json!({"branch": branch, "lines": lines, "left_out": left_out, "text": String::from_utf8_lossy(&w.buf)})),
-        Err(_) if w.over => {
-            Err(Problem::new("too-large", "The export is over the reply limit of 256 MiB.", "`ecadinspect <file> export-jsonl --out <file>`"))
-        }
-        Err(e) => Err(Problem::new("unreadable", e, "`ecadinspect <file> export-jsonl` names the row.")),
+/// The word of how a location or function came to be, for the readable view: `manual`, `proposed`
+/// or `unset` (derived from the value's own state).
+fn place_word<I>(p: &ecad_model::document::book::Place<I>) -> &'static str {
+    use ecad_model::document::book::Place;
+    match p {
+        Place::Unset => "unset",
+        Place::Manual(_) => "manual",
+        Place::Proposed(_) => "proposed",
     }
 }

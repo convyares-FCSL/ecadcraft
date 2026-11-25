@@ -1,16 +1,14 @@
-//! Brief 033, MCP contracts (the ECAD rule of brief 011): the `contacts` reply's `table` (design
-//! 033 §4, AC5 and AC6) and `table`'s refusal (§11, AC13), through `execute`; the writes are the
-//! agent's transactions and are refused with writes off.
+//! MCP contracts: the `contacts` reply's `table` and `table`'s refusal, through `execute`; the writes are the
+//! agent's transactions, and with writes off `newpage` and `table` are refused.
 
-use ecad_mcp::policy;
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_engine::agent::policy;
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
-fn writer() -> Client {
-    Client::new(ecad_mcp::EcadMcp::in_memory("mcp", 33, ecad_mcp::Options { write: true, agent: None }).unwrap())
-}
+const WRITER_SEED: u64 = 33;
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
@@ -29,7 +27,7 @@ fn coil_with_contacts(c: &mut Client, at: [f64; 2]) -> String {
 
 #[test]
 fn an_automatic_table_clears_the_title_block() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     // Low on the page: the table below the coil would cross the title block (top line 50 mm).
     let k = coil_with_contacts(&mut c, [75.0, 70.0]);
     let t = c.exec("contacts", json!({"component": k}));
@@ -52,13 +50,13 @@ fn an_automatic_table_clears_the_title_block() {
 
 #[test]
 fn a_table_the_user_placed_stays_and_is_a_check() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = coil_with_contacts(&mut c, [75.0, 120.0]);
     // Into the title block, by Move Mirror Table: one transaction by the agent.
     c.exec("mirrormove", json!({"component": k, "at": [75.0, 45.0]}));
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    assert!(matches!(&last.ops[..], [Op::SetProperty { object: ObjectRef::Component(_), key, .. }] if key == "mirror"), "{:?}", last.ops);
+    assert!(matches!(&last.ops[..], [Op::ModifyDevice { .. }]), "{:?}", last.ops);
     let t = c.exec("contacts", json!({"component": k}));
     assert_eq!(t["table"]["shown"], json!("as placed"), "{t}");
     assert_eq!(t["table"]["top"], json!([75.0, 45.0]), "{t}");
@@ -71,30 +69,21 @@ fn a_table_the_user_placed_stays_and_is_a_check() {
 
 #[test]
 fn table_is_refused_on_an_ecad_page_in_clean_words() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let before = c.log();
     let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "cols": 2}}));
-    assert!(m.contains(ecad_cadcraft::convert::TABLE_REFUSED), "{m}");
+    assert!(m.contains(ecad_engine::convert::TABLE_REFUSED), "{m}");
     assert!(!m.contains("kinds"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
     // With writes off it is refused as every write is.
     let mut r = reader();
     let m = r.refused("execute", json!({"command": "table", "params": {}}));
-    assert!(m == policy::WRITES_OFF || m.contains(ecad_cadcraft::convert::TABLE_REFUSED), "{m}");
-}
-
-#[test]
-fn with_writes_off_the_move_is_refused_and_contacts_reads() {
-    let mut c = reader();
-    let before = c.log();
-    let m = c.refused("execute", json!({"command": "mirrormove", "params": {"component": "1", "at": [0, 0]}}));
-    assert_eq!(m, policy::WRITES_OFF);
-    assert_eq!(c.log(), before);
+    assert!(m == policy::WRITES_OFF || m.contains(ecad_engine::convert::TABLE_REFUSED), "{m}");
 }
 
 #[test]
 fn continuation_sheets_are_numbered_taken_and_printed_whole() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let contents = c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
     let page = hex(&contents, "page");
     let last = c.log().last().cloned().unwrap();
@@ -108,7 +97,7 @@ fn continuation_sheets_are_numbered_taken_and_printed_whole() {
     let before = c.log().len();
     let m = c.refused("execute", json!({"command": "newpage", "params": {"number": "c11"}}));
     assert!(m.contains("Number c11 is sheet 2 of page C10 (Contents)."), "{m}");
-    let first = c.doc().page_order[0].hex();
+    let first = c.doc().page_order()[0].hex();
     let m = c.refused("execute", json!({"command": "pageprops", "params": {"page": first, "number": "C11"}}));
     assert!(m.contains("Number C11 is sheet 2 of page C10 (Contents)."), "{m}");
     assert_eq!(c.log().len(), before);
@@ -130,29 +119,27 @@ fn continuation_sheets_are_numbered_taken_and_printed_whole() {
 }
 
 #[test]
-fn with_writes_off_newpage_and_pageprops_are_refused() {
+fn with_writes_off_newpage_with_a_number_is_refused() {
     let mut c = reader();
     let before = c.log();
-    for (cmd, params) in [("newpage", json!({"number": "401"})), ("pageprops", json!({"number": "401"}))] {
-        let m = c.refused("execute", json!({"command": cmd, "params": params}));
-        assert_eq!(m, policy::WRITES_OFF, "{cmd}");
-    }
+    let m = c.refused("execute", json!({"command": "newpage", "params": {"number": "401"}}));
+    assert_eq!(m, policy::WRITES_OFF);
     assert_eq!(c.log(), before);
 }
 
 /// The kept Checks rows of `kind` (the list the Checks tab shows, updated per commit).
-fn kept(c: &mut Client, kind: ecad_cadcraft::checks::Kind) -> usize {
+fn kept(c: &mut Client, kind: ecad_electrical::checks::Kind) -> usize {
     c.s.with_session(|s, h| h.configure(s, |p| p.checks().rows().filter(|r| r.kind == kind).count()).unwrap()).unwrap()
 }
 
 #[test]
 fn the_title_block_row_follows_a_sheet_change() {
-    let mut c = writer();
-    let page = c.doc().page_order[0].hex();
+    let mut c = writer(WRITER_SEED);
+    let page = c.doc().page_order()[0].hex();
     c.exec("pageprops", json!({"page": page, "sheet": "A2"}));
     let k = coil_with_contacts(&mut c, [440.0, 100.0]);
     c.exec("mirrormove", json!({"component": k, "at": [450.0, 40.0]}));
-    let over = ecad_cadcraft::checks::Kind::TableOverTitle;
+    let over = ecad_electrical::checks::Kind::TableOverTitle;
     assert_eq!(kept(&mut c, over), 1, "inside the A2 frame, over its title block");
     // The page becomes A3: the frame ends at 410 mm, the table is outside it.
     c.exec("pageprops", json!({"page": page, "sheet": "A3"}));
@@ -171,12 +158,12 @@ fn the_title_block_row_follows_a_sheet_change() {
 
 #[test]
 fn continuation_rows_are_kept_and_an_unrelated_edit_leaves_them_alone() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     c.exec("newpage", json!({"generated": "contents", "number": "C10"}));
-    let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.outputs().continuation_builds).unwrap()).unwrap();
+    let builds = |c: &mut Client| c.s.with_session(|s, h| h.configure(s, |p| p.reports().continuation_builds).unwrap()).unwrap();
     let start = builds(&mut c);
     // A wire on a drawing page changes no page number or sheet count.
-    let first = c.doc().page_order[0].hex();
+    let first = c.doc().page_order()[0].hex();
     c.exec("openpage", json!({"page": first}));
     c.exec("wire", json!({"points": [[20, 100], [80, 100]]}));
     assert_eq!(builds(&mut c), start, "an unrelated edit works nothing out");

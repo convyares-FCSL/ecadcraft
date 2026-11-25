@@ -1,0 +1,430 @@
+Historical record (2026-11-14). Not current; see [user/pages.md](../../user/pages.md).
+
+# Design 055c: a title block built from elements, and the sheet frame beside it
+
+Status: **Approved** (owner, 2026-11-14: §13 answered; overseer, 2026-11-14: FD1–FD6 approved).
+The worker starts after 055 merges.
+
+Brief: [`055-title-blocks.md`](../briefs/055-title-blocks.md), section "055c". Builds on 055a
+(model, resolvers, house block) and replaces 055b's line-and-field canvas. Release 0.2.2.
+
+The user's goal in one sentence: **build the company's title block from ready parts (a revision
+table, the title, the drawing number, the revision fields, the logo, the notice) by dragging them
+onto a grid, and pick it, separately from the sheet's border, per page type.**
+
+## 0. Where this starts
+
+### 0.1 Owner feedback (2026-11-14)
+
+1. The 055b editor is "the old style": draw lines, then add fields. Build the block from parts
+   instead: a revision part whose columns and rows you add, remove and make up; a title part; a
+   copyright part; custom parts; each dragged in and placed.
+2. The "title block" and the sheet are two things. A **sheet frame** is the paper, border, zones,
+   margins and where the block sits. A **title block** is the box built from parts. A page type picks
+   one of each; a page can override either. References and zones come from the frame only.
+
+### 0.2 What the reference drawings show
+
+The owner's 43 reference drawings use 9 distinct title block templates (own, team and external).
+The review notes stay outside the repository; in words:
+
+| Element | In how many of 9 | Variants seen |
+| --- | --- | --- |
+| Revision box (current rev) | 9 | Letters or numbers, one large cell |
+| Title, 1–3 lines (project, book or section, page title) | 9 | Left, centred or right-aligned; the largest text |
+| Drawing number | 9 | One value, or split into labelled sub-cells (organisation, group, type, number), or built from job, series and sheet |
+| Sheet number | 9 | With total (6), next (4), previous (2) beside it |
+| Logo | 9 | Left or middle, 15–35 mm tall |
+| Approvals: drawn, checked, approved | 9 | Name + date cells per role; a small role × name/signature/date grid; or columns of the revision table |
+| Confidentiality / copyright notice | 7 | A 3–6 line paragraph in its own cell, or a strip under the block; sometimes a bold heading line |
+| Company address lines | 5 | Beside or under the logo |
+| Revision table | 5 | 4–9 columns (rev, ECR, description, drawn, dates, checked, approved); 3–4 rows; header on top with newest at the bottom, or header at the bottom with rows growing upward, newest on top |
+| Sheet size | 5 | "A3" in its own cell |
+| Scale | 4 | NTS, N/A or a ratio |
+| Project or job number | 4 | Beside the drawing number |
+| Function and location | 2 | Two cells |
+| ECR | 2 | A revision table column |
+| Status | 2 | A prominent coloured word; or a document type cell |
+| Print date, file name, quality level | 1–2 each | Single cells |
+
+Patterns: every block is a **grid of cells**. Each cell is a field (small caption top-left, larger
+value), a group of fields, a table (revisions, approvals), a logo or a paragraph. Blocks are a
+**full-width strip** (5, the newer ones) or a **corner box** (4); one is a column up the right edge.
+The same block family appears on A3 and A1 with different zones, so the frame and the block are
+independent.
+
+### 0.3 What 055a and 055b built (`feature/title-blocks` `57653add`)
+
+- **Model** (`ecad-model/src/title_block.rs`): `StyleRecord.body: StyleBody { title_block:
+  Option<TitleBlockLayout>, other }`; `TitleBlockLayout { size, items: Vec<BlockItem> }` with
+  `Line`, `Text`, `Field`, `RevTable`, `Logo`, `Unknown`; bounds; `Binding`, `TextLook`, `IfEmpty`.
+- **Resolvers** (`ecad-model/src/sheet.rs`): `frame_style` (page → page type stub → project →
+  standard → built-in), `title_block_style` (page `title_block` → page type stub → **the frame**),
+  `frame_block`, `frame_sheet`, `margins_of`, `keep_out`, `sheet_of`. A block is "borrowed" from a
+  frame style's body; there is no block catalogue.
+- **Drawing** (`ecad-cadcraft/src/title_block/`): `layout.rs` turns items into frame parts, `bind.rs`
+  fills bindings, `house.rs` builds the built-in block as items for any width, `dxf.rs` imports
+  logos and blocks, `checks.rs` the three checks. `frame_reach` and `frame::touches` are the update
+  maps.
+- **Editor** (`apps/ecad-trial/src/library/title_blocks/`): list, canvas with Select, Line, Text,
+  Field, Logo, a draft with Save (055 Q4), the Frame… popover, the inspector (Value, Look, Box).
+
+## 1. Words
+
+| Word | Meaning |
+| --- | --- |
+| **sheet frame** | A style of the `frame` catalogue: paper size, margins, zones and their labels, border weights, centre marks, and where the block sits. No block inside it any more |
+| **title block** | A style of the new `title_block` catalogue: a set of elements on a grid. Its size comes from its elements |
+| **element** | One part of a title block, a rectangle on the block grid with a type and the type's settings (§3) |
+| **block grid** | The block's own snap pitch, 2.5 mm by default (1, 2.5 or 5). Element edges sit on it |
+| **preset** | A palette entry that drops several elements already arranged (Page counters, Drawn / checked / approved, Drawing number with Rev). After the drop they are ordinary elements |
+
+## 2. Two things, two libraries
+
+### 2.1 What each one owns
+
+| | Sheet frame | Title block |
+| --- | --- | --- |
+| Catalogue | `frame` (050a) | `title_block` (**new**, FD1) |
+| Holds | sheet size, margins, zones (columns × rows, labels, corner), border and inner weights, line colour, grid labels, centre marks, block position | elements on a grid, the grid pitch |
+| Decides | where zones and references are; the keep-out area | what the box shows |
+| Built-in | `sheet` (019's border, 055a's fields) | `house` (055a's house block as elements, §5) |
+| Choice | `print.frame.style` | `print.title_block.style` (**new**, FD2) |
+| Editor | Frame editor: the whole sheet | Title block editor: the block only, zoomed to fill |
+
+A block never changes the grid. A block's size is what its elements and their columns add up to,
+every width set by the user (Q8: no stretch). The frame reserves the block's actual rectangle,
+placed by the frame's `block` position (bottom right or bottom left): that rectangle, not a
+full-width strip, is the keep-out. A block wider than the frame's usable width is drawn as it is and
+reported (`block-too-wide`, §8), never shrunk or clipped. A block for a wider sheet is a separate
+block: **Duplicate**, then widen its columns.
+
+### 2.2 Resolution (055a's resolvers stay, now for two things)
+
+```
+frame_style(doc, page)        page print.frame.style → page type → project → standard → built-in `sheet`
+title_block_style(doc, page)  page title_block → page type → project print.title_block.style → standard → built-in `house`
+```
+
+`title_block_style` no longer falls back to the frame (that was 055a's borrowing; FD3). Each level
+counts only when it names a style that exists in its catalogue; a dangling name falls through and
+Checks reports it (050a's `style-unknown`). The page type steps stay 055a's stubs until 054 fills
+them. `keep_out(doc, page)` reads the resolved block's height (built-in: 40 mm, so nothing moves).
+`frame_reach` gains the same rows for `title_block` records and `print.title_block.style` that it
+has for frames (§9).
+
+### 2.3 Where you pick them
+
+- **Page types** (054, Settings ▸ Pages and sheets): a Frame row and a Title block row.
+- **A page** (inspector, page level, nothing selected): Frame and Title block rows with Reset (050a's
+  style rows), so a page can override either.
+- **Project and standard**: Standards ▸ Frames and Standards ▸ Title blocks (a fifth catalogue tab);
+  each row has **Edit in Library**.
+
+## 3. Elements
+
+### 3.1 Common to every element
+
+| Setting | Values |
+| --- | --- |
+| Position, size | Grid cells from the block's bottom-left; typed in mm, snapped to the grid |
+| Border | Box (default) · None · per side (top, right, bottom, left toggles). Shared edges are drawn once, at the heavier weight |
+| Weight | Thin (frame's inner weight) · Thick (border weight) |
+| Caption | On/off, its text, position Top-left (default) · Left inline ("Sheet: 03") · None |
+
+Captions are 1.8 mm in `ecad.frame-label`. Values use the element's Look: size 1.8 · 2.5 · 3.5 · 5 ·
+7 mm, bold, align left · centre · right, colour ink · red (055 Q8, Q10). Long values are narrowed then
+cut (019's `fit`) and counted by `title-value-cut`.
+
+### 3.2 The types
+
+| Type | Shows | Its own settings | Seen in |
+| --- | --- | --- | --- |
+| **Revision table** | The newest issued revisions, in the **project's** revision columns | **Columns**: one row per project column (Settings ▸ Revisions, in the project's order), each with **Show** on/off, **Width** (mm, on the 2.5 mm grid; dragged on the canvas or typed) and **Header** text override (empty: the project's header). **Rows** 1–20, **Row height** (mm, default 5), **Text size**. **Order**: header on top, newest at the bottom · header on top, newest on top · header at the bottom, rows growing upward. Columns are added, removed, made up (ECR…) and reordered in the project's revision model, never in the block (Q3); a link "Edit columns in Settings ▸ Revisions" sits under the list. A project column the block has no setting for is shown at its project width. The table's width is the sum of its shown columns' widths; it has no width of its own (dragging its right edge widens the last shown column) | 5 of 9 |
+| **Field** | One value: a caption and a value | **Filled from**: Project, Page, Revision, Print (055 §7), with **If empty** | 9 of 9 (rev, drawing no., sheet…) |
+| **Revision field** | One item of the newest issued revision, as a Field | **Item**: current revision, revision date, description, ECR, drawn by, drawn date, checked by, checked date, approved by, approved date, or any other column of the project's revision model. Caption and Look as a Field (Q9) | 9 of 9 (rev, approvals) |
+| **Title** | 1–3 stacked lines, each from a binding | Per line: binding, size, bold; the element's align | 9 of 9 |
+| **Notice** | A paragraph of fixed text | **Heading** (optional, bold), **Text** (≤ 1 000 characters), size; wraps to the box and shrinks to fit down to 1.4 mm, then reports `title-value-cut` | 7 of 9 |
+| **Text** | One fixed line | Text ≤ 256, Look | address lines, "do not scale" style lines |
+| **Logo** | A vector drawing fitted to the box (055 §6) | Name, Replace…, Align | 9 of 9 |
+| **Custom field** | A Field bound to a project key the user names (`project:<key>`) | The key (`a-z 0-9 _`) and its caption; listed in Settings ▸ Project info as a title block field | job no., quality level, site |
+
+Approvals are not one element (Q9): each revision item is its own Revision field, placed where the
+company wants it. The **Drawn / checked / approved** preset drops the six (names and dates) in a
+2 × 3 grid of cells, after which each moves on its own.
+
+The drawing number is **one project field** (`project:drawing_number`, the pack number); there is no
+composite element and no split into custom fields (Q6). The reference sets that show it in labelled
+sub-cells print one number. A page-level suffix (the sheet appended to the pack number) is not
+needed: the Sheet field beside it shows the page, so none is designed.
+
+### 3.3 The palette (left panel, "drag onto the block")
+
+| Group | Entries (a ▸ marks a preset) |
+| --- | --- |
+| Tables | Revision table |
+| Revision | Current revision · Revision date · Description · ECR · Drawn by · Drawn date · Checked by · Checked date · Approved by · Approved date · ▸ Drawn / checked / approved · any other project revision column |
+| Title and numbers | Title (3 lines) · Drawing number · ▸ Drawing number with Rev · Project number |
+| Page | Page title · ▸ Page counters (Sheet, Next, Of) · Sheet · Next · Previous · Total · Function · Location · Sheet size · Scale |
+| Project | Project name · Customer · Status (red, bold) · Company · Custom field… |
+| Fixed | Notice · Text · Logo |
+
+Each entry shows its type icon and source chip (project, page, revision, print). Default sizes are
+on the grid (fields 40 × 10 mm; tables 120 × 25 mm; title 90 × 15 mm; notice 50 × 20 mm; logo
+40 × 20 mm).
+
+## 4. The editors
+
+### 4.1 Library ▸ Title blocks, two lists
+
+The left panel's top has a two-way switch **Title blocks · Frames** (`library.tb.kind.blocks|frames`).
+Each shows its catalogue's rows (built-ins first, then the standard's, then the project's) with a
+thumbnail and a grey line ("Elements: 18 · used by 10 pages" or "A3 landscape · 8 × 6 zones · used
+by 10 pages"), and **+ Title block** / **+ Frame**. Import DXF stays under Title blocks (055b): a
+DXF's texts become Text elements and its cells are left to the user; logos as today.
+
+### 4.2 The title block editor
+
+| Region | Contents |
+| --- | --- |
+| Toolbar | Library tabs, divider, **Select** (V), divider, **Sample** toggle, **Grid** (1 · 2.5 · 5 mm), **Check against** (a frame to compare the block's width with: the project's frame by default; its usable width is drawn as a `sheet.ink_2` line under the block) |
+| Canvas | Only the block, zoomed to fill the canvas with 24 px margin, on `sheet.sheet`. The block grid as `sheet.grid` dots. Elements drawn as on paper, with a 1 px `shell.accent` dashed outline each; the selected one solid with eight handles and its type tag above ("Revision table") |
+| Left | The list (above) and the palette |
+| Right | The selected element's settings (§3) in folding sections: **Content** (type settings), **Caption**, **Look**, **Box** (position, width and height typed in mm on the grid, border, weight; resize handles on the canvas do the same). Nothing selected: the block (name, grid, size read from its elements (grey, not set), layer, used by, Duplicate, Delete…) |
+| Footer | "Changes reach every page that uses this block." · "Used by 4 page types · 10 pages" |
+
+**Gestures.** Drag a palette entry onto the block: a ghost at its default size snaps to the grid and
+to neighbouring edges (a `sheet.connection_point` dot marks a snap); release drops it. Drop on empty
+paper beside the block grows the block. Drag an element to move; handles resize; Shift keeps
+proportions; arrows move one grid step. Elements do not overlap: a move or drop onto another
+element is shown in `sheet.error` and refused on release with "Elements can't overlap. Move it to
+free space." (Q5). Delete removes; the block shrinks to its elements. Ctrl+D duplicates beside. A
+Revision table column's edge is dragged on the canvas to resize it (its Width); its order is the
+project's.
+
+**One transaction per edit** (the overseer's rule; reverses 055 Q4's draft and Save, Q4 here). A
+drop, a move or resize (on release), a delete, a settings change (on Enter or blur) each writes the
+whole `title_block` record once (`SetStyle`), so `u` undoes one gesture. The consequence goes first,
+in the footer: "Changes reach 10 pages." Writes off: the canvas is read-only with "Writes are off for
+this project." Built-ins are read-only with **Duplicate**.
+
+### 4.3 The frame editor
+
+| Region | Contents |
+| --- | --- |
+| Canvas | The whole sheet at fit: border, zones with labels, centre marks, and the block area in the chosen position, filled with the project's block in `sheet.ink_2` (Sample on) or a hatched box "Title block, 400 × 40 mm" |
+| Right | **Paper**: size (A3, A2, A1, A0, W × H). **Margins**: left, right, bottom, top. **Zones**: columns × rows, column labels (1 2 3 · A B C), row labels, start corner, labels on all sides, centre marks. **Lines**: border weight, inner weight, colour. **Block**: position (bottom right · bottom left), preview block (which title block fills the area here; not stored). Used by |
+| Footer | "Zones and references on every page that uses this frame follow these settings." |
+
+055b's Frame… popover goes: its controls are this panel. Each change is one transaction.
+
+### 4.4 States (both editors)
+
+| State | Looks like |
+| --- | --- |
+| Empty block | The grid and "Drag parts from the left" in `shell.text_3` |
+| Built-in | Read-only, banner "Built-in. Duplicate it to make your own." |
+| Writes off | Read-only, the sentence in the footer |
+| Overlap while dragging | Ghost outline in `sheet.error` |
+| Block wider than the Check-against frame's usable width | The overhang hatched in `sheet.warning`, footer "12 mm wider than frame A3 house can hold. Duplicate it for a wider sheet." |
+| Changed by another writer | The canvas re-reads the record (there is no draft to lose) |
+
+### 4.5 Element names
+
+`library.tb.kind.blocks|frames`, `library.tb.list.row.<id>`, `library.tb.new`, `library.tb.import`,
+`library.tb.palette.<entry>`, `library.tb.canvas`, `library.tb.el.<n>`, `library.tb.grid`,
+`library.tb.sample`, `library.tb.check_against`, `library.tb.el.content.columns.row.<field>.show|width|header`,
+`.content.columns.edit` (the Settings ▸ Revisions link), `.content.rows|row_height|size|order`,
+`.content.item` (Revision field), `.content.lines.<i>`, `.content.text|heading`, `.caption.on|text|pos`,
+`.look.size|bold|align|colour`, `.box.x|y|w|h|border|weight`, `library.frame.canvas`,
+`library.frame.paper|margin.left|margin.right|margin.bottom|margin.top|columns|rows|column_labels|
+row_labels|corner|labels_all|centre_marks|border|inner|colour|block|preview`, `library.tb.usedby`.
+
+## 5. The built-in house block as elements
+
+055a's `house(width, text)` is re-expressed as elements with the same rectangles, captions, bindings
+and sizes, so every page draws the same parts as on `57653add` (the test compares the part lists):
+
+| Element | Rect (mm, A3, from bottom-left; block 400 × 40) | Settings |
+| --- | --- | --- |
+| Revision table | 0, 0, 200 × 40 (its columns' widths add up to 200) | Every project column shown at its project width (with ECR, FP5), 7 rows of 5 mm, header on top, newest on top |
+| Logo | 200, 30, 80 × 10, border top, left, right | Empty: draws nothing |
+| Field Company | 200, 25, 80 × 5, border bottom, left, right, no caption | `project:company`, 1.8 |
+| Field Project | 200, 12.5, 80 × 12.5 | `project:title`, 3.5 bold |
+| Field Customer, Field Status | 200, 0, 45 × 12.5 · 245, 0, 35 × 12.5 | `project:customer` 2.5 · `project:status` 2.5 bold red |
+| Field Page title | 280, 25, 90 × 15 | `page:title` 3.5 bold |
+| Field Drawing no., Revision field Rev | 280, 12.5, 65 × 12.5 · 345, 12.5, 25 × 12.5 | 3.5 bold · current revision 5 bold centre |
+| Fields Function, Location, Size | the 12.5 mm foot row of the drawing column | 2.5 |
+| Fields Page, Next, Of | 370, 25, 30 × 15 · 370, 12.5 · 370, 0 | 7 bold centre · 2.5 · 2.5 |
+
+(Exact widths are 055a's constants: counters 30, drawing 90 with Rev 25, project 80.) The built-in
+`house` is this one block, 400 × 40 mm, the width of an A3 frame, on every sheet (Q8: no stretch). The
+built-in frame `sheet` keeps 019's border and 055a's fields and puts the block bottom right. On A3
+nothing changes. On A2–A0 the house block no longer widens its revision table: it sits in the
+bottom-right corner at 400 mm, and the keep-out shrinks to its rectangle, so contact tables and
+generated content may use the space to its left. A project that wants a wider block duplicates
+`house` and widens its columns. Text sizes still follow Standards ▸ Text styles on the built-in
+(055a's rule).
+
+## 6. What happens to 055a and 055b
+
+| Piece | Fate |
+| --- | --- |
+| `title_block.rs` bounds, `Binding`, `Source`, `TextLook`, `IfEmpty`, `Raw`, `StyleBody.other` | **Kept** |
+| `TitleBlockLayout { size, items }`, `BlockItem::{Line, Text, Field, RevTable, Logo}` | **Replaced** by `TitleBlock { grid, elements }` and `Element` (FD4). `Unknown` kept as the newer-file escape |
+| `frame_style`, `frame_field`, `frame_sheet`, `margins_of`, `sheet_of`, `own_sheet`, page type stubs | **Kept** |
+| `title_block_style` | **Changed**: own chain ending at `house`, no frame fallback (FD3) |
+| `frame_block`, the frame record's body | **Gone**: a block lives in `title_block` records (FD1, FD5) |
+| `keep_out`, `frame_reach`, `frame::touches` | **Kept**, reading the block catalogue too (§9) |
+| `ecad-cadcraft/title_block/layout.rs` | **Rewritten**: elements to parts (cells, borders deduplicated, tables, wrap) |
+| `bind.rs`, `checks.rs`, `dxf.rs` (logo part) | **Kept**; checks gain two codes |
+| `house.rs` | **Rewritten** as elements (§5) |
+| `title_block_cmds.rs` | **Changed**: `titleblock` reads and writes `title_block` records with elements; `titleblocks` lists both catalogues (`kind: frame|title_block`); new `frame` read/write form for frame fields |
+| 055b `canvas.rs`, `draft.rs`, `frame_popover.rs` | **Replaced**: element canvas without a draft; frame editor panel |
+| 055b `list.rs`, `inspector.rs`, `mod.rs` | **Changed**: two-kind list; inspector sections per element type |
+
+## 7. Commands
+
+| Command | Params | Does |
+| --- | --- | --- |
+| `titleblocks` | `{kind?}` | Read: frames and title blocks with users and bound keys |
+| `titleblock` | `{id}` | Read a block: grid, elements, size |
+| `titleblock` | `{id, name?, grid?, elements}` / `{new: {from, name?, layer?}}` | Write a whole block (one transaction), or make one |
+| `titleblockelement` | `{id, add: Element}` · `{id, index, set: Element}` · `{id, index, remove: true}` | One element edit as one transaction; refusals in words (overlap, bounds, a width off the grid) |
+| `framestyle` | `{id, fields}` / `{new: {from, sheet, name?}}` | Write a frame's fields, or make one |
+| `titleblockimport` | as 055 | Text elements and a logo from a DXF |
+
+Choosing stays `setdefault` / `setprop` with `print.frame.style`, `print.title_block.style` and the
+page's `title_block`. MCP contract tests for every writing form.
+
+## 8. Checks
+
+055's `title-value-cut`, `title-binding-unknown`, `frame-sheet-differs` stay. New:
+`block-too-wide` (Warning: "The title block A3 strip is 420 mm wide; frame A3 house has 400 mm.") and
+`block-overlap` (Info, hostile or merged files only: "Two elements of A3 strip overlap; the later
+one is drawn on top.").
+
+## 9. Update maps and bench
+
+| Op | Pages | Library views |
+| --- | --- | --- |
+| `SetStyle` `title_block` id | Pages whose resolved block is `id`: frame parts redrawn; keep-out, contact tables and generated content only when the block's width or height changed (`frame_reach`); references and places never (zones are the frame's) | That list row; the editor re-reads when `id` is open |
+| `SetStyle` `frame` id | As 055a (sheet, margins, zones reach references and places) | That row; frame editor if open |
+| `SetProperty` `print.title_block.style` project or standard; page `title_block` | All pages; or that page | Used by of the old and new block, on demand |
+| A project key in a shown block's bound set | As 055a | Sample values in the editor |
+| Every other op | Nothing | Nothing |
+
+Bench (`ecad-bench`, medium while building, large once):
+
+| Row | Target |
+| --- | --- |
+| Frame parts of one page, house block as elements | ≤ 055a's `house` parts time + 10 % |
+| Frame parts, a 60-element block with a 1 000-shape logo | < 2 ms |
+| Editor frame while dragging, 60 elements | < 4 ms |
+| `titleblockelement` move on a block used by 43 pages | One transaction; one page rebuilt (on screen); references untouched when the height is unchanged |
+| `SetProperty` on a key no element reads | No frame rebuilt |
+
+## 10. Test plan
+
+| # | Check |
+| --- | --- |
+| A | House parity on A3: on the sample project and on a 43-page A3 fixture, the frame parts of every page equal `57653add`'s (same lines after dedupe, same texts, same positions). Old files from `dev` open unchanged. On A2–A0 pages the house block is 400 × 40 at the bottom right (the expected change of Q8), and nothing on the page moves except contact tables and generated content now allowed left of it |
+| B | Two libraries: `print.frame.style` = an A2 frame and `print.title_block.style` = an own block: A2 zones and references, the own block; a page with `title_block` set shows its block on the project's frame |
+| C | Resolution order: page → page type stub → project → standard → `house`; a dangling id falls through with `style-unknown` |
+| D | Keep-out is the block's rectangle: a 55 mm tall block moves contact tables above it; a 250 mm wide block lets a table sit to its left; references unchanged; changing a caption only redraws the frame (counters) |
+| E | Revision table: a column added (`ecr`) or reordered in Settings ▸ Revisions appears in that order in every block's table; hiding a column, its width, header override, 3 rows, row height, text size and each order mode act on the block only; a project column the block has no setting for shows at its project width; the block offers no way to add a column |
+| F | Revision fields: each item (current revision, date, description, ECR, drawn/checked/approved by and dates, a custom project column) placed on its own shows the newest issued revision's value; the Drawn / checked / approved preset drops six independent elements |
+| G | Notice wraps and shrinks to 1.4 mm, then reports `title-value-cut` |
+| H | Widths, no stretch: a block's size equals its elements' extent; widening a revision column on the canvas and in the panel widens the table and the block by that much, on the 2.5 mm grid; the house block is 400 × 40 on A3 and on A1 (bottom right, keep-out its rectangle); a block wider than the frame's usable width draws in full with a `block-too-wide` warning and is never shrunk; Duplicate then widen gives a separate A1 block |
+| I | Overlap refused by command and gesture; a hostile file with overlaps opens with `block-overlap` |
+| J | Editor (kittest): drag Page counters preset, resize with handles, snap to 2.5 mm, one transaction per gesture, `u` undoes one; the frame editor changes zones live |
+| K | Hostile bodies: 10 000 elements, NaN rects, unknown element type, 1 MB notice, a revision column 10 000 mm wide, a body on a `frame` record (ignored, reported). Open, draw, report, never panic; a regression test per bound |
+| L | Merge: two branches editing the same block are one conflict; one editing a block and one a frame merge cleanly |
+| M | MCP contracts for `titleblock`, `titleblockelement`, `framestyle`, `titleblockimport`: one transaction, `Author::Agent(<client>)`, refused with writes off, undo |
+| N | Screenshots: the element editor and the frame editor beside board 3.05; three blocks rebuilt from the review's patterns (strip with revision table, corner box with drawn / checked / approved fields, right column), described in words, made from synthetic data |
+
+## 11. Out of scope
+
+Element nesting (groups inside elements). A right-edge vertical block position (seen once; later
+as a third `block` value). Formulas. Raster logos (0.4.0). Revision clouds and triangles. Software
+footers. A print-date field (055 §13).
+
+## 12. Format decisions for the overseer (FD)
+
+| FD | Change | Why | Old data |
+| --- | --- | --- | --- |
+| **FD1** | New catalogue `title_block`: style records whose body is a title block. Invariant: a title block body only on `title_block` records | Two libraries (owner, §0.1) | None: 055 is not on `dev` |
+| **FD2** | New choice entry `print.title_block.style` (levels Standard, Project; page level through the page property `title_block`, page type through 054) and built-in `house` | A page type, project or standard picks a block apart from its frame | — |
+| **FD3** | Page property `title_block` now names a `title_block` style, not a frame; `title_block_style` no longer falls back to the frame | 055a borrowed a frame's body | Branch-only data; a page naming a frame falls through to the next level with `style-unknown` |
+| **FD4** | Body content: `TitleBlock { grid: f64, elements: Vec<Element> }`, `Element { at: Rect, border: Border, weight: LineWeight, caption: Option<Caption>, look: TextLook, kind: ElementKind }` (no stretch, Q8), `ElementKind::{RevTable{columns: Vec<ColumnLook{field, show, width, header}>, rows, row_height, size, order}, Field{bind, if_empty}, RevField{item, if_empty}, Title{lines}, Notice{heading, text}, Text{text}, Logo{name, prims}, Unknown}`. `ColumnLook` only styles a column of the project's revision model, keyed by its field; a block owns no columns (Q3). Bounds: 256 elements, 20 column looks, 3 title lines, notice 1 000 characters, grid 1–5 mm, a column width 2.5–400 mm. A revision table's `at` width is derived from its shown columns on read (a stored width that disagrees is ignored). `Line` items are gone | Elements, not lines (owner) | 055a/055b bodies were never released; dropped, not converted (Q2) |
+| **FD5** | `frame` records carry no body; a body found on one is ignored and reported once (`title-binding-unknown` family). The frame's `block` field (055a FP2) becomes `bottom_right` · `bottom_left`; 055a's `bottom_full` is retired and read as `bottom_right` (Q8). `keep_out` returns the block's rectangle, not a full-width strip | The frame is paper, border and zones; no stretch | Branch-only |
+| **FD6** | Two revision fields in the project's revision model, `checked_date` and `approved_date`, offered by the revision field palette and the Drawn / checked / approved preset (033's custom-field rule; no record change) | 3 of 9 templates date each approval | None |
+
+No new op: every write is `SetStyle` of one whole record. No new `ObjectRef`, no `.ecad` table.
+
+**Overseer rulings (2026-11-14): FD1–FD6 approved.** FD4 as amended by the owner's answers to Q3
+(column looks only, no block-owned columns) and Q9 (Revision field elements, no Approvals element).
+FD4 and FD5 further amended by Q8 (no stretch; `bottom_full` retired; keep-out is the block's
+rectangle): **approved by the overseer (2026-11-14)**. `bottom_full` is retired; the house block on
+A2–A0 is 400 mm at the bottom right; parity test A covers A3 only. No compatibility work before v1
+(055a's full-width house block was never released).
+
+## 13. Owner questions, each with a recommendation
+
+**Owner answers (Carl, 2026-11-14):**
+
+| Q | Answer |
+| --- | --- |
+| 1 Two libraries | Yes |
+| 2 Drop 055b's line bodies | Yes |
+| 3 Revision columns | **No.** Custom columns (ECR…) are added to the project's revision model, not the block. The block's table shows the project's columns, each with show or hide, width, row height, text size and the like. No block-owned columns (§3.2, FD4) |
+| 4 One transaction per gesture | Yes |
+| 5 No overlap | Yes |
+| 6 Composite drawing numbers | Not needed: the drawing number is the pack number, one project field. No composite or split; no page-level suffix is designed, since the Sheet field shows the page (§3.2) |
+| 7 2.5 mm grid | Yes |
+| 8 Stretch | **No.** "You should be able to adjust the width of each column; that's what drives its overall dimension." A block's size is what its elements and columns add up to; every width is set by the user (handles and a typed width, on the 2.5 mm grid). A wider sheet gets its own block (Duplicate, then adjust). The keep-out follows the block's actual size; a block wider than the frame's usable width is a Checks warning, never shrunk (§2.1, §3.2, §5) |
+| 9 Approvals element | **No.** Each revision item (current revision, revision date, description, ECR, drawn by, checked by, approved by, and their dates) is its own placeable field element; the palette offers a preset that drops several at once (§3.2, §3.3) |
+| 10 Plain page type | Yes, routed to 054 |
+
+The questions as asked:
+
+1. **Two libraries** (sheet frames and title blocks), reversing 055 Q1 (one catalogue). **Recommend
+   yes**: the references show one block family on several sheets and zone grids, and a page type picks
+   one of each.
+2. **Drop 055b's line-drawn bodies** rather than convert them. They were never released. **Recommend
+   drop**; the built-in and anything made from it are re-expressed, and Import DXF still brings a
+   company's existing block in as text and a logo to rebuild around.
+3. **Revision table columns: the project's or the block's?** Default "Project's columns" (Settings ▸
+   Revisions, one list per project), with "This block's columns" for a block that must look a set
+   way across projects. **Recommend both, default the project's**; the Revisions window shows every
+   field the page's blocks read, so a block column is always fillable.
+4. **One transaction per edit, no draft** (reverses 055 Q4). **Recommend yes**: edits are whole
+   elements now, so each gesture is meaningful, and undo is the safety net.
+5. **Elements never overlap.** **Recommend yes**: cells tile, borders stay clean, and drops are
+   predictable. Hostile or merged overlaps are drawn and reported.
+6. **Composite drawing numbers** as several Custom fields side by side, not a special element.
+   **Recommend yes for 0.2.2**; a "Split value" element can follow if the formal sets need it.
+7. **Block grid 2.5 mm by default**, with 1 and 5. **Recommend yes**: it matches captions (1.8 mm)
+   and 5 mm table rows; 1 mm is available.
+8. **Stretch**: one element per block may take extra width when the frame is full width.
+   **Recommend yes**: it lets the house block and a company's strip fit every sheet without a copy
+   per size.
+9. **Approvals as its own element** (roles × name/date, from the newest revision), besides the
+   revision table's columns. **Recommend yes**: all nine templates show approvals, in three shapes.
+10. **Plain page** (for 054): a page type whose pages carry no electrical checks, references or wire
+    numbering, for imported or vendor drawings and notes pages; it still takes a frame and a title
+    block. **Recommend yes, routed to 054**; this brief needs nothing from it.
+
+## 14. Parts and tester
+
+- **055c-1 model and drawing** (M): FD1–FD6, the `title_block` catalogue and choice, resolvers,
+  elements to parts, house as elements with the parity test (§10 A), commands, checks, bench. No UI.
+  Pages look the same when it lands.
+- **055c-2 title block editor** (M–L): two-kind list, palette and presets, element canvas, per-type
+  settings, one transaction per gesture. Replaces 055b's canvas and draft.
+- **055c-3 frame editor** (S–M): the sheet canvas and panel; replaces the Frame… popover; Standards ▸
+  Title blocks tab and the page-level row.
+
+**Tester: yes.** FD1–FD5 change the record body and the resolution of every page's block, through
+the file layer, merge and undo. The tester runs §10 A–M (K in full), plus the fast tests of
+`ecad-model`, `ecad-file`, `ecad-cadcraft`, `ecad-mcp` and `ecad-trial`.

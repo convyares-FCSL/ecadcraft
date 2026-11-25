@@ -1,0 +1,1334 @@
+//! Release: the pre-release check, the named revision and the stamped
+//! folder.
+//!
+//! # Semantics
+//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::releases::release::grouped)): the kept Checks of the state to be
+//!   issued (the project's own kept list and report models: opening it never rescans the
+//!   project), grouped for a release by [`GROUPS`](ecad_electrical::releases::release::GROUPS) (a view: kinds keep their severities). A kind
+//!   not in the table lands in **Other**.
+//! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
+//!   nothing half-done: refusals (each with its way out); Finalise numbering (behind
+//!   [`numbering_seam`]); every output built from the state **as issued** (`ledger.preview` of the
+//!   issue's ops) and written to `<folder>.partial`; the issue transaction with the recorded folder in
+//!   `rev.<n>.released`; a save; `release.json`; the rename. A failure before the issue removes
+//!   the staging folder and records nothing; one after it keeps the issue and says how to finish.
+//! - **Writing an issued revision's folder** (`release {rev}`): built from the state after that
+//!   revision's issue transaction (`history::points::issued_state`), recording nothing; works read-only,
+//!   on a branch and with an agent's writes off.
+//! - **An existing folder** is never overwritten silently: add missing files, replace (the old
+//!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
+//!   but this module's own staging folder. A landing that stops part way says what it already
+//!   copied into the old folder or where it moved it; "Nothing was written" only when that is so.
+//! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; the terminal strips
+//!   fill `terminal-block-plan` and `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON
+//!   keys).
+//!
+//! # Update map
+//! The release folder is built on request only. The dialog's check reads the kept Checks (its
+//! `orphan-reference` rows follow `crate::checks`'s map); nothing here runs on an ordinary
+//! commit.
+//!
+//! Excluded: approval and signatures, transmittals, zip or upload, DWG/DXF and XLSX outputs, a
+//! folder per branch, page-by-page diffs.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
+
+use ecad_model::{Document, Op, PageId};
+use ecad_store::disk::{lexical, same_or_below, same_path};
+use serde_json::{Map, Value, json};
+
+use crate::access::Pages;
+use crate::commands::opt_typed;
+use crate::export::printbook::{self, Options};
+use crate::project::Project;
+use ecad_electrical::checks::Check;
+use ecad_electrical::releases::revisions;
+use ecad_electrical::reports::kept::ReportModels;
+
+use ecad_electrical::releases::release::{
+    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
+};
+use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget, stopped};
+
+/// The manifest's file name.
+pub(crate) const MANIFEST: &str = "release.json";
+/// The manifest's version (`ecad_release`); a breaking change bumps it.
+pub(crate) const MANIFEST_VERSION: u64 = 1;
+/// The folder that holds release folders, beside the project file.
+pub(crate) const RELEASE_DIR: &str = "release";
+/// Where a replaced folder is moved, inside [`RELEASE_DIR`].
+pub(crate) const REPLACED_DIR: &str = "replaced";
+/// The staging folder's suffix.
+pub(crate) const PARTIAL: &str = ".partial";
+/// The empty file that marks a staging folder as a release's own (only such a folder is ever
+/// cleared); removed just before the folder is renamed into place.
+pub const STAGING_MARK: &str = ".ecad-release-staging";
+/// Largest `release.json` read back (a hostile or foreign file is not read further).
+const MAX_MANIFEST_BYTES: u64 = 4 << 20;
+/// Most `Rev B (n)` folders tried for Keep both.
+const MAX_KEEP_BOTH: u32 = 1000;
+
+// ---------------------------------------------------------------- groups
+
+/// The check rows of the state to be issued: the project's kept Checks and the
+/// report models' rows, in book order. The pending revision's field writes change no check, so
+/// these are the live project's.
+pub fn check_rows(p: &mut Project) -> Vec<Check> {
+    p.reports();
+    p.checks();
+    let doc = p.ledger.document();
+    let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
+    rows.extend(p.kept_reports().map(ReportModels::checks).unwrap_or_default());
+    ecad_electrical::checks::sort(doc, rows)
+}
+
+// ---------------------------------------------------------------- numbering seam
+
+/// The one place a release calls the numbering: the provisional items, the
+/// refusal without a choice, and [`numbering_seam::before_issue`] (Finalise numbering as its own
+/// transaction before the issue, or issue them as they are).
+pub(crate) mod numbering_seam {
+    use ecad_electrical::CmdError;
+    use ecad_electrical::numbering::commands::{BeforeIssue, finalise_request, plan_for, way_before_issue};
+    use serde_json::Value;
+
+    use crate::commands::opt_typed;
+    use crate::project::Project;
+    use ecad_electrical::checks::Check;
+
+    /// What `release` would refuse for provisional items without a choice (in numbering's words), if any.
+    pub(crate) fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
+        if params.get("provisional").is_some_and(|v| !v.is_null()) {
+            return None;
+        }
+        let items = ecad_electrical::numbering::commands::provisional_items(p.ledger.document());
+        (!items.is_empty()).then(|| {
+            format!(
+                "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
+                items.words()
+            )
+        })
+    }
+
+    /// The provisional step, planned without writing (release records it with the issue).
+    ///
+    /// # Errors
+    /// The numbering refusal or a bad `provisional`.
+    pub(crate) fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::numbering::commands::BeforeIssue, String> {
+        plan_before_issue(p, params).map_err(String::from)
+    }
+
+    /// The provisional step for `issuerevision`: Finalise's ops (none when there is nothing to
+    /// number) to record in the issue's own transaction, or the note to issue with.
+    ///
+    /// # Errors
+    /// The numbering refusal, or a bad `way`.
+    pub(crate) fn plan_before_issue_of(p: &mut Project, way: Option<&str>) -> Result<(Vec<ecad_model::Op>, Option<String>), CmdError> {
+        match plan_before(p, way)? {
+            BeforeIssue::Go(note) => Ok((Vec::new(), note)),
+            BeforeIssue::Finalise(plan) => Ok((plan.ops, None)),
+        }
+    }
+
+    /// The provisional step as `provisional` names it, planned without writing.
+    fn plan_before_issue(p: &mut Project, params: &Value) -> Result<BeforeIssue, CmdError> {
+        let way = opt_typed(params, "provisional", "\"finalise\" or \"issue\"", Value::as_str)?;
+        plan_before(p, way)
+    }
+
+    /// The provisional step, `way` chosen: go on (with a note), or Finalise first.
+    fn plan_before(p: &mut Project, way: Option<&str>) -> Result<BeforeIssue, CmdError> {
+        match way_before_issue(p.ledger.document(), way)? {
+            Some(note) => Ok(BeforeIssue::Go(note)),
+            None => {
+                let plan = plan_for(&p.ledger, &mut p.indexes.tag_high, &finalise_request())?;
+                Ok(if plan.ops.is_empty() { BeforeIssue::Go(None) } else { BeforeIssue::Finalise(plan) })
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- slots
+
+/// Every slot id `reports` may name.
+pub(crate) fn slot_ids() -> Vec<&'static str> {
+    let mut v = vec!["book"];
+    v.extend(LISTS.iter().map(|s| s.id));
+    v.extend(["checks", "manifest"]);
+    v
+}
+
+/// The lists chosen by `reports` (default all).
+///
+/// # Errors
+/// An unknown slot id.
+fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
+    match params.get("reports") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(a)) => {
+            let ids = slot_ids();
+            let mut out = BTreeSet::new();
+            for v in a.iter().take(64) {
+                let t = v.as_str().map(str::trim).ok_or("`reports` is a list of slot names")?;
+                if !ids.contains(&t) {
+                    return Err(format!("`reports` names {t:?}; the slots are {}.", ids.join(", ")));
+                }
+                out.insert(t.to_string());
+            }
+            Ok(Some(out))
+        }
+        Some(_) => Err("`reports` is a list of slot names".into()),
+    }
+}
+
+// ---------------------------------------------------------------- names and places
+
+/// The file stem: the drawing number, else the project file's name, else the project's name;
+/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::releases::release::MAX_STEM) characters.
+pub fn stem(p: &Project) -> String {
+    let doc = p.ledger.document();
+    let raw = ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::frames::DRAWING_NUMBER)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| p.name.clone());
+    clean_stem(&raw)
+}
+
+/// The project file's folder, when it has a file.
+fn project_dir(p: &Project) -> Option<PathBuf> {
+    let path = p.path.as_deref()?;
+    Path::new(path).parent().map(Path::to_path_buf)
+}
+
+/// The default folder of `rev`: `<project folder>/release/Rev B`.
+pub fn default_folder(p: &Project, rev: &str) -> Option<PathBuf> {
+    Some(project_dir(p)?.join(RELEASE_DIR).join(folder_name(rev)))
+}
+
+/// The recorded value for `folder`: relative to the project file's folder (with `/`), absolute when it
+/// is elsewhere (another drive).
+pub fn recorded(p: &Project, folder: &Path) -> String {
+    if let Some(dir) = project_dir(p)
+        && let Ok(rel) = folder.strip_prefix(&dir)
+    {
+        return rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
+    }
+    folder.to_string_lossy().into_owned()
+}
+
+/// Whether `folder` still holds the manifest a release wrote (the Revisions list's "open folder" is offered only then).
+#[must_use]
+pub fn has_manifest(folder: &Path) -> bool {
+    folder.join(MANIFEST).exists()
+}
+
+/// The recorded value read back as a folder, only when it is safe to write there again:
+/// a relative value must name a folder inside `<project folder>/release/`; an
+/// absolute one must hold a `release.json` (a folder a release wrote). Anything else (`""`, `"."`,
+/// a foreign folder, a hostile file) gives `None`, and callers fall back to [`default_folder`].
+pub fn from_recorded(p: &Project, v: &str) -> Option<PathBuf> {
+    let path = Path::new(v);
+    if path.is_absolute() {
+        return (path.join(MANIFEST).is_file() && check_target(p, path).is_ok()).then(|| path.to_path_buf());
+    }
+    // Recorded with `/` on every platform; joined part by part, so the path reads natively.
+    let dir = project_dir(p)?;
+    let folder = v.split('/').filter(|c| !c.is_empty() && *c != "." && *c != "..").fold(dir.clone(), |d, c| d.join(c));
+    let releases = dir.join(RELEASE_DIR);
+    (same_or_below(&folder, &releases) && !same_path(&folder, &releases) && check_target(p, &folder).is_ok()).then_some(folder)
+}
+
+/// Refuse a release folder that is the project's own folder, holds the project file, lies above
+/// it, or is `release/` itself or `release/replaced/`: Replace moves the
+/// target aside and Keep both writes beside it, so such a target would move the project.
+///
+/// # Errors
+/// In words, with the way out.
+pub(crate) fn check_target(p: &Project, folder: &Path) -> Result<(), String> {
+    let f = lexical(folder);
+    let bad = match project_dir(p) {
+        Some(dir) => same_or_below(&dir, &f) || same_path(&f, &dir.join(RELEASE_DIR)) || same_path(&f, &dir.join(RELEASE_DIR).join(REPLACED_DIR)),
+        None => false,
+    };
+    if bad || f.parent().is_none() {
+        return Err(format!(
+            "{} cannot be a release folder: it holds the project or other releases. Choose a folder inside release, or another folder.",
+            shown(folder)
+        ));
+    }
+    Ok(())
+}
+
+/// `<folder>.partial`.
+pub fn partial_of(folder: &Path) -> PathBuf {
+    let mut name = folder.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(PARTIAL);
+    folder.with_file_name(name)
+}
+
+fn shown(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+// ---------------------------------------------------------------- steps and faults
+
+/// A step of the release sequence that can fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// Writing the staging folder.
+    Partial,
+    /// The issue transaction.
+    Issue,
+    Save,
+    Manifest,
+    /// Adding the missing files to an existing folder: after they are copied, before that
+    /// folder's `release.json` lists them.
+    Copy,
+    /// Renaming the staging folder into place: after an old folder is moved aside.
+    Rename,
+}
+
+fn injected(p: &mut Project, step: Step) -> Result<(), String> {
+    if p.faults.fail_release_at == Some(step) {
+        p.faults.fail_release_at = None;
+        return Err(format!("injected failure at {step:?}"));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- files
+
+/// One file written into the folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Written {
+    pub slot: String,
+    pub name: String,
+    pub bytes: usize,
+    pub sha256: String,
+    pub sheets: Option<usize>,
+    pub rows: Option<usize>,
+    pub flagged: Option<usize>,
+}
+
+impl Written {
+    fn json(&self, folder: Option<&Path>) -> Value {
+        let mut v = json!({"slot": self.slot, "name": self.name, "bytes": self.bytes, "sha256": self.sha256});
+        if let Some(f) = folder {
+            v["path"] = json!(shown(&f.join(&self.name)));
+        }
+        if let Some(n) = self.sheets {
+            v["sheets"] = json!(n);
+        }
+        if let Some(n) = self.rows {
+            v["rows"] = json!(n);
+        }
+        if let Some(n) = self.flagged {
+            v["flagged"] = json!(n);
+        }
+        v
+    }
+
+    fn manifest(&self) -> Value {
+        let mut v = json!({"kind": self.slot, "name": self.name});
+        for (k, n) in [("sheets", self.sheets), ("rows", self.rows), ("flagged", self.flagged)] {
+            if let Some(n) = n {
+                v[k] = json!(n);
+            }
+        }
+        v["bytes"] = json!(self.bytes);
+        v["sha256"] = json!(self.sha256);
+        v
+    }
+}
+
+/// Lowercase hex SHA-256 of `bytes`.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    ecad_file::schema::asset_hash(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Write `bytes` as `name` in `dir`, recording it.
+fn put(dir: &Path, slot: &str, name: String, bytes: &[u8], out: &mut Vec<Written>) -> Result<(), String> {
+    std::fs::write(dir.join(&name), bytes).map_err(|e| format!("Can't write to {}: {e}", shown(&dir.join(&name))))?;
+    out.push(Written { slot: slot.into(), name, bytes: bytes.len(), sha256: sha256_hex(bytes), sheets: None, rows: None, flagged: None });
+    Ok(())
+}
+
+/// What a release writes, before the manifest.
+#[derive(Debug, Default)]
+pub struct Staged {
+    pub files: Vec<Written>,
+    pub not_included: Vec<(String, String)>,
+    pub sheets: usize,
+    pub lists: usize,
+}
+
+/// The inputs of a build: the state as issued, its report models, its check rows.
+pub struct Build<'a> {
+    pub doc: &'a Document,
+    pub reports: &'a ReportModels,
+    pub rows: &'a [Check],
+    pub fan: &'a BTreeSet<ecad_model::CableId>,
+    pub tol: f64,
+    pub options: Options,
+    pub stem: String,
+    pub rev: String,
+    /// Errors accepted with `accept: "errors"`.
+    pub accepted: bool,
+    pub chosen: Option<BTreeSet<String>>,
+}
+
+/// Build every output into `dir` (created fresh; an old one removed first).
+///
+/// # Errors
+/// A projection, plot or write failure, in words.
+pub(crate) fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Staged, String> {
+    // An old staging folder (a crash, or a folder left to finish) is cleared only when it is one
+    // of ours; a folder of that name made by someone else is never deleted.
+    if dir.exists() {
+        if !dir.join(STAGING_MARK).exists() {
+            return Err(format!("{} exists and was not made by a release; move it, or choose another folder", shown(dir)));
+        }
+        std::fs::remove_dir_all(dir).map_err(|e| format!("Can't clear {}: {e}", shown(dir)))?;
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("Can't write to {}: {e}", shown(dir)))?;
+    std::fs::write(dir.join(STAGING_MARK), b"").map_err(|e| format!("Can't write to {}: {e}", shown(dir)))?;
+    let mut st = Staged::default();
+    let base = format!("{} Rev {}", b.stem, b.rev);
+    // The book: every page, generated ones included (Print Book).
+    let pages = printbook::resolve(b.doc, &printbook::Scope::All)?.pages;
+    let done = printbook::print(b.doc, &pages, b.fan, b.tol, Some(b.reports), b.options, None, progress)?;
+    st.sheets = done.sheets;
+    for (i, (_, sheets, _, data)) in done.files.iter().enumerate() {
+        let name = if i == 0 { format!("{base}.pdf") } else { format!("{base}-{}.pdf", i + 1) };
+        put(dir, "book", name, data.as_deref().unwrap_or_default(), &mut st.files)?;
+        if let Some(w) = st.files.last_mut() {
+            w.sheets = Some(*sheets);
+        }
+    }
+    for slot in &LISTS {
+        if b.chosen.as_ref().is_some_and(|c| !c.contains(slot.id)) {
+            st.not_included.push((slot.id.into(), "Not chosen.".into()));
+            continue;
+        }
+        match (slot.build)(b.doc, b.reports) {
+            Some(t) => {
+                put(dir, slot.id, format!("{base}{}", slot.suffix), ecad_electrical::reports::csv(&t, true).as_bytes(), &mut st.files)?;
+                if let Some(w) = st.files.last_mut() {
+                    w.rows = Some(t.rows.len());
+                    w.flagged = Some(t.flagged());
+                }
+                st.lists += 1;
+            }
+            None => st.not_included.push((slot.id.into(), slot.missing_why.into())),
+        }
+    }
+    let t = checks_table(b.doc, b.rows, b.accepted);
+    put(dir, "checks", format!("{base} checks.csv"), ecad_electrical::reports::csv(&t, true).as_bytes(), &mut st.files)?;
+    if let Some(w) = st.files.last_mut() {
+        w.rows = Some(t.rows.len());
+    }
+    Ok(st)
+}
+
+// ---------------------------------------------------------------- the existing folder
+
+/// What to do with a folder already there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Existing {
+    AddMissing,
+    Replace,
+    KeepBoth,
+}
+
+impl Existing {
+    fn parse(params: &Value) -> Result<Option<Existing>, String> {
+        match params.get("existing") {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(t)) => match t.trim() {
+                "add-missing" => Ok(Some(Existing::AddMissing)),
+                "replace" => Ok(Some(Existing::Replace)),
+                "keep-both" => Ok(Some(Existing::KeepBoth)),
+                other => Err(format!("`existing` is \"add-missing\", \"replace\" or \"keep-both\", not {other:?}")),
+            },
+            Some(_) => Err("`existing` is \"add-missing\", \"replace\" or \"keep-both\"".into()),
+        }
+    }
+}
+
+/// An existing folder's manifest, read back (bounded).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OldFolder {
+    /// Whether it holds a readable `release.json`.
+    pub manifest: bool,
+    pub written: Option<String>,
+    pub app: Option<String>,
+    /// File name → SHA-256.
+    pub files: BTreeMap<String, String>,
+    /// The whole manifest, for Add missing.
+    pub raw: Value,
+}
+
+/// Read `folder`'s manifest, if any.
+pub(crate) fn read_old(folder: &Path) -> OldFolder {
+    let path = folder.join(MANIFEST);
+    let small = std::fs::metadata(&path).is_ok_and(|m| m.len() <= MAX_MANIFEST_BYTES);
+    let Some(raw) = small.then(|| std::fs::read(&path).ok()).flatten().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else {
+        return OldFolder::default();
+    };
+    let files = raw
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(10_000)
+        .filter_map(|f| Some((f.get("name")?.as_str()?.to_string(), f.get("sha256")?.as_str()?.to_string())))
+        .collect();
+    OldFolder {
+        manifest: true,
+        written: raw.get("written").and_then(Value::as_str).map(str::to_string),
+        app: raw.get("app").and_then(Value::as_str).map(str::to_string),
+        files,
+        raw,
+    }
+}
+
+/// The staged files against an old folder.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Compare {
+    pub same: Vec<String>,
+    pub new: Vec<String>,
+    pub different: Vec<String>,
+}
+
+impl Compare {
+    pub fn of(old: &OldFolder, staged: &[Written]) -> Compare {
+        let mut c = Compare::default();
+        for w in staged {
+            match old.files.get(&w.name) {
+                None => c.new.push(w.name.clone()),
+                Some(h) if *h == w.sha256 => c.same.push(w.name.clone()),
+                Some(_) => c.different.push(w.name.clone()),
+            }
+        }
+        c
+    }
+
+    /// `4 files the same, 2 new (terminal plan, cable schedule)`.
+    pub fn words(&self, old: &OldFolder) -> String {
+        if !old.manifest {
+            return "This folder was not written by a release".into();
+        }
+        let n = |k: usize, w: &str| if k == 1 { format!("1 file {w}") } else { format!("{k} files {w}") };
+        let mut parts = vec![n(self.same.len(), "the same")];
+        if !self.new.is_empty() {
+            parts.push(format!("{} new ({})", self.new.len(), self.new.join(", ")));
+        }
+        if !self.different.is_empty() {
+            parts.push(format!("{} different ({})", self.different.len(), self.different.join(", ")));
+        }
+        parts.join(", ")
+    }
+
+    pub fn json(&self) -> Value {
+        json!({"same": self.same, "new": self.new, "different": self.different})
+    }
+}
+
+/// `Rev B (2)`, `(3)`… : the first that does not exist.
+fn keep_both(folder: &Path) -> Result<PathBuf, String> {
+    let base = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    for i in 2..=MAX_KEEP_BOTH {
+        let f = folder.with_file_name(format!("{base} ({i})"));
+        if !f.exists() && !partial_of(&f).exists() {
+            return Ok(f);
+        }
+    }
+    Err(format!("Too many folders named {base}; choose another folder."))
+}
+
+/// `release/replaced/Rev B <date> <time>` (its written time, else now), made unique.
+fn replaced_place(folder: &Path, old: &OldFolder) -> PathBuf {
+    let base = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let when = old.written.as_deref().and_then(|w| chrono::DateTime::parse_from_rfc3339(w).ok()).map(|t| t.with_timezone(&chrono::Utc));
+    let when = when.or_else(|| crate::project::now_ms().and_then(|ms| chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)));
+    let stamp = when.map(|t| t.format("%Y-%m-%d %H-%M").to_string()).unwrap_or_else(|| "earlier".into());
+    let dir = folder.parent().map_or_else(|| PathBuf::from(REPLACED_DIR), |p| p.join(REPLACED_DIR));
+    let first = dir.join(format!("{base} {stamp}"));
+    if !first.exists() {
+        return first;
+    }
+    (2..=MAX_KEEP_BOTH).map(|i| dir.join(format!("{base} {stamp} ({i})"))).find(|f| !f.exists()).unwrap_or(first)
+}
+
+/// Where the staged folder goes, worked out before anything is recorded.
+#[derive(Debug, Clone)]
+struct Landing {
+    /// The final folder.
+    folder: PathBuf,
+    /// The old folder to move aside first, and where.
+    move_old: Option<(PathBuf, PathBuf)>,
+    /// Add the missing staged files to the old folder instead of renaming.
+    add_missing: Option<OldFolder>,
+    compare: Option<Compare>,
+}
+
+/// Decide what an existing `folder` means.
+///
+/// # Errors
+/// A folder there and no `existing`, or Add missing when files differ: with the ways forward.
+fn landing(folder: &Path, staged: &Staged, existing: Option<Existing>) -> Result<Landing, String> {
+    if !folder.exists() {
+        return Ok(Landing { folder: folder.to_path_buf(), move_old: None, add_missing: None, compare: None });
+    }
+    let old = read_old(folder);
+    let cmp = Compare::of(&old, &staged.files);
+    match existing {
+        None => Err(format!(
+            "{} exists ({}). Give existing: \"add-missing\", \"replace\" (the old folder is moved to {}) or \"keep-both\".",
+            shown(folder),
+            cmp.words(&old),
+            shown(&folder.parent().map_or_else(|| PathBuf::from(REPLACED_DIR), |p| p.join(REPLACED_DIR)))
+        )),
+        Some(Existing::AddMissing) if !old.manifest || !cmp.different.is_empty() => {
+            Err(format!("{} cannot only be completed ({}). Give existing: \"replace\" or \"keep-both\".", shown(folder), cmp.words(&old)))
+        }
+        Some(Existing::AddMissing) => Ok(Landing { folder: folder.to_path_buf(), move_old: None, add_missing: Some(old), compare: Some(cmp) }),
+        Some(Existing::Replace) => {
+            let to = replaced_place(folder, &old);
+            Ok(Landing { folder: folder.to_path_buf(), move_old: Some((folder.to_path_buf(), to)), add_missing: None, compare: Some(cmp) })
+        }
+        Some(Existing::KeepBoth) => Ok(Landing { folder: keep_both(folder)?, move_old: None, add_missing: None, compare: Some(cmp) }),
+    }
+}
+
+/// A landing that stopped: why, and what it had already changed on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Stopped {
+    why: String,
+    /// What is on disk now that was not before, in a sentence; `None` when nothing is.
+    changed: Option<String>,
+}
+
+impl Stopped {
+    fn before_landing(why: String) -> Stopped {
+        Stopped { why, changed: None }
+    }
+}
+
+/// Put the staged folder in place (step 7). `fault` is asked at [`Step::Copy`] and
+/// [`Step::Rename`]. `Ok` holds a note when the folder is in place but something after it was
+/// not (the staging folder left behind).
+///
+/// # Errors
+/// The step that failed, with what was already copied or moved, and where.
+fn land(
+    staging: &Path, l: &Landing, staged: &Staged, manifest: &Value, fault: &mut dyn FnMut(Step) -> Result<(), String>,
+) -> Result<Option<String>, Stopped> {
+    if let Some(old) = &l.add_missing {
+        let missing: Vec<&Written> = staged.files.iter().filter(|w| !old.files.contains_key(&w.name)).collect();
+        let mut copied: Vec<&str> = Vec::new();
+        // What the copies so far left in the old folder, for a failure after the first.
+        let changed = |copied: &[&str]| (!copied.is_empty()).then(|| copied_words(copied, missing.len(), &l.folder));
+        for w in &missing {
+            let to = l.folder.join(&w.name);
+            std::fs::copy(staging.join(&w.name), &to)
+                .map_err(|e| Stopped { why: format!("could not copy {}: {e}", shown(&to)), changed: changed(&copied) })?;
+            copied.push(&w.name);
+        }
+        fault(Step::Copy).map_err(|why| Stopped { why, changed: changed(&copied) })?;
+        let mut m = old.raw.clone();
+        if let Some(files) = m.get_mut("files").and_then(Value::as_array_mut) {
+            files.extend(missing.iter().map(|w| w.manifest()));
+        }
+        let keep: BTreeSet<&str> = staged.files.iter().map(|w| w.slot.as_str()).collect();
+        if let Some(ni) = m.get_mut("not_included").and_then(Value::as_array_mut) {
+            ni.retain(|x| x.get("kind").and_then(Value::as_str).is_none_or(|k| !keep.contains(k)));
+        }
+        m["completed"] = manifest.get("written").cloned().unwrap_or(Value::Null);
+        let bytes = serde_json::to_vec_pretty(&m).map_err(|e| Stopped { why: e.to_string(), changed: changed(&copied) })?;
+        std::fs::write(l.folder.join(MANIFEST), bytes)
+            .map_err(|e| Stopped { why: format!("{}: {e}", shown(&l.folder.join(MANIFEST))), changed: changed(&copied) })?;
+        // The folder is complete; a staging folder left behind is a note, not a failure.
+        return Ok(std::fs::remove_dir_all(staging)
+            .err()
+            .map(|e| format!("The staging folder {} could not be removed ({e}); delete it by hand.", shown(staging))));
+    }
+    let mut moved: Option<String> = None;
+    if let Some((from, to)) = &l.move_old {
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| Stopped::before_landing(format!("{}: {e}", shown(parent))))?;
+        }
+        std::fs::rename(from, to).map_err(|e| Stopped::before_landing(format!("could not move {} aside: {e}", shown(from))))?;
+        moved = Some(format!("The old folder {} was moved to {}", shown(from), shown(to)));
+    }
+    fault(Step::Rename).map_err(|why| Stopped { why, changed: moved.clone() })?;
+    let _ = std::fs::remove_file(staging.join(STAGING_MARK));
+    std::fs::rename(staging, &l.folder).map_err(|e| {
+        // Still ours: a release of this revision again may clear it.
+        let _ = std::fs::write(staging.join(STAGING_MARK), b"");
+        Stopped { why: format!("could not rename {}: {e}", shown(staging)), changed: moved.clone() }
+    })?;
+    Ok(None)
+}
+
+/// `2 of the 3 missing files were copied into <folder> (a, b), and its release.json does not
+/// list them yet`.
+fn copied_words(copied: &[&str], missing: usize, folder: &Path) -> String {
+    let (k, names) = (copied.len(), copied.join(", "));
+    let at = shown(folder);
+    let what = match (k == missing, k == 1) {
+        (true, true) => format!("The missing file was copied into {at} ({names})"),
+        (true, false) => format!("The {k} missing files were copied into {at} ({names})"),
+        (false, true) => format!("1 of the {missing} missing files was copied into {at} ({names})"),
+        (false, false) => format!("{k} of the {missing} missing files were copied into {at} ({names})"),
+    };
+    let them = if k == 1 { "it" } else { "them" };
+    format!("{what}, and its {MANIFEST} does not list {them} yet")
+}
+
+/// Remove a staging folder after a failure, only when it is ours.
+fn clear_staging(dir: &Path) {
+    if dir.join(STAGING_MARK).exists() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+// ---------------------------------------------------------------- the manifest
+
+/// What the manifest says of the issue.
+#[derive(Debug, Clone, Default)]
+pub struct Issued {
+    pub branch: String,
+    pub transaction: u64,
+    pub point: u64,
+    pub chain: Option<String>,
+}
+
+/// The manifest.
+pub fn manifest(
+    doc: &Document, row: &revisions::Revision, issued: &Issued, b: &Build<'_>, st: &Staged, rows: &[Check], fan_tags: &[String],
+) -> Value {
+    let prop = |k: &str| ecad_electrical::pages::frames::project_text(doc, k).unwrap_or_default();
+    let (e, w, i) = counts(rows);
+    let mut iss = json!({"branch": issued.branch, "transaction": issued.transaction, "point": issued.point});
+    if let Some(c) = &issued.chain {
+        iss["chain"] = json!(c);
+    }
+    let views: Map<String, Value> = fan_tags.iter().map(|t| (t.clone(), json!("fan"))).collect();
+    json!({
+        "ecad_release": MANIFEST_VERSION,
+        "project": b.stem.clone(),
+        "drawing_number": prop(ecad_electrical::pages::frames::DRAWING_NUMBER),
+        "title": prop(ecad_electrical::pages::frames::TITLE),
+        "rev": row.rev(),
+        "date": row.get("date"),
+        "description": row.get("description"),
+        "drawn": row.get("drawn"),
+        "checked": row.get("checked"),
+        "approved": row.get("approved"),
+        "issued": iss,
+        "written": now_utc().unwrap_or_default(),
+        "app": app(),
+        "options": {
+            "colour": if b.options.mono { "mono" } else { "screen" },
+            "lineweights": b.options.lineweights,
+            "excel_safe": true,
+            "bom_group": "location",
+            "cable_views": views},
+        "files": st.files.iter().map(Written::manifest).collect::<Vec<_>>(),
+        "not_included": st.not_included.iter().map(|(k, why)| json!({"kind": k, "why": why})).collect::<Vec<_>>(),
+        "checks": {"errors": e, "warnings": w, "info": i, "accepted_errors": b.accepted && e > 0}})
+}
+
+/// `ECAD 0.3.0-dev (CADCraft 227e3c3)`.
+pub fn app() -> String {
+    format!("ECAD {} (CADCraft {})", env!("CARGO_PKG_VERSION"), crate::UPSTREAM_COMMIT.get(..7).unwrap_or_default())
+}
+
+/// Now, UTC, `2026-11-12T14:30:05Z` (through `chrono`).
+pub(crate) fn now_utc() -> Option<String> {
+    let ms = crate::project::now_ms()?;
+    Some(chrono::DateTime::from_timestamp_millis(i64::try_from(ms).ok()?)?.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
+// ---------------------------------------------------------------- refusals and warnings
+
+/// Why the pending revision cannot be released now, with the way out; `None`
+/// when it can.
+pub(crate) fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<String> {
+    if let Some(r) = refusal_before_errors(p) {
+        return Some(r);
+    }
+    // With Finalise chosen, the errors that count are those of the finalised state, the rows the
+    // folder ships: checked by `release_pending` once it has them.
+    if !finalising(params)
+        && params.get("accept").and_then(Value::as_str) != Some("errors")
+        && let Some(r) = errors_refusal(p.ledger.document(), rows)
+    {
+        return Some(r);
+    }
+    numbering_seam::refusal(p, rows, params)
+}
+
+/// The refusals [`pending_refusal`] tries before the errors: never saved, read-only, the branch.
+fn refusal_before_errors(p: &Project) -> Option<String> {
+    if p.path.is_none() {
+        return Some(SAVE_FIRST.into());
+    }
+    if let Some(why) = read_only(p) {
+        return Some(format!(
+            "The project is read-only ({why}), so the pending revision cannot be issued. Issued revisions can still be written out: give rev."
+        ));
+    }
+    crate::pages::commands::sheets::plan_issue(p, &[]).err().map(|e| e.to_string())
+}
+
+/// Why the project cannot be written, if it cannot.
+fn read_only(p: &Project) -> Option<String> {
+    if p.storage.persistence == crate::project::Persistence::Unavailable {
+        return Some("saving is not available".into());
+    }
+    p.file_status().read_only
+}
+
+/// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
+/// fields: a warning, never a refusal ([`ecad_electrical::releases::release::nothing_changed`]).
+pub fn unchanged_since(p: &Project) -> Option<String> {
+    let doc = p.ledger.document();
+    let rev = ecad_electrical::releases::release::unchanged_since(doc, p.ledger.head(), |seq| p.ledger.transaction(seq))?;
+    Some(doc.project().rev_scheme.show(rev))
+}
+
+/// [`unchanged_since`] in words.
+pub fn nothing_changed(p: &Project) -> Option<String> {
+    ecad_electrical::releases::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
+}
+
+// ---------------------------------------------------------------- prerelease
+
+/// What the Release dialog and `prerelease` show: the check of the
+/// state to be issued, grouped, with each row's place in words, and what a release would write
+/// or refuse.
+#[derive(Debug, Clone, Default)]
+pub struct View {
+    pub rev: String,
+    /// `None` for the pending revision; the issued rev written again otherwise.
+    pub issued: Option<String>,
+    /// Each group with rows, in [`Group::ALL`] order: the group, how many rows it has, and its
+    /// first rows (as many as the view shows) in book order, each with its `where` text. Only the
+    /// shown rows are kept and worded: a large project has tens of thousands of rows, and placing
+    /// each in words is most of the time.
+    pub groups: Vec<(Group, usize, Vec<(Check, String)>)>,
+    pub errors: usize,
+    pub warnings: usize,
+    pub info: usize,
+    pub provisional: usize,
+    pub folder: Option<PathBuf>,
+    /// The folder exists: its manifest read back.
+    pub existing: Option<OldFolder>,
+    /// (slot, file) written.
+    pub writes: Vec<(String, String)>,
+    /// (slot, why) not written.
+    pub not_included: Vec<(String, String)>,
+    /// What `release` would refuse (with `accept` as given).
+    pub refusal: Option<String>,
+    pub warning: Option<String>,
+    /// The rev nothing has changed since, as shown (the warning's subject).
+    pub since: Option<String>,
+    /// The pending revision's fields (`revisions::FIELDS` order).
+    pub fields: [String; 6],
+    /// The shown rows as JSON (`checks`' form), for `prerelease`.
+    json_rows: Vec<Vec<Value>>,
+    /// The pending revision's refusal still to be worked out from the rows ([`View::finish`]).
+    pending: Option<PendingRefusal>,
+    /// The kept rows' words are still to be built ([`View::finish`]).
+    unfinished: bool,
+}
+
+/// The pending revision's refusals around the errors one: that one reads the rows, which are
+/// sorted off the UI thread, so it is worked out last.
+#[derive(Debug, Clone, Default)]
+struct PendingRefusal {
+    before: Option<String>,
+    after: Option<String>,
+    /// Errors refuse (the tick is off).
+    errors_refuse: bool,
+}
+
+/// The groups and counts of `rows` (in book order), keeping `limit` rows a group, not yet worded.
+fn fill_rows(rows: &[Check], limit: usize, v: &mut View) {
+    let groups = grouped(rows);
+    for g in Group::ALL {
+        if let Some(r) = groups.get(&g) {
+            let rows = r.iter().take(limit).map(|c| ((*c).clone(), String::new())).collect();
+            v.groups.push((g, r.len(), rows));
+        }
+    }
+    (v.errors, v.warnings, v.info) = counts(rows);
+    v.provisional = ecad_electrical::releases::release::provisional_count(rows);
+    v.unfinished = true;
+}
+
+/// The [`View`] of `rev` (an issued rev, or `None` for the pending one); `accept` as the dialog's
+/// tick; `limit` rows kept and worded a group. Read under the project lock, it returns what builds
+/// the view, which reads no project, so the app runs it on the background pool:
+/// - the pending revision: the kept Checks' and report models' rows are copied (no rescan); the
+///   build sorts and groups them, and [`View::finish`] words the kept rows from the same state;
+/// - an issued revision: its state is read and copied; the build works out its report models and
+///   check from that copy (seconds on a large project) and words its rows from it.
+///
+/// # Errors
+/// An issued `rev` that is not on this line, or its state could not be read.
+pub fn prepare(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> Result<impl FnOnce() -> View + Send + 'static, String> {
+    let issued_rev = rev.map(|r| issued_row(p, r)).transpose()?;
+    let mut v = View::default();
+    let mut then = None;
+    let mut pending = None;
+    match &issued_rev {
+        Some(row) => {
+            then = Some(crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?.2);
+            v.rev = row.rev().to_string();
+            v.issued = Some(v.rev.clone());
+            v.fields = row.six();
+            v.folder = row.released.as_deref().and_then(|x| from_recorded(p, x)).or_else(|| default_folder(p, &v.rev));
+        }
+        None => {
+            p.reports();
+            p.checks();
+            let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
+            rows.extend(p.kept_reports().map(ReportModels::checks).unwrap_or_default());
+            let order: HashMap<PageId, usize> = p.ledger.document().page_order().iter().enumerate().map(|(i, p)| (*p, i)).collect();
+            pending = Some((rows, order));
+            v.pending =
+                Some(PendingRefusal { before: refusal_before_errors(p), after: numbering_seam::refusal(p, &[], &json!({})), errors_refuse: !accept });
+            v.warning = nothing_changed(p);
+            v.since = unchanged_since(p);
+            let doc = p.ledger.document();
+            v.rev = revisions::pending_rev(doc);
+            v.fields = revisions::pending(doc).map(|r| r.six()).unwrap_or_default();
+            if v.fields[0].is_empty() {
+                v.fields[0] = v.rev.clone();
+            }
+            v.folder = default_folder(p, &v.rev);
+        }
+    }
+    let base = format!("{} Rev {}", stem(p), v.rev);
+    v.writes.push(("book".into(), format!("{base}.pdf")));
+    let doc = p.ledger.document();
+    for s in &LISTS {
+        if slot_gives(s, doc) {
+            v.writes.push((s.id.into(), format!("{base}{}", s.suffix)));
+        } else {
+            v.not_included.push((s.id.into(), s.missing_why.into()));
+        }
+    }
+    v.writes.push(("checks".into(), format!("{base} checks.csv")));
+    v.writes.push(("manifest".into(), MANIFEST.into()));
+    v.existing = v.folder.as_deref().filter(|f| f.exists()).map(read_old);
+    let (inputs, tolerance) = (p.derived().inputs().clone(), p.tolerance);
+    Ok(move || {
+        if let Some(then) = then {
+            let detached = ecad_electrical::views::Detached::build(inputs, &then);
+            let rows = crate::checks::all_with(&then, tolerance, detached.reports());
+            fill_rows(&rows, limit, &mut v);
+            v = v.finish(&then);
+        } else if let Some((mut rows, order)) = pending {
+            rows.sort_by_key(|c| c.order_key(&order));
+            fill_rows(&rows, limit, &mut v);
+        }
+        v
+    })
+}
+
+impl View {
+    /// Word the kept rows and settle the pending revision's refusal, reading `doc`: the state
+    /// [`prepare`] read (the app takes a pool result only while the project has not moved on). An
+    /// issued revision's view comes finished, and this does nothing to it.
+    #[must_use]
+    pub fn finish(mut self, doc: &Document) -> View {
+        if !self.unfinished {
+            return self;
+        }
+        self.unfinished = false;
+        self.json_rows = self.groups.iter().map(|(_, _, rows)| rows.iter().map(|(c, _)| c.to_json(doc)).collect()).collect();
+        for (_, _, rows) in &mut self.groups {
+            for (c, place) in rows {
+                *place = c.locator(doc);
+            }
+        }
+        if let Some(r) = self.pending.take() {
+            let first = self.groups.iter().find(|(g, _, _)| *g == Group::Errors).and_then(|(_, _, rows)| rows.first()).map(|(c, _)| c);
+            let errors = if r.errors_refuse { ecad_electrical::releases::release::errors_refusal_of(doc, self.errors, first) } else { None };
+            self.refusal = r.before.or(errors).or(r.after);
+        }
+        self
+    }
+
+    /// `prerelease`'s JSON.
+    pub fn json(&self) -> Value {
+        let mut v = json!({
+            "rev": self.rev, "state": if self.issued.is_some() { "issued" } else { "pending" },
+            "groups": self.groups.iter().zip(&self.json_rows).map(|((g, count, _), rows)| json!({
+                "group": g.id(), "words": g.words(), "count": count, "rows": rows})).collect::<Vec<_>>(),
+            "errors": self.errors, "warnings": self.warnings, "info": self.info,
+            "provisional": self.provisional,
+            "folder": self.folder.as_deref().map(shown),
+            "exists": self.existing.is_some(),
+            "writes": self.writes.iter().map(|(s, f)| json!({"slot": s, "file": f})).collect::<Vec<_>>(),
+            "not_included": self.not_included.iter().map(|(s, w)| json!({"slot": s, "why": w})).collect::<Vec<_>>()});
+        if let Some(old) = &self.existing {
+            v["existing"] = json!({"manifest": old.manifest, "written": old.written, "app": old.app, "files": old.files.len()});
+        }
+        if let Some(r) = &self.refusal {
+            v["refusal"] = json!(r);
+        }
+        if let Some(w) = &self.warning {
+            v["warning"] = json!(w);
+        }
+        v
+    }
+
+    /// The dialog's line about an existing folder.
+    pub fn exists_words(&self) -> Option<String> {
+        let old = self.existing.as_ref()?;
+        let rev = &self.rev;
+        Some(match (&old.written, old.manifest) {
+            (Some(w), true) => {
+                format!("Rev {rev}'s folder exists (written {}). Release asks what to do with it.", w.replacen('T', " ", 1).trim_end_matches('Z'))
+            }
+            _ => format!("Rev {rev}'s folder exists (not written by a release). Release asks what to do with it."),
+        })
+    }
+}
+
+/// `prerelease {rev?, limit?}`: the check, grouped, and what `release` would
+/// write or refuse. Records nothing.
+///
+/// # Errors
+/// An issued `rev` that is not on this line, or its state could not be read.
+pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
+    let limit = opt_typed(params, "limit", "a whole number", Value::as_u64)?.map_or(DEFAULT_ROWS, |n| n as usize).clamp(1, MAX_ROWS);
+    let want = opt_typed(params, "rev", "text such as \"A\"", |v| v.as_str().map(str::to_string))?;
+    let accept = params.get("accept").and_then(Value::as_str) == Some("errors");
+    let v = prepare(p, want.as_deref(), accept, limit)?();
+    Ok(v.finish(p.ledger.document()).json())
+}
+
+/// What the Release dialog's view of the pending revision depends on:
+/// the rows (only when some row changed, `Checks::changed` and the report models'
+/// check key), the pending revision's fields, the refusal's inputs (file, read-only, branch,
+/// provisional items) and the nothing-changed warning, with the tick. An edit that changes none of
+/// these leaves it, and the dialog takes no new view. `None` until the Checks are kept.
+pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let checks = p.kept_checks()?;
+    let reports = p.kept_reports()?;
+    let doc = p.ledger.document();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (checks.changed, reports.checks_key(), accept).hash(&mut h);
+    revisions::pending(doc).map(|r| r.fields).hash(&mut h);
+    revisions::issued(doc).len().hash(&mut h);
+    (&p.path, read_only(p), crate::pages::commands::sheets::release_line_refusal(p, true), nothing_changed(p)).hash(&mut h);
+    Some(h.finish())
+}
+
+/// The issued row `rev` names.
+///
+/// # Errors
+/// It is the pending revision, or was never issued: with the way on.
+fn issued_row(p: &Project, rev: &str) -> Result<revisions::Revision, String> {
+    let want = crate::history::points::read_rev(p, rev).map_err(|e| e.to_string())?;
+    let doc = p.ledger.document();
+    let shown = doc.project().rev_scheme.show(want);
+    if let Some(r) = revisions::issued(doc).into_iter().find(|r| r.rev_value == Some(want)) {
+        return Ok(r);
+    }
+    if revisions::pending(doc).is_some_and(|r| r.rev_value == Some(want)) {
+        return Err(format!("Rev {shown} is not issued yet; release without `rev` to issue it and write its folder."));
+    }
+    Err(format!("Rev {shown} has not been issued."))
+}
+
+// ---------------------------------------------------------------- release
+
+fn options(doc: &ecad_model::Document, params: &Value) -> Result<Options, String> {
+    // No `colour` given prints as the project's `print.colour` says (mono by default).
+    let mono = ecad_electrical::defaults::print::mono_param(doc, params)?;
+    let lineweights = opt_typed(params, "lineweights", "true or false", Value::as_bool)?.unwrap_or(true);
+    Ok(Options { mono, lineweights, pending: false })
+}
+
+/// The words of a finished release.
+fn done_words(rev: &str, folder: &Path, st: &Staged, rows: &[Check]) -> String {
+    let (e, w, _) = counts(rows);
+    let sheets = if st.sheets == 1 { "1 sheet".to_string() } else { format!("{} sheets", st.sheets) };
+    let lists = if st.lists == 1 { "1 list".to_string() } else { format!("{} lists", st.lists) };
+    let errs = match e {
+        0 => String::new(),
+        1 => "1 error and ".into(),
+        n => format!("{n} errors and "),
+    };
+    let warns = if w == 1 { "1 warning".to_string() } else { format!("{w} warnings") };
+    format!("Rev {rev} released to {}: {sheets}, {lists}, {errs}{warns} listed.", shown(folder))
+}
+
+/// The folder `params` names (`folder`), else `default`.
+fn folder_param(p: &Project, params: &Value, default: Option<PathBuf>) -> Result<PathBuf, String> {
+    match opt_typed(params, "folder", "a folder path", |v| v.as_str().map(str::to_string))? {
+        Some(f) if !f.trim().is_empty() => {
+            let path = PathBuf::from(f.trim());
+            Ok(if path.is_absolute() { path } else { project_dir(p).map_or(path.clone(), |d| d.join(&path)) })
+        }
+        _ => default.ok_or_else(|| SAVE_FIRST.to_string()),
+    }
+    .and_then(|f| check_target(p, &f).map(|()| f))
+}
+
+/// `release` of the pending revision.
+///
+/// # Errors
+/// A refusal or a failure before the issue (nothing recorded, no `.partial` left); after
+/// the issue, a finished result carries the problem in its message instead.
+pub(crate) fn release_pending(
+    p: &mut Project, pg: &mut Pages<'_>, params: &Value, progress: &mut dyn FnMut(usize, usize) -> bool,
+) -> Result<Value, String> {
+    // 1. Refusals.
+    let chosen = chosen(params)?;
+    let existing = Existing::parse(params)?;
+    let o = options(p.ledger.document(), params)?;
+    let rows = check_rows(p);
+    if let Some(r) = pending_refusal(p, &rows, params) {
+        return Err(r);
+    }
+    let accepted = params.get("accept").and_then(Value::as_str) == Some("errors");
+    let rev0 = revisions::pending_rev(p.ledger.document());
+    let target = folder_param(p, params, default_folder(p, &rev0))?;
+    let warning = nothing_changed(p);
+    // 2. Finalise numbering, when asked: planned now, recorded only with the issue, so a
+    // release that stops before the issue records nothing at all.
+    let (finalise, note) = match numbering_seam::plan(p, params)? {
+        ecad_electrical::numbering::commands::BeforeIssue::Go(note) => (None, note),
+        ecad_electrical::numbering::commands::BeforeIssue::Finalise(plan) => (Some(plan), None),
+    };
+    // The caller's transaction budget (an agent's cap of one per call): known before anything
+    // reaches the disk, never found out after. Finalise and the issue are one
+    // transaction, so the need is one either way.
+    if let Some(budget) = p.caller.tx_budget
+        && budget < 1
+    {
+        return Err(over_budget(1, budget));
+    }
+    // 3. Build into staging, from the state as it will be issued: Finalise's ops (if any), then
+    // the issue's, on the current document.
+    let before: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).collect();
+    let mut plan = crate::pages::commands::sheets::plan_issue(p, &before)?;
+    let rev = plan.rev.clone();
+    let target = if rev == rev0 { target } else { folder_param(p, params, default_folder(p, &rev))? };
+    let staging = partial_of(&target);
+    revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &target));
+    let all_ops: Vec<Op> = before.iter().chain(plan.ops.iter()).cloned().collect();
+    let issued_doc = p.ledger.preview(&all_ops).map_err(|e| e.to_string())?;
+    // With Finalise, the lists and the check are those of the finalised state (built on this
+    // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
+    let finalised = finalise.as_ref().map(|_| {
+        let detached = p.derived().detached(&issued_doc);
+        let r = crate::checks::all_with(&issued_doc, p.tolerance, detached.reports());
+        (detached, r)
+    });
+    let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
+    // The errors gate on the rows the folder ships: after Finalise, when chosen.
+    if finalised.is_some()
+        && !accepted
+        && let Some(r) = errors_refusal(&issued_doc, &rows)
+    {
+        return Err(r);
+    }
+    let stem = stem(p);
+    let staged = {
+        let fail = injected(p, Step::Partial);
+        p.reports();
+        let kept = p.kept_reports().ok_or("the report models could not be built")?;
+        let reports = finalised.as_ref().map_or(kept, |(o, _)| o.reports());
+        let b = Build {
+            doc: &issued_doc,
+            reports,
+            rows: &rows,
+            fan: &p.display.views,
+            tol: p.tolerance,
+            options: o,
+            stem,
+            rev: rev.clone(),
+            accepted,
+            chosen,
+        };
+        let built = fail.and_then(|()| stage(&b, &staging, progress));
+        match built.and_then(|st| landing(&target, &st, existing).map(|l| (st, l))) {
+            Ok(x) => (x, b.stem.clone(), b.options),
+            Err(e) => {
+                clear_staging(&staging);
+                return Err(stopped(&e));
+            }
+        }
+    };
+    let ((st, mut l), stem, o) = staged;
+    // Keep both lands elsewhere: the recorded value names the folder it lands in.
+    if l.folder != target {
+        revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &l.folder));
+    }
+    // 4. Finalise (when asked) and the issue: ONE transaction, one history entry, one undo. A
+    // refused issue writes nothing, so there is nothing to take back.
+    let issued =
+        injected(p, Step::Issue).and_then(|()| p.apply_edit(pg, "release", &format!("Issue Rev {rev}"), all_ops.clone()).map_err(String::from));
+    if let Err(e) = issued {
+        clear_staging(&staging);
+        return Err(e);
+    }
+    if let Some(f) = &finalise {
+        pg.echo(ecad_electrical::numbering::commands::applied_words(f, true));
+    }
+    let tx = p.ledger.head();
+    let mut problems: Vec<String> = Vec::new();
+    // 5. Save.
+    let saved = injected(p, Step::Save).and_then(|()| p.save_now(pg));
+    if let Err(e) = &saved {
+        problems.push(format!("The project could not be saved: {e}. Save it before closing, or Rev {rev} is not kept."));
+    }
+    // 6. Manifest, 7. rename.
+    let chain = p
+        .storage
+        .file
+        .project()
+        .filter(|_| saved.is_ok())
+        .and_then(|v| v.chain_of(v.branch(), tx).ok())
+        .map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
+    let iss = Issued { branch: crate::history::current_name(p), transaction: tx, point: plan.head, chain };
+    let doc = p.ledger.document().clone();
+    let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
+    let reports = p.kept_reports().cloned().unwrap_or_default();
+    let fan = p.display.views.clone();
+    let b =
+        Build { doc: &doc, reports: &reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
+    let m = manifest(&doc, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&doc, &fan));
+    let finished = injected(p, Step::Manifest)
+        .and_then(|()| write_manifest(&staging, &m))
+        .map_err(Stopped::before_landing)
+        .and_then(|()| land(&staging, &l, &st, &m, &mut |s| injected(p, s)));
+    let landed = match finished {
+        Ok(note) => {
+            problems.extend(note);
+            true
+        }
+        Err(e) => {
+            let changed = e.changed.map(|c| format!(" {c}.")).unwrap_or_default();
+            problems.push(format!(
+                "Rev {rev} is issued, but its folder could not be finished ({}).{changed} The files are in {}; release Rev {rev} again to write the folder.",
+                e.why,
+                shown(&staging)
+            ));
+            false
+        }
+    };
+    if !landed {
+        l.folder = staging.clone();
+    }
+    let mut message = if landed { done_words(&rev, &l.folder, &st, &rows) } else { format!("Rev {rev} issued.") };
+    if let Some(n) = note {
+        message.push_str(&format!(" {n}"));
+    }
+    for pr in &problems {
+        message.push(' ');
+        message.push_str(pr);
+    }
+    pg.echo(message.clone());
+    let transactions: Vec<u64> = vec![tx];
+    let mut v = json!({
+        "rev": rev, "folder": shown(&l.folder), "finished": landed,
+        "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
+        "not_included": st.not_included.iter().map(|(k, why)| json!({"slot": k, "why": why})).collect::<Vec<_>>(),
+        "transactions": transactions, "saved": saved.is_ok(), "message": message});
+    if let Some(c) = &l.compare {
+        v["compare"] = c.json();
+    }
+    if let Some(wn) = warning {
+        v["warning"] = json!(wn);
+    }
+    Ok(v)
+}
+
+fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(m).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(MANIFEST), bytes).map_err(|e| format!("{}: {e}", shown(&dir.join(MANIFEST))))
+}
+
+/// `release {rev}`: write an issued revision's folder again from its issued state.
+/// Records nothing.
+///
+/// # Errors
+/// Not issued, no place for the folder, a write failure (no `.partial` left), or an existing
+/// folder without `existing`.
+pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<Value, String> {
+    let chosen = chosen(params)?;
+    let existing = Existing::parse(params)?;
+    let o = options(p.ledger.document(), params)?;
+    let row = issued_row(p, rev)?;
+    let rev = row.rev().to_string();
+    let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
+    let target = folder_param(p, params, default)?;
+    let (named, seq, then) = crate::history::points::issued_state(p, row.rev_value.ok_or("an issued revision has no rev")?)?;
+    let detached = p.derived().detached(&then);
+    let reports = detached.reports();
+    let rows = crate::checks::all_with(&then, p.tolerance, reports);
+    let staging = partial_of(&target);
+    let fan = p.display.views.clone();
+    let b =
+        Build { doc: &then, reports, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem: stem(p), rev: rev.clone(), accepted: false, chosen };
+    let built =
+        injected(p, Step::Partial).and_then(|()| stage(&b, &staging, progress)).and_then(|st| landing(&target, &st, existing).map(|l| (st, l)));
+    let (st, l) = match built {
+        Ok(x) => x,
+        Err(e) => {
+            clear_staging(&staging);
+            return Err(format!(
+                "Rev {rev}'s folder was not written: {}. Nothing was written. Choose another folder, or try again.",
+                e.trim_end_matches('.')
+            ));
+        }
+    };
+    let branch = crate::history::find_branch(p, &named.branch.hex()).map(|b| b.1.name).unwrap_or_else(|_| "main".into());
+    let chain = p.storage.file.project().and_then(|v| v.chain_of(named.branch, seq).ok()).map(|h| h.iter().map(|b| format!("{b:02x}")).collect());
+    let iss = Issued { branch, transaction: seq, point: named.seq, chain };
+    let m = manifest(&then, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&then, &fan));
+    let finished = injected(p, Step::Manifest)
+        .and_then(|()| write_manifest(&staging, &m))
+        .map_err(Stopped::before_landing)
+        .and_then(|()| land(&staging, &l, &st, &m, &mut |s| injected(p, s)));
+    let note = match finished {
+        Ok(note) => note,
+        Err(e) => {
+            clear_staging(&staging);
+            let (what, changed) = match e.changed {
+                Some(c) => ("finished", c),
+                None => ("written", "Nothing was written".into()),
+            };
+            return Err(format!(
+                "Rev {rev}'s folder was not {what}: {}. {changed}. Choose another folder, or try again.",
+                e.why.trim_end_matches('.')
+            ));
+        }
+    };
+    let mut message = format!("{} (written again; nothing recorded).", done_words(&rev, &l.folder, &st, &rows).trim_end_matches('.'));
+    if let Some(n) = note {
+        message.push_str(&format!(" {n}"));
+    }
+    let mut v = json!({
+        "rev": rev, "folder": shown(&l.folder), "finished": true,
+        "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
+        "not_included": st.not_included.iter().map(|(k, why)| json!({"slot": k, "why": why})).collect::<Vec<_>>(),
+        "transactions": [], "saved": false, "message": message});
+    if let Some(c) = &l.compare {
+        v["compare"] = c.json();
+    }
+    Ok(v)
+}

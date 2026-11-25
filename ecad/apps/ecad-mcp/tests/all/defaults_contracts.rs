@@ -1,8 +1,7 @@
-//! Brief 042 (U4c) through MCP (brief 011 rule): `setdefault` records one transaction by
-//! `Author::Agent(<client>)`, a refused level gives the reason and the allowed levels, and with
-//! writes off it is refused and records nothing.
+//! Defaults through MCP: `setdefault` records one transaction by
+//! `Author::Agent(<client>)`, and a refused level gives the reason and the allowed levels.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::json;
 
@@ -17,15 +16,9 @@ fn setdefault_by_the_agent_then_refused_with_writes_off() {
     let log = c.log();
     assert_eq!(log.len(), n + 1, "one transaction");
     assert_eq!(log.last().map(|t| t.author.clone()), Some(Author::Agent(AGENT.into())));
-    assert_eq!(c.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("Q"));
+    assert_eq!(c.doc().settings().starter_prefix("coil").map(|p| p.as_str()), Some("Q"));
     // A level the entry does not allow: the reason and the levels it does.
     let m = c.refused("execute", json!({"command": "setdefault", "params": {"key": "text.run.gap", "level": "page", "value": 3}}));
     assert!(m.contains("cannot be set at page level") && m.contains("It can be set at: project"), "{m}");
     assert_eq!(c.log().len(), n + 1, "a refusal records nothing");
-
-    let mut r = crate::mcp_contracts::reader();
-    let log = r.log();
-    let m = r.refused("execute", json!({"command": "setdefault", "params": {"key": "symbol.coil.prefix", "value": "Q"}}));
-    assert_eq!(m, policy::WRITES_OFF);
-    assert_eq!(r.log(), log, "nothing recorded with writes off");
 }

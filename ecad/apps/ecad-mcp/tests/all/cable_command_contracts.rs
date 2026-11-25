@@ -1,5 +1,5 @@
-//! Brief 011's MCP contract rule applied to the commands briefs 009 and 010 added or changed:
-//! `cablecore`, `cablefan`, `cableref`, `cablecontinue`, `cablegoto`, `cablerefs`, `renamepage` and
+//! MCP contract of the cable and page commands:
+//! `cablecore`, `cablefan`, `cablereference`, `cablecontinue`, `cablegoto`, `cablereferences`, `renamepage` and
 //! `movepage`. Every test drives the server through JSON-RPC lines, in-process.
 //!
 //! - Each is listed by `list_commands` with its parameter docs.
@@ -7,15 +7,16 @@
 //!   directly through `Session::execute`, as `cable_reference_contracts.rs`'s JSON-form table does),
 //!   authored `agent <client name>`, and `u` undoes it in one step.
 //! - Refusals record nothing and leave the document as it was.
-//! - With writes off the changing commands are refused; `cablerefs` and `cablegoto` run, record
+//! - With writes off the changing commands are refused; `cablereferences` and `cablegoto` run, record
 //!   nothing, and `cablegoto` only switches the open page.
 
 use std::path::PathBuf;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
-use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::derive::cable_references;
+use ecad_engine::agent::policy;
+use ecad_engine::{Persistence, Project, ProjectHandle};
+use ecad_mcp::{EcadMcp, Options};
+use ecad_model::connectivity::derive::cable_references;
 use ecad_model::{Author, Document, PageId, Transaction};
 use serde_json::{Value, json};
 
@@ -23,7 +24,7 @@ const AGENT: &str = "cable-agent";
 const SEED: u64 = 0x0E_CAD0_0910;
 
 /// The commands of briefs 009 and 010.
-const COMMANDS: &[&str] = &["cablecore", "cablefan", "cableref", "cablecontinue", "cablegoto", "cablerefs", "renamepage", "movepage"];
+const COMMANDS: &[&str] = &["cablecore", "cablefan", "cablereference", "cablecontinue", "cablegoto", "cablereferences", "renamepage", "movepage"];
 
 struct Client {
     s: EcadMcp,
@@ -36,7 +37,7 @@ impl Client {
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
         assert!(c.s.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none())).unwrap().unwrap();
         c
     }
 
@@ -103,10 +104,10 @@ struct Direct {
 
 impl Direct {
     fn new() -> Self {
-        ecad_cadcraft::install();
+        ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "cables", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_cadcraft::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.display.view_settings = ecad_engine::cables::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -141,11 +142,11 @@ impl Drop for TempDir {
 
 /// The page titled `title` (the first page is renamed `Supply`, later `Source`).
 fn page_titled(doc: &Document, titles: &[&str]) -> Option<PageId> {
-    doc.page_order.iter().copied().find(|p| doc.pages.get(p).is_some_and(|pg| titles.contains(&pg.title.as_str())))
+    doc.page_order().iter().copied().find(|p| doc.pages().get(p).is_some_and(|pg| titles.contains(&pg.title.as_str())))
 }
 
 fn supply(doc: &Document) -> PageId {
-    page_titled(doc, &["Supply", "Source"]).unwrap_or(doc.page_order[0])
+    page_titled(doc, &["Supply", "Source"]).unwrap_or(doc.page_order()[0])
 }
 
 fn field(doc: &Document) -> PageId {
@@ -153,17 +154,20 @@ fn field(doc: &Document) -> PageId {
 }
 
 /// Fills a row's placeholders from the document as it is when the row runs: `<supply>`, `<field>`,
-/// `<c1>` (the one cable), `<w0>` (its first member) and `<ref supply>` / `<ref field>`.
+/// `<c1>` (the one cable), `<w0>` (its first core's wire, or its line while it has none) and `<ref supply>` / `<ref field>`.
 fn fill(doc: &Document, v: &Value) -> Value {
     match v {
         Value::String(s) => {
             let reference = |page: PageId| cable_references(doc).into_iter().find(|r| r.page == page).expect("a reference").reference.hex();
-            let c1 = || *doc.cables.keys().next().expect("a cable");
+            let c1 = || *doc.cables().keys().next().expect("a cable");
             match s.as_str() {
                 "<supply>" => Value::String(supply(doc).hex()),
                 "<field>" => Value::String(field(doc).hex()),
                 "<c1>" => Value::String(c1().hex()),
-                "<w0>" => Value::String(doc.cables[&c1()].members[0].conductor.hex()),
+                "<w0>" => {
+                    let core = &doc.cables()[&c1()].cores[0];
+                    Value::String(core.wire().map(|w| w.hex()).or(core.route().map(|l| l.hex())).unwrap_or_default())
+                }
                 "<ref supply>" => Value::String(reference(supply(doc))),
                 "<ref field>" => Value::String(reference(field(doc))),
                 _ => v.clone(),
@@ -186,25 +190,26 @@ fn rows() -> Vec<(&'static str, Value, &'static str, usize)> {
         ("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"}), "cable", 1),
         // Brief 009: core labels, one or all; the same label again records nothing.
         ("cablecore", json!({"cable": "<c1>", "cores": ["L1", "L2", null]}), "", 1),
-        ("cablecore", json!({"conductor": "<w0>", "core": "N"}), r#""changed":true"#, 1),
-        ("cablecore", json!({"conductor": "<w0>", "core": "N"}), r#""changed":false"#, 0),
+        // The lines are loose until continued (design 072 §4.4, F4): cores named through the cable.
+        ("cablecore", json!({"cable": "<c1>", "cores": ["N", "L2", null]}), "", 1),
+        ("cablecore", json!({"cable": "<c1>", "cores": ["N", "L2", null]}), "", 0),
         // Brief 009: the fan join, as a fraction; the same value again records nothing.
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.25}), r#""changed":true"#, 1),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.25}), r#""changed":false"#, 0),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": null}), "", 1),
         // Brief 010: a reference on Supply (an orphan until continued), then the continuation.
-        ("cablerefs", json!({}), r#"{"references":[]}"#, 0),
-        ("cableref", json!({"cable": "<c1>", "at": [65, 5]}), r#""orphan":true"#, 1),
-        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"?""#, 0),
+        ("cablereferences", json!({}), r#"{"references":[]}"#, 0),
+        ("cablereference", json!({"cable": "<c1>", "at": [65, 5]}), r#""orphan":true"#, 1),
+        ("cablereferences", json!({"cable": "<c1>"}), r#""text":"?""#, 0),
         ("newpage", json!({"title": "Field"}), "page", 1),
         ("openpage", json!({"page": "<field>"}), "document", 0),
         ("cablecontinue", json!({"cable": "<c1>", "at": [20, 5], "toward": [40, 5]}), r#""text":"1/F2""#, 1),
-        ("cablerefs", json!({}), r#""text":"2/F1""#, 0),
+        ("cablereferences", json!({}), r#""text":"2/F1""#, 0),
         ("renamepage", json!({"page": "<supply>", "title": "  Supply  "}), r#""changed":false"#, 0),
         ("renamepage", json!({"page": "<supply>", "title": "Source"}), r#""changed":true"#, 1),
         ("movepage", json!({"page": "<field>", "index": 2}), r#""changed":false"#, 0),
         ("movepage", json!({"page": "<field>", "index": 1}), r#""index":1"#, 1),
-        ("cablerefs", json!({"cable": "<c1>"}), r#""text":"2/F1""#, 0),
+        ("cablereferences", json!({"cable": "<c1>"}), r#""text":"2/F1""#, 0),
         ("cablegoto", json!({"reference": "<ref field>"}), r#"Page 1 \"Source\", at the other end of cable -C01"#, 0),
     ]
 }
@@ -216,7 +221,7 @@ fn the_cable_and_page_commands_are_listed_with_their_parameter_docs() {
     let mut c = writer();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    let specs = ecad_cadcraft::commands::specs();
+    let specs = ecad_engine::commands::specs();
     for id in COMMANDS {
         let spec = specs.iter().find(|s| s.id == *id).unwrap_or_else(|| panic!("{id} is an ECAD command"));
         let info = catalog.iter().find(|i| i["id"] == *id).unwrap_or_else(|| panic!("{id} not listed"));
@@ -279,7 +284,8 @@ fn each_change_through_mcp_records_the_json_forms_transaction_as_the_agent_and_u
     }
     // Every changing command of the two briefs took part in the comparison.
     let labels: Vec<&str> = agent.iter().map(|t| t.label.as_str()).collect();
-    for label in ["Core labels", "Core label", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"] {
+    // (A single core by its wire, "Core label", needs a wire: the lines here stay loose, F4.)
+    for label in ["Core labels", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"] {
         assert!(labels.contains(&label), "{label} missing from {labels:?}");
     }
 
@@ -317,20 +323,20 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
     let log = c.log();
     let rows: Vec<(&str, Value, &str)> = vec![
         ("cablecore", json!({"cable": "<c1>", "cores": ["a"]}), "`cores` must list one label (or null) per member"),
-        ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` (hex id) is required"),
+        ("cablecore", json!({"conductor": "zz", "core": "a"}), "`conductor` must be a hex id"),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 1.5}), "`at` as a fraction must be from 0 to 1"),
         ("cablefan", json!({"cable": "<c1>", "at": [1e300, 0]}), "Point out of range."),
-        ("cableref", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
-        ("cableref", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
+        ("cablereference", json!({"cable": "<c1>", "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
+        ("cablereference", json!({"cable": "<c1>", "at": [f64::MAX, 0]}), "is not a finite [x,y] point"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 0], "toward": [0, 0]}), "`toward` must differ from `at`"),
         ("cablecontinue", json!({"cable": "<c1>", "at": [80, 5], "toward": [90, 5]}), "Cable -C01 already continues to another page"),
         ("cablegoto", json!({}), "`reference` (hex id) is required"),
         ("cablegoto", json!({"reference": "<w0>"}), "no such reference"),
-        ("cablerefs", json!({"cable": "nope"}), "`cable` (hex id) is required"),
+        ("cablereferences", json!({"cable": "nope"}), "`cable` must be a hex id"),
         ("renamepage", json!({"page": "<supply>", "title": "   "}), "`title` must be a non-empty string"),
         ("renamepage", json!({"page": "<supply>", "title": "x".repeat(10_000)}), "`title` must be a non-empty string"),
         ("movepage", json!({"page": "<supply>", "index": 0}), "`index` must be a whole number from 1 to 2"),
-        ("movepage", json!({"page": "<supply>", "index": 1e20}), "`index` must be a whole number from 1 to 2"),
+        ("movepage", json!({"page": "<supply>", "index": 1e20}), "`index` must be a whole number"),
     ];
     for (cmd, params, want) in rows {
         let params = fill(&doc, &params);
@@ -344,7 +350,7 @@ fn refusals_through_mcp_say_why_and_change_nothing() {
 // ---------------------------------------------------------------- writes off
 
 #[test]
-fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read() {
+fn with_writes_off_the_changes_are_refused_and_cablereferences_and_cablegoto_only_read() {
     let dir = TempDir::new("readonly");
     let path = dir.file("cables.ecad");
     {
@@ -363,7 +369,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
     for (cmd, params) in [
         ("cablecore", json!({"cable": "<c1>", "cores": ["L1", "L2", "L3"]})),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.5})),
-        ("cableref", json!({"cable": "<c1>", "at": [70, 0]})),
+        ("cablereference", json!({"cable": "<c1>", "at": [70, 0]})),
         ("cablecontinue", json!({"cable": "<c1>", "at": [0, 30], "toward": [10, 30]})),
         ("renamepage", json!({"page": "<supply>", "title": "Other"})),
         ("movepage", json!({"page": "<field>", "index": 1})),
@@ -374,11 +380,11 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
         assert_eq!(c.log(), log, "{cmd} moved the head");
     }
 
-    // cablerefs reads.
-    let refs = c.exec("cablerefs", json!({}));
-    let texts: Vec<&str> = refs["references"].as_array().unwrap().iter().filter_map(|r| r["text"].as_str()).collect();
-    assert_eq!(texts.len(), 2, "{refs}");
-    assert!(texts.contains(&"2/F1") && texts.contains(&"1/F2"), "{refs}");
+    // cablereferences reads.
+    let references = c.exec("cablereferences", json!({}));
+    let texts: Vec<&str> = references["references"].as_array().unwrap().iter().filter_map(|r| r["text"].as_str()).collect();
+    assert_eq!(texts.len(), 2, "{references}");
+    assert!(texts.contains(&"2/F1") && texts.contains(&"1/F2"), "{references}");
 
     // cablegoto from Supply's reference opens Field, selects the other end, and records nothing.
     let (supply, field) = (supply(&doc), field(&doc));
@@ -401,7 +407,7 @@ fn with_writes_off_the_changes_are_refused_and_cablerefs_and_cablegoto_only_read
     assert_eq!(active, on_supply, "and back to Supply");
 
     // Nothing changed: the history, the document, the unsaved state and the file.
-    assert_eq!(c.log(), log, "cablerefs and cablegoto recorded nothing");
+    assert_eq!(c.log(), log, "cablereferences and cablegoto recorded nothing");
     assert_eq!(c.doc(), doc);
     assert_eq!(c.ok("ecad_project", json!({}))["unsaved"], json!(false));
     assert_eq!(std::fs::read(&path).unwrap(), bytes, "the file is untouched");

@@ -1,0 +1,267 @@
+//! The agent's last write on the page: the objects of
+//! the agent's last accepted transaction on the page shown get a dashed 0.6 mm outline in
+//! `agent_write` with a name chip; a change selected in History gets the same outline in the
+//! selection colour with its author.
+//!
+//! # Semantics
+//! - Painted over the page with egui from CADCraft's view transform (`canvas.xf`), never as an
+//!   entity, so it is never plotted or printed (`agent_write` does not print: `ecad-widgets`).
+//! - Shown for as long as the banner shows that write as its last; gone when the banner is
+//!   dismissed, and when Library or Publish hides the page (only where the page is shown:
+//!   `Shell::page_rect`, so also beside Lists' companion).
+//! - **Update map**: the outline's world boxes are read again only when the banner's last change,
+//!   the History selection, the branch, the page shown or the drawing's revision changes (an edit
+//!   on that page, by anyone); otherwise a frame only transforms the kept boxes to the screen. An
+//!   idle frame reads nothing from the project ([`reads`] counts the reads).
+//!
+//! Excluded: CADCraft's canvas and ECAD's painter layer, marks (`overlay_marks`), plots.
+
+use std::time::Instant;
+
+use ecad_electrical::checks::Object;
+use ecad_engine::cad::Bounds2;
+use ecad_model::palette::Color;
+use ecad_model::palette::sheet;
+use ecad_model::{ObjectRef, PageId, TxId};
+use ecad_widgets::tokens::{line, space, ui_type};
+use eframe::egui;
+
+use crate::shell::app::App;
+
+/// The outline's width on the sheet, mm.
+pub(crate) const OUTLINE_MM: f32 = 0.6;
+/// Its dashes and gaps, mm.
+const DASH_MM: f32 = 1.5;
+const GAP_MM: f32 = 1.0;
+/// How far the outline stands off the object's extents, mm.
+const MARGIN_MM: f64 = 1.5;
+/// Most objects outlined for one transaction (a large agent call outlines the first ones).
+pub(crate) const MAX_OUTLINED: usize = 200;
+/// The accessible name of the last-write chip (tests find it).
+pub const CHIP: &str = "agent.lastwrite";
+/// The accessible name of the History selection's chip.
+pub(crate) const HISTORY_CHIP: &str = "history.touched";
+
+/// What one outline is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// The agent's last write (`agent_write`).
+    AgentWrite,
+    /// A change selected in History (`selection`).
+    Selected,
+}
+
+/// One transaction's outline on the page shown: world boxes and its chip.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outline {
+    pub kind: Kind,
+    pub chip: String,
+    pub boxes: Vec<Bounds2>,
+}
+
+/// What the outlines were read for: (agent seq, selected seq, branch, page, drawing revision).
+type Key = (Option<u64>, Option<u64>, String, Option<PageId>, u64);
+
+/// The kept outlines (egui's memory, one per window).
+#[derive(Debug, Clone, Default)]
+struct Kept {
+    key: Option<Key>,
+    outlines: Vec<Outline>,
+    reads: u64,
+}
+
+fn kept_id() -> egui::Id {
+    egui::Id::unique("ecad.agent.lastwrite")
+}
+
+/// How many times the outlines were read from the project (tests: only when the update map says
+/// so).
+pub fn reads(ctx: &egui::Context) -> u64 {
+    ctx.data(|d| d.get_temp::<Kept>(kept_id())).map_or(0, |k| k.reads)
+}
+
+/// The outlines kept for the page shown (tests).
+pub fn outlines(ctx: &egui::Context) -> Vec<Outline> {
+    ctx.data(|d| d.get_temp::<Kept>(kept_id())).map(|k| k.outlines).unwrap_or_default()
+}
+
+/// The wall clock, ms since the epoch, of `at`.
+pub(crate) fn wall_ms(at: Instant) -> u64 {
+    let now = (crate::shell::host::host().now_ms)();
+    now.saturating_sub(u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX))
+}
+
+/// The live agent session, for History's session groups: the banner's agent and the steps it owns,
+/// while it can still be undone as a session (not finished or stopped).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveSession {
+    pub agent: String,
+    /// (session, steps, last change) the copy was taken at.
+    pub key: (String, usize, Option<u64>),
+    pub owned: std::collections::BTreeSet<TxId>,
+}
+
+/// [`LiveSession`] for the banner shown; `kept` is returned unchanged when the banner has not
+/// changed since it was taken (no copy per frame).
+pub(crate) fn live_session(t: &App, kept: Option<LiveSession>) -> Option<LiveSession> {
+    let b = t.agent.banner.as_ref().filter(|b| !matches!(b.state, crate::agent::BannerState::Finished | crate::agent::BannerState::Error))?;
+    let key = (b.session.clone(), b.steps, b.last_change.as_ref().map(|c| c.seq));
+    if kept.as_ref().is_some_and(|k| k.key == key) {
+        return kept;
+    }
+    let owned = t.agent.sessions.get(&b.session).map(|s| s.owned.ids().iter().copied().collect()).unwrap_or_default();
+    Some(LiveSession { agent: b.agent.clone(), key, owned })
+}
+
+/// Paint the agent's last write and the History selection's change over the page shown (the
+/// shell's `main_view`, after the page is drawn).
+pub fn paint(t: &mut App, ui: &egui::Ui, page: Option<egui::Rect>) {
+    t.paint_last_write(ui, page);
+}
+
+impl App {
+    /// Paint the agent's last write and the History selection's change over the page shown
+    /// (`page`: the page's rect in the shell; `None` when no page is shown).
+    pub fn paint_last_write(&mut self, ui: &egui::Ui, page: Option<egui::Rect>) {
+        let Some(rect) = page else { return };
+        let agent = self.agent.banner.as_ref().and_then(|b| b.last_change.as_ref().map(|c| (c.seq, c.branch.clone(), b.agent.clone())));
+        let selected = self.panel.history.selected_step();
+        if agent.is_none() && selected.is_none() {
+            return;
+        }
+        let page_id = self.panel.active;
+        let revision = self.cad.session.state().map_or(0, |st| st.revision);
+        let branch = agent.as_ref().map(|a| a.1.clone()).unwrap_or_default();
+        let key: Key = (agent.as_ref().map(|a| a.0), selected, branch, page_id, revision);
+        let ctx = ui.ctx().clone();
+        let mut kept = ctx.data(|d| d.get_temp::<Kept>(kept_id())).unwrap_or_default();
+        if kept.key.as_ref() != Some(&key) {
+            kept.outlines = self.read_outlines(agent.as_ref(), selected, page_id);
+            kept.reads += 1;
+            kept.key = Some(key);
+            ctx.data_mut(|d| d.insert_temp(kept_id(), kept.clone()));
+        }
+        let Some(xf) = self.cad.canvas.xf.as_ref() else { return };
+        // Over the page, in the page's own layer: windows and popups stay above it.
+        let painter = ui.painter_at(rect);
+        for o in &kept.outlines {
+            let c = match o.kind {
+                Kind::AgentWrite => sheet::PAPER.agent_write,
+                Kind::Selected => sheet::PAPER.selection,
+            };
+            let mut top: Option<egui::Pos2> = None;
+            for b in &o.boxes {
+                let width = (OUTLINE_MM * xf.scale as f32).max(line::HAIRLINE_PX);
+                let (dash, gap) = ((DASH_MM * xf.scale as f32).max(3.0), (GAP_MM * xf.scale as f32).max(2.0));
+                // Only the part on screen is dashed: one dash costs a mesh, so a box from a
+                // hostile far point (1e308 mm) would ask for more dashes than memory holds.
+                let Some(shown) = on_screen(egui::Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max)), rect.expand(width + dash)) else {
+                    continue;
+                };
+                let ring = [shown.left_top(), shown.right_top(), shown.right_bottom(), shown.left_bottom(), shown.left_top()];
+                painter.extend(egui::Shape::dashed_line(&ring, egui::Stroke::new(width, ecad_widgets::color(c)), dash, gap));
+                if top.is_none_or(|t| shown.min.y < t.y) {
+                    top = Some(shown.min);
+                }
+            }
+            if let Some(at) = top.filter(|p| p.is_finite()) {
+                chip(ui, &painter, at, &o.chip, c, if o.kind == Kind::AgentWrite { CHIP } else { HISTORY_CHIP });
+            }
+        }
+    }
+
+    /// Read the outlines' world boxes on `page` (the update map's one read).
+    fn read_outlines(&mut self, agent: Option<&(u64, String, String)>, selected: Option<u64>, page: Option<PageId>) -> Vec<Outline> {
+        let (Some(p), Some(page)) = (self.project.clone(), page) else { return Vec::new() };
+        p.read(&mut self.cad.session, |p, pages| {
+            let current = ecad_engine::history::current(p).hex();
+            let mut out = Vec::new();
+            let mut one = |seq: u64, kind: Kind, chip: Option<&str>| {
+                let Some(t) = p.ledger.transaction(seq) else { return };
+                let Some(touched) = ecad_electrical::views::PropsFeed::touched_by(p.ledger.document(), &t.ops) else { return };
+                let Some(drawing) = pages.drawing_of(p, page) else { return };
+                let mut boxes = Vec::new();
+                // The routes it drew or changed too (a loose line is a route with no
+                // wire, and a route has no properties, so `touched` leaves it out).
+                let routes = t.ops.iter().filter_map(|op| match op {
+                    ecad_model::Op::AddRoute { id, .. } | ecad_model::Op::ModifyRoute { id, .. } => Some(Object::Route(*id)),
+                    _ => None,
+                });
+                let objects: Vec<Object> = touched
+                    .iter()
+                    .filter_map(|o| match o {
+                        ObjectRef::Device(c) => Some(Object::Device(*c)),
+                        ObjectRef::Wire(c) => Some(Object::Wire(*c)),
+                        ObjectRef::Cable(c) => Some(Object::Cable(*c)),
+                        ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
+                    })
+                    .chain(routes)
+                    .collect();
+                for object in objects.into_iter().take(MAX_OUTLINED) {
+                    let mut b = Bounds2::EMPTY;
+                    for h in ecad_engine::checks::handles_of(p, page, object) {
+                        if let Some(e) = drawing.entity(h) {
+                            b = b.union(&ecad_engine::cad::entity_bounds(&drawing, e, 0));
+                        }
+                    }
+                    if !b.is_empty() && b.min.is_finite() && b.max.is_finite() {
+                        let m = ecad_engine::cad::Vec2::new(MARGIN_MM, MARGIN_MM);
+                        boxes.push(Bounds2 { min: b.min - m, max: b.max + m });
+                    }
+                }
+                if !boxes.is_empty() {
+                    let chip = chip.map_or_else(|| ecad_file::history::author_text(&t.author), str::to_string);
+                    out.push(Outline { kind, chip: if chip == "you" { "You".into() } else { chip }, boxes });
+                }
+            };
+            if let Some((seq, branch, name)) = agent
+                && *branch == current
+            {
+                one(*seq, Kind::AgentWrite, Some(name));
+            }
+            if let Some(seq) = selected.filter(|s| agent.is_none_or(|a| a.0 != *s)) {
+                one(seq, Kind::Selected, None);
+            }
+            out
+        })
+        .unwrap_or_default()
+    }
+}
+
+/// The outline's name chip above its top-left corner: the name on a ground of its colour.
+fn chip(ui: &egui::Ui, painter: &egui::Painter, at: egui::Pos2, name: &str, c: Color, label: &str) {
+    let font = ecad_widgets::fonts::font(ui.ctx(), ui_type::CAPTION);
+    let g = painter.layout_no_wrap(name.to_string(), font, ecad_widgets::color(ecad_widgets::tokens::WHITE));
+    let size = g.size() + egui::vec2(2.0 * space::S, 2.0 * space::XXS);
+    let r = egui::Rect::from_min_size(egui::pos2(at.x, at.y - size.y - space::XXS), size);
+    painter.rect_filled(r, ecad_widgets::style::corner(ecad_widgets::tokens::radius::BADGE), ecad_widgets::color(c));
+    painter.galley(r.min + egui::vec2(space::S, space::XXS), g, ecad_widgets::color(ecad_widgets::tokens::WHITE));
+    // Its accessible name, so tests and the control channel find it.
+    let resp = ui.interact(r, egui::Id::unique((label, name)), egui::Sense::hover());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label}: {name}")));
+}
+
+/// The part of `outline` (screen points) inside `view`, when the outline is finite and meets it.
+fn on_screen(outline: egui::Rect, view: egui::Rect) -> Option<egui::Rect> {
+    if !(outline.min.is_finite() && outline.max.is_finite()) {
+        return None;
+    }
+    let shown = outline.intersect(view);
+    shown.is_positive().then_some(shown)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_part_of_an_outline_on_screen_is_dashed() {
+        let view = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(800.0, 600.0));
+        let far = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(f32::MAX, 20.0));
+        assert_eq!(on_screen(far, view), Some(egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(800.0, 20.0))));
+        let endless = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(f32::INFINITY, 20.0));
+        assert_eq!(on_screen(endless, view), None);
+        let away = egui::Rect::from_min_max(egui::pos2(900.0, 10.0), egui::pos2(950.0, 20.0));
+        assert_eq!(on_screen(away, view), None);
+    }
+}

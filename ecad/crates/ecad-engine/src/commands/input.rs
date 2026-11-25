@@ -1,0 +1,53 @@
+//! A session command's typed input: a params struct read with
+//! [`ecad_electrical::commands::input::parse`] that runs with the session ([`Command`]).
+//!
+//! Excludes: reading the parameters ([`ecad_electrical::commands::input`]) and generic commands
+//! ([`crate::generic`]).
+
+use cadcraft_engine::Session;
+use cadcraft_engine::cmd::Run;
+use ecad_electrical::commands::input::{parse, schema};
+use ecad_electrical::commands::run::{Access, Io};
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+
+use crate::commands::err;
+
+/// A command with a typed input that needs the session.
+pub(crate) trait Command: DeserializeOwned + JsonSchema {
+    /// Run the command with its input read.
+    ///
+    /// # Errors
+    /// The command's refusal, in words.
+    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value>;
+}
+
+/// The run function of command `P`: read the parameters, then run it.
+///
+/// # Errors
+/// Parameters that do not read ([`parse`]), or the command's own refusal.
+pub(crate) fn typed<P: Command>(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
+    p.run(s)
+}
+
+/// A command with a typed input, as registered: its id, its run function and its schema, and for
+/// a generic command what the agent gate reads from its declaration.
+#[derive(Clone, Copy)]
+pub struct Typed {
+    pub id: &'static str,
+    pub run: Run,
+    pub schema: fn() -> Value,
+    /// A generic command's access (a session command's is in the gate's own lists).
+    pub access: Option<Access>,
+    /// The parameters that name a file.
+    pub files: Io,
+}
+
+impl Typed {
+    /// Session command `id` reading its parameters as `P`.
+    pub(crate) const fn of<P: Command>(id: &'static str) -> Typed {
+        Typed { id, run: typed::<P>, schema: schema::<P>, access: None, files: Io::NONE }
+    }
+}

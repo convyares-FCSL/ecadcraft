@@ -1,6 +1,6 @@
 [package]
 name = "ecad-store"
-description = "Storage layer for ECAD files: byte media with injectable failures, files on disk, writer locks (no file format)"
+description = "Storage layer for ECAD files: the redb database handle (open, transactions, reopen), storage backends for tests, files on disk, writer locks (no file format)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,10 +10,10 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-# The version 2 container's engine: the power-loss simulation implements its storage backend.
+# The project file's engine: `db` opens the database and runs its transactions; the memory and
+# power-loss backends implement its storage backend.
 redb = { workspace = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+thiserror = { workspace = true }
 # File identity (device and inode on Unix, volume serial and file index on Windows) without
 # `unsafe` (BurntSushi, Unlicense OR MIT; owner approved 2026-10-31, brief 002).
 same-file = "1.0.6"

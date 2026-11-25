@@ -1,0 +1,290 @@
+//! MCP contracts for the pack quick fixes: the pending-revision
+//! marker, revision columns and custom fields, the tag style and its rewrite,
+//! renumbering under `typed`. Each write is the agent's transaction; writes off refuse.
+
+use ecad_engine::agent::policy;
+use ecad_model::{Author, ObjectRef, Op, PageId};
+use serde_json::{Value, json};
+
+use crate::common::writer;
+use crate::mcp_contracts::{AGENT, Client, reader};
+
+const WRITER_SEED: u64 = 0x33_07;
+
+fn last_by_agent(c: &mut Client) -> ecad_model::Transaction {
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    last
+}
+
+/// Every text the first page's frame shows, with the project's pending flag; and the Rev box.
+fn frame_texts(c: &mut Client) -> (Vec<String>, String) {
+    c.s.with_session(|s, h| {
+        h.read(s, |p, _| {
+            let pending = ecad_electrical::releases::revisions::is_pending(&p.ledger);
+            assert_eq!(p.frame.pending, pending, "the kept flag is the walk's");
+            let doc = p.ledger.document();
+            let page: PageId = doc.page_order()[0];
+            let texts =
+                ecad_engine::pages::generated::parts_of_pending(doc, page, ecad_engine::project::engine_views().report_models(doc).as_ref(), pending)
+                    .into_iter()
+                    .filter_map(|part| match part.kind {
+                        cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                        _ => None,
+                    })
+                    .collect();
+            (texts, ecad_electrical::releases::revisions::rev_box(doc, pending))
+        })
+        .unwrap()
+    })
+    .unwrap()
+}
+
+fn rev(c: &mut Client) -> String {
+    let (texts, shown) = frame_texts(c);
+    assert!(texts.contains(&shown), "the Rev box shows {shown}: {texts:?}");
+    shown
+}
+
+fn wire(c: &mut Client, y: f64) {
+    c.exec("wire", json!({"points": [[20, y], [80, y]]}));
+}
+
+#[test]
+fn the_pending_marker_follows_the_undo_stack() {
+    let mut c = writer(WRITER_SEED);
+    wire(&mut c, 100.0);
+    assert_eq!(rev(&mut c), "-", "no issued revision: no marker");
+    c.exec("revision", json!({"description": "First issue", "drawn": "CVA"}));
+    c.exec("issuerevision", json!({}));
+    assert_eq!(rev(&mut c), "A");
+    wire(&mut c, 110.0);
+    assert_eq!(rev(&mut c), "A*", "an edit after the issue");
+    c.exec("u", json!({}));
+    assert_eq!(rev(&mut c), "A", "undone: the issue is on top again");
+    c.exec("revision", json!({"description": "next"}));
+    assert_eq!(rev(&mut c), "A", "filling in the next row is not a drawing change");
+    wire(&mut c, 120.0);
+    assert_eq!(rev(&mut c), "A*");
+    c.exec("projectprops", json!({"revision_pending": "draft"}));
+    let last = last_by_agent(&mut c);
+    assert!(
+        matches!(&last.ops[..], [Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }] if key == "revisions.pending" && v == "draft")
+    );
+    assert_eq!(rev(&mut c), "B (draft)");
+    c.exec("projectprops", json!({"revision_pending": "off"}));
+    assert_eq!(rev(&mut c), "A");
+    c.exec("projectprops", json!({"revision_pending": "star"}));
+    assert_eq!(rev(&mut c), "A*");
+    // Print Book says so.
+    let p = c.exec("printbook", json!({}));
+    assert!(p["notes"].as_array().unwrap().iter().any(|n| n == "The drawing has changed since Rev A; the title block shows A*."), "{p}");
+    // The dialog shows the same note before printing.
+    let notes =
+        c.s.with_session(|s, h| h.configure(s, |p| ecad_engine::export::printbook::notes(p, &ecad_engine::export::printbook::Scope::All)).unwrap())
+            .unwrap();
+    assert_eq!(notes, ["The drawing has changed since Rev A; the title block shows A*."]);
+    // The cover says so too.
+    let cover = c.exec("newpage", json!({"generated": "cover"}));
+    let page = PageId::parse(cover["page"].as_str().unwrap()).unwrap();
+    let texts =
+        c.s.with_session(|s, h| {
+            h.read(s, |p, _| {
+                ecad_engine::pages::generated::parts_of_pending(
+                    p.ledger.document(),
+                    page,
+                    ecad_engine::project::engine_views().report_models(p.ledger.document()).as_ref(),
+                    p.frame.pending,
+                )
+                .into_iter()
+                .filter_map(|part| match part.kind {
+                    cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+            })
+            .unwrap()
+        })
+        .unwrap();
+    // Brief 054b (design 054 §6.5): the cover's revisions block lists issued rows; the pending
+    // marker is the title block's Rev box.
+    assert!(texts.iter().any(|t| t == "A*"), "{texts:?}");
+    // Issuing ends it.
+    c.exec("revision", json!({"drawn": "CVA"}));
+    c.exec("issuerevision", json!({}));
+    assert_eq!(rev(&mut c), "B");
+}
+
+#[test]
+fn revision_columns_and_custom_fields() {
+    let mut c = writer(WRITER_SEED);
+    wire(&mut c, 100.0);
+    c.exec("projectprops", json!({"revision_columns": "rev, date, ecr:ECR, description, drawn"}));
+    let last = last_by_agent(&mut c);
+    assert_eq!(last.label, "Project properties");
+    assert_eq!(last.ops.len(), 1);
+    c.exec("revision", json!({"description": "First", "drawn": "CVA", "fields": {"ecr": "ECR-1"}}));
+    let last = last_by_agent(&mut c);
+    assert!(
+        last.ops
+            .iter()
+            .any(|o| matches!(o, Op::ModifyProject { after, .. } if ecad_electrical::releases::revisions::field_of(after, 1, "ecr").as_deref() == Some("ECR-1"))),
+        "{:?}",
+        last.ops
+    );
+    c.exec("issuerevision", json!({}));
+    let (texts, _) = frame_texts(&mut c);
+    assert!(texts.contains(&"ECR".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
+    assert!(!texts.contains(&"Checked".to_string()), "a column left out is not shown: {texts:?}");
+    // An issued row never changes.
+    let head = c.log().len();
+    let m = c.refused("execute", json!({"command": "revision", "params": {"n": 1, "fields": {"ecr": "X"}}}));
+    assert!(m.contains("Rev A is issued and cannot change."), "{m}");
+    // The refusals of design 033 §7.1, each leaving the head where it was.
+    for (cols, words) in [
+        ("rev, ecr!, description", "\"ecr!\" is not a field name. Use 1 to 20 letters, digits or _."),
+        ("rev, date", "Rev and Description must be columns."),
+        ("rev, description, a, b, c, d, e, f, g, h, i", "At most 10 columns."),
+        ("rev, issued, description", "\"issued\" is set by issuing."),
+    ] {
+        let m = c.refused("execute", json!({"command": "projectprops", "params": {"revision_columns": cols}}));
+        assert!(m.contains(words), "{cols}: {m}");
+    }
+    assert_eq!(c.log().len(), head);
+    // Wide columns are narrowed, never refused.
+    let v = c.exec("projectprops", json!({"revision_columns": "rev@100, description, date@100"}));
+    assert_eq!(v["narrowed"], json!(ecad_electrical::releases::revisions::NARROWED), "{v}");
+    // Cleared: the built-in columns again (brief 055, FP5: they hold ECR, so its value shows);
+    // the custom value is kept in the file.
+    c.exec("projectprops", json!({"revision_columns": null}));
+    let (texts, _) = frame_texts(&mut c);
+    assert!(texts.contains(&"Checked".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
+    assert_eq!(ecad_electrical::releases::revisions::field_of(c.doc().project(), 1, "ecr").as_deref(), Some("ECR-1"));
+    // The revision list page shows the columns, then Version.
+    c.exec("projectprops", json!({"revision_columns": "rev, ecr:ECR, description"}));
+    let list = c.exec("newpage", json!({"generated": "revisions"}));
+    let page = PageId::parse(list["page"].as_str().unwrap()).unwrap();
+    let doc = c.doc();
+    let texts: Vec<String> = ecad_engine::pages::generated::parts_of(&doc, page, ecad_engine::project::engine_views().report_models(&doc).as_ref())
+        .into_iter()
+        .filter_map(|part| match part.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+            _ => None,
+        })
+        .collect();
+    for t in ["ECR", "Version", "ECR-1"] {
+        assert!(texts.contains(&t.to_string()), "{t}: {texts:?}");
+    }
+}
+
+fn tags(c: &mut Client) -> Vec<String> {
+    c.doc().devices().values().filter_map(|x| x.tag_shown()).collect()
+}
+
+#[test]
+fn the_tag_style_rewrites_in_one_undoable_step() {
+    let mut c = writer(WRITER_SEED);
+    for x in [40, 80, 120] {
+        c.exec("place", json!({"symbol": "coil", "at": [x, 150]}));
+    }
+    assert_eq!(tags(&mut c), ["-K01", "-K02", "-K03"]);
+    let before = c.doc();
+    let v = c.exec("projectprops", json!({"tag_dash": false}));
+    assert_eq!(v["message"], json!("Tag style: no leading -. 3 tags rewritten."), "{v}");
+    assert_eq!((v["tag_dash"].clone(), v["tag_case"].clone(), v["tag_padding"].clone()), (json!(false), json!("upper"), json!(2)));
+    let last = last_by_agent(&mut c);
+    assert_eq!(last.label, "Project properties");
+    assert_eq!(last.ops.iter().filter(|o| matches!(o, Op::ModifyDevice { before, after, .. } if before.tag != after.tag)).count(), 3);
+    assert_eq!(tags(&mut c), ["K01", "K02", "K03"]);
+    // Identity is unchanged: the index still finds the device by either form.
+    let doc = c.doc();
+    assert_eq!(doc.components_tagged("-K01"), doc.components_tagged("K01"));
+    assert_eq!(doc.components_tagged("k1").len(), 1);
+    // One undo puts the setting and every tag back.
+    c.exec("u", json!({}));
+    let after_undo = c.doc();
+    assert_eq!(after_undo.display().get("tags.dash"), before.display().get("tags.dash"));
+    assert_eq!(tags(&mut c), ["-K01", "-K02", "-K03"]);
+    // As typed: nothing rewritten; a tag typed now keeps its case.
+    let v = c.exec("projectprops", json!({"tag_case": "typed"}));
+    assert_eq!(v["message"], json!("Tags typed from now on keep their case; existing tags are unchanged."));
+    let k1 = *c.doc().devices().keys().next().unwrap();
+    c.exec("setprop", json!({"component": k1.hex(), "key": "tag", "value": "M02a"}));
+    assert!(tags(&mut c).contains(&"-M02a".to_string()), "{:?}", tags(&mut c));
+    // Back to upper case: every tag upper-cased in the same transaction.
+    let v = c.exec("projectprops", json!({"tag_case": "upper"}));
+    assert_eq!(v["message"], json!("Tag style: upper case. 1 tag rewritten."), "{v}");
+    assert!(tags(&mut c).contains(&"-M02A".to_string()));
+}
+
+#[test]
+fn renumber_keeps_typed_letters() {
+    let mut c = writer(WRITER_SEED);
+    c.exec("projectprops", json!({"tag_case": "typed"}));
+    let a = c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
+    let b = c.exec("place", json!({"symbol": "coil", "at": [80, 150]}));
+    c.exec("setprop", json!({"component": a["component"], "key": "tag", "value": "k5"}));
+    c.exec("setprop", json!({"component": b["component"], "key": "tag", "value": "k7"}));
+    // Typing fixed them; release them so renumber may change them.
+    for x in [&a, &b] {
+        c.set_tag_state(&x["component"], "automatic");
+    }
+    assert_eq!(tags(&mut c), ["-k05", "-k07"]);
+    c.exec("renumber", json!({"kind": "devices"}));
+    let mut t = tags(&mut c);
+    t.sort();
+    assert_eq!(t, ["-k01", "-k02"]);
+}
+
+#[test]
+fn with_writes_off_the_revision_writes_are_refused() {
+    let mut c = reader();
+    let before = c.log();
+    for (cmd, params) in [
+        ("projectprops", json!({"tag_dash": false})),
+        ("projectprops", json!({"tag_case": "typed"})),
+        ("projectprops", json!({"revision_columns": "rev, ecr, description"})),
+        ("projectprops", json!({"revision_pending": "off"})),
+        ("revision", json!({"fields": {"ecr": "ECR-1"}})),
+    ] {
+        let m = c.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");
+    }
+    let v: Value = c.exec("projectprops", json!({}));
+    assert_eq!(v["tag_dash"], json!(true));
+    assert_eq!(v["revision_pending"], json!("star"));
+    assert_eq!(c.log(), before);
+}
+
+#[test]
+fn the_pending_marker_survives_save_and_reopen() {
+    let dir = crate::mcp_contracts::TempDir::new("pending");
+    let path = dir.file("pending.ecad");
+    {
+        let mut c = Client::new(ecad_mcp::EcadMcp::create(&path, ecad_mcp::Options { write: true, agent: None }).unwrap());
+        wire(&mut c, 100.0);
+        c.exec("revision", json!({"description": "First issue", "drawn": "CVA"}));
+        c.exec("issuerevision", json!({}));
+        wire(&mut c, 110.0);
+        assert_eq!(rev(&mut c), "A*");
+        c.ok("save", json!({}));
+    }
+    let (s, _) = ecad_mcp::EcadMcp::open(&path, ecad_mcp::Options::default()).unwrap();
+    let mut c = Client::new(s);
+    let (_, shown) = frame_texts(&mut c);
+    assert_eq!(shown, "A*", "reopened: the same state");
+}
+
+#[test]
+fn a_placed_provisional_tag_follows_the_dash() {
+    let mut c = writer(WRITER_SEED);
+    c.exec("projectprops", json!({"tag_dash": false, "provisional": true}));
+    c.exec("place", json!({"symbol": "coil", "at": [40, 150]}));
+    assert_eq!(tags(&mut c), ["K?1"], "no leading - on an automatic provisional tag");
+    c.exec("projectprops", json!({"tag_dash": true}));
+    assert_eq!(tags(&mut c), ["-K?1"], "rewritten with the dash");
+    c.exec("place", json!({"symbol": "coil", "at": [80, 150]}));
+    let mut t = tags(&mut c);
+    t.sort();
+    assert_eq!(t, ["-K?1", "-K?2"]);
+}

@@ -1,8 +1,9 @@
-//! Brief 020a, MCP contract (the ECAD rule of brief 011): every history and branch command
+//! MCP contract: every history and branch command
 //! through `execute` records the same transaction (or branch row) as the click, by the agent,
 //! and is refused with writes off; the read forms work with writes off and record nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
@@ -12,13 +13,13 @@ use crate::mcp_contracts::{AGENT, Client, TempDir, reader};
 fn project(dir: &TempDir) -> Client {
     let path = dir.file("history.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
-    c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    c.wire_pp(json!({"points": [[0, 0], [60, 0]]}));
     c.ok("save", json!({}));
     c
 }
 
 fn conductors(c: &mut Client) -> usize {
-    c.doc().conductors.len()
+    c.doc().wires().len()
 }
 
 #[test]
@@ -33,15 +34,14 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     assert_eq!(last.label, "Create version \"Before change\"");
     assert_eq!(last.author, Author::Agent(AGENT.into()));
     assert!(
-        matches!(&last.ops[..], [Op::NameVersion { name, at, description: Some(d) }] if name == "Before change" && *at == head && d == "one wire")
+        matches!(&last.ops[..], [Op::NameVersion { name, at, description: Some(d) }] if *name == ecad_model::PointName::version("Before change").unwrap() && *at == head && d == "one wire")
     );
     let m = c.refused("execute", json!({"command": "version", "params": {"name": "before CHANGE"}}));
     assert!(m.contains("already a version"), "{m}");
-    let m = c.refused("execute", json!({"command": "version", "params": {"name": "Rev B"}}));
-    assert!(m.contains("names revisions"), "{m}");
+    // S4: versions and revisions are keyed by kind, so there is no refusal of a version spelled `Rev B`.
     // Two more wires, then Restore: one step back to the version's state, undoable.
-    c.exec("wire", json!({"points": [[0, 20], [60, 20]]}));
-    c.exec("wire", json!({"points": [[0, 40], [60, 40]]}));
+    c.wire_pp(json!({"points": [[0, 20], [60, 20]]}));
+    c.wire_pp(json!({"points": [[0, 40], [60, 40]]}));
     assert_eq!(conductors(&mut c), 3);
     let info = c.exec("pointinfo", json!({"version": "Before change"}));
     assert_eq!(info["restore"], json!(true), "{info}");
@@ -51,7 +51,7 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.label, "Restore \"Before change\"");
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    assert!(c.doc().versions.contains_key("Before change"), "versions are not restored away");
+    assert!(c.doc().versions().contains_key(&ecad_model::PointName::version("Before change").unwrap()), "versions are not restored away");
     let m = c.refused("execute", json!({"command": "restore", "params": {"version": "Before change"}}));
     assert!(m.contains("already as it was"), "{m}");
     c.exec("u", json!({}));
@@ -66,10 +66,11 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[1]["name"], json!("Option B"));
     assert_eq!(rows[1]["current"], json!(true));
-    let created_by = c.s.with_session(|s, p| p.read(s, |p, _| p.file.v2().unwrap().branch_record().created_by.clone()).unwrap()).unwrap();
+    let created_by =
+        c.s.with_session(|s, p| p.read(s, |p, _| p.storage.file.project().unwrap().branch_record().created_by.clone()).unwrap()).unwrap();
     assert_eq!(created_by.as_deref(), Some(AGENT));
     // An edit on the branch; switching with it unsaved is refused, then saved and switched.
-    c.exec("wire", json!({"points": [[0, 80], [60, 80]]}));
+    c.wire_pp(json!({"points": [[0, 80], [60, 80]]}));
     let m = c.refused("execute", json!({"command": "switchbranch", "params": {"branch": "main"}}));
     assert!(m.contains("unsaved") && m.contains("\"save\": true"), "{m}");
     let sw = c.exec("switchbranch", json!({"branch": "main", "save": true}));
@@ -140,7 +141,7 @@ fn archiving_the_branch_shown_whose_parent_is_archived_shows_main() {
     let dir = TempDir::new("archive-parent");
     let mut c = project(&dir);
     c.exec("branch", json!({"name": "Parent", "switch": true}));
-    c.exec("wire", json!({"points": [[0, 20], [60, 20]]}));
+    c.wire_pp(json!({"points": [[0, 20], [60, 20]]}));
     c.exec("branch", json!({"name": "Child", "switch": false}));
     c.exec("switchbranch", json!({"branch": "Child", "save": true}));
     c.exec("archivebranch", json!({"branch": "Parent"}));

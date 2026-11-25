@@ -12,6 +12,15 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
+strum = { workspace = true }
+# A revision's date is a calendar date (house rule: time goes through chrono).
+chrono = { version = "0.4.45", default-features = false, features = ["std", "serde"] }
+# The index's two large maps are built side by side (design 061, lane R11).
+rayon = { workspace = true }
+# Command parameters' JSON Schemas (brief 070): type description, no I/O (owner, 2026-11-21).
+schemars = { workspace = true }
+# The built-in project settings are TOML data (brief 066c, `defaults/settings.toml`).
+toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }

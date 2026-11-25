@@ -1,0 +1,87 @@
+//! Defaults (graphical terminal-strip pages). Append
+//! `pub static` entries and list them in [`ENTRIES`].
+//!
+//! Read them through `crate::strip_page::Geometry::of` and `crate::strip_page::style_of`, not
+//! by key. Guards (most cable lanes, leads per side, far devices) are constants in
+//! `crate::strip_page`, not entries.
+
+use ecad_model::registry::data::Slot;
+use ecad_model::registry::{Entry, Kind, Level, ProjectSource};
+
+ecad_model::word_enum! {
+    /// How a terminal strip page draws its strip.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum StripPageForm {
+        Table,
+        Graphic,
+    }
+}
+
+/// Project only.
+const P: &[Level] = &[Level::Project];
+/// Project and page.
+const PP: &[Level] = &[Level::Project, Level::Page];
+
+const GROUP: &str = "Terminal strip pages";
+
+/// The style words, as registered.
+pub const TABLE: &str = "table";
+pub const GRAPHIC: &str = "graphic";
+
+/// `terminal_block.plan.style`: how a `connection_points` page draws, the table or the strip graphic.
+/// Page, then project, then `table`.
+pub static STYLE: Entry = Entry {
+    key: "terminal_block.plan.style",
+    label: "Terminal plan style",
+    group: GROUP,
+
+    kind: Kind::Choice(<StripPageForm as ecad_model::Word>::WORDS),
+    slot: Slot::new(&crate::defaults::data::DATA),
+    levels: PP,
+    project: ProjectSource::Property,
+};
+
+/// One project-level length entry of the strip layout.
+macro_rules! length {
+    ($name:ident, $key:literal, $label:literal, $min:literal, $max:literal) => {
+        #[doc = concat!("`", $key, "`: ", $label, ", millimetres (design 046 §3).")]
+        pub static $name: Entry = Entry {
+            key: $key,
+            label: $label,
+            group: GROUP,
+
+            kind: Kind::Length { min: $min, max: $max },
+            slot: Slot::new(&crate::defaults::data::DATA),
+            levels: P,
+            project: ProjectSource::Property,
+        };
+    };
+}
+
+length!(PITCH, "strippage.pitch", "Terminal column width", 5.0, 20.0);
+length!(BODY, "strippage.body", "Terminal body height", 10.0, 40.0);
+length!(LEAD, "strippage.lead", "Lead length", 10.0, 60.0);
+length!(BAND_Y, "strippage.band_y", "Strip band from the top", 60.0, 200.0);
+length!(TAGBOX, "strippage.tagbox", "Strip tag box width", 10.0, 40.0);
+length!(BAR, "strippage.bar", "Cable bar below the targets", 2.0, 20.0);
+length!(MARGIN, "strippage.margin", "Right margin of a strip sheet", 0.0, 30.0);
+
+/// `strippage.tag_scale`: the strip tag's height as a multiple of the table heading's.
+pub static TAG_SCALE: Entry = Entry {
+    key: "strippage.tag_scale",
+    label: "Strip tag size (× heading)",
+    group: GROUP,
+
+    kind: Kind::Number { min: 1.0, max: 4.0 },
+    slot: Slot::new(&crate::defaults::data::DATA),
+    levels: P,
+    project: ProjectSource::Property,
+};
+
+/// Every entry of this file, in the order `defaults` lists them.
+pub static ENTRIES: &[&Entry] = &[&STYLE, &PITCH, &BODY, &LEAD, &BAND_Y, &TAGBOX, &BAR, &MARGIN, &TAG_SCALE];
+
+/// Whether project key `key` changes the strip layout (any `strippage.*` entry).
+pub fn is_layout_key(key: &str) -> bool {
+    ENTRIES.iter().any(|e| e.key == key && e.key != STYLE.key)
+}

@@ -1,16 +1,13 @@
-//! Brief 051 (PLC visuals) through MCP (brief 011 rule, design 051 §7): `plcpage` and a fence
+//! PLC visuals through MCP: `plcpage` and a fence
 //! record one transaction by `Author::Agent(<client>)` and are refused with writes off; `plcracks`
 //! returns the tiles' data with writes off and records nothing.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
 use ecad_model::Author;
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client};
-
-fn writer(seed: u64) -> Client {
-    Client::new(EcadMcp::in_memory("mcp 051", seed, Options { write: true, agent: None }).unwrap())
-}
 
 fn by_agent(c: &mut Client, command: &str, params: Value) -> Value {
     let n = c.log().len();

@@ -1,0 +1,1469 @@
+//! Contract tests for atomic ops, in-place transactions with rollback, and the scoped
+//! invariant check against the full one.
+
+use std::collections::BTreeSet;
+
+use ecad_model::{
+    Author, Cable, Color, ConnectionPoint, ConnectionPointDef, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind,
+    Layer, LayerId, Ledger, LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation,
+    StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Touched, Wire,
+};
+
+/// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
+/// names every variant to the deserializer, so a new op is in this list without anyone adding it,
+/// and the tables below must cover it. `Op::name` (an exhaustive `match`) gives the same words.
+pub(crate) fn all_ops() -> BTreeSet<&'static str> {
+    use serde::de::{self, Deserialize, Visitor};
+
+    /// A deserializer that only records the variant names it is handed.
+    struct Names(Option<&'static [&'static str]>);
+
+    #[derive(Debug)]
+    struct Stop;
+    impl std::fmt::Display for Stop {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("variant names recorded")
+        }
+    }
+    impl std::error::Error for Stop {}
+    impl de::Error for Stop {
+        fn custom<T: std::fmt::Display>(_: T) -> Self {
+            Stop
+        }
+    }
+
+    impl<'de> de::Deserializer<'de> for &mut Names {
+        type Error = Stop;
+        fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Stop> {
+            Err(Stop)
+        }
+        fn deserialize_enum<V: Visitor<'de>>(self, _: &'static str, variants: &'static [&'static str], _: V) -> Result<V::Value, Stop> {
+            self.0 = Some(variants);
+            Err(Stop)
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf option unit unit_struct
+            newtype_struct seq tuple tuple_struct map struct identifier ignored_any
+        }
+    }
+
+    let mut names = Names(None);
+    assert!(Op::deserialize(&mut names).is_err());
+    let all: BTreeSet<&'static str> = names.0.unwrap_or_default().iter().copied().collect();
+    assert!(all.len() >= 33, "Op's variants: {all:?}");
+    all
+}
+
+fn style(layer: LayerId) -> Style {
+    Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
+}
+
+fn line(page: PageId, layer: LayerId, x: f64) -> Item {
+    Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, 0.0), b: Pt::new(x, 10.0) }) }
+}
+
+/// A valid document holding one of everything, built through the ledger, and the objects in it.
+pub(crate) struct Base {
+    ledger: Ledger,
+    pub(crate) ids: IdAllocator,
+    pub(crate) page: PageId,
+    pub(crate) page_v: Page,
+    layer: LayerId,
+    layer_v: Layer,
+    def: ecad_model::DefinitionId,
+    def_v: Definition,
+    comp: ecad_model::DeviceId,
+    comp_v: Device,
+    pub(crate) term: ecad_model::ConnectionPointId,
+    pub(crate) point_v: ConnectionPoint,
+    term3: ecad_model::ConnectionPointId,
+    sym: ecad_model::ItemId,
+    item: ecad_model::ItemId,
+    item_v: Item,
+    rep_sym: ecad_model::RepresentationId,
+    rep_sym_v: Representation,
+    rep_wire: ecad_model::RepresentationId,
+    rep_wire_v: Representation,
+    wire: ecad_model::WireId,
+    wire_v: Wire,
+    wire2: ecad_model::WireId,
+    wire2_v: Wire,
+    cable: ecad_model::CableId,
+    cable_v: Cable,
+    pub(crate) folder: ecad_model::FolderId,
+    pub(crate) folder_v: Folder,
+    route: ecad_model::RouteId,
+    route_v: ecad_model::Route,
+    /// The link between two plain devices (design 072 §2.6).
+    link: ecad_model::LinkId,
+    link_v: ecad_model::DeviceLink,
+    /// A location box (design 072 §6.2).
+    aid: ecad_model::AidId,
+    aid_v: ecad_model::Aid,
+    /// A loose part (design 072 §6.4).
+    loose: ecad_model::LoosePartId,
+    loose_v: ecad_model::objects::loose_part::LoosePart,
+}
+
+/// `qty` pieces of a loose part.
+fn loose_part(qty: u64) -> ecad_model::objects::loose_part::LoosePart {
+    ecad_model::objects::loose_part::LoosePart::new(
+        ecad_model::objects::loose_part::LooseDescription::new("DIN rail").unwrap(),
+        ecad_model::objects::loose_part::Qty(qty * 1000),
+    )
+}
+
+pub(crate) fn base() -> Base {
+    let mut ids = IdAllocator::seeded(13);
+    let mut ledger = Ledger::new(5);
+    let page = ids.fresh();
+    let page_v = Page::titled("1").unwrap();
+    let layer = ids.fresh();
+    let layer_v = Layer { name: "0".into() };
+    let def = ids.fresh();
+    let def_v = Definition {
+        bridges: Vec::new(),
+        name: "K".into(),
+        origin: None,
+        graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
+        connection_points: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        ..Default::default()
+    };
+    let comp: ecad_model::DeviceId = ids.fresh();
+    let mut comp_v = Device { definition: Some(def), ..Device::default() };
+    comp_v.properties.insert("note".into(), "K1".into());
+    let term = ids.fresh();
+    let point_v = ConnectionPoint {
+        owner: comp.into(),
+        label: Some("1".into()),
+        key: Some("1".parse().unwrap()),
+        accepts: Default::default(),
+        protective_earth: false,
+    };
+    // More connection points of the device, for the wires' other ends.
+    let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let point = |label: &str| ConnectionPoint {
+        owner: comp.into(),
+        label: Some(label.into()),
+        key: None,
+        accepts: Default::default(),
+        protective_earth: false,
+    };
+    let sym = ids.fresh();
+    let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
+    let item = ids.fresh();
+    let item_v = line(page, layer, 5.0);
+    let rep_sym = ids.fresh();
+    let rep_sym_v = Representation {
+        subject: Subject::Device(comp),
+        page,
+        form: Form::Symbol,
+        role: ecad_model::Role::Part(ecad_model::PartRole::Other),
+        items: vec![sym],
+        connection_points: Default::default(),
+    };
+    // The wire the route below runs, and a second wire, with no route, on two points of its own
+    // (a route-less wire sharing a point with the route would be rewritten away, design 072 §4.4).
+    let wire = ids.fresh();
+    let wire_v = Wire::new(ids.fresh(), ids.fresh(), term, term2);
+    let wire2 = ids.fresh();
+    let wire2_v = Wire::new(ids.fresh(), ids.fresh(), term3, term4);
+    // The route's drawing (design 072 §4.3: routes are drawn, wires are not).
+    let route = ids.fresh();
+    let rep_wire = ids.fresh();
+    let rep_wire_v = Representation {
+        subject: Subject::Route(route),
+        page,
+        form: Form::Drawn,
+        role: ecad_model::Role::Route,
+        items: vec![item],
+        connection_points: Default::default(),
+    };
+    let cable = ids.fresh();
+    let cable_v = Cable { cores: vec![Core::on_wire(wire, None)], ..Cable::default() };
+    let folder = ids.fresh();
+    let folder_v = Folder { name: "F".into(), parent: None, start: None };
+    let route_v = ecad_model::Route::new(
+        page,
+        vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)],
+        [ecad_model::RouteEnd::Point(term), ecad_model::RouteEnd::Point(term2)],
+    );
+    let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
+    let link = ids.fresh();
+    let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
+    let aid = ids.fresh();
+    let aid_v = ecad_model::Aid::Box(ecad_model::LocationBox::default());
+    let loose = ids.fresh();
+    let loose_v = loose_part(2);
+    ledger
+        .commit(
+            Author::User,
+            "base",
+            vec![
+                Op::AddPage { id: page, page: page_v.clone(), index: 0 },
+                Op::AddLayer { id: layer, layer: layer_v.clone() },
+                Op::EmbedDefinition { id: def, definition: def_v.clone() },
+                Op::CreateDevice { id: comp, device: comp_v.clone() },
+                Op::AddConnectionPoint { id: term, connection_point: point_v.clone() },
+                Op::AddConnectionPoint { id: term2, connection_point: point("2") },
+                Op::AddConnectionPoint { id: term3, connection_point: point("3") },
+                Op::AddConnectionPoint { id: term4, connection_point: point("4") },
+                Op::AddItem { id: sym, item: sym_v },
+                Op::AddItem { id: item, item: item_v.clone() },
+                Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
+                Op::CreateWire { id: wire, wire: wire_v.clone() },
+                Op::CreateWire { id: wire2, wire: wire2_v.clone() },
+                Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
+                Op::CreateCable { id: cable, cable: cable_v.clone() },
+                Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
+                Op::AddRoute { id: route, route: route_v.clone() },
+                Op::CreateDevice { id: pair[0], device: Device::default() },
+                Op::CreateDevice { id: pair[1], device: Device::default() },
+                Op::AddDeviceLink { id: link, link: link_v },
+                Op::CreateAid { id: aid, aid: aid_v.clone() },
+                Op::CreateLoosePart { id: loose, part: loose_v.clone() },
+            ],
+        )
+        .unwrap();
+    ledger
+        .commit(Author::User, "bookmark", vec![Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None }])
+        .unwrap();
+    Base {
+        ledger,
+        ids,
+        page,
+        page_v,
+        layer,
+        layer_v,
+        def,
+        def_v,
+        comp,
+        comp_v,
+        term,
+        point_v,
+        term3,
+        sym,
+        item,
+        item_v,
+        rep_sym,
+        rep_sym_v,
+        rep_wire,
+        rep_wire_v,
+        wire,
+        wire_v,
+        wire2,
+        wire2_v,
+        cable,
+        cable_v,
+        folder,
+        folder_v,
+        route,
+        route_v,
+        link,
+        link_v,
+        aid,
+        aid_v,
+        loose,
+        loose_v,
+    }
+}
+
+fn header(b: &mut Base) -> StandardHeader {
+    StandardHeader {
+        id: b.ids.fresh(),
+        name: ecad_model::objects::styles::StyleName::new("S").unwrap(),
+        based_on: ecad_model::objects::styles::BasedOn::Iec,
+        origin: None,
+    }
+}
+
+fn record() -> StyleRecord {
+    StyleRecord::new("Thin", ecad_model::objects::styles::StyleBody::empty(ecad_model::StyleCatalogue::Wire))
+}
+
+fn bytes(doc: &Document) -> Vec<u8> {
+    serde_json::to_vec(doc).unwrap()
+}
+
+/// One op of every type that applies to the base document (invariants aside).
+pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
+    let moved = line(b.page, b.layer, 7.0);
+    let mut rep_after = b.rep_wire_v.clone();
+    rep_after.role = ecad_model::Role::Drawn;
+    vec![
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
+        Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
+        Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "x".into() } },
+        Op::RemoveLayer { id: b.layer, layer: b.layer_v.clone() },
+        Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
+        Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
+        Op::RemoveItem { id: b.item, item: b.item_v.clone() },
+        Op::CreateDevice { id: b.ids.fresh(), device: Device::default() },
+        Op::DeleteDevice { id: b.comp, device: b.comp_v.clone() },
+        Op::ModifyDevice {
+            id: b.comp,
+            before: b.comp_v.clone(),
+            after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
+        },
+        Op::AddConnectionPoint {
+            id: b.ids.fresh(),
+            connection_point: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
+        },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+        Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
+        Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
+        Op::UnlinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
+        Op::CreateWire { id: b.ids.fresh(), wire: Wire::new(b.ids.fresh(), b.ids.fresh(), b.term, b.term3) },
+        Op::DeleteWire { id: b.wire, wire: b.wire_v.clone() },
+        Op::ModifyWire {
+            id: b.wire2,
+            before: b.wire2_v.clone(),
+            after: Wire { size: ecad_model::objects::wire::WireSize::parse("2.5"), ..b.wire2_v.clone() },
+        },
+        Op::AddRoute { id: b.ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() } },
+        Op::ModifyRoute {
+            id: b.route,
+            before: b.route_v.clone(),
+            after: ecad_model::Route { points: vec![Pt::new(0.0, 0.0), Pt::new(0.0, 9.0)], ..b.route_v.clone() },
+        },
+        Op::RemoveRoute { id: b.route, route: b.route_v.clone() },
+        Op::CreateCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
+        Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
+        Op::ModifyCable {
+            id: b.cable,
+            before: b.cable_v.clone(),
+            after: Cable { cores: vec![Core::on_wire(b.wire2, ecad_model::CoreLabel::new("2").ok())], ..b.cable_v.clone() },
+        },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
+        Op::EmbedDefinition { id: b.ids.fresh(), definition: b.def_v.clone() },
+        Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
+        Op::SetProjectSettings {
+            before: ProjectSettings::default(),
+            after: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
+        },
+        Op::NameVersion { name: ecad_model::PointName::version("w").unwrap(), at: 2, description: None },
+        Op::UnnameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None },
+        Op::SetDeviceDefinition { id: b.comp, before: Some(b.def), after: None },
+        Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder), start: None }, index: 1 },
+        Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
+        Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None, start: None } },
+        Op::ModifyPage { id: b.page, before: b.page_v.clone(), after: Page { number: ecad_model::PageNo::parse("9"), ..b.page_v.clone() } },
+        Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: ecad_model::StyleCatalogue::Wire,
+            id: StyleRef::Builtin("thin".into()),
+            before: None,
+            after: Some(record()),
+        },
+        Op::SetStandard { before: None, after: Some(header(b)) },
+        Op::ModifyProject { before: ecad_model::Project::default(), after: lists(b) },
+        Op::AddDeviceLink { id: b.ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..b.link_v } },
+        Op::RemoveDeviceLink { id: b.link, link: b.link_v },
+        Op::CreateAid { id: b.ids.fresh(), aid: ecad_model::Aid::Continuation { name: None, caption: None } },
+        Op::ModifyAid {
+            id: b.aid,
+            before: b.aid_v.clone(),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)),
+                ..Default::default()
+            }),
+        },
+        Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(1) },
+        Op::ModifyLoosePart { id: b.loose, before: b.loose_v.clone(), after: loose_part(5) },
+        Op::DeleteLoosePart { id: b.loose, part: b.loose_v.clone() },
+    ]
+}
+
+/// A project holding one location (design 072 §5.3).
+fn lists(b: &mut Base) -> ecad_model::Project {
+    let entry = ecad_model::Location::new(b.ids.fresh(), ecad_model::ListCode::new("+CP1").unwrap());
+    ecad_model::Project { locations: vec![entry], ..ecad_model::Project::default() }
+}
+
+/// Ops of every type whose preconditions fail on the base document, several of them only after
+/// an earlier precondition passed.
+fn failing(b: &mut Base) -> Vec<Op> {
+    let missing_item = b.ids.fresh();
+    let missing_conductor = b.ids.fresh();
+    let missing_comp = b.ids.fresh();
+    vec![
+        // Not atomic before brief 013: the page went in before the index was rejected.
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 9 },
+        Op::AddPage { id: b.page, page: b.page_v.clone(), index: 0 },
+        Op::RemovePage { id: b.page, page: Page::titled("other").unwrap(), index: 0 },
+        Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 1 },
+        Op::AddLayer { id: b.layer, layer: b.layer_v.clone() },
+        Op::RemoveLayer { id: b.layer, layer: Layer { name: "other".into() } },
+        Op::AddItem { id: b.item, item: b.item_v.clone() },
+        Op::ModifyItem { id: b.item, before: line(b.page, b.layer, 99.0), after: b.item_v.clone() },
+        Op::RemoveItem { id: missing_item, item: b.item_v.clone() },
+        Op::CreateDevice { id: b.comp, device: Device::default() },
+        Op::DeleteDevice { id: b.comp, device: Device::default() },
+        Op::ModifyDevice { id: b.comp, before: Device::default(), after: b.comp_v.clone() },
+        Op::ModifyDevice { id: missing_comp, before: Device::default(), after: Device::default() },
+        Op::AddConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+        Op::RemoveConnectionPoint { id: b.ids.fresh(), connection_point: b.point_v.clone() },
+        Op::LinkRepresentation { id: b.rep_sym, rep: b.rep_sym_v.clone() },
+        Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_sym_v.clone(), after: b.rep_wire_v.clone() },
+        Op::UnlinkRepresentation { id: b.ids.fresh(), rep: b.rep_sym_v.clone() },
+        Op::CreateWire { id: b.wire, wire: b.wire_v.clone() },
+        // A wire never ends twice at one point.
+        Op::CreateWire { id: b.ids.fresh(), wire: Wire::new(b.ids.fresh(), b.ids.fresh(), b.term, b.term) },
+        Op::DeleteWire { id: b.wire, wire: b.wire2_v.clone() },
+        Op::ModifyWire { id: missing_conductor, before: b.wire2_v.clone(), after: b.wire2_v.clone() },
+        // A wire's ends never change: a wire between other points is another wire.
+        Op::ModifyWire { id: b.wire2, before: b.wire2_v.clone(), after: Wire { ends: [b.term3, b.term], ..b.wire2_v.clone() } },
+        Op::AddRoute { id: b.route, route: b.route_v.clone() },
+        Op::AddRoute { id: b.ids.fresh(), route: ecad_model::Route { points: Vec::new(), ..b.route_v.clone() } },
+        Op::RemoveRoute { id: b.ids.fresh(), route: b.route_v.clone() },
+        Op::ModifyRoute {
+            id: b.route,
+            before: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() },
+            after: b.route_v.clone(),
+        },
+        Op::CreateCable { id: b.cable, cable: Cable::default() },
+        Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
+        // A `before` that is not the stored cable is refused, as is a cable that does not exist.
+        Op::ModifyCable { id: b.cable, before: Cable { cores: vec![Core::on_wire(b.wire2, None)], ..b.cable_v.clone() }, after: Cable::default() },
+        Op::ModifyCable { id: b.ids.fresh(), before: b.cable_v.clone(), after: Cable::default() },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "note".parse().unwrap(), before: None, after: None },
+        Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
+        Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
+        Op::SetProjectSettings {
+            before: ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() },
+            after: ProjectSettings::default(),
+        },
+        Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 1, description: None },
+        Op::UnnameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 2, description: None },
+        Op::SetDeviceDefinition { id: b.comp, before: None, after: Some(b.def) },
+        Op::SetDeviceDefinition { id: missing_comp, before: None, after: None },
+        Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
+        Op::AddFolder { id: b.ids.fresh(), folder: b.folder_v.clone(), index: 5 },
+        Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
+        Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None, start: None }, index: 0 },
+        Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None, start: None }, after: b.folder_v.clone() },
+        // Lane 072 E: a page not as recorded.
+        Op::ModifyPage { id: b.page, before: Page::titled("other").unwrap(), after: b.page_v.clone() },
+        // The project has no standard, so a Standard-layer style and a header change both fail.
+        Op::SetStyle {
+            layer: StyleLayer::Standard,
+            catalogue: ecad_model::StyleCatalogue::Wire,
+            id: StyleRef::Builtin("thin".into()),
+            before: None,
+            after: Some(record()),
+        },
+        Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: ecad_model::StyleCatalogue::Wire,
+            id: StyleRef::Builtin("thin".into()),
+            before: Some(record()),
+            after: None,
+        },
+        Op::SetStandard { before: Some(header(b)), after: None },
+        Op::ModifyProject { before: lists(b), after: ecad_model::Project::default() },
+        // Lane 072 B step 5: the same link again; a link that is not there.
+        Op::AddDeviceLink { id: b.ids.fresh(), link: b.link_v },
+        Op::RemoveDeviceLink { id: b.ids.fresh(), link: b.link_v },
+        Op::CreateAid { id: b.aid, aid: b.aid_v.clone() },
+        // A panel temperature must be a number; a `before` must be the stored aid.
+        Op::CreateAid {
+            id: b.ids.fresh(),
+            aid: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(f64::NAN)),
+                ..Default::default()
+            }),
+        },
+        Op::ModifyAid { id: b.aid, before: ecad_model::Aid::Continuation { name: None, caption: None }, after: b.aid_v.clone() },
+        Op::DeleteAid { id: b.ids.fresh(), aid: b.aid_v.clone() },
+        // A loose part twice; a quantity of 0; a `before` not as stored; one that is not there.
+        Op::CreateLoosePart { id: b.loose, part: b.loose_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(0) },
+        Op::ModifyLoosePart { id: b.loose, before: loose_part(7), after: b.loose_v.clone() },
+        Op::DeleteLoosePart { id: b.ids.fresh(), part: b.loose_v.clone() },
+    ]
+}
+
+fn names(ops: &[Op]) -> BTreeSet<&'static str> {
+    ops.iter().map(Op::name).collect()
+}
+
+#[test]
+fn the_tables_cover_every_op_type() {
+    let mut b = base();
+    let all = all_ops();
+    assert_eq!(names(&applicable(&mut b)), all);
+    assert_eq!(names(&failing(&mut b)), all);
+}
+
+#[test]
+fn every_op_is_atomic_on_failure() {
+    let mut b = base();
+    let before = b.ledger.document().clone();
+    for op in failing(&mut b) {
+        let mut doc = before.clone();
+        let r = op.apply(&mut doc);
+        assert!(matches!(r, Err(ModelError::Precondition(_))), "{}: {r:?}", op.name());
+        assert_eq!(bytes(&doc), bytes(&before), "{} changed the document", op.name());
+        assert_eq!(doc, before, "{}", op.name());
+        doc.check_index().unwrap_or_else(|e| panic!("{} left the index stale: {e}", op.name()));
+    }
+}
+
+#[test]
+fn every_op_inverse_after_apply_restores_the_exact_document() {
+    let mut b = base();
+    let before = b.ledger.document().clone();
+    for op in applicable(&mut b) {
+        let mut doc = before.clone();
+        op.apply(&mut doc).unwrap_or_else(|e| panic!("{}: {e}", op.name()));
+        doc.check_index().unwrap_or_else(|e| panic!("{} left the index stale: {e}", op.name()));
+        op.inverse().apply(&mut doc).unwrap_or_else(|e| panic!("inverse of {}: {e}", op.name()));
+        assert_eq!(bytes(&doc), bytes(&before), "inverse of {}", op.name());
+        assert_eq!(doc, before, "inverse of {}", op.name());
+        doc.check_index().unwrap_or_else(|e| panic!("inverse of {} left the index stale: {e}", op.name()));
+    }
+}
+
+/// Brief 021: the index built on threads (items and representations apart, as on open) equals
+/// one built on a single thread, on a document with every kind of object and after every op.
+#[test]
+fn the_parallel_index_build_equals_a_serial_build() {
+    let mut b = base();
+    let before = b.ledger.document().clone();
+    assert!(before.index_build_is_deterministic());
+    for op in applicable(&mut b) {
+        let mut doc = before.clone();
+        op.apply(&mut doc).unwrap_or_else(|e| panic!("{}: {e}", op.name()));
+        assert!(doc.index_build_is_deterministic(), "after {}", op.name());
+    }
+}
+
+#[test]
+fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
+    let mut b = base();
+    // Rename the page by removing and re-adding it: in between, every item and representation on
+    // it points at a missing page.
+    let renamed = Page::titled("renamed").unwrap();
+    let ops = vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 0 }];
+    b.ledger.commit(Author::User, "rename", ops).unwrap();
+    assert_eq!(b.ledger.document().pages().get(&b.page), Some(&renamed));
+    // Delete a terminal, then the wire that ended at it: in between, the wire is attached to a
+    // missing terminal.
+    let ops = vec![
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+        Op::ModifyCable { id: b.cable, before: b.cable_v.clone(), after: Cable { cores: Vec::new(), ..b.cable_v.clone() } },
+        Op::DeleteWire { id: b.wire, wire: b.wire_v.clone() },
+        // The route landing on it is freed too (design 072 F31).
+        Op::ModifyRoute {
+            id: b.route,
+            before: b.route_v.clone(),
+            after: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..b.route_v.clone() },
+        },
+    ];
+    b.ledger.commit(Author::User, "delete", ops).unwrap();
+    assert!(!b.ledger.document().connection_points().contains_key(&b.term));
+    assert!(!b.ledger.document().wires().contains_key(&b.wire));
+    b.ledger.document().check().unwrap();
+}
+
+#[test]
+fn a_later_op_sees_what_an_earlier_op_created() {
+    let mut b = base();
+    let comp = b.ids.fresh();
+    let term = b.ids.fresh();
+    let wire = b.ids.fresh();
+    let ops = vec![
+        Op::CreateDevice { id: comp, device: Device::default() },
+        Op::AddConnectionPoint {
+            id: term,
+            connection_point: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default(), protective_earth: false },
+        },
+        Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
+        Op::ModifyCable {
+            id: b.cable,
+            before: b.cable_v.clone(),
+            after: Cable { cores: vec![Core::on_wire(b.wire, None), Core::on_wire(wire, None)], ..b.cable_v.clone() },
+        },
+    ];
+    b.ledger.commit(Author::User, "chain", ops).unwrap();
+    let doc = b.ledger.document();
+    assert_eq!(doc.ends_at(term), vec![(wire, End::A)]);
+    assert_eq!(doc.cables_of(wire), vec![b.cable]);
+    assert_eq!(doc.connection_points_of(comp).map(|(t, _)| t).collect::<Vec<_>>(), vec![term]);
+}
+
+#[test]
+fn a_transaction_failing_at_op_three_leaves_the_document_byte_identical() {
+    let mut b = base();
+    let before = bytes(b.ledger.document());
+    let head = b.ledger.head();
+    let missing = b.ids.fresh();
+    let ops = vec![
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
+        Op::CreateWire { id: b.ids.fresh(), wire: Wire::new(b.ids.fresh(), b.ids.fresh(), b.term, b.term3) },
+        Op::RemoveItem { id: missing, item: b.item_v.clone() },
+        Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "never".into() } },
+    ];
+    let r = b.ledger.commit(Author::User, "fails at 3", ops);
+    assert!(matches!(r, Err(ModelError::Precondition(_))), "{r:?}");
+    assert_eq!(bytes(b.ledger.document()), before);
+    assert_eq!(b.ledger.head(), head);
+    b.ledger.document().check_index().unwrap();
+    assert_eq!(b.ledger.document().ends_at(b.term), vec![(b.wire, End::A)]);
+}
+
+#[test]
+fn a_transaction_failing_the_end_check_is_rolled_back() {
+    let mut b = base();
+    let before = bytes(b.ledger.document());
+    // Every op applies, but the terminal removed takes its wire with it (design 072 §4.4) while a
+    // cable still lists the wire and the route still lands on the terminal.
+    let ops = vec![
+        Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+    ];
+    let r = b.ledger.commit(Author::User, "dangling", ops);
+    let Err(ModelError::Invariant(m)) = r else { panic!("{r:?}") };
+    assert!(m.contains("missing"), "{m}");
+    assert_eq!(bytes(b.ledger.document()), before);
+    b.ledger.document().check_index().unwrap();
+}
+
+#[test]
+fn queries_answer_from_the_index_as_a_scan_would() {
+    let b = base();
+    let doc = b.ledger.document();
+    assert_eq!(doc.ends_at(b.term), vec![(b.wire, End::A)]);
+    assert_eq!(doc.cables_of(b.wire), vec![b.cable]);
+    assert!(doc.cables_of(b.wire2).is_empty());
+    assert_eq!(doc.representation_of_item(b.sym).map(|(id, _)| id), Some(b.rep_sym));
+    assert_eq!(doc.representation_of_item(b.item).map(|(id, _)| id), Some(b.rep_wire));
+    assert_eq!(doc.representations_of(Subject::Device(b.comp)).map(|(id, _)| id).collect::<Vec<_>>(), vec![b.rep_sym]);
+    // A deserialised document rebuilds its index.
+    let back: Document = serde_json::from_slice(&bytes(doc)).unwrap();
+    back.check_index().unwrap();
+    assert_eq!(back.cables_of(b.wire), vec![b.cable]);
+    assert!(doc.definitions().contains_key(&b.def));
+}
+
+#[test]
+fn undo_and_redo_use_the_kept_stacks_and_restore_state() {
+    let mut b = base();
+    let s2 = b.ledger.document().clone();
+    let after = Cable { cores: vec![Core::on_wire(b.wire, None), Core::on_wire(b.wire2, None)], ..b.cable_v.clone() };
+    let ops = vec![Op::ModifyCable { id: b.cable, before: b.cable_v.clone(), after }];
+    b.ledger.commit(Author::User, "join", ops).unwrap();
+    assert_eq!(b.ledger.undo_label(), Some("join"));
+    b.ledger.undo(Author::User).unwrap();
+    assert_eq!(b.ledger.document(), &s2);
+    assert_eq!(b.ledger.redo_label(), Some("join"));
+    assert_eq!(b.ledger.undo_label(), Some("bookmark"));
+    b.ledger.redo(Author::User).unwrap();
+    assert_eq!(b.ledger.document().cables_of(b.wire2), vec![b.cable]);
+    let replayed = Ledger::replay(b.ledger.full_log().unwrap(), 0).unwrap();
+    assert_eq!(replayed.undo_label(), b.ledger.undo_label());
+    assert_eq!(replayed.redo_label(), b.ledger.redo_label());
+    assert_eq!(replayed.document(), b.ledger.document());
+    let verified = Ledger::replay_verified(b.ledger.full_log().unwrap(), 0).unwrap();
+    assert_eq!(verified.document(), b.ledger.document());
+}
+
+#[test]
+fn a_damaged_history_opens_at_its_last_good_transaction() {
+    let b = base();
+    let mut log = b.ledger.full_log().unwrap();
+    let mut bad = log[1].clone();
+    bad.seq = 3;
+    bad.ops = vec![
+        Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } },
+        Op::RemoveConnectionPoint { id: b.term, connection_point: b.point_v.clone() },
+    ];
+    log.push(bad);
+    let (ledger, failure) = Ledger::replay_prefix(log, 0);
+    assert_eq!(ledger.head(), 2);
+    assert_eq!(ledger.document(), b.ledger.document());
+    ledger.document().check_index().unwrap();
+    assert!(matches!(failure, Some((2, ModelError::Invariant(_)))), "{failure:?}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Property test: random op sequences, valid and invalid, through both checks.
+
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        // xorshift64*
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    fn below(&mut self, n: usize) -> usize {
+        if n == 0 { 0 } else { (self.next() % n as u64) as usize }
+    }
+    fn chance(&mut self, percent: u64) -> bool {
+        self.next() % 100 < percent
+    }
+    fn pick<T: Copy>(&mut self, v: &[T]) -> Option<T> {
+        if v.is_empty() { None } else { v.get(self.below(v.len())).copied() }
+    }
+    fn pick_key<K: Copy + Ord, V>(&mut self, m: &std::collections::BTreeMap<K, V>) -> Option<K> {
+        let n = m.len();
+        if n == 0 { None } else { m.keys().nth(self.below(n)).copied() }
+    }
+}
+
+/// Every ID ever allocated, per kind, so ops may name existing, removed or never-created objects.
+#[derive(Default)]
+struct Pools {
+    pages: Vec<PageId>,
+    layers: Vec<LayerId>,
+    items: Vec<ecad_model::ItemId>,
+    comps: Vec<ecad_model::DeviceId>,
+    terms: Vec<ecad_model::ConnectionPointId>,
+    reps: Vec<ecad_model::RepresentationId>,
+    conds: Vec<ecad_model::WireId>,
+    cables: Vec<ecad_model::CableId>,
+    defs: Vec<ecad_model::DefinitionId>,
+}
+
+struct Gen {
+    rng: Rng,
+    ids: IdAllocator,
+    pools: Pools,
+}
+
+macro_rules! fresh_in {
+    ($g:expr, $pool:ident) => {{
+        let id = $g.ids.fresh();
+        $g.pools.$pool.push(id);
+        id
+    }};
+}
+
+impl Gen {
+    fn page(&mut self) -> PageId {
+        if self.pools.pages.is_empty() || self.rng.chance(3) { fresh_in!(self, pages) } else { self.rng.pick(&self.pools.pages).unwrap_or(PageId(0)) }
+    }
+    fn layer(&mut self) -> LayerId {
+        if self.pools.layers.is_empty() || self.rng.chance(3) {
+            fresh_in!(self, layers)
+        } else {
+            self.rng.pick(&self.pools.layers).unwrap_or(LayerId(0))
+        }
+    }
+    fn def(&mut self) -> ecad_model::DefinitionId {
+        self.rng.pick(&self.pools.defs).unwrap_or_else(|| fresh_in!(self, defs))
+    }
+    fn comp(&mut self) -> ecad_model::DeviceId {
+        self.rng.pick(&self.pools.comps).unwrap_or_else(|| fresh_in!(self, comps))
+    }
+    fn term(&mut self) -> Option<ecad_model::ConnectionPointId> {
+        if self.rng.chance(30) { None } else { self.rng.pick(&self.pools.terms) }
+    }
+    fn cond(&mut self) -> ecad_model::WireId {
+        self.rng.pick(&self.pools.conds).unwrap_or_else(|| fresh_in!(self, conds))
+    }
+    /// A wire, its own net, between two points: often existing ones, sometimes ones never made,
+    /// now and then the same one twice (refused).
+    fn wire(&mut self) -> Wire {
+        let point =
+            |g: &mut Self| if g.rng.chance(2) { fresh_in!(g, terms) } else { g.rng.pick(&g.pools.terms).unwrap_or_else(|| fresh_in!(g, terms)) };
+        let a = point(self);
+        let mut b = point(self);
+        if b == a {
+            b = point(self);
+        }
+        Wire::new(self.ids.fresh(), self.ids.fresh(), a, b)
+    }
+
+    fn item(&mut self, doc: &Document) -> Item {
+        // Mostly on an existing page and layer, so items are often valid.
+        let page = if self.rng.chance(90) { self.rng.pick_key(doc.pages()).unwrap_or_else(|| self.page()) } else { self.page() };
+        let layer = if self.rng.chance(90) { self.rng.pick_key(doc.layers()).unwrap_or_else(|| self.layer()) } else { self.layer() };
+        let kind = if self.rng.chance(30) {
+            let scale = if self.rng.chance(5) { 0.0 } else { 1.0 };
+            let definition = if self.rng.chance(90) { self.rng.pick_key(doc.definitions()).unwrap_or_else(|| self.def()) } else { self.def() };
+            ItemKind::Symbol(SymbolInstance { definition, placement: Placement { scale, ..Placement::default() } })
+        } else {
+            let x = if self.rng.chance(3) { f64::NAN } else { self.rng.below(100) as f64 };
+            ItemKind::Primitive(Primitive::Line { a: Pt::new(x, 0.0), b: Pt::new(1.0, 1.0) })
+        };
+        Item { page, style: style(layer), kind }
+    }
+
+    fn rep(&mut self, doc: &Document) -> Representation {
+        // Half the time, aim for a valid symbol representation of a component with a definition.
+        if self.rng.chance(50)
+            && let Some((cid, c)) = doc.devices().iter().nth(self.rng.below(doc.devices().len()))
+            && let Some(def) = c.definition
+            && let Some((iid, it)) = doc
+                .items()
+                .iter()
+                .find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == def) && doc.representation_of_item(**i).is_none())
+        {
+            return Representation {
+                subject: Subject::Device(*cid),
+                page: it.page,
+                form: Form::Symbol,
+                role: ecad_model::Role::Part(ecad_model::PartRole::Other),
+                items: vec![*iid],
+                connection_points: Default::default(),
+            };
+        }
+        // Sometimes a symbol of any definition with connection points of the component's own
+        // terminals (I14 as relaxed for brief 018: valid with any embedded definition).
+        if self.rng.chance(30)
+            && let Some((cid, _)) = doc.devices().iter().nth(self.rng.below(doc.devices().len()))
+            && let Some(t) = doc.connection_points_of(*cid).map(|(t, _)| t).next()
+            && let Some((iid, it)) =
+                doc.items().iter().find(|(i, it)| matches!(&it.kind, ItemKind::Symbol(_)) && doc.representation_of_item(**i).is_none())
+        {
+            let mut connection_points = std::collections::BTreeMap::new();
+            connection_points.insert(t, Pt::new(0.0, 10.0));
+            return Representation {
+                subject: Subject::Device(*cid),
+                page: it.page,
+                form: Form::Symbol,
+                role: ecad_model::Role::Part(ecad_model::PartRole::Contact),
+                items: vec![*iid],
+                connection_points,
+            };
+        }
+        let subject = match self.rng.below(3) {
+            0 => Subject::Device(self.comp()),
+            1 => Subject::Wire(self.cond()),
+            _ => Subject::Cable(self.rng.pick(&self.pools.cables).unwrap_or_else(|| fresh_in!(self, cables))),
+        };
+        let page = self.rng.pick_key(doc.pages()).unwrap_or_else(|| self.page());
+        let mut items = Vec::new();
+        for _ in 0..self.rng.below(3) {
+            // Prefer unowned items on the same page.
+            let candidate = if self.rng.chance(70) {
+                doc.items()
+                    .iter()
+                    .filter(|(i, it)| it.page == page && doc.representation_of_item(**i).is_none())
+                    .map(|(i, _)| *i)
+                    .nth(self.rng.below(3))
+            } else {
+                self.rng.pick(&self.pools.items)
+            };
+            if let Some(i) = candidate {
+                items.push(i);
+            }
+        }
+        let mut connection_points = std::collections::BTreeMap::new();
+        if let (Subject::Device(c), true) = (subject, self.rng.chance(50)) {
+            let t = if self.rng.chance(80) { doc.connection_points_of(c).map(|(t, _)| t).next() } else { self.term() };
+            if let Some(t) = t {
+                let y = if self.rng.chance(5) { f64::INFINITY } else { 1.0 };
+                connection_points.insert(t, Pt::new(0.0, y));
+            }
+        }
+        let form = if self.rng.chance(15) { Form::Symbol } else { Form::Drawn };
+        Representation { subject, page, form, role: ecad_model::Role::Part(ecad_model::PartRole::Other), items, connection_points }
+    }
+
+    fn definition(&mut self) -> Definition {
+        let mut connection_points =
+            vec![ConnectionPointDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() }];
+        if self.rng.chance(20) {
+            let key = if self.rng.chance(50) { "1" } else { "2" };
+            connection_points.push(ConnectionPointDef {
+                key: key.parse().unwrap(),
+                label: None,
+                at: Pt::new(0.0, -1.0),
+                accepts: Default::default(),
+            });
+        }
+        let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
+        Definition {
+            bridges: Vec::new(),
+            name: "d".into(),
+            origin: None,
+            graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: r }],
+            connection_points,
+            ..Default::default()
+        }
+    }
+
+    /// One op against `doc`. With small probability its recorded `before` state is wrong.
+    fn op(&mut self, doc: &Document, head: u64) -> Op {
+        let spoil = self.rng.chance(4);
+        // Weighted so that additions outnumber removals and the document grows.
+        let kind = self.rng.below(40);
+        match kind {
+            0..=1 => {
+                let id = if spoil { self.rng.pick(&self.pools.pages).unwrap_or_else(|| fresh_in!(self, pages)) } else { fresh_in!(self, pages) };
+                let index = self.rng.below(doc.page_order().len() + 1 + usize::from(spoil));
+                Op::AddPage { id, page: Page::titled("p").unwrap(), index }
+            }
+            2 => match self.rng.pick(doc.page_order()) {
+                Some(id) => {
+                    let index = doc.page_order().iter().position(|p| *p == id).unwrap_or(0) + usize::from(spoil);
+                    Op::RemovePage { id, page: doc.pages().get(&id).cloned().unwrap_or(Page::titled("?").unwrap()), index }
+                }
+                None => Op::AddPage { id: fresh_in!(self, pages), page: Page::titled("p").unwrap(), index: 0 },
+            },
+            3 => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
+            4 => match self.rng.pick_key(doc.layers()) {
+                Some(id) => {
+                    let name = if spoil { "spoilt".into() } else { doc.layers().get(&id).map(|l| l.name.clone()).unwrap_or_default() };
+                    Op::RemoveLayer { id, layer: Layer { name } }
+                }
+                None => Op::AddLayer { id: fresh_in!(self, layers), layer: Layer { name: "l".into() } },
+            },
+            5..=9 => {
+                let id = if spoil { self.rng.pick(&self.pools.items).unwrap_or_else(|| fresh_in!(self, items)) } else { fresh_in!(self, items) };
+                Op::AddItem { id, item: self.item(doc) }
+            }
+            10..=11 => match self.rng.pick_key(doc.items()) {
+                Some(id) => {
+                    let before = if spoil { self.item(doc) } else { doc.items().get(&id).cloned().unwrap_or_else(|| self.item(doc)) };
+                    let mut after = self.item(doc);
+                    if self.rng.chance(50) {
+                        // Keep page and kind, change geometry only: the common edit.
+                        after = before.clone();
+                        if let ItemKind::Primitive(Primitive::Line { a, .. }) = &mut after.kind {
+                            a.x += 1.0;
+                        }
+                    }
+                    Op::ModifyItem { id, before, after }
+                }
+                None => Op::AddItem { id: fresh_in!(self, items), item: self.item(doc) },
+            },
+            12 => match self.rng.pick_key(doc.items()) {
+                Some(id) => Op::RemoveItem { id, item: doc.items().get(&id).cloned().unwrap_or_else(|| self.item(doc)) },
+                None => Op::AddItem { id: fresh_in!(self, items), item: self.item(doc) },
+            },
+            13..=14 => {
+                let definition = if self.rng.chance(50) { None } else { Some(self.rng.pick_key(doc.definitions()).unwrap_or_else(|| self.def())) };
+                Op::CreateDevice { id: fresh_in!(self, comps), device: Device { definition, ..Device::default() } }
+            }
+            15 => match self.rng.pick_key(doc.devices()) {
+                Some(id) => Op::DeleteDevice { id, device: doc.devices().get(&id).cloned().unwrap_or_default() },
+                None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
+            },
+            16..=17 => {
+                let component = if self.rng.chance(85) { self.rng.pick_key(doc.devices()).unwrap_or_else(|| self.comp()) } else { self.comp() };
+                Op::AddConnectionPoint {
+                    id: fresh_in!(self, terms),
+                    connection_point: ConnectionPoint {
+                        owner: component.into(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                        protective_earth: false,
+                    },
+                }
+            }
+            18 => match self.rng.pick_key(doc.connection_points()) {
+                Some(id) => Op::RemoveConnectionPoint {
+                    id,
+                    connection_point: doc.connection_points().get(&id).cloned().unwrap_or(ConnectionPoint {
+                        owner: self.comp().into(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                        protective_earth: false,
+                    }),
+                },
+                None => Op::AddConnectionPoint {
+                    id: fresh_in!(self, terms),
+                    connection_point: ConnectionPoint {
+                        owner: self.comp().into(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                        protective_earth: false,
+                    },
+                },
+            },
+            19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
+            22 => match self.rng.pick_key(doc.representations()) {
+                Some(id) => {
+                    let before = doc.representations().get(&id).cloned().unwrap_or_else(|| self.rep(doc));
+                    let after = if self.rng.chance(50) {
+                        let mut a = before.clone();
+                        a.items.pop();
+                        a
+                    } else {
+                        self.rep(doc)
+                    };
+                    Op::ModifyRepresentation { id, before, after }
+                }
+                None => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
+            },
+            23 => match self.rng.pick_key(doc.representations()) {
+                Some(id) => Op::UnlinkRepresentation { id, rep: doc.representations().get(&id).cloned().unwrap_or_else(|| self.rep(doc)) },
+                None => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
+            },
+            24..=26 => Op::CreateWire { id: fresh_in!(self, conds), wire: self.wire() },
+            27 => match self.rng.pick_key(doc.wires()) {
+                Some(id) => {
+                    let wire = if spoil { self.wire() } else { doc.wires().get(&id).cloned().unwrap_or_else(|| self.wire()) };
+                    Op::DeleteWire { id, wire }
+                }
+                None => Op::CreateWire { id: fresh_in!(self, conds), wire: self.wire() },
+            },
+            28..=29 => match self.rng.pick_key(doc.wires()) {
+                Some(id) => {
+                    let current = doc.wires().get(&id).cloned().unwrap_or_else(|| self.wire());
+                    let before = if spoil { self.wire() } else { current.clone() };
+                    // Mostly a value; now and then its ends, which a ModifyWire refuses.
+                    let after = if self.rng.chance(10) {
+                        Wire { ends: [current.ends[1], current.ends[0]], ..current }
+                    } else {
+                        Wire { size: ecad_model::objects::wire::WireSize::parse(if self.rng.chance(50) { "2.5" } else { "1.5" }), ..current }
+                    };
+                    Op::ModifyWire { id, before, after }
+                }
+                None => Op::CreateWire { id: fresh_in!(self, conds), wire: self.wire() },
+            },
+            30 => {
+                let mut members = Vec::new();
+                for _ in 0..self.rng.below(3) {
+                    members.push(Core::on_wire(self.cond(), None));
+                }
+                Op::CreateCable { id: fresh_in!(self, cables), cable: Cable { cores: members, ..Cable::default() } }
+            }
+            31 => match self.rng.pick_key(doc.cables()) {
+                Some(id) => Op::DeleteCable { id, cable: doc.cables().get(&id).cloned().unwrap_or_default() },
+                None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
+            },
+            // A core added to a cable at some place (a spoilt `before` is not the stored cable).
+            32..=33 => match self.rng.pick_key(doc.cables()) {
+                Some(id) => {
+                    let current = doc.cables().get(&id).cloned().unwrap_or_default();
+                    let mut after = current.clone();
+                    let index = self.rng.below(after.cores.len() + 1);
+                    after.cores.insert(index, Core::on_wire(self.cond(), None));
+                    let before = if spoil { after.clone() } else { current };
+                    Op::ModifyCable { id, before, after }
+                }
+                None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
+            },
+            // A core taken off a cable.
+            34 => {
+                let found = doc.cables().iter().filter(|(_, c)| !c.cores.is_empty()).map(|(id, c)| (*id, c.clone())).nth(self.rng.below(2));
+                match found {
+                    Some((id, current)) => {
+                        let mut after = current.clone();
+                        after.cores.remove(self.rng.below(after.cores.len()));
+                        let before = if spoil { after.clone() } else { current };
+                        Op::ModifyCable { id, before, after }
+                    }
+                    None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
+                }
+            }
+            35 => match self.rng.pick_key(doc.devices()) {
+                Some(id) => {
+                    let current = doc.devices().get(&id).cloned().unwrap_or_default();
+                    let before = if spoil { current.with_tag(Some("spoilt"), ecad_model::naming::tag::TagState::Automatic) } else { current.clone() };
+                    // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
+                    let after = match self.rng.below(3) {
+                        0 => current.with_tag(None, ecad_model::naming::tag::TagState::Automatic),
+                        1 => current.with_tag(Some(&format!("K{}", self.rng.below(9))), ecad_model::naming::tag::TagState::Automatic),
+                        _ => current.with_tag(Some(&format!("-K0{}", self.rng.below(9))), ecad_model::naming::tag::TagState::Automatic),
+                    };
+                    Op::ModifyDevice { id, before, after }
+                }
+                None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
+            },
+            36..=37 => Op::EmbedDefinition { id: fresh_in!(self, defs), definition: self.definition() },
+            38 => match self.rng.pick_key(doc.definitions()) {
+                Some(id) => Op::RemoveDefinition { id, definition: doc.definitions().get(&id).cloned().unwrap_or_else(|| self.definition()) },
+                None => Op::EmbedDefinition { id: fresh_in!(self, defs), definition: self.definition() },
+            },
+            _ => match self.rng.below(3) {
+                0 => {
+                    let before =
+                        if spoil { ProjectSettings { length_unit: LengthUnit::Inch, ..ProjectSettings::default() } } else { doc.settings().clone() };
+                    let after = ProjectSettings {
+                        length_unit: if self.rng.chance(50) { LengthUnit::Inch } else { LengthUnit::Millimetre },
+                        // Brief 018's tag settings change with it sometimes.
+                        tag_padding: if self.rng.chance(30) { Some(3) } else { None },
+                        ..ProjectSettings::default()
+                    };
+                    Op::SetProjectSettings { before, after }
+                }
+                1 => {
+                    // Sometimes names a transaction that does not precede this one.
+                    let at = self.rng.below(head as usize + 1 + usize::from(spoil) * 2) as u64;
+                    let name = if spoil && !doc.versions().is_empty() {
+                        doc.versions().keys().next().cloned().unwrap_or(ecad_model::PointName::Revision(ecad_model::Rev::Initial))
+                    } else {
+                        ecad_model::PointName::version(&format!("v{}", self.rng.next() % 1000)).unwrap()
+                    };
+                    Op::NameVersion { name, at, description: None }
+                }
+                _ => match doc.versions().iter().next() {
+                    Some((name, at)) => Op::UnnameVersion { name: name.clone(), at: *at + u64::from(spoil), description: None },
+                    None => Op::NameVersion { name: ecad_model::PointName::version("v").unwrap(), at: 0, description: None },
+                },
+            },
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+struct Tally {
+    committed: usize,
+    precondition_failures: usize,
+    invariant_failures: usize,
+    undos: usize,
+    redos: usize,
+}
+
+/// Run one random sequence; returns what happened.
+fn sequence(seed: u64, tally: &mut Tally) {
+    let mut g = Gen { rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), ids: IdAllocator::seeded(seed), pools: Pools::default() };
+    let mut ledger = Ledger::new(seed);
+    let steps = 6 + g.rng.below(10);
+    for step in 0..steps {
+        if step > 0 && g.rng.chance(10) {
+            let before = ledger.document().clone();
+            let (r, redo) = if g.rng.chance(50) { (ledger.undo(Author::User), false) } else { (ledger.redo(Author::User), true) };
+            match r {
+                Ok(_) => {
+                    if redo {
+                        tally.redos += 1
+                    } else {
+                        tally.undos += 1
+                    }
+                    ledger.document().check().unwrap();
+                }
+                Err(ModelError::NothingTo(_)) => assert_eq!(ledger.document(), &before),
+                Err(e) => panic!("seed {seed}: undo/redo of a valid history failed: {e}"),
+            }
+            continue;
+        }
+        let before = ledger.document().clone();
+        let head = ledger.head();
+        // Generate on a scratch copy so op N can build on what ops before it did.
+        let mut scratch = before.clone();
+        let mut ops = Vec::new();
+        let mut applies = true;
+        for _ in 0..1 + g.rng.below(4) {
+            let op = g.op(&scratch, head);
+            if op.apply(&mut scratch).is_err() {
+                applies = false;
+                ops.push(op);
+                break;
+            }
+            ops.push(op);
+        }
+        // The ledger's wire rewrite (design 072 §4.4) extends the transaction as a commit does.
+        let mut all = ops.clone();
+        if applies {
+            for op in ecad_model::connectivity::wire_order::rewrite(&scratch, &ops) {
+                applies = op.apply(&mut scratch).is_ok();
+                all.push(op);
+                if !applies {
+                    break;
+                }
+            }
+        }
+        if applies {
+            for op in ecad_model::connectivity::wire_order::cores(&scratch, &ops) {
+                applies = op.apply(&mut scratch).is_ok();
+                all.push(op);
+                if !applies {
+                    break;
+                }
+            }
+        }
+        let bookmarks_ok = ops.iter().all(|op| !matches!(op, Op::NameVersion { at, .. } if *at > head));
+        let expected = if applies {
+            // Both checks on the end state, from a valid start.
+            let full = scratch.check();
+            let scoped = scratch.check_touched(&Touched::of(&all));
+            assert_eq!(full.is_ok(), scoped.is_ok(), "seed {seed} step {step}: full {full:?}, scoped {scoped:?}, ops {ops:#?}");
+            scratch.check_index().unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+            full.is_ok() && bookmarks_ok
+        } else {
+            false
+        };
+        let r = ledger.commit(Author::User, "random", ops.clone());
+        assert_eq!(r.is_ok(), expected, "seed {seed} step {step}: commit {r:?}, ops {ops:#?}");
+        match r {
+            Ok(_) => {
+                tally.committed += 1;
+                assert_eq!(ledger.document(), &scratch);
+            }
+            Err(e) => {
+                match e {
+                    ModelError::Precondition(_) => tally.precondition_failures += 1,
+                    _ => tally.invariant_failures += 1,
+                }
+                assert_eq!(ledger.document(), &before, "seed {seed} step {step}: rollback");
+                ledger.document().check_index().unwrap_or_else(|e| panic!("seed {seed} step {step}: {e}"));
+            }
+        }
+    }
+    let replayed = Ledger::replay_verified(ledger.full_log().unwrap(), 0).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+    assert_eq!(replayed.document(), ledger.document(), "seed {seed}: replay");
+    assert_eq!(replayed.undo_label(), ledger.undo_label());
+    assert_eq!(replayed.redo_label(), ledger.redo_label());
+}
+
+#[test]
+#[ignore = "slow: 10,000 random sequences, about 4 s"]
+fn the_scoped_check_agrees_with_the_full_check_on_random_sequences() {
+    let mut tally = Tally::default();
+    for seed in 1..=10_000u64 {
+        sequence(seed, &mut tally);
+    }
+    // Both outcomes, and both kinds of failure, must have been exercised in volume.
+    assert!(tally.committed > 15_000, "{tally:?}");
+    assert!(tally.invariant_failures > 30_000, "{tally:?}");
+    assert!(tally.precondition_failures > 400, "{tally:?}");
+    assert!(tally.undos > 1_500 && tally.redos > 150, "{tally:?}");
+}
+
+#[test]
+fn a_refused_transaction_holding_nan_rolls_back() {
+    // Regression: NaN never equals itself, so undoing such an op by comparing recorded values
+    // would fail and leave the document half-changed.
+    let mut b = base();
+    let before = bytes(b.ledger.document());
+    let mut nan = line(b.page, b.layer, f64::NAN);
+    nan.style.lineweight = 13;
+    let mut moved = b.item_v.clone();
+    moved.kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(f64::NAN, 0.0), b: Pt::new(1.0, 1.0) });
+    let ops = vec![
+        Op::AddItem { id: b.ids.fresh(), item: nan },
+        Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
+    ];
+    let r = b.ledger.commit(Author::User, "nan", ops);
+    assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}");
+    assert_eq!(bytes(b.ledger.document()), before);
+    b.ledger.document().check_index().unwrap();
+}
+
+/// What a preview must leave exactly as it was: the document's bytes and `==`, its indexes, the
+/// log, the undo and redo stacks and the ledger's health.
+struct Snapshot {
+    bytes: Vec<u8>,
+    doc: Document,
+    log: usize,
+    head: u64,
+    undo: Option<String>,
+    redo: Option<String>,
+    ends: Vec<(ecad_model::WireId, End)>,
+    cables: Vec<ecad_model::CableId>,
+}
+
+fn snapshot(b: &Base) -> Snapshot {
+    let l = &b.ledger;
+    Snapshot {
+        bytes: bytes(l.document()),
+        doc: l.document().clone(),
+        log: l.log().len(),
+        head: l.head(),
+        undo: l.undo_label().map(str::to_owned),
+        redo: l.redo_label().map(str::to_owned),
+        ends: l.document().ends_at(b.term),
+        cables: l.document().cables_of(b.wire),
+    }
+}
+
+fn assert_as_before(b: &Base, s: &Snapshot, case: &str) {
+    let l = &b.ledger;
+    assert_eq!(bytes(l.document()), s.bytes, "{case}: document bytes");
+    assert_eq!(*l.document(), s.doc, "{case}: document");
+    l.document().check_index().unwrap_or_else(|e| panic!("{case}: indexes stale: {e}"));
+    assert_eq!(l.document().ends_at(b.term), s.ends, "{case}: terminal index");
+    assert_eq!(l.document().cables_of(b.wire), s.cables, "{case}: cable index");
+    assert_eq!(l.log().len(), s.log, "{case}: log length");
+    assert_eq!(l.head(), s.head, "{case}: head");
+    assert_eq!(l.undo_label(), s.undo.as_deref(), "{case}: undo stack");
+    assert_eq!(l.redo_label(), s.redo.as_deref(), "{case}: redo stack");
+    assert!(l.diagnostics().is_empty(), "{case}: {:?}", l.diagnostics());
+    assert!(l.replay_matches().unwrap(), "{case}: the log no longer replays to the document");
+    assert_eq!(l.state_at(s.head).unwrap(), s.doc, "{case}: state at head");
+}
+
+/// Brief 014, acceptance 4, from the outside: a panic inside the preview closure of
+/// `Ledger::with_applied` and `Document::with_applied`, caught with `catch_unwind`, leaves the
+/// document, its indexes and the log (with its undo and redo stacks) exactly as they were, for a
+/// transaction whose end state is valid (so the closure runs and panics) and for every single op
+/// type (the closure panics when it runs; refusals must leave things alone too).
+#[test]
+fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    let mut b = base();
+    // Leave something on the redo stack as well.
+    b.ledger.commit(Author::User, "extra", vec![Op::AddLayer { id: b.ids.fresh(), layer: Layer { name: "e".into() } }]).unwrap();
+    b.ledger.undo(Author::User).unwrap();
+    assert!(b.ledger.redo_label().is_some());
+    let before = snapshot(&b);
+
+    let valid = vec![
+        Op::CreateWire { id: b.ids.fresh(), wire: Wire::new(b.ids.fresh(), b.ids.fresh(), b.term3, b.term) },
+        Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
+        Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
+        Op::ModifyCable {
+            id: b.cable,
+            before: b.cable_v.clone(),
+            after: Cable { cores: vec![Core::on_wire(b.wire, None), Core::on_wire(b.wire2, None)], ..b.cable_v.clone() },
+        },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: Some("K2".into()) },
+        Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
+    ];
+    let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];
+    for op in applicable(&mut b) {
+        cases.push((format!("single {}", op.name()), vec![op]));
+    }
+    let mut ran = 0;
+    for (case, ops) in &cases {
+        let mut closure_ran = false;
+        let r = catch_unwind(AssertUnwindSafe(|| {
+            b.ledger.with_applied(ops, |d| {
+                closure_ran = true;
+                // The closure sees the change before it panics.
+                let _ = d.check_index();
+                std::panic::resume_unwind(Box::new(format!("panic in the preview of {case}")));
+            })
+        }));
+        if closure_ran {
+            ran += 1;
+            assert!(r.is_err(), "{case}: the panic must propagate");
+        } else {
+            assert!(matches!(r, Ok(Err(_))), "{case}: the closure did not run, so the ops were refused");
+        }
+        assert_as_before(&b, &before, &format!("Ledger::with_applied, {case}"));
+
+        // The plain document form.
+        let mut d = b.ledger.document().clone();
+        let r = catch_unwind(AssertUnwindSafe(|| d.with_applied(ops, |_| std::panic::resume_unwind(Box::new("boom")))));
+        assert_eq!(r.is_err(), closure_ran, "{case}: the document form behaves as the ledger form");
+        assert_eq!(bytes(&d), before.bytes, "Document::with_applied, {case}");
+        assert_eq!(d, before.doc, "Document::with_applied, {case}");
+        d.check_index().unwrap_or_else(|e| panic!("Document::with_applied, {case}: {e}"));
+    }
+    assert!(ran >= 2, "the closure ran (and panicked) in only {ran} cases");
+
+    // The ledger carries on: a preview without a panic, a redo, and a commit of the same ops.
+    let pages = b.ledger.with_applied(&valid, |d| d.pages().len()).unwrap();
+    assert_eq!(pages, 2);
+    assert_as_before(&b, &before, "after a normal preview");
+    b.ledger.redo(Author::User).unwrap();
+    b.ledger.commit(Author::User, "valid", valid).unwrap();
+    assert!(b.ledger.replay_matches().unwrap());
+    b.ledger.document().check_index().unwrap();
+}
+
+/// Brief 020a, Restore: the ops [`ecad_model::document::diff::ops_between`] gives turn the live document
+/// into the state at any earlier point exactly as undoing every step after it does (versions
+/// aside, which Restore never touches), and they commit as an ordinary transaction.
+#[test]
+fn a_state_diff_restores_exactly_what_undoing_the_steps_after_the_point_restores() {
+    let mut points = 0;
+    for seed in 1..=150u64 {
+        let mut g = Gen { rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1), ids: IdAllocator::seeded(seed), pools: Pools::default() };
+        let mut ledger = Ledger::new(seed);
+        for step in 0..14 {
+            if step > 0 && g.rng.chance(15) {
+                let _ = if g.rng.chance(50) { ledger.undo(Author::User) } else { ledger.redo(Author::User) };
+                continue;
+            }
+            let mut scratch = ledger.document().clone();
+            let mut ops = Vec::new();
+            for _ in 0..1 + g.rng.below(4) {
+                let op = g.op(&scratch, ledger.head());
+                if op.apply(&mut scratch).is_err() {
+                    break;
+                }
+                ops.push(op);
+            }
+            if !ops.is_empty() {
+                let _ = ledger.commit(Author::User, "random", ops);
+            }
+        }
+        let live = ledger.document().clone();
+        let head = ledger.head();
+        let log = ledger.full_log().unwrap();
+        for k in 0..head {
+            let target = ledger.state_at(k).unwrap();
+            let walk: Vec<Op> = log
+                .iter()
+                .rev()
+                .take_while(|t| t.seq > k)
+                .flat_map(|t| t.ops.iter().rev().filter(|o| !matches!(o, Op::NameVersion { .. } | Op::UnnameVersion { .. })).map(Op::inverse))
+                .collect();
+            let diff = ecad_model::document::diff::ops_between(&live, &target, &|_| true);
+            let by_walk = ledger.preview(&walk).unwrap_or_else(|e| panic!("seed {seed} k {k}: walk {e}"));
+            let by_diff = ledger.preview(&diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: diff {e}: {diff:#?}"));
+            assert_eq!(by_diff, by_walk, "seed {seed} k {k}");
+            let mut want = target.clone();
+            want.edit_parts(|parts| parts.versions = live.versions().clone());
+            assert_eq!(by_diff, want, "seed {seed} k {k}: the target state");
+            // It scales with what differs: nothing differs, no ops (however many steps lie between).
+            let mut same = live.clone();
+            same.edit_parts(|parts| parts.versions = want.versions().clone());
+            assert_eq!(diff.is_empty(), same == want, "seed {seed} k {k}: {} ops", diff.len());
+            if !diff.is_empty() {
+                let mut l = ledger.clone();
+                l.commit(Author::User, "Restore", diff).unwrap_or_else(|e| panic!("seed {seed} k {k}: commit {e}"));
+                assert_eq!(l.document(), &want);
+            }
+            points += 1;
+        }
+    }
+    assert!(points > 500, "{points} points restored");
+}
+
+/// Brief 020b (reviewer finding 10): the scoped diff [`ecad_model::document::diff::ops_between_in`] over a
+/// scope that covers every difference (what the steps between the two states touched) gives the
+/// same ops as the whole-document diff, and they turn one state into the other.
+#[test]
+fn a_scoped_state_diff_equals_the_whole_diff_when_the_scope_covers_every_difference() {
+    let mut points = 0;
+    for seed in 1..=120u64 {
+        let mut g = Gen { rng: Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 7), ids: IdAllocator::seeded(seed), pools: Pools::default() };
+        let mut ledger = Ledger::new(seed);
+        for step in 0..14 {
+            if step > 0 && g.rng.chance(15) {
+                let _ = if g.rng.chance(50) { ledger.undo(Author::User) } else { ledger.redo(Author::User) };
+                continue;
+            }
+            let mut scratch = ledger.document().clone();
+            let mut ops = Vec::new();
+            for _ in 0..1 + g.rng.below(4) {
+                let op = g.op(&scratch, ledger.head());
+                if op.apply(&mut scratch).is_err() {
+                    break;
+                }
+                ops.push(op);
+            }
+            if !ops.is_empty() {
+                let _ = ledger.commit(Author::User, "random", ops);
+            }
+        }
+        let live = ledger.document().clone();
+        let head = ledger.head();
+        let log = ledger.full_log().unwrap();
+        for k in 0..head {
+            let target = ledger.state_at(k).unwrap();
+            let mut scope = ecad_model::merge::state::Scope::default();
+            for t in log.iter().filter(|t| t.seq > k) {
+                scope.add_ops(&t.ops);
+            }
+            let whole = ecad_model::document::diff::ops_between(&live, &target, &|_| true);
+            let scoped = ecad_model::document::diff::ops_between_in(&live, &target, &|_| true, Some(&scope.touched), scope.project);
+            assert_eq!(scoped, whole, "seed {seed} k {k}");
+            let mut want = target.clone();
+            want.edit_parts(|parts| parts.versions = live.versions().clone());
+            if !scoped.is_empty() {
+                assert_eq!(ledger.preview(&scoped).unwrap_or_else(|e| panic!("seed {seed} k {k}: {e}")), want, "seed {seed} k {k}");
+            }
+            points += 1;
+        }
+    }
+    assert!(points > 400, "{points} points");
+}

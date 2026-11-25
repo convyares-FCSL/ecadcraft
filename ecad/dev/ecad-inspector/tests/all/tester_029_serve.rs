@@ -1,5 +1,4 @@
-//! Tester contracts for `ecadinspect serve` (brief 029 criteria 7, 8, 10, 11; design §2.1, §5,
-//! §6), written from the brief and the design: the address, loopback only, every refusal variant
+//! Hostile and boundary contracts for `ecadinspect serve`: the address, loopback only, every refusal variant
 //! of the token, `Host` and `Origin`, one client at a time, a dropped file replacing the source,
 //! the envelope (`v`, `id`), hostile HTTP and frames that must never stop the server, and hostile
 //! text returned as plain JSON.
@@ -202,7 +201,7 @@ fn a_second_page_gets_1013_the_first_keeps_working_and_a_new_page_can_connect_af
 fn a_dropped_file_replaces_the_open_one_and_its_verify_is_the_new_files() {
     let dir = TempDir::new("t029-drop");
     let a = rich(&dir, "First file");
-    let b = upgraded(&dir, &history());
+    let b = written(&dir, &history());
     let a_bytes = std::fs::read(&a).unwrap();
     let a_time = std::fs::metadata(&a).unwrap().modified().unwrap();
     let (port, token, _) = start(Some(&a));
@@ -418,17 +417,17 @@ fn hostile_http_never_stops_the_server() {
 /// `ECAD_TESTER029_EXPORT=<folder>` the file is kept there as `escape.v2.ecad`.
 #[test]
 fn hostile_text_comes_back_as_plain_json_strings() {
-    use ecad_file::v2::{ProjectV2, Store};
+    use ecad_file::{Project, Store};
     use ecad_model::*;
     const X: &str = "<img src=x onerror=alert(1)>";
     let dir = TempDir::new("t029-escape");
     let mut ids = IdAllocator::seeded(0xE5C);
     let mut l = Ledger::new(3);
-    let (p1, layer, k, a, b): (PageId, LayerId, ComponentId, TerminalId, TerminalId) =
+    let (p1, layer, k, a, b): (PageId, LayerId, DeviceId, ConnectionPointId, ConnectionPointId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let (w, c): (ConductorId, CableId) = (ids.fresh(), ids.fresh());
+    let (w, c): (WireId, CableId) = (ids.fresh(), ids.fresh());
     let props = |pairs: &[(&str, &str)]| {
-        let mut p = ecad_model::doc::Properties::new();
+        let mut p = ecad_model::Properties::new();
         for (k, v) in pairs {
             p.insert((*k).into(), (*v).into());
         }
@@ -438,24 +437,51 @@ fn hostile_text_comes_back_as_plain_json_strings() {
         Author::User,
         X,
         vec![
-            Op::AddPage { id: p1, page: Page::new(X), index: 0 },
+            Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
-            Op::CreateComponent { id: k, component: Component { properties: props(&[("tag", X), ("note", X)]), definition: None } },
-            Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },
-            Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None } },
-            Op::CreateConductor { id: w, conductor: Conductor { properties: props(&[("wire_number", X)]), ends: [Some(a), Some(b)] } },
+            Op::CreateDevice {
+                id: k,
+                device: Device { properties: props(&[("note", X)]), ..Device::default() }
+                    .with_tag(Some(X), ecad_model::naming::tag::TagState::Automatic),
+            },
+            Op::AddConnectionPoint {
+                id: a,
+                connection_point: ConnectionPoint {
+                    owner: k.into(),
+                    label: Some(X.into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
+            },
+            Op::AddConnectionPoint {
+                id: b,
+                connection_point: ConnectionPoint {
+                    owner: k.into(),
+                    label: Some("2".into()),
+                    key: None,
+                    accepts: Default::default(),
+                    protective_earth: false,
+                },
+            },
+            Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {
                 id: c,
-                cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember { conductor: w, core: Some(X.into()) }] },
+                cable: Cable {
+                    tag: ecad_model::naming::tag::TagSlot::of_text(Some(X), Default::default()),
+                    cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new(X).ok())],
+                    ..Default::default()
+                },
             },
-            Op::SetProperty { object: ObjectRef::Project, key: "project.title".into(), before: None, after: Some(X.into()) },
+            Op::SetProperty { object: ObjectRef::Project, key: "project.title".parse().unwrap(), before: None, after: Some(X.into()) },
         ],
     )
     .unwrap();
     let at = l.head();
-    l.commit(Author::User, "Version", vec![Op::NameVersion { name: X.into(), at, description: Some(X.into()) }]).unwrap();
+    l.commit(Author::User, "Version", vec![Op::NameVersion { name: ecad_model::PointName::version(X).unwrap(), at, description: Some(X.into()) }])
+        .unwrap();
     let path = dir.path("escape.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, None, None, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let _ = proj.create_branch(X, main, at, None, None).unwrap();

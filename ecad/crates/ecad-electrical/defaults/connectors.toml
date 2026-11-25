@@ -1,0 +1,22 @@
+# Connectors.
+# Built-in defaults. Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"connector.half.separator" = "."
+"connector.side.socket" = "S"
+"connector.side.plug" = "P"
+"connector.description" = "Connector"
+"connector.plain.socket.description" = "Socket, {n}-pin"
+"connector.plain.plug.description" = "Plug, {n}-pin"
+"connector.dsub.socket.description" = "D-sub socket, {n}-way"
+"connector.dsub.plug.description" = "D-sub plug, {n}-way"
+"connector.m12.socket.description" = "M12 socket, {n}-pin"
+"connector.m12.plug.description" = "M12 plug, {n}-pin"
+"connector.maker.halves" = "both"
+"connector.maker.family" = "plain"
+"connector.maker.pins" = 4.0
+"connector.maker.names" = "numbers"
+"connector.maker.layout" = "row"

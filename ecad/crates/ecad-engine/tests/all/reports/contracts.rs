@@ -1,0 +1,431 @@
+//! Reports: device locations and location boxes, the location
+//! prefix, the reports, generated pages and Print Book. Driven through the commands' JSON forms.
+
+use ecad_electrical::locations::Source;
+use ecad_model::{DeviceId, Document, PageId, WireId};
+use serde_json::{Value, json};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
+
+use crate::common::{H, id, pts};
+
+fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
+    let r = h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap();
+    id(&r, "component")
+}
+
+fn loc(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
+    let l = ecad_electrical::locations::resolve(doc, c);
+    (l.value, l.source.word())
+}
+
+/// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
+/// project, or none.
+fn ctx(doc: &Document, c: DeviceId) -> (Option<String>, &'static str) {
+    let r = ecad_electrical::symbols::reps::goto(doc, c, None).unwrap();
+    let l = ecad_electrical::locations::rep_context(doc, &doc.representations()[&r], &mut ecad_electrical::locations::BoxCache::default());
+    (l.value, l.source.word())
+}
+
+fn s(v: &str) -> Option<String> {
+    Some(v.to_string())
+}
+
+/// The kept models equal a fresh build (the update map left nothing behind).
+fn same_as_built(h: &mut H) {
+    let (kept, built) = h.cfg(|p| {
+        let kept = p.reports().clone();
+        (kept, ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::LOOK))
+    });
+    assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
+    assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part));
+    assert_eq!(kept.wire_table(), built.wire_table());
+    assert_eq!(kept.cable_table(), built.cable_table());
+    let mut a = kept.checks();
+    let mut b = built.checks();
+    a.sort_by_key(|c| format!("{c:?}"));
+    b.sort_by_key(|c| format!("{c:?}"));
+    assert_eq!(a, b);
+}
+
+/// §13 A, brief 052 (design 052 §5.1, §5.6): a device's location is its own stored value; a new
+/// project location is proposed to the unset devices and taken in the same transaction; a new page
+/// location never changes a stored value (it is only the context); one transaction for several;
+/// clear back to none.
+#[test]
+fn a_device_stores_its_location_and_unset_devices_take_a_new_project_location() {
+    let mut h = H::new(0x24_01);
+    let k = place(&mut h, "coil", (100.0, 150.0));
+    let q = place(&mut h, "coil", (150.0, 150.0));
+    let doc = h.doc();
+    assert_eq!(loc(&doc, k), (None, "none"));
+    assert_eq!(ctx(&doc, k), (None, "none"));
+    let head = h.head();
+    h.run("projectprops", json!({"location": "CP1"})).unwrap();
+    assert_eq!(h.head(), head + 1, "the proposal is taken in the same transaction");
+    assert_eq!(loc(&h.doc(), k), (s("+CP1"), "device"), "an unset device takes the project's");
+    assert_eq!(loc(&h.doc(), q), (s("+CP1"), "device"));
+    assert_eq!(ctx(&h.doc(), k), (s("+CP1"), "project"));
+    h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
+    assert_eq!(loc(&h.doc(), k), (s("+CP1"), "device"), "a stored value is never changed by a page location");
+    assert_eq!(ctx(&h.doc(), k), (s("+FIELD"), "page"));
+    let head = h.head();
+    h.run("setprop", json!({"devices": [k.hex(), q.hex()], "key": "location", "value": "CP3"})).unwrap();
+    assert_eq!(h.head(), head + 1, "several devices: one transaction");
+    assert_eq!(loc(&h.doc(), k), (s("+CP3"), "device"));
+    assert_eq!(loc(&h.doc(), q), (s("+CP3"), "device"));
+    h.run("setprop", json!({"component": k.hex(), "key": "location", "value": null})).unwrap();
+    assert_eq!(loc(&h.doc(), k), (None, "none"));
+    h.cmdline("u");
+    assert_eq!(loc(&h.doc(), k), (s("+CP3"), "device"));
+    // `devices` reports what is shown and where it comes from.
+    let v = h.run("devices", json!({})).unwrap();
+    let all = v["devices"].as_array().unwrap();
+    assert!(all.iter().all(|d| d["location_from"] == "device" && d["location_shown"] == "+CP3"), "{v}");
+    same_as_built(&mut h);
+}
+
+/// §13 B, brief 052 (design 052 §5.1, §5.3, §5.5): a box is the live context of the symbols inside
+/// and, when drawn, gives its location to the unset devices inside in the same transaction; moving
+/// it updates the context at once and changes no stored value; nested boxes: the inner wins and a
+/// device with a value keeps it; a stored value none of the symbols' contexts has is flagged.
+#[test]
+fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
+    let mut h = H::new(0x24_02);
+    h.run("projectprops", json!({"location": "+CP1"})).unwrap();
+    let page = h.first_page();
+    h.run("pageprops", json!({"location": "+FIELD"})).unwrap();
+    // Keep the models from here on, so every edit goes through the update map.
+    h.cfg(|p| {
+        p.reports();
+    });
+    // Placed keeping no location (the page would propose +FIELD), so the box has unset devices.
+    let m: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [100, 100], "location": "keep"})).unwrap(), "component");
+    let x: DeviceId = id(&h.run("place", json!({"symbol": "coil", "at": [140, 100], "location": "keep"})).unwrap(), "component");
+    assert_eq!((loc(&h.doc(), m).0, loc(&h.doc(), x).0), (None, None));
+    let head = h.head();
+    let r = h.run("locationbox", json!({"location": "JB1", "corners": [[80, 80], [160, 130]]})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    assert_eq!(r["inside"], 2, "{r}");
+    let boxc: ecad_model::AidId = id(&r, "aid");
+    let doc = h.doc();
+    assert_eq!(loc(&doc, m), (s("+JB1"), "device"), "the unset devices inside take the box's");
+    assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
+    assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
+    let rm = ecad_electrical::symbols::reps::goto(&doc, m, None).unwrap();
+    let l = ecad_electrical::locations::rep_context(&doc, &doc.representations()[&rm], &mut ecad_electrical::locations::BoxCache::default());
+    assert_eq!(l.source, Source::Box { aid: boxc, page });
+    assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
+    same_as_built(&mut h);
+    // Move the box off them: the page's location is the context at once, the stored value stays;
+    // `u` brings it back.
+    let item = h.run("devices", json!({})).unwrap();
+    let _ = item;
+    let item: ecad_model::ItemId = id(&r, "item");
+    let hd = h.handle_of(page, item);
+    h.run("move", json!({"handles": [hd.hex()], "delta": [0, 200]})).unwrap();
+    assert_eq!(ctx(&h.doc(), m), (s("+FIELD"), "page"));
+    assert_eq!(loc(&h.doc(), m), (s("+JB1"), "device"));
+    same_as_built(&mut h);
+    h.cmdline("u");
+    assert_eq!(ctx(&h.doc(), m), (s("+JB1"), "box"));
+    same_as_built(&mut h);
+    // A polyline box nested inside: the inner wins for the device inside it only.
+    h.run("locationbox", json!({"location": "+JB2", "points": [[90, 90], [120, 90], [125, 105], [120, 120], [90, 120]]})).unwrap();
+    let doc = h.doc();
+    assert_eq!(ctx(&doc, m).0, s("+JB2"));
+    assert_eq!(ctx(&doc, x).0, s("+JB1"));
+    assert_eq!((loc(&doc, m).0, loc(&doc, x).0), (s("+JB1"), s("+JB1")), "a device with a value keeps it");
+    same_as_built(&mut h);
+    // Brief 052: a stored value none of its symbols' contexts has: flagged, one-click fix.
+    h.run("setprop", json!({"component": x.hex(), "key": "location", "value": "+CP9"})).unwrap();
+    assert_eq!(loc(&h.doc(), x), (s("+CP9"), "device"));
+    let checks = ecad_engine::checks::all(&h.doc(), 1e-6);
+    // `m` (+JB1, now inside +JB2) is flagged too; this is `x`'s row.
+    let own: Vec<_> = checks.iter().filter(|c| c.kind == Kind::LocationUnused && c.which.contains("+CP9")).collect();
+    assert_eq!(own.len(), 1, "{checks:?}");
+    assert!(own[0].which.contains("is +CP9, but none of its symbols is in +CP9"), "{}", own[0].which);
+    assert_eq!(own[0].fix, Some(Fix::UseContext(x, ecad_electrical::locations::designations::Aspect::Location)));
+    same_as_built(&mut h);
+    h.run("setprop", json!({"component": x.hex(), "key": "location", "value": null})).unwrap();
+    assert_eq!(loc(&h.doc(), x), (None, "none"));
+    assert_eq!(ctx(&h.doc(), x), (s("+JB1"), "box"));
+    // Erasing the box deletes it with its outline.
+    let hd = h.handle_of(page, item);
+    h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
+    let doc = h.doc();
+    assert!(!doc.aids().contains_key(&boxc), "the box goes with its outline");
+    assert_eq!(ctx(&doc, x), (s("+FIELD"), "page"));
+    same_as_built(&mut h);
+}
+
+/// §3.5: refusals keep the way on.
+#[test]
+fn a_box_needs_room_and_a_closed_polyline() {
+    let mut h = H::new(0x24_03);
+    let e = h.run("locationbox", json!({"location": "+A", "corners": [[0, 0], [5, 5]]})).unwrap_err();
+    assert!(e.contains("at least 10 x 10 mm"), "{e}");
+    let e = h.run("locationbox", json!({"location": "+A", "corners": [[0, 0], [50, 50]], "points": [[0, 0]]})).unwrap_err();
+    assert!(e.contains("exactly one"), "{e}");
+    // An existing closed polyline becomes a box; an open one is refused.
+    let new_item =
+        |h: &mut H, before: &std::collections::BTreeSet<ecad_model::ItemId>| *h.doc().items().keys().find(|i| !before.contains(i)).unwrap();
+    let before: std::collections::BTreeSet<_> = h.doc().items().keys().copied().collect();
+    h.run("pline", json!({"vertices": pts(&[(0.0, 0.0), (60.0, 0.0), (60.0, 40.0), (0.0, 40.0)]), "closed": true})).unwrap();
+    let item = new_item(&mut h, &before);
+    let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
+    let doc = h.doc();
+    assert_eq!(doc.items()[&item].style.linetype, "DASHED");
+    assert!(doc.aids().contains_key(&id::<ecad_model::AidId>(&made, "aid")));
+    // The same outline again: it belongs to a box now.
+    let e = h.run("locationbox", json!({"location": "+JB8", "item": item.hex()})).unwrap_err();
+    assert!(e.contains("belongs to another location box"), "{e}");
+    let before: std::collections::BTreeSet<_> = h.doc().items().keys().copied().collect();
+    h.run("pline", json!({"vertices": pts(&[(100.0, 0.0), (160.0, 0.0), (160.0, 40.0)])})).unwrap();
+    let open = new_item(&mut h, &before);
+    let e = h.run("locationbox", json!({"location": "+JB7", "item": open.hex()})).unwrap_err();
+    assert!(e.contains("Pick a closed polyline"), "{e}");
+}
+
+/// §13 C: a symbol drawn away from its device's location shows the prefix; the device keeps its
+/// stored location (brief 052: set on the device, not taken from the coil's context).
+#[test]
+fn a_contact_away_from_its_coil_shows_the_location_prefix() {
+    let mut h = H::new(0x24_04);
+    h.run("projectprops", json!({"location": "+CP1"})).unwrap();
+    let p1 = h.first_page();
+    let k = place(&mut h, "coil", (100.0, 150.0));
+    h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
+    let r = h.run("newpage", json!({"title": "Field"})).unwrap();
+    let p2: PageId = id(&r, "page");
+    h.run("locationbox", json!({"location": "+JB1", "corners": [[50, 50], [200, 200]]})).unwrap();
+    h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).unwrap();
+    let doc = h.doc();
+    assert_eq!(loc(&doc, k), (s("+CP1"), "device"), "the stored value, wherever its symbols are");
+    let tag = ecad_electrical::devices::tags::tag_of(&doc, k).unwrap().to_string();
+    let texts2: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p2).into_iter().map(|t| t.value).collect();
+    assert!(texts2.contains(&format!("+CP1{tag}")), "{texts2:?}");
+    let texts1: Vec<String> = ecad_engine::devices::draw::texts_on_page(&doc, p1).into_iter().map(|t| t.value).collect();
+    assert!(texts1.contains(&tag), "{texts1:?}");
+    assert!(ecad_engine::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LocationUnused));
+}
+
+fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
+    id(&h.run("wire", json!({"points": pts(points)})).unwrap(), "conductor")
+}
+
+/// §13 E, F: the BOM holds devices only; the wire report names both ends; flags are counted;
+/// CSV is Excel-safe.
+#[test]
+fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
+    let mut h = H::new(0x24_05);
+    h.cfg(|p| {
+        p.reports();
+    });
+    h.run("projectprops", json!({"location": "+CP1"})).unwrap();
+    let a = h.run("place", json!({"symbol": "terminal_block", "at": [0, 0], "tag": "X1"})).unwrap();
+    let b = h.run("place", json!({"symbol": "terminal_block", "at": [60, 0], "tag": "X2"})).unwrap();
+    let (a, b): (DeviceId, DeviceId) = (id(&a, "component"), id(&b, "component"));
+    // Brief 052: the project's location proposes; the devices store theirs.
+    h.run("setlocation", json!({"devices": [a.hex(), b.hex()], "value": "+CP1"})).unwrap();
+    let w = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)]);
+    h.run("setprop", json!({"component": a.hex(), "key": "maker", "value": "Phoenix"})).unwrap();
+    h.run("setprop", json!({"component": a.hex(), "key": "part_number", "value": "UT 2.5"})).unwrap();
+    same_as_built(&mut h);
+    let bom = h.run("bom", json!({})).unwrap();
+    let rows = bom["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2, "two devices, no wire: {bom}");
+    assert!(rows.iter().all(|r| r["location"] == "+CP1"), "{bom}");
+    assert!(bom["flagged"].as_u64().unwrap() >= 2, "X2 has no maker or part number: {bom}");
+    let doc = h.doc();
+    let (ta, tb) =
+        (ecad_electrical::devices::tags::tag_of(&doc, a).unwrap().to_string(), ecad_electrical::devices::tags::tag_of(&doc, b).unwrap().to_string());
+    let flagged_row = rows.iter().find(|r| r["tags"] == tb.as_str()).unwrap();
+    assert!(flagged_row["flags"].as_array().unwrap().contains(&json!("maker")));
+    let wires = h.run("wirelist", json!({})).unwrap();
+    let wr = &wires["rows"][0];
+    assert_eq!(wr["conductor"], w.hex());
+    assert!(wr["from"].as_str().unwrap().starts_with(&format!("{ta}:")), "{wires}");
+    assert!(wr["to"].as_str().unwrap().starts_with(&format!("{tb}:")), "{wires}");
+    assert_eq!(wr["from_location"], "+CP1");
+    // A location change at an end reaches the wire row (update map).
+    h.run("setprop", json!({"component": b.hex(), "key": "location", "value": "+FIELD"})).unwrap();
+    let wires = h.run("wirelist", json!({})).unwrap();
+    assert_eq!(wires["rows"][0]["to_location"], "+FIELD");
+    same_as_built(&mut h);
+    // A cable over the wire: one row, its locations.
+    h.run("cableslash", json!({"from": [30, 10], "to": [30, -10]})).unwrap();
+    let cables = h.run("cablelist", json!({})).unwrap();
+    let c = &cables["rows"][0];
+    assert_eq!(c["cores"], 1, "{cables}");
+    assert_eq!(c["from_location"], "+CP1");
+    assert_eq!(c["to_location"], "+FIELD");
+    // Brief 028: Used counts the members; with no core offer, Spare is unknown.
+    assert_eq!(c["used"], 1);
+    assert!(c["spare"].is_null());
+    assert_eq!(c["spare_text"], Value::Null, "flagged ?: {c}");
+    same_as_built(&mut h);
+    // CSV, Excel-safe.
+    let dir = std::env::temp_dir().join(format!("ecad-024-{}", std::process::id()));
+    let path = dir.join("bom.csv");
+    let r = h.run("bom", json!({"path": path.to_string_lossy()})).unwrap();
+    assert_eq!(r["rows"], 2);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.starts_with('\u{feff}'));
+    // Brief 047 (design 047 §6.4): a Unit column after Qty.
+    assert!(text.contains(&format!("'+CP1,1,pcs,'{ta},")), "{text}");
+    assert!(text.contains("\r\n"));
+    let _ = std::fs::remove_dir_all(&dir);
+    // Nothing recorded by reading.
+    let head = h.head();
+    h.run("bom", json!({"group": "part"})).unwrap();
+    h.run("wirelist", json!({})).unwrap();
+    assert_eq!(h.head(), head);
+}
+
+/// §13 D, E: generated pages are added in one transaction, refuse drawing with a way on, follow
+/// edits, overflow onto more sheets and count in Total; Print Book prints them.
+#[test]
+fn generated_pages_follow_the_project_and_print() {
+    ecad_engine::export::printbook::install_io();
+    let mut h = H::new(0x24_06);
+    h.run("projectprops", json!({"title": "Pump panel", "location": "+CP1"})).unwrap();
+    let mut coils = vec![place(&mut h, "coil", (100.0, 150.0))];
+    let head = h.head();
+    let r = h.run("newpage", json!({"generated": "bom-location"})).unwrap();
+    assert_eq!(h.head(), head + 1);
+    let bom_page: PageId = id(&r, "page");
+    let doc = h.doc();
+    assert_eq!(doc.pages()[&bom_page].title, "BOM by location");
+    let e = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap_err();
+    assert!(e.contains("is generated (BOM by location)") && e.contains("add one after it with +"), "{e}");
+    let e = h.run("pageprops", json!({"generated": "cover"})).unwrap_err();
+    assert!(e.contains("kind is set when it is made"), "{e}");
+    // The page shows the BOM; 60 devices overflow to two sheets and Total counts them.
+    let first = h.first_page();
+    h.activate(first);
+    for i in 0..60 {
+        coils.push(place(&mut h, "coil", (20.0 + f64::from(i % 10) * 35.0, 60.0 + f64::from(i / 10) * 30.0)));
+    }
+    // Brief 052: the project's location proposes; the devices store theirs.
+    let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
+    h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
+    let doc = h.doc();
+    assert_eq!(
+        ecad_electrical::pages::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::LOOK))),
+        2
+    );
+    let parts = ecad_engine::pages::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
+    let texts: Vec<String> = parts
+        .iter()
+        .filter_map(|p| match &p.kind {
+            cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(texts.iter().any(|t| t == "BOM by location (2/2)"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "+CP1 (continued)"), "{texts:?}");
+    assert!(texts.iter().any(|t| t == "3"), "Total counts sheets: {texts:?}");
+    // Print Book: one PDF, every sheet, in book order.
+    let v = h.run("printbook", json!({})).unwrap();
+    assert_eq!(v["sheets"], 3, "{}", v["message"]);
+    assert_eq!(v["generated"], 2);
+    let data = v["files"][0]["data"].as_str().unwrap();
+    assert!(data.starts_with("JVBER"), "a PDF");
+    let v = h.run("printbook", json!({"scope": {"pages": "1, 7"}})).unwrap();
+    assert_eq!(v["sheets"], 1);
+    assert_eq!(v["unknown"], json!(["7"]));
+}
+
+/// The cover, contents and revision list show the project and follow it.
+#[test]
+fn cover_contents_and_revision_list_show_the_project() {
+    let mut h = H::new(0x24_07);
+    h.run("projectprops", json!({"title": "Pump panel", "drawing_number": "D-100"})).unwrap();
+    let r = h.run("newpage", json!({"generated": "cover"})).unwrap();
+    let cover: PageId = id(&r, "page");
+    let r = h.run("newpage", json!({"generated": "contents"})).unwrap();
+    let contents: PageId = id(&r, "page");
+    let r = h.run("newpage", json!({"generated": "revisions"})).unwrap();
+    let revs: PageId = id(&r, "page");
+    let doc = h.doc();
+    let reports = ecad_engine::project::engine_views().report_models(&doc);
+    let text = |p: PageId| -> Vec<String> {
+        ecad_engine::pages::generated::parts_of(&doc, p, reports.as_ref())
+            .into_iter()
+            .filter_map(|p| match p.kind {
+                cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                _ => None,
+            })
+            .collect()
+    };
+    let c = text(cover);
+    // Brief 054b (design 054 §6): the cover draws blocks; its revisions are the issued rows, and it
+    // no longer counts sheets.
+    assert!(c.contains(&"Pump panel · Electrical documentation".to_string()) && c.contains(&"D-100".to_string()), "{c:?}");
+    assert!(c.contains(&"No revisions issued yet.".to_string()), "{c:?}");
+    let t = text(contents);
+    assert!(t.contains(&"Cover".to_string()) && t.contains(&"Contents".to_string()) && t.contains(&"Revision history".to_string()), "{t:?}");
+    let r = text(revs);
+    assert!(r.contains(&"No revisions issued yet.".to_string()), "{r:?}");
+}
+
+#[allow(dead_code)]
+fn _unused(_: Value) {}
+
+/// Tester 024, bug 2 (owner ruling): PEDIT Open of a box outline is refused with the way out, and
+/// the box stays the context of the device inside (brief 052: which took +JB1 when the box was
+/// drawn).
+#[test]
+fn opening_a_box_outline_is_refused_with_the_way_out() {
+    let mut h = H::new(0x24_08);
+    let page = h.first_page();
+    let k = place(&mut h, "coil", (100.0, 100.0));
+    let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
+    let item: ecad_model::ItemId = id(&r, "item");
+    let hd = h.handle_of(page, item);
+    let head = h.head();
+    let e = h.run("pedit", json!({"handle": hd.hex(), "option": "open"})).unwrap_err();
+    assert!(e.contains("cannot be opened") && e.contains("erase the box"), "{e}");
+    assert_eq!(h.head(), head, "nothing recorded");
+    assert_eq!(ctx(&h.doc(), k), (s("+JB1"), "box"));
+    assert_eq!(loc(&h.doc(), k), (s("+JB1"), "device"));
+}
+
+/// Review of PR #51, finding 1: project settings changes go through the update map. A potential's
+/// default reaches only its wires; colour and reference style re-format, recompute nothing; the
+/// sheet reaches the wires of pages using the project's sheet. The kept models always equal a
+/// fresh build.
+#[test]
+fn settings_changes_update_only_the_rows_they_reach() {
+    let mut h = H::new(0x24_09);
+    h.cfg(|p| {
+        p.reports();
+    });
+    for i in 0..4 {
+        let y = 40.0 + f64::from(i) * 20.0;
+        h.run("place", json!({"symbol": "terminal_block", "at": [0, y]})).unwrap();
+        h.run("place", json!({"symbol": "terminal_block", "at": [60, y]})).unwrap();
+        let potential = if i == 0 { "24V" } else { "0V" };
+        h.run("wire", json!({"points": pts(&[(0.0, y), (60.0, y)]), "potential": potential})).unwrap();
+    }
+    same_as_built(&mut h);
+    let work = |h: &mut H| h.p(|p| p.kept_reports().map_or(0, |o| o.last_work));
+    // The 24V wires' colour default changes (brief 050b: the 24 V DC category's): only the 24V wire.
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
+    assert_eq!(work(&mut h), 1, "only the one 24V wire");
+    same_as_built(&mut h);
+    let table = h.cfg(|p| p.reports().wire_table());
+    assert!(table.rows.iter().any(|r| r[6].text == "RD"), "{table:?}");
+    // Styles: nothing recomputed, the tables follow.
+    h.run("wiresettings", json!({"colour_style": "code3"})).unwrap();
+    h.run("projectprops", json!({"reference_style": "page-column"})).unwrap();
+    same_as_built(&mut h);
+    let table = h.cfg(|p| p.reports().wire_table());
+    assert!(table.rows.iter().any(|r| r[6].text == "RED"), "{table:?}");
+    assert!(table.rows.iter().all(|r| r[10].text.starts_with('/')), "{table:?}");
+    // The sheet: the wires of pages that use it.
+    h.run("projectprops", json!({"sheet": "A2"})).unwrap();
+    assert_eq!(work(&mut h), 4);
+    same_as_built(&mut h);
+}

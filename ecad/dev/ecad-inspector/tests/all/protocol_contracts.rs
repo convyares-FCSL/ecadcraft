@@ -1,4 +1,4 @@
-//! The inspector protocol (brief 029, design 029 §2, §6, §8): every op's reply shape, counts and
+//! The inspector protocol: every op's reply shape, counts and
 //! paging on the rich fixture; every mismatch row gives its `what` and `way_out`; no input
 //! panics; serving never writes the file.
 
@@ -57,10 +57,17 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(o["branches"], 2);
         }),
         (json!({"op": "project"}), |o| {
-            assert_eq!(o["revisions"]["1"]["rev"], "A");
-            assert_eq!(o["revisions"]["1"]["issued"], "Rev A");
+            // Raw: the typed record (a rev is a position in the scheme, a date is ISO, issued a flag).
+            assert_eq!(o["revisions"]["1"]["rev"], json!({"letter": 1}));
+            assert_eq!(o["revisions"]["1"]["date"], "2026-11-22");
+            assert_eq!(o["revisions"]["1"]["issued"], true);
+            // Readable: the named points, in words, beside their keys.
+            let points = o["versions"].as_array().unwrap();
+            assert!(points.iter().any(|p| p["kind"] == "Revision" && p["shown"] == "Rev A" && p["name"] == "letter:1"), "{points:#?}");
             assert_eq!(o["counts"]["pages"], 2);
-            assert!(o["properties"].get("rev.1.rev").is_none(), "revision rows are grouped");
+            assert!(o["display"].get("rev.1.rev").is_none(), "revision rows are grouped");
+            assert_eq!(o["display"]["note"], "issued", "the project's display bag is shown as `display`");
+            assert!(o.get("properties").is_none());
         }),
         (json!({"op": "pages"}), |o| {
             assert_eq!(o["total"], 2);
@@ -73,12 +80,12 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(k1.len(), 2);
             assert!(k1.iter().all(|r| r["duplicate"] == true));
             let x1 = o["rows"].as_array().unwrap().iter().find(|r| r["tag"] == "-X1").unwrap();
-            assert_eq!(x1["points"][0], json!({"name": "3", "wires": ["101", "101"]}));
+            assert_eq!(x1["points"][0], json!({"name": "3", "wires": ["101", "101"], "accepts": 2}));
             assert!(x1.get("properties").is_none(), "properties only with detail");
         }),
         (json!({"op": "devices", "detail": true, "q": "-x1"}), |o| {
             assert_eq!(o["total"], 1);
-            assert_eq!(o["rows"][0]["properties"]["tag"], "-X1");
+            assert_eq!(o["rows"][0]["tag"], "-X1");
         }),
         (json!({"op": "nets"}), |o| {
             assert_eq!(o["total"], 3);
@@ -91,12 +98,13 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             let w = o["rows"].as_array().unwrap().iter().find(|r| r["cable"] == "-W1").unwrap();
             assert_eq!(w["ends"], json!(["-K1:A1", "-X1:3"]));
             assert_eq!(w["core"], "1");
-            assert_eq!(w["cross_section"], "1.5");
+            assert_eq!(w["size"], "1.5");
         }),
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);
             assert_eq!(o["rows"][0]["tag"], "-W1");
-            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1"}]));
+            assert_eq!((&o["rows"][0]["tag_state"], &o["rows"][0]["description"]), (&json!("automatic"), &json!(null)));
+            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1", "purpose": "in use", "colours": null}]));
         }),
         (json!({"op": "branches"}), |o| {
             assert_eq!(o["total"], 2);
@@ -120,7 +128,10 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         }),
         (json!({"op": "versions"}), |o| {
             let rows = o["rows"].as_array().unwrap();
-            assert!(rows.iter().any(|r| r["kind"] == "Revision" && r["name"] == "Rev A" && r["release"]["rev"] == "A"), "{rows:#?}");
+            assert!(
+                rows.iter().any(|r| r["kind"] == "Revision" && r["name"] == "letter:1" && r["release"]["rev"] == json!({"letter": 1})),
+                "{rows:#?}"
+            );
             assert!(rows.iter().any(|r| r["kind"] == "Auto"));
         }),
         (json!({"op": "tables"}), |o| {
@@ -146,12 +157,6 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(o["state"], "done");
             assert_eq!(o["report"]["ok"], true);
             assert!(o["elapsed_ms"].is_u64());
-        }),
-        (json!({"op": "export_jsonl"}), |o| {
-            assert_eq!(o["branch"], "main");
-            let text = o["text"].as_str().unwrap();
-            assert_eq!(text.lines().count() as u64, o["lines"].as_u64().unwrap());
-            assert_eq!(o["left_out"].as_array().unwrap().len(), 1);
         }),
     ];
     for (i, (req, check)) in rows.iter().enumerate() {
@@ -191,14 +196,27 @@ fn row_is_readable_or_raw_and_raw_is_the_stored_bytes() {
     assert_eq!(what(&ask(s, json!({"op": "rows", "table": "nope"}))), "bad-request");
 }
 
+/// S1 (#2): a cable's tag, fixed flag and description are record fields, seen in both views of the
+/// transaction that created it (the Readable text and the stored bytes), never in its bag.
 #[test]
-fn export_jsonl_is_byte_for_byte_the_text_view() {
-    let dir = TempDir::new("export");
+fn a_cables_tag_fields_show_in_the_readable_and_raw_views() {
+    let dir = TempDir::new("cablefields");
     let f = opened(&dir);
-    let reply = ask(src(&f), json!({"op": "export_jsonl", "branch": "Option B"}));
-    let mut want = Vec::new();
-    ecad_inspector::text::export_branch_jsonl(f.store().unwrap(), false, "Option B", &mut want).unwrap();
-    assert_eq!(ok(&reply)["text"].as_str().unwrap().as_bytes(), want.as_slice());
+    let s = src(&f);
+    let all = ask(s, json!({"op": "rows", "table": "transactions", "count": 100}));
+    let keys: Vec<String> = ok(&all)["rows"].as_array().unwrap().iter().filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    let (key, readable) = keys
+        .iter()
+        .map(|k| (k.clone(), ask(s, json!({"op": "row", "table": "transactions", "key": k, "form": "readable"})).to_string()))
+        .find(|(_, text)| text.contains("CreateCable"))
+        .expect("the transaction that creates the cable");
+    for want in ["\"tag\":{\"state\":\"automatic\",\"tag\":\"-W1\"}", "\"description\":null"] {
+        assert!(readable.contains(want), "{want} in {readable}");
+    }
+    assert!(!readable.contains("\"properties\":{\"tag\""), "not in the bag: {readable}");
+    let raw = ask(s, json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert_eq!(ok(&raw)["truncated"], false);
+    assert!(ok(&raw)["size"].as_u64().is_some_and(|n| n > 0), "the stored bytes are shown");
 }
 
 #[test]
@@ -263,7 +281,7 @@ fn set_meta(path: &std::path::Path, name: &str, value: Value) {
     let db = redb::Database::open(path).unwrap();
     let w = db.begin_write().unwrap();
     {
-        let mut t = w.open_table(ecad_file::v2::schema::META).unwrap();
+        let mut t = w.open_table(ecad_file::schema::META).unwrap();
         t.insert(name, serde_json::to_vec(&value).unwrap().as_slice()).unwrap();
     }
     w.commit().unwrap();
@@ -273,7 +291,6 @@ fn set_meta(path: &std::path::Path, name: &str, value: Value) {
 fn every_mismatch_row_gives_its_what_and_a_way_out() {
     let dir = TempDir::new("mismatch");
     let good = std::fs::read(rich(&dir, "Main")).unwrap();
-    let v1 = v1_bytes(&history());
     let mut redb_junk = b"redb".to_vec();
     redb_junk.extend(std::iter::repeat_n(0xA5u8, 5_000));
     let with_meta = |name: &str, value: Value| {
@@ -286,12 +303,27 @@ fn every_mismatch_row_gives_its_what_and_a_way_out() {
     let rows: Vec<(&str, &str, Vec<u8>, &str, Option<&str>, &str)> = vec![
         ("1 empty", "x.ecad", Vec::new(), "empty", None, "tables"),
         ("1 lock file", "x.ecad.lock", b"pid 7".to_vec(), "empty", None, "tables"),
-        ("2 version 1", "old.ecad", v1.clone(), "version-1", None, "devices"),
+        (
+            "2 JSON Lines (the removed version 1 format)",
+            "old.ecad",
+            br#"{"crc":"00000000","rec":{"type":"header"}}"#.to_vec(),
+            "not-ecad",
+            None,
+            "devices",
+        ),
         ("3 snapshot", "s.json", br#"{"format":"ecad-inspect/2","seq":1}"#.to_vec(), "snapshot", None, "devices"),
         ("4 not ecad", "z.ecad", b"PK\x03\x04 a zip".to_vec(), "not-ecad", None, "tables"),
         ("5 not a project", "lib.ecad", with_meta("format", json!("ecad-library")), "not-project", Some("tables"), "devices"),
         ("6 container version", "c3.ecad", with_meta("container_version", json!(3)), "container-version", Some("tables"), "devices"),
-        ("7 schema version", "s2.ecad", with_meta("schema_version", json!(2)), "schema-version", Some("rows"), "devices"),
+        (
+            "7 schema version",
+            "snext.ecad",
+            with_meta("schema_version", json!(ecad_file::SCHEMA_VERSION + 1)),
+            "schema-version",
+            Some("rows"),
+            "devices",
+        ),
+        ("7b older schema version", "s1.ecad", with_meta("schema_version", json!(1)), "schema-version", Some("rows"), "devices"),
         ("8 unreadable", "r.ecad", redb_junk, "unreadable", None, "tables"),
     ];
     for (case, name, bytes, want, works, refused) in rows {
@@ -309,11 +341,7 @@ fn every_mismatch_row_gives_its_what_and_a_way_out() {
         }
         f.wait_verified(Duration::from_secs(10));
     }
-    // Row 2 shows the version 1 header line; row 4 the first bytes.
-    let f = FileSource::from_bytes("old.ecad", v1);
-    let s = ask(src(&f), json!({"op": "summary"}));
-    assert!(ok(&s)["v1_header"].as_str().unwrap().starts_with('{'), "{s}");
-    assert!(ok(&s)["problem"]["way_out"].as_str().unwrap().contains("ecad upgrade old.ecad"));
+    // Row 4 shows the first bytes.
     let f = FileSource::from_bytes("z.ecad", b"PK\x03\x04 a zip".to_vec());
     assert_eq!(ok(&ask(src(&f), json!({"op": "summary"})))["head_hex"].as_str().unwrap().get(..8), Some("504b0304"));
 }
@@ -324,14 +352,14 @@ fn a_damaged_history_opens_read_only_at_the_last_good_transaction() {
     // views (chain, Verify) name it.
     let dir = TempDir::new("damage");
     let path = rich(&dir, "Main");
-    let main = ecad_file::v2::schema::BranchId::main_of(PROJECT.0);
-    let last = ecad_file::v2::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
+    let main = ecad_file::schema::BranchId::main_of(PROJECT.0);
+    let last = ecad_file::Store::open(&path, false).unwrap().reader().unwrap().last_seq(main).unwrap().unwrap();
     {
         let db = redb::Database::open(&path).unwrap();
         let w = db.begin_write().unwrap();
         {
-            let mut t = w.open_table(ecad_file::v2::schema::TRANSACTIONS).unwrap();
-            let k = ecad_file::v2::schema::tx_key(main, last);
+            let mut t = w.open_table(ecad_file::schema::TRANSACTIONS).unwrap();
+            let k = ecad_file::schema::tx_key(main, last);
             let mut v = t.get(k).unwrap().unwrap().value().to_vec();
             let end = v.len() - 1;
             v[end] ^= 1;
@@ -417,7 +445,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         every_op(&FileSource::from_bytes("noise.ecad", b));
     }
     // A flipped byte in one row of each table.
-    for table in ecad_file::v2::store::TABLES {
+    for table in ecad_file::store::TABLES {
         let p = dir.path(&format!("flip-{table}.ecad"));
         std::fs::write(&p, &good).unwrap();
         let db = redb::Database::open(&p).unwrap();
@@ -430,7 +458,7 @@ fn hostile_files_get_a_reply_never_a_panic() {
         };
         let mut flipped = true;
         {
-            use ecad_file::v2::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
+            use ecad_file::schema::{BRANCHES, CHUNKS, META, TRANSACTIONS, VERSIONS};
             match table {
                 "meta" => {
                     let mut t = w.open_table(META).unwrap();

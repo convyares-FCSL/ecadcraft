@@ -1,9 +1,10 @@
-//! Brief 020b, MCP contract (the ECAD rule of brief 011): `merge` (into the parent, and update
+//! MCP contract: `merge` (into the parent, and update
 //! from the parent) and `undomerge` through `execute` record one merge transaction by the agent;
 //! the preview reads and records nothing, also with writes off; a conflict without a choice is
 //! refused naming it and how to choose; plain undo of a merge asks first.
 
-use ecad_mcp::{EcadMcp, Options, policy};
+use ecad_engine::agent::policy;
+use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, TxKind};
 use serde_json::{Value, json};
 
@@ -21,8 +22,8 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String) {
 }
 
 fn description(c: &mut Client, coil: &str) -> Option<String> {
-    let id = ecad_model::ComponentId::parse(coil).unwrap();
-    c.doc().components.get(&id).and_then(|x| x.properties.get("description").cloned())
+    let id = ecad_model::DeviceId::parse(coil).unwrap();
+    c.doc().devices().get(&id).and_then(|x| x.get("description").map(str::to_string))
 }
 
 fn current(c: &mut Client) -> String {
@@ -47,7 +48,7 @@ fn merge_into_main_and_undo_merge_through_execute_record_the_agents_merge() {
     c.exec("branch", json!({"name": "Option B"}));
     c.exec("setprop", json!({"component": coil, "key": "description", "value": "Pump 1"}));
     c.exec("wire", json!({"points": [[0, 80], [60, 80]]}));
-    let wires = c.doc().conductors.len();
+    let wires = c.doc().routes().len();
     // The preview reads: nothing recorded, still on the branch.
     let before = c.log().len();
     let pv = c.exec("merge", json!({"from": "Option B", "preview": true}));
@@ -67,7 +68,7 @@ fn merge_into_main_and_undo_merge_through_execute_record_the_agents_merge() {
     assert_eq!(last.label, "Merge \"Option B\" (based on version \"Before change\")");
     assert_eq!(r["ecadTransactions"].as_array().map(Vec::len), Some(1), "one transaction counted: {r}");
     assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump 1"));
-    assert_eq!(c.doc().conductors.len(), wires);
+    assert_eq!(c.doc().routes().len(), wires);
     c.ok("save", json!({}));
     assert_eq!(status(&mut c, "Option B"), "merged", "Close branch is on by default");
     let h = c.exec("history", json!({"archived": true}));
@@ -206,7 +207,7 @@ fn a_merge_over_the_cap_is_taken_back_close_false_undo_and_edit_rules() {
     let replies: Vec<Value> = serde_json::from_str::<Value>(&reply.unwrap()).unwrap().as_array().unwrap().clone();
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
     assert!(m.contains("taken back") && !m.contains("NOT as before"), "{m}");
-    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 1, "only the wire stays");
+    assert_eq!(c.doc().routes().len(), before.routes().len() + 1, "only the wire stays");
     assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump"));
     // close:false: the branch stays open, and undoing says nothing about reopening it.
     c.exec("merge", json!({"from": "Option R", "close": false}));
@@ -226,6 +227,6 @@ fn a_merge_over_the_cap_is_taken_back_close_false_undo_and_edit_rules() {
     assert_eq!(description(&mut c, &coil).as_deref(), Some("Pump 9"));
     c.ok("save", json!({}));
     drop(c);
-    let v = ecad_file::v2::verify::verify(&ecad_file::v2::Store::open(std::path::Path::new(&path), false).unwrap());
+    let v = ecad_file::verify::verify(&ecad_file::Store::open(std::path::Path::new(&path), false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
 }

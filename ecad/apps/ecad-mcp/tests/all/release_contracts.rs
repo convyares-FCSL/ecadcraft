@@ -1,4 +1,4 @@
-//! Brief 027 (design 027 §10, check G): through `execute`, `prerelease` works with writes off,
+//! Through `execute`, `prerelease` works with writes off,
 //! records nothing and lists an `orphan-reference` row; `release` of the pending revision records
 //! `Issue Rev B` with `rev.<n>.released` as the agent, writes the files and a manifest whose hashes
 //! match, and is refused with writes off; with an error and no `accept` it refuses with the way
@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{AGENT, Client, TempDir};
@@ -28,7 +28,7 @@ fn project(dir: &TempDir) -> (Client, String) {
     for l in ["1", "2", "3"] {
         c.exec("setprop", json!({"cable": cable["cable"], "key": format!("unused.{l}"), "value": "yes"}));
     }
-    c.exec("cableref", json!({"cable": cable["cable"], "at": [120, 5]}));
+    c.exec("cablereference", json!({"cable": cable["cable"], "at": [120, 5]}));
     c.exec("projectprops", json!({"drawing_number": "D-1001"}));
     c.exec("revision", json!({"description": "First issue", "drawn": "CVA"}));
     c.exec("issuerevision", json!({}));
@@ -68,8 +68,8 @@ fn release_records_the_issue_as_the_agent_and_prerelease_reads() {
     assert_eq!(t.label, "Issue Rev B");
     assert_eq!(t.author, Author::Agent(AGENT.into()));
     assert!(
-        t.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, after: Some(a), .. }
-        if key == "rev.2.released" && a == "release/Rev B")),
+        t.ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
+        if ecad_electrical::releases::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{:?}",
         t.ops
     );
@@ -78,7 +78,7 @@ fn release_records_the_issue_as_the_agent_and_prerelease_reads() {
     assert_eq!(r["folder"], json!(out.to_string_lossy()));
     for f in manifest(&out)["files"].as_array().unwrap() {
         let bytes = std::fs::read(out.join(f["name"].as_str().unwrap())).unwrap();
-        assert_eq!(f["sha256"], ecad_cadcraft::release::sha256_hex(&bytes), "{f}");
+        assert_eq!(f["sha256"], ecad_engine::releases::release::sha256_hex(&bytes), "{f}");
     }
     // An existing folder without `existing`: refused before any transaction.
     c.exec("revision", json!({"description": "Again", "drawn": "CVA", "rev": "C"}));
@@ -150,7 +150,7 @@ fn on_disk(dir: &TempDir, path: &str) -> (u64, std::time::SystemTime, Vec<String
     let meta = std::fs::metadata(path).unwrap();
     let (s, _) = EcadMcp::open(path, Options { write: false, agent: None }).unwrap();
     let mut r = Client::new(s);
-    let versions: Vec<String> = r.doc().versions.keys().cloned().collect();
+    let versions: Vec<String> = r.doc().versions().keys().map(|k| format!("{k:?}")).collect();
     drop(r);
     let mut files = Vec::new();
     let mut todo = vec![root(dir).join("release")];

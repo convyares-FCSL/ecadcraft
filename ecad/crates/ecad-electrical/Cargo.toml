@@ -1,0 +1,32 @@
+[package]
+name = "ecad-electrical"
+description = "The electrical rules of an ECAD project: devices, wires, cables, terminals, references, checks, reports and the page layouts they decide, without a drawing engine (design 065 §1)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-model = { workspace = true }
+# A starter symbol's definition carries its content hash (`ecad_file::definition_hash`).
+ecad-file = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+# `ecad_model::word_enum!` derives strum's traits in the crate that declares the enum.
+strum = { workspace = true }
+serde_json = { workspace = true }
+# Command parameters carry their JSON Schema (the generic runner, design commands.md).
+schemars = { workspace = true }
+# The built-in defaults are TOML data; parsing only, spans kept.
+toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
+# Revision dates (calendar only; no clock: the time is passed in).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+# The tag-rule test opens a store on disk.
+ecad-store = { workspace = true }

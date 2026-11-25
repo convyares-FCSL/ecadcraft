@@ -1,0 +1,60 @@
+# Core colour schemes for cable types: ECAD's own data. A cable type that
+# names a scheme takes its cores' colours from here by the cable's core count; a type's own
+# `core_colours` list wins over its scheme. Read as typed data by `src/styles/cable.rs`; the test
+# `core_schemes_data_reads` refuses a misspelt key or a colour not in its stored form.
+#
+# Per scheme, all optional:
+#   with_earth / without_earth  the cores for one core count, earth core included (`4G`) or not
+#                               (`4X`); keys are core counts
+#   sequence                    otherwise the first cores of this sequence, in order
+#   core                        otherwise every core in this colour (numbers tell them apart)
+#   earth                       the last core of a cable with an earth core
+#   then                        the scheme used for a core count this one does not cover
+# Colours are 2-letter codes; a two- or three-colour core is written with slashes (`GN/YE`).
+
+# Power cables. Phases brown, black, grey; neutral blue; earth green/yellow, always the last core.
+[harmonised]
+earth = "GN/YE"
+then = "numbered"
+
+[harmonised.with_earth]
+"3" = ["BN", "BU", "GN/YE"]
+"4" = ["BN", "BK", "GY", "GN/YE"]
+"5" = ["BN", "BK", "GY", "BU", "GN/YE"]
+
+[harmonised.without_earth]
+"2" = ["BN", "BU"]
+"3" = ["BN", "BK", "GY"]
+"4" = ["BN", "BK", "GY", "BU"]
+
+# Black cores printed with their numbers, and a green/yellow earth core last.
+[numbered]
+core = "BK"
+earth = "GN/YE"
+
+# Data and signal cables: DIN 47100, no colour used twice.
+[din47100]
+then = "numbered"
+sequence = [
+    "WH", "BN", "GN", "YE", "GY", "PK", "BU", "RD", "BK", "VT",
+    "GY/PK", "RD/BU", "WH/GN", "BN/GN", "WH/YE", "YE/BN", "WH/GY", "GY/BN", "WH/PK", "PK/BN",
+    "WH/BU", "BN/BU", "WH/RD", "BN/RD", "WH/BK", "BN/BK", "GY/GN", "YE/GY", "PK/GN", "YE/PK",
+    "GN/BU", "YE/BU", "GN/RD", "YE/RD", "GN/BK", "YE/BK", "GY/BU", "PK/BU", "GY/RD", "PK/RD",
+    "GY/BK", "PK/BK", "BU/BK", "RD/BK", "WH/BN/BK", "YE/GN/BK", "GY/PK/BK", "RD/BU/BK", "WH/GN/BK", "BN/GN/BK",
+    "WH/YE/BK", "YE/BN/BK", "WH/GY/BK", "GY/BN/BK", "WH/PK/BK", "PK/BN/BK", "WH/BU/BK", "BN/BU/BK", "WH/RD/BK", "BN/RD/BK",
+    "BK/WH",
+]
+
+# Control cables: ICEA method 1, six base colours, then each with a tracer of the others in turn.
+[icea_k2]
+earth = "GN/YE"
+then = "numbered"
+sequence = [
+    "BK", "RD", "BU", "OG", "YE", "BN",
+    "RD/BK", "BU/BK", "OG/BK", "YE/BK", "BN/BK",
+    "BK/RD", "BU/RD", "OG/RD", "YE/RD", "BN/RD",
+    "BK/BU", "RD/BU", "OG/BU", "YE/BU", "BN/BU",
+    "BK/OG", "RD/OG", "BU/OG", "YE/OG", "BN/OG",
+    "BK/YE", "RD/YE", "BU/YE", "OG/YE", "BN/YE",
+    "BK/BN", "RD/BN", "BU/BN", "OG/BN", "YE/BN",
+]

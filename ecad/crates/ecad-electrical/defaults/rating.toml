@@ -1,0 +1,25 @@
+# Wire and cable rating.
+# Built-in defaults. Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"rating.wire_basis" = "datasheet"
+"rating.cable_basis" = "table"
+"rating.panel_temperature" = 40.0
+"rating.ambient" = 30.0
+"rating.table" = "none"
+"rating.bundling" = "none"
+"rating.method" = "E"
+"rating.voltage" = 400.0
+"rating.system" = "ac3"
+"rating.vd_limit" = 5.0
+"rating.supply_tolerance" = 5.0
+"rating.template.power_supply" = "voltages, current, power, apparent_power, frequency, impedance_voltage"
+"rating.template.protection" = "curve, current, class, size, residual, residual_type, breaking, conditional_short_circuit, poles, voltage, outputs"
+"rating.template.switching" = "control, ac3_current, ac3_power, operational_voltage, thermal_current, insulation_voltage"
+"rating.template.sensor" = "supply"
+"rating.template.motor" = "power, voltage, current, frequency, speed, power_factor, efficiency, efficiency_class, connection, duty, insulation_class, ip_rating, starting"
+"rating.template.load" = "power, voltage, current, phases"
+"rating.template.indicator" = "colour, signal, voltage, power"

@@ -1,0 +1,765 @@
+Historical record (2026-11-14). Not current; see [user/pages.md](../../user/pages.md).
+
+# Design 054: Page types, Settings ▸ Pages and sheets, and generated cover pages
+
+Status: Approved (owner answers and overseer rulings, 2026-11-14, §18). Brief:
+`docs/briefs/054-page-types-front-pages.md` (Approved). *Revised 2026-11-14 for the owner's
+answers: pages are numbered by folder, not by type, and + Page inserts after the current page.*
+Source: the rev 4 build spec (`docs/discussions/ui-2026-11/rev4-build-spec.md`): "Draw:
+generated front pages" (the spec's heading), "Settings" (Pages and sheets), "Panels" (Book groups); boards **1.16**
+(generated cover page) and **5.02** (Settings ▸ Pages and sheets), and 1.02 for the Book.
+Builds on 019 (sheet, frame, title block, folders, page and project properties, revisions), 024
+(generated pages, update maps), 033 (continuation numbers, revision columns, pending marker), 046
+(a page style resolved through the registry), 050a/050b (the style model, its catalogues and
+commands; wire categories), 051 (screenshots side by side).
+Follows `008.md` §2: click-first, one commit = one JSON-equivalent transaction, Esc writes
+nothing, feedback in words, never crash.
+
+Format proposals: §11. Update maps: §10. Owner questions: §14. Tester: §13. Split: §15.
+
+## 0. Files touched (per-lane layout, owner 2026-11-13)
+
+New code goes in new files; shared files get one block each. Paths under `ecad/`.
+
+| File | Change | Part |
+| --- | --- | --- |
+| `crates/ecad-cadcraft/src/styles/page.rs` (**new**) | The `page` catalogue: fields, the six built-ins, `type_of(doc, page)`, `look_of` (§2) | a |
+| `crates/ecad-cadcraft/src/styles/mod.rs` | One line in `CATALOGUES`, one `mod page;` | a |
+| `crates/ecad-cadcraft/src/defaults/pages.rs` (**new**), one `mod` line in `defaults/mod.rs` | Registry entries `page.type`, `front.cover.*` (§2.3, §6.4) | a, b |
+| `crates/ecad-cadcraft/src/page_types.rs` (**new**) | The types index (type → pages), `newpage {type}`'s type rules (§4.2), folder start numbers, `folderprops` and `renumberpages` (§4.3, §4.4), Checks kinds (§9) | a |
+| `crates/ecad-cadcraft/src/commands.rs` | `newpage` gains `type` and `after`; the number of a page that is first in a folder with a start number calls `page_types` (one block in `run_newpage`) | a |
+| `crates/ecad-cadcraft/src/sheet_cmds.rs` | `default_number` takes the folder's start number for an empty folder (one argument, one block); `deletefolder` clears the folder's start (§4.3); `deletepage` for generated pages (§8.3) | a, b |
+| `crates/ecad-model/src/sheet.rs` | `sheet_of` reads the page type's stored `sheet` (FP3, §3.1). Reads stored records only | a |
+| `crates/ecad-cadcraft/src/frame.rs` | `FrameInput` gains `zones` from the type; `parts` draws zone ticks and labels only when `grid_labels && zones` (FP6, one block) | a |
+| `crates/ecad-cadcraft/src/front.rs` (**new**) | The cover's blocks, their layout, the wire-colour and symbol-use indexes (§6, §10) | b |
+| `crates/ecad-cadcraft/src/generated.rs` | `GenKind::Cover` content calls `front::cover`; `touches` arms for the cover; `Revisions` default title `Revision history` (one block each) | b |
+| `crates/ecad-cadcraft/src/lanes.rs` | `("054", crate::page_types::specs),` | a |
+| `apps/ecad-trial/src/settings/pages.rs` (**new**) | The Pages and sheets table and its right panel (§5) | a |
+| `apps/ecad-trial/src/settings/mod.rs`, `settings/project.rs` | `Section::Pages` shows `pages::show`; today's sheet and numbering rows move into its folded section (§5.4) | a |
+| `apps/ecad-trial/src/shell/new_page.rs` (**new**) | The + Page picker (§4.1) | a |
+| `apps/ecad-trial/src/project_panel.rs`, `shell/status_bar.rs` | Their **+** opens the picker (one call each); the Book's **Renumber pages** and a folder row's **Start number** (§4.3, §4.4) | a |
+| `apps/ecad-trial/src/shell/right/page.rs` (**new**), one line in `shell/right.rs` | The Page tab (§8) | b |
+| Tests: `crates/ecad-cadcraft/tests/all/lanes/lane_054.rs` (+ `lane_054/{types,cover}.rs`), `crates/ecad-model` sheet tests (one module), `apps/ecad-mcp/tests/all/lanes/lane_054.rs`, `apps/ecad-trial/tests/all/lanes/lane_054.rs`; one `mod lane_054;` per `lanes/mod.rs` | §12 | a, b |
+| `crates/ecad-bench` | §10.4's rows | a, b |
+| `docs/quick-start/054-page-types-front-pages.md` (**new**) | By clicking (§12.3) | a, b |
+
+Nothing upstream changes. No op. `ecad-model` changes one read function (FP3).
+
+**Collisions the overseer should know.**
+
+- `generated.rs`: 051 and 046 are merged. 055 (title block editor) may touch `frame.rs` and the
+  frame catalogue; 054 adds one block to `frame.rs` (zones) and none to `styles/frame.rs`.
+- `sheet_cmds.rs`: `default_number` gains one argument; any lane calling it passes `None`.
+- 026's renumber dialog (`renumber_dialog.rs`) renumbers **devices**; `renumberpages` is a separate
+  command and button and does not touch it.
+- `apps/ecad-trial/src/settings/`: 5.01 (Project info) is another rev 4 board. If its lane edits
+  `settings/project.rs`, 054 only moves the Pages body out of it (§5.4); second to merge rebases.
+
+### 0.1 What the code has today (checked on `origin/dev` `8b6c2ccd`)
+
+- `generated::GenKind`: `cover`, `contents`, `revisions`, `bom-location`, `terminals`, `cables`,
+  `plcrack`, `iolist`, in page property `generated`; `KIND_FIXED` refuses changing it.
+- The cover draws six centred lines (`cover_lines`: title, drawing number, customer, status,
+  revision, sheet count). `touches` redraws it on any project property, version op and page
+  add or remove.
+- `newpage {title, number?, folder?, generated?, strip?, style?}`: places the page last in its
+  folder (`new_page_place`) and numbers it after the page before it (`default_number`, project
+  `page_number_step`).
+- `ecad_model::sheet::sheet_of(doc, page)`: page `sheet`, else `settings.sheet`, else A3; used by
+  `Grid::of` (references, zones) and the frame.
+- `styles::frame`: fields `border_weight`, `inner_weight`, `line_colour`, `grid_labels`,
+  `title_block` (`standard` only); choice `print.frame.style` at levels S P G.
+- There is no page delete in the engine; the Book's Delete is shown disabled ("not yet").
+- Settings ▸ Pages and sheets (`Section::Pages`, `settings/project.rs::pages`) has two tabs,
+  "Sheets and numbering" and "Text styles".
+
+## 1. Goal and words
+
+**Goal:** a person adds a page by saying what kind of page it is, and the page arrives with the
+right sheet, frame, title block and number in the right place in the book; the book opens with a
+cover that explains the drawing and keeps itself current.
+
+| Word | Means |
+| --- | --- |
+| **page type** | What a page is: Cover sheet, Schematic, Network, Single-line, Panel layout, Report, or a project's own. A style of catalogue `page`. |
+| **generated kinds** | The generated pages a type holds: Cover sheet the cover, revision history and contents; Report the report kinds; an own type what the type it was copied from holds (the hidden field `holds`). There is no position (owner, fix round). |
+| **start number** | A folder's first page number (`100`). Its pages are numbered from it by **Renumber pages** (owner, Q13). |
+| **generated pages** | The generated pages of the Cover sheet type: Cover, Revision history, Contents. |
+| **block** | One part of the cover: heading, customer and site, notes, wire colours, symbol legend, revisions, structure codes. |
+
+## 2. The page type catalogue (FP1)
+
+### 2.1 Fields
+
+| Field | Kind | Field built-in | Meaning |
+| --- | --- | --- | --- |
+| `sheet` | `project`, or a sheet text (`A3`, `A2 12x8`; 019's `SheetSpec::parse`) | `project` | The paper. `project`: the project's sheet |
+| `frame` | `project`, or a `frame` style ID | `project` | The frame style. `project`: the `print.frame.style` choice as today |
+| `title_block` | `frame`, or a `frame` style ID | `frame` | The frame style whose title block the type's pages borrow (055: the border stays the frame's); `frame`: the frame's own block (Q10) |
+| `zones` | Choice `on`, `off` | `on` | Zone ticks and labels on the frame (§3.3) |
+| `holds` | Choice `none`, `front`, `report` (not shown) | `none` | The generated kinds the type holds (§2.3); copied with the type. Never placement or order |
+| `checks` | Choice `on`, `off` | `on` | **Checks and references** (owner, fix round): off, the type's pages get no electrical checks, no cross-references and no device or wire numbering (§3.4) |
+
+A type carries **no numbers and no group** (owner, Q13 and Q1): pages are numbered by folder
+(§4.3, §4.4) and go where the person adds them (§4.1).
+
+Bounds are guards (house rule 12): a record holding a malformed value reads as absent for that
+field and falls through (050 §2.4); Checks reports it (§9). The style's `name` is the type's name.
+
+### 2.2 Built-in types
+
+Values from board 5.02, without its Numbers column (owner, Q13). Every built-in takes the
+project's sheet and frame, so an old project looks the same (§2.4).
+
+| ID | Name | Subtitle (Settings) | `holds` | Zones | Generated kinds |
+| --- | --- | --- | --- | --- | --- |
+| `front` | Cover sheet | Cover, revisions, contents | front | off | `cover`, `revisions`, `contents` |
+| `schematic` | Schematic | — | none | on | none (drawn) |
+| `network` | Network | From ports and cables | none | on | none yet (Q2) |
+| `singleline` | Single-line | From the load tree | none | on | none yet (Q2) |
+| `panel` | Panel layout | Scale 1:4 | none | off | none; + Page disabled (Q3) |
+| `report` | Report | Parts, cables, terminals, PLC | report | off | `bom-location`, `terminals`, `cables`, `plcrack`, `iolist` |
+| `plain` | Plain | Imported drawings and notes | none | off | none; **Checks and references off** |
+
+The built-in `front` keeps its ID (old files store it in `page.type`); only its name is **Cover
+sheet** (owner, fix round). **Plain** is for imported or vendor drawings and notes pages: a frame,
+a title block and whatever is drawn (placing images and PDFs comes in 0.4.0).
+
+The subtitles are fixed words of the built-ins; own types have none. The Network and Single-line
+subtitles describe what their later generators read; until then they are drawn pages (Q2).
+
+### 2.3 A page's type (FP2)
+
+Registry choice entry **`page.type`** ("Page type"), catalogue `page`, levels **G** (page) only:
+a type is a property of the page, never a project default. Resolution:
+
+1. the page's own `page.type` (written by `newpage {type}` or `setdefault … level: "page"`), if it
+   names a type that exists;
+2. else from its generated kind (§2.2's last column): `cover`, `revisions`, `contents` → `front`;
+   every other kind → `report`;
+3. else `schematic`.
+
+A generated page's type must be one that holds its kind (a cover needs a type holding the front
+kinds, a BOM one holding the report kinds); `newpage` and `setdefault` refuse others: `A cover page is a Cover sheet page; choose a
+Cover sheet type.` An own type copied from Cover sheet (or Report) is allowed.
+
+### 2.4 Old projects
+
+No page has `page.type`, so every page resolves by rule 2 or 3. The built-ins take the project's
+sheet and frame, so nothing moves or redraws differently except two things, both intended and
+named in the quick start: existing cover, revision and contents pages lose their zone ticks and labels (zones off), and
+the cover draws the new blocks (§6). Numbers and folders are never rewritten until the person
+presses **Renumber pages** (§4.4).
+
+## 3. What the type brings to a page
+
+### 3.1 Sheet (FP3)
+
+`sheet_of(doc, page)` becomes: the page's own `sheet` → **its type's stored `sheet`** (the
+project record, then the standard record, of catalogue `page`, field `sheet`, when it parses and
+is within limits) → `settings.sheet` → A3. `ecad-model` reads only stored records: the type ID
+comes from the page's `page.type` property or, absent, rule 2–3 of §2.3 applied to the
+`generated` property (a small fixed table in `ecad-model`, the same six words). A built-in with no
+record has `sheet = project`, so the chain falls through exactly as today. `Grid::of`, references
+and the frame follow without change.
+
+### 3.2 Frame and title block
+
+The frame style is the type's `frame` when it names one, else the `print.frame.style` choice
+(page → project → standard → `sheet`) as today. The title block layout is the type's
+`title_block`; `frame` means the frame style's own `title_block` (today `standard`).
+
+### 3.3 Zones (FP6)
+
+`zones off` draws the frame with no zone ticks and no zone labels (as the frame style's
+`grid_labels off` does). Both must be on to draw them. References are unchanged: a reference to
+an item on a zoneless page still gives its zone (Q14).
+
+### 3.4 Checks and references (owner, fix round)
+
+A type with `checks` off (the built-in Plain) takes its pages out of the electrical model's derived
+views, without changing what is stored:
+
+- **Checks**: no Checks row is placed on such a page (the electrical kinds: nets, wires, devices,
+  terminals, cables). Page type and folder rows still show.
+- **Cross-references**: its symbols are in no device's reference group and its cable reference ends
+  in no cable's, so nothing points at it and it shows no reference texts or contact tables.
+- **Numbering**: Renumber (026) leaves the devices, cables and wires anchored on it alone, and the
+  wire numbering pass gives no number to a net drawn only on such pages.
+
+Changing a type's `checks`, or a page's type, rebuilds the reference index and the Checks list
+(the one wide case; rare, on request).
+
+## 4. Adding a page
+
+### 4.1 The + Page picker
+
+Every **+** that adds a page opens one picker: the page well's **+** (adds after the open page),
+the Book header's **+**, a Book group row's **+** (adds at the end of that group) and the
+Project panel's **+**. Element `ecad.newpage.picker`.
+
+- A floating list (220 px wide, rows 28 px, `shell.raised` ground, 1 px `shell.line` border),
+  above the **+** in the bottom bar, below it in the Book.
+- One row per type in catalogue order (the built-ins, then own types by name): the type's
+  thumbnail (the Settings icon, 24 × 16 px), its name, and at the right in `shell.text_3` the
+  number the page will get: `104`. Element `ecad.newpage.type.<id>`.
+- **Cover sheet** and **Report** rows have a › and open a second list of their generated kinds:
+  Cover, Revision history, Contents; BOM by location, Terminal plan, Terminal strips, Cable
+  schedule, PLC racks, I/O list. Element `ecad.newpage.kind.<kind>`. A kind already in the
+  book shows its number in `shell.text_3` (`in the Book · 02`) and stays allowed (024 Q5).
+- **Panel layout** is disabled with the tooltip `Panel layout pages come with the panel layout
+  page.` (Q3).
+- The highlighted row on opening: the open page's type from the page well, the group's type from
+  a group row, Schematic otherwise.
+- Keys: ↑ ↓ move, → opens a kind list, ← closes it, Enter adds, Esc closes and writes nothing.
+  Clicking outside closes it.
+- **Where the page goes (owner, Q1):** from the page well and the Book header, right after the
+  open page, in its folder; from a group row's +, last in that group. Choosing a row runs
+  `newpage {type, generated?, after | folder}` (§4.2), opens the new page and puts the Book's
+  rename field on its title (019 §5.3). The status line says `Added page 104 (Schematic) after
+  103.` The type never moves the page elsewhere.
+
+### 4.2 `newpage` (extended)
+
+`newpage {title?, number?, folder?, after?: page, type?: id, generated?, strip?, style?}`.
+
+- `type`: a page type ID (`schematic`, `#…`). Written as the page's `page.type` in the `AddPage`'s
+  properties only when it differs from what rule 2–3 would give, so a plain schematic page stays
+  as small as today.
+- `generated` with no `type`: the type is rule 2's. `type` with no `generated` on a type whose
+  built-in has generated kinds only (`front`, `report`): refused, `A Cover sheet page is generated:
+  give generated: "cover", "revisions" or "contents".`
+- `after`: place the page right after that page, in its folder (the page well's +).
+- `title` defaults to the kind's title, else the type's name.
+- Placement is `after`, else `folder` (last in it), else today's (last in the book): the type
+  never decides it. The number is §4.3's.
+- No `type` and no `generated`: exactly as today (a Schematic page, placed and numbered by 019).
+- One transaction: the `AddPage`.
+
+### 4.3 Numbers and folder start numbers (owner, Q13)
+
+**Default:** pages start at `1` and each new page takes the next available number after the page
+before it: 019's `default_number` (the page before's number plus the project's step, skipping every
+number and continuation number in use, 033 §5.3). Unchanged.
+
+**A folder can carry a start number** (`100` for Schematic, `300` for Terminal): 1–6 digits;
+leading zeros set the width (`01` gives `01`, `02`). A new page that is the first in a folder with
+a start number takes that number if it is free, else the next free after it. Every other new page
+follows the default rule. A folder without a start number gives its pages no number of its own:
+Renumber counts them in the run of the nearest folder above with a start, else in the book's run
+from `1`.
+
+- **Setting it:** the Book's folder row context menu ▸ **Start number…** opens an inline field on
+  the row (`ecad.book.folder.start.<id>`), digits only; Enter writes, Esc writes nothing, empty
+  clears. The folder row shows it grey after the name: `Schematic  100`. Command `folderprops
+  {folder: id, start: "100" | null}`, one transaction. Refused with words when not 1–6 digits:
+  `A start number is 1 to 6 digits.`
+- **Stored** as the project property `folder.<folder id>.start` (FP7). `deletefolder` clears it in
+  the same transaction; a key naming no folder is ignored and reported by Checks (§9).
+- Setting or changing a start number renumbers nothing; Renumber does (§4.4).
+
+### 4.4 Renumber pages (owner, Q13)
+
+A **Renumber pages** button in the Book panel's header menu (`ecad.book.renumber`), and in a folder
+row's context menu for that folder alone. Command `renumberpages {folder?: id}`.
+
+- Walks the book order (all pages, or that folder and its sub-folders). Each page belongs to the
+  **run** of the nearest folder above it with a start number, else the book's run from `1`. Each
+  run numbers its pages in book order from its start, by the project's step.
+- A number already given in this renumber, or a continuation number of a generated page's sheets
+  (033), is skipped. When a run reaches another run's numbers (Schematic past 299 into Terminal's
+  300), its pages skip past them, and Checks warns `Folder Schematic's numbers run into Terminal's
+  (300).` Never a refusal.
+- One transaction of `SetProperty(Page, number)` for the pages whose number changes; one `u`. The
+  status line says `Renumbered 48 pages.`, or `Page numbers already in order.` when nothing
+  changes (nothing written).
+- References, title blocks, Contents and continuation numbers follow through their existing update
+  maps (a page number change, 019 §9).
+- The owner's flow works as is: draw pages 1–50, make folders Schematic (start 100) and Terminal
+  (start 300), move the pages in, press Renumber.
+
+## 5. Settings ▸ Pages and sheets (board 5.02)
+
+Opened from the project name menu ▸ Settings, section **Pages and sheets** (left list count:
+the number of types). Same top and bottom bars. `← Back to Draw, page 2` and Esc as rev 3.
+
+### 5.1 Header
+
+`Pages and sheets` (UI heading) and, in `shell.text_2`: `Each page type brings its own sheet. +
+Page asks which type and adds the page after the one you are on.`
+
+### 5.2 The table (element `ecad.settings.pages.table`)
+
+039's table component, one row per type in §4.1's order, row height 58 px, a 52 × 36 px
+thumbnail at the left (drawn in `sheet.thumbnail_paper` / `sheet.thumbnail_ink`: lines for
+front, the schematic glyph, nodes for network, a tree for single-line, plate and door for panel,
+a ruled table for report; an own type uses its source type's).
+
+| Column | Shows | Control | Element |
+| --- | --- | --- | --- |
+| Type | Name (`shell.text`), subtitle (`shell.text_3`) | Name edits in the right panel | `ecad.settings.pages.row.<id>` |
+| Sheet | The resolved sheet, `A3 landscape` | Drop-down: `Project's (A3 landscape)`, the presets, `Other…` (019's sheet field) | `…sheet.<id>` |
+| Frame | Grey: `A–F × 1–8` (the zone grid of the resolved sheet) when zones are on, `Plain` when off | Read only | `…frame.<id>` |
+| Title block | The layout's name, `A3 standard` | Drop-down of title block layouts (055 lists them) | `…titleblock.<id>` |
+| Zones | Toggle | Toggle | `…zones.<id>` |
+| Pages | How many pages have this type | Read only | `…count.<id>` |
+
+Every change is one `setstyle {catalogue: "page", id, fields: {…}}`: one transaction, one `u`.
+Changing a built-in writes a project record over it; the row shows 050's override dot after its
+name and the right panel a `Reset` (050 §7.2).
+
+Below the table: `+ Page type` (`ecad.settings.pages.add`) and, in `shell.text_3`, `Frames and
+title blocks are made in Library ▸ Title blocks.` **+ Page type** copies the selected row
+(`setstyle {catalogue: "page", new: true, copy_of}`), names it `<name> 2` and selects it.
+
+Row context menu: `Duplicate`, `Delete…` (own types only; with pages it asks for a replacement
+type and moves them, 050a's `deletestyle {replace_with}`), `Promote to Standard` (050a).
+
+### 5.3 The right panel (selected type)
+
+Header: the type's name and `Page type · 3 pages`. A preview of its sheet (the frame, the title
+block in place, zones when on). Sections, each folding (rev 4 principle):
+
+- **Sheet:** Size (drop-down), Title block (drop-down), Frame style (drop-down: `Project's`, the
+  frame styles), Zones (toggle). Folded summary: `A3 landscape · A3 standard · zones off`.
+- Under the sections, in `shell.text_3`: `Pages are numbered by folder: set a folder's start number in the Book.`
+- **Name** (own types and overridden built-ins): the name, editable.
+
+The board's Numbers column and its Group, Numbers, Drawing no. and Scale rows are not in 054
+(numbers go by folder, owner Q13; 055; the panel layout page).
+
+### 5.4 Today's sheet and numbering settings
+
+Rev 3's "Sheets and numbering" rows (the project's sheet, page number step, reference style,
+contact mirror, tag settings) stay on this screen, under the table, in one folded section
+**Project sheet and numbering** (`ecad.settings.pages.project`), folded by default with the
+summary `A3 landscape · step 1 · page-zone references`. The "Text styles" tab stays (Q4).
+
+### 5.5 States
+
+| State | Looks like |
+| --- | --- |
+| Normal | As above |
+| A type record is malformed | The field shows its fallen-through value in grey with 050's warning mark; Checks has the row |
+| Read only (revision open, writes off, an agent writing) | Every control disabled, values grey, the 019 read-only bar |
+| A type no page uses | Pages `0` |
+
+## 6. The cover (board 1.16)
+
+### 6.1 Layout on A3 (drawing area scaled with the sheet, as 024 §5.2)
+
+All content on `ECAD-GENERATED`, in ink, inside the frame. Distances are millimetres on A3 and
+scale with the drawing area's width. Text sizes come from text styles (lane T); the sizes below
+are the built-ins registered in `defaults/pages.rs`.
+
+| Block | Where | Content |
+| --- | --- | --- |
+| **Heading** | Centred, top, 22 mm below the frame | `<title> · <heading>`, cover text style (10 mm). `heading` is registry `front.cover.heading`, built-in `Electrical documentation`; empty leaves `<title>` alone |
+| **Customer and site** | Centred under the heading | `<customer> · <site>`, 3.5 mm, `sheet.ink_2`. `site` is the project property `site`; either absent leaves the other alone |
+| **Notes** | Row 1, left half | Title `Notes` (table heading style), then each note numbered `1.`, `2.`… (2.5 mm) |
+| **Wire colours** | Row 1, right half | Title `Wire colours`; one row per legend line (§6.2) |
+| **Symbol legend** | Row 2, full width | Title `Symbol legend`; cells of 5 columns (§6.3) |
+| **Revisions** | Row 3, left two thirds | Title `Revisions`; table Rev, Description, By, Date (§6.5) |
+| **Structure codes** | Row 3, right third | Title `Structure codes`; `=` and `+` codes in use (§6.6). Off by default |
+| **Title block** | The type's, bottom right | As every page; Page `01`, Page title `Cover` |
+
+Blocks are 10 mm apart. A block that is off frees its place: later rows move up, and the symbol
+legend takes the height freed. A half-width block whose partner is off keeps its width and stays
+left. Block titles are 3.5 mm, with a thin rule (`ecad.wire-weight`) under them. Printed, a block
+has no outline.
+
+On screen only (overlay, never printed): each derived block has a dashed outline in
+`ecad.front.derived` with a source caption at its top right (`from wire categories`, `symbols used
+in this project · 14`, `from History`); the Notes block's outline is `ecad.front.typed`.
+
+### 6.2 Wire colours (from wire categories)
+
+One line per **wire category in use** (at least one conductor resolves to it, 050 §5.3) in
+category table order (Q5). Categories whose colour and cross-section are equal share a line, their
+names joined: `L1, L2, L3 · 2.5 mm² · black`. A line is:
+
+- a swatch 8 × 2.5 mm in the insulation colour (040's IEC colour, a two-colour code as two halves,
+  `GNYE` green and yellow), with a thin ink outline so white and yellow read on paper;
+- `<names> · <cross-section> mm² · <colour in words>`, 2.5 mm. Colour words: IEC 60757 codes in
+  English (`BK` black, `BN` brown, `BU` blue, `GNYE` green / yellow, …); a free-text colour as
+  typed. A missing cross-section or colour leaves its part out.
+
+`print.colour mono` (040) prints the swatches in their colours anyway: the legend is the one
+place colour is the content. No category in use: `No wires yet.` in `sheet.ink_2`.
+
+### 6.3 Symbol legend (only symbols used)
+
+One cell per **symbol definition with at least one symbol on a page that is not generated**,
+plus the drawn marks in use: cable (any cable), linked terminals (any terminal link or bridge),
+continuation (any continuation). Order: the library's order of definitions (stable as symbols are
+added), then the marks. A cell is the symbol drawn from its definition, scaled to fit 14 × 10 mm,
+and its name (the definition's label), 2.5 mm. Five columns.
+
+When the cells do not fit the block's height: first the cells shrink to 10 × 7 mm; if they still
+do not fit, the last row says `and 4 more`, and Checks has an information row `The cover's symbol
+legend shows 10 of 14 symbols.` (Q6). No symbols: `No symbols yet.`
+
+### 6.4 Notes (typed) and the block toggles
+
+**Notes** are the project property `cover.notes` (FP4): lines separated by newlines, each a
+note, numbered when drawn. At most 40 notes of 400 characters; more is refused when written
+(`The cover takes up to 40 notes of 400 characters.`) and read cut, with a Checks row, from a
+hostile file. They are typed in the Page tab (§8.1), never on the sheet.
+
+**Toggles**, registry entries at levels **S P** (Q8), choice `on`/`off`:
+
+| Key | Label | Built-in |
+| --- | --- | --- |
+| `front.cover.notes` | Notes | on |
+| `front.cover.wire_colours` | Wire colours | on |
+| `front.cover.symbol_legend` | Symbol legend | on |
+| `front.cover.revisions` | Revisions | on |
+| `front.cover.structure_codes` | Structure codes | off |
+| `front.cover.customer_site` | Customer and site | on |
+| `front.cover.heading` | Cover heading (text ≤ 64) | `Electrical documentation` |
+
+### 6.5 Revisions (from History)
+
+Columns `Rev` 15, `Description` 120, `By` 40, `Date` 40 (mm on A3), from the issued revisions and
+033's revision fields (`description`, `drawn`, `date`). Oldest first, ending at the newest; the
+last rows that fit (at most 8). The pending marker (033 §6) adds no row. None issued: `No
+revisions issued yet.` The full list is the Revision history page.
+
+### 6.6 Structure codes
+
+Two short lists side by side: the `=` functions and the `+` locations in use (024's location
+index and the function values on pages and devices), naturally sorted, with their descriptions
+when Project info gives them (later), else the code alone.
+
+### 6.7 Behaviour
+
+As 024 §5.3: selecting content selects nothing; drawing is refused with 024's words. Double-click
+on the Notes block opens the Page tab with the notes field focused. Hover over a derived block
+says where it comes from: `From the wire categories in use: change them in Settings ▸ Standards.`
+
+## 7. Revision history and Contents
+
+They are 024's `revisions` and `contents` pages, with the Cover sheet type: added after the last
+of these pages and numbered by §4.3 (`2`, `3` after a cover numbered `1`), and drawn with the type's frame (zones off). A new revisions page's
+default title is `Revision history` (existing pages keep their stored titles). Contents lists every
+page in book order, these pages included, as today.
+
+## 8. The Page tab (right panel on a generated page)
+
+On a generated page the right panel's tabs are **Page** and **Checks** (`ecad.page.tab`). Header:
+the page title and grey `Cover sheet · generated · page 01`.
+
+### 8.1 On this page (the cover only)
+
+One row per block of §6.4 (`ecad.page.block.<key>`), 32 px: the label, a grey summary (`Notes ·
+4 lines`, `Wire colours · 6 rows`, `Symbol legend · 9 rows`, `Revisions · 3 issued`), an
+**Edit…** button (`ecad.page.edit.<key>`, not for the structure codes) and the toggle at the
+right. The toggle runs `setdefault {key, level: "project", value}`: one transaction. There is no
+inline notes field (owner, fix round). Folded summary: `5 of 6 blocks`.
+
+### 8.1a The block table editor (owner, fix round)
+
+**Edit…** opens one shared, reusable table-editor popup (`ecad.table.editor`), floating over the
+panel: a title, the rows, and **Save** and **Cancel**. Save writes one transaction (one `u`);
+Cancel and Esc write nothing.
+
+| Block | Rows | The person can |
+| --- | --- | --- |
+| Notes | The notes, numbered | Add, remove, reorder and edit, one line per row (`projectprops {props: {"cover.notes"}}`) |
+| Wire colours | The generated lines (categories in use) | Hide a row, reorder, override its label; nothing added or removed (`projectprops {props: {"cover.wire_colours"}}`) |
+| Symbol legend | The generated cells (symbols and marks in use) | The same (`cover.symbol_legend`) |
+| Revisions | The issued revisions | Read only; **Edit in Revisions…** opens where they are edited |
+
+Overrides are project properties (no format change), bounded like the notes: at most 64 rows,
+each `<key>\t<shown 1|0>\t<label>` with a label of at most 64 characters. A wire line's key is its
+colour and cross-section (`bk/2.5`), a legend cell's its definition ID or mark word (`cable`,
+`continuation`). A row whose key is no longer generated is dropped when drawn; a generated row
+the list does not name is drawn after the listed ones, shown, with its own label.
+
+### 8.2 Generated pages (on any page of a type holding the cover kinds)
+
+Title **Generated pages** (owner, fix round), grey `in the Book` at the right. One row per kind: Cover, Revision
+history, Contents, with the page's number and, for Revision history and Contents, a toggle
+(`ecad.page.front.<kind>`). The cover has no toggle: it is the page holding these controls.
+
+- Off → on: `newpage {type: "front", generated: <kind>, after: <the last of these pages in book
+  order>}`, numbered by §4.3.
+- On → off: `deletepage {page}` for every page of that kind (§8.3), one transaction; the status
+  line says `Removed Revision history (02). Press u to bring it back.`
+
+### 8.3 `deletepage` (new, generated pages only)
+
+`deletepage {page: id}`: one `RemovePage`. A generated page stores nothing but its properties, so
+undo restores it exactly. A drawn page is refused before anything is written: `Deleting a drawn
+page comes later; move its content first.` (Q9). The Book's Delete enables for a selection of
+generated pages only.
+
+### 8.4 Sheet (any generated page)
+
+Title `Sheet`, grey `from page type` at the right. Type and Title block in grey (read from the
+type), with a go-to `Change in Pages and sheets` (opens Settings with the type selected). A page
+cannot pick its own title block (owner answer 4).
+
+### 8.5 States
+
+| State | Looks like |
+| --- | --- |
+| Read only | Toggles and Edit… disabled, grey |
+| Notes too long (in the editor) | Save disabled, the words under the rows, nothing written |
+| A page of a kind appears twice | Both numbers in the row (`02, 05`); the toggle off removes both |
+
+## 9. Checks
+
+New kinds, each with a go-to and, where there is one, a fix:
+
+| Kind | When | Fix |
+| --- | --- | --- |
+| `folder-runs-overlap` (warning) | Renumber had to skip another folder's numbers (§4.4) | none (change a start number, then Renumber) |
+| `folder-start-unknown` (information) | A `folder.<id>.start` key names no folder, or is not 1–6 digits | `Remove` |
+| `page-type-unknown` (warning) | `page.type` names no type (hostile or deleted elsewhere) | `Use <rule 2–3 type>` |
+| `page-type-field` (warning) | A type record field is malformed | `Reset` |
+| `cover-legend-cut` (information) | §6.3's overflow | none |
+| `cover-notes-cut` (warning) | Stored notes over the bound | none |
+
+## 10. Update maps (`ecad/CLAUDE.md`, "Derived views scale with what changed")
+
+Only the page on screen redraws; other pages with changes are marked stale. Every op not listed
+changes nothing in that view. A full build is allowed on open, reload or first show only.
+
+### 10.1 Indexes kept by the project
+
+| Index | Kept from | Cost per op |
+| --- | --- | --- |
+| **Types** (type → pages; page → type) | `AddPage` / `RemovePage`; `SetProperty(Page, page.type)`; `SetProperty(Page, generated)` (only at `AddPage` in practice); `SetStyle(page)` that deletes a type (its pages move by `deletestyle` in the same transaction) | O(1) per page |
+| **Wire categories in use** (category → conductor count; plus a "by default" bucket for conductors resolving through the registry) | `CreateConductor` / `DeleteConductor`; `SetProperty(Conductor, wire.category)`; `SetProperty(net, potential)` (the conductors of that net with no own category); `SetStyle(wire)` changing a category's `potential` (the nets of the old and new potential); a `wire.category` registry change (moves the bucket) | O(conductors of the nets touched) |
+| **Symbols in use** (definition → symbol count; marks → count) | `CreateComponent` / `DeleteComponent` with symbol representations; `Link`/`UnlinkRepresentation` (form Symbol); a component's definition replaced (Edit symbol, 048); `CreateCable` / `DeleteCable`; terminal link and bridge ops; continuation create and delete | O(representations touched) |
+
+### 10.2 Views
+
+| View | Op (kind, target) | Does |
+| --- | --- | --- |
+| **A page's sheet, frame, zones** | `SetProperty(Page P, page.type)` | P as a sheet change (019's path: P's frame, grid and the references to items on P) |
+| | `SetStyle(page, T)` changing `sheet` | every page of T (types index) as a sheet change: the active one redraws, others stale; references to items on them, through 019's per-page path |
+| | `SetStyle(page, T)` changing `frame`, `title_block`, `zones` | the frames of T's pages (active redraws, others stale) |
+| **Settings table** | `SetStyle(page, *)` | that row |
+| | types index change | the Pages count of the old and new type |
+| **+ Page picker** | none while open (it reads the types index and the book on opening) | — |
+| **Cover: heading, customer and site** | `SetProperty(Project, title / customer / site)`; `front.cover.heading` | those lines |
+| **Cover: notes** | `SetProperty(Project, cover.notes)` | the notes block; re-flow below it if its height changed |
+| **Cover: wire colours** | a category's count crossing 0 (index); `SetStyle(wire, C)` of a category in use (its name, colour, cross-section) | that block |
+| **Cover: symbol legend** | a definition's or mark's count crossing 0 (index); a definition in use renamed or redrawn | that block |
+| **Cover: revisions** | `SetProperty(Project, rev.*)`; revision columns changed | that block |
+| **Cover: structure codes** (when on) | 024's location index changing the set of codes in use; `SetProperty(Page/Component, function)` adding or removing a code | that block |
+| **Cover: layout** | a `front.cover.*` toggle | the cover's blocks |
+| **Page tab: generated pages** | `AddPage` / `RemovePage` of a cover, revisions or contents page; `SetProperty(Page, number / title)` of one | those rows |
+| **Book folder rows** | `SetProperty(Project, folder.<id>.start)` | that row's start number |
+| **Checks: folder starts** | `SetProperty(Project, folder.*.start)`, `RemoveFolder` | that key's row |
+| **Checks: runs overlap** | set by `renumberpages` itself; cleared by the next renumber or a start change | the row |
+| **Renumber pages** | none: runs on request, O(pages) | — |
+
+The cover no longer depends on the book's sheet count (the old `14 sheets` line goes) or on every
+project property: `generated::touches` narrows its project-property arm to the keys above.
+
+### 10.3 Cost on the large tier
+
+The types index and the two use indexes are counts updated per op; a count crossing zero is the
+only thing that redraws a legend. A type's sheet change touches that type's pages, like a project
+sheet change today (the one project-wide case, timed as `typesheet ms`).
+
+### 10.4 Bench (medium while building, large once at the end)
+
+`newpage ms` (`newpage {type, after}` in a 100-page project), `renumber ms` (on request, 100
+pages, reported, no limit), `typesheet ms` (change Schematic's sheet
+with the active page and references), `coverupd ms` (place the first symbol of a new definition
+with the cover open, then a second one: the second must not redraw the legend), `wirecat ms` (add
+a wire of a new category with the cover open). No ordinary edit rescans the project.
+
+## 11. Format proposals (FP1–FP7 approved by the overseer, 2026-11-14)
+
+No new op. No `.ecad` structure change: every item is a value under existing ops.
+
+- **FP1. Style catalogue `page`.** Records written by `SetStyle {catalogue: "page"}` (050a FP3).
+  Old builds keep records of an unknown catalogue as they are. *Alternative:* a fixed table in
+  `ProjectSettings`: a format change, and no standard layer or promote.
+- **FP2. Page property `page.type`** (a `StyleRef` text), the registry choice entry of §2.3,
+  written only when it differs from the derived type. Old builds keep it as an unknown property.
+- **FP3. `ecad_model::sheet::sheet_of` reads the type's stored sheet** (§3.1). A read change in
+  `ecad-model`, which keeps it free of `ecad-cadcraft` semantics: it reads `doc.styles` and the
+  standard's records of catalogue `page`, field `sheet`, parsed by `SheetSpec::parse`, and a fixed
+  six-word table for the derived type. Old files resolve exactly as before (no record).
+- **FP4. Project property `cover.notes`** (newline-separated text, bounded §6.4).
+- **FP5. Registry entries** `page.type` (G), `front.cover.*` (S P), `front.cover.heading` (S P),
+  in `defaults/pages.rs`.
+- **FP6. The frame draws zones only when the type's `zones` is on** (§3.3). Drawn look only.
+- **FP7 (new with the owner's Q13; approved by the overseer, 2026-11-14). A folder's start number
+  is the project property `folder.<folder id>.start`.** No op or format change, like FP4. *Alternative:* a field
+  `start: Option<String>` on `Folder`, written by `ModifyFolder` (`#[serde(default)]`): cleaner,
+  but a change to a stored struct.
+
+## 12. Acceptance
+
+### 12.1 Checks the tester (or the reviewer) can run from outside
+
+- **AC1** `styles {catalogue: "page"}` lists the six built-ins of §2.2 with their fields.
+- **AC2** An old project (030 fixture, the medium bench project) opens with every page's number,
+  folder, sheet and every reference text unchanged; its cover, revision and contents pages resolve `front`, its BOM page
+  `report`, its other pages `schematic`.
+- **AC3** `newpage {type: "network", after: <page 3>}` puts the page right after page 3 in its
+  folder with number `4` (or the next free); the type never moves it. In an empty folder with
+  start `100`, the first new page is `100`, the next `101`.
+- **AC4** `newpage {type: "front", generated: "revisions", after: <cover 1>}`: right after the
+  cover, number `2`, title `Revision history`; `newpage {type: "front"}` with no `generated` is refused with §4.2's words;
+  `newpage {generated: "cover", type: "report"}` is refused with §2.3's words.
+- **AC5** The owner's flow: pages 1–50; folders Schematic (start `100`) and Terminal (start
+  `300`); 40 pages moved into Schematic, 10 into Terminal; `renumberpages` gives `100`–`139` and
+  `300`–`309` in one transaction, references follow, `u` restores every number. With Schematic
+  holding 250 pages, its run skips `300`–`309` and Checks has `folder-runs-overlap`. `folderprops`
+  refuses `start: "1a"`; `deletefolder` clears the start.
+- **AC6** `setstyle {catalogue: "page", id: "schematic", fields: {sheet: "A2"}}`: every schematic
+  page without its own `sheet` becomes A2, its references to zones follow, a page with its own
+  `sheet` keeps it; `u` restores all in one step.
+- **AC7** `zones: off` on Schematic: those pages draw no zone ticks or labels; references keep
+  their zones.
+- **AC8** A cover with every block: the heading, notes, a wire-colour line per category in use
+  (merged when equal), a symbol cell per definition in use plus the marks, the last revisions, the
+  title block, all inside the frame with nothing overlapping (geometry check on the parts).
+- **AC9** Place the first `-K` contactor: the coil appears in the legend; delete it: it goes.
+  A second contactor does not redraw the cover (bench counter).
+- **AC10** Toggle each block off and on through `setdefault`: the cover's parts change as §6.1
+  says; one `u` each.
+- **AC11** `projectprops {props: {"cover.notes": "a\nb"}}` draws `1. a`, `2. b`; 41 notes are
+  refused with §6.4's words.
+- **AC12** The Page tab's Revision history toggle off removes that page in one transaction; `u`
+  restores it with the same id, number and title. `deletepage` on a drawn page is refused.
+- **AC13** Settings ▸ Pages and sheets: each control writes one `setstyle`; read-only disables
+  every control.
+- **AC14** The + Page picker: from the page well on page 101 it highlights Schematic and adds
+  `102` right after it; Esc writes nothing; Panel layout is disabled with its tooltip.
+- **AC15** Hostile input never panics: a type record with `holds: "x"` and
+  `sheet: "A0 999x999"`, a `folder.<id>.start` of `"99999999999"` or naming no folder, a `page.type` naming nothing, notes of 1 MB, 10 000 wire categories in
+  use. Each reads as absent or cut, with its Checks row.
+- **AC16** MCP contract tests: `newpage {type}`, `newpage {type, generated}`, `setstyle
+  {catalogue: "page"}`, `setdefault {key: "page.type", level: "page"}`, `setdefault {key:
+  "front.cover.notes", level: "project"}`, `projectprops {props: {"cover.notes"}}`,
+  `folderprops`, `renumberpages` and `deletepage`: each records its transaction with `Author::Agent(<client>)` and is refused with
+  writes off.
+
+### 12.2 Screenshots side by side (051's rule)
+
+The worker's screenshots of the cover (demo project, A3, paper) beside board 1.16, and of
+Settings ▸ Pages and sheets with Panel layout selected beside board 5.02, stored under
+`_tmp` and named in the PR body (never committed).
+
+### 12.3 Quick start (`docs/quick-start/054-page-types-front-pages.md`)
+
+Click-only: open Settings ▸ Pages and sheets and change Schematic's sheet; add a page with + and
+see it land after the open page; give a folder start number 100 and press Renumber pages; open the cover, add a contactor elsewhere and see the legend grow; type two
+notes; turn Contents off and on. Names the two intended look changes of §2.4.
+
+## 13. Tester
+
+**Yes, for 054a only** (Q15). FP3 changes how `ecad-model` resolves a page's sheet, which the
+grid, every reference and the frame read: a mistake there moves references on every page of a
+type; `renumberpages` rewrites many page numbers in one transaction. The tester runs AC1–AC7,
+AC13–AC16 and the fast tests of `ecad-model` and
+`ecad-cadcraft`. 054b (the cover) has no format or model change: the reviewer checks its update
+maps once, and the screenshots are the evidence the owner looks at.
+
+## 14. Owner questions, each with a recommendation
+
+1. **Answered (owner, 2026-11-14): neither.** + Page inserts after the current page with the
+   next available number; sections never force placement or order. *Was:* **Front, Body, Back:
+   placement or enforced order?** *Recommend placement:* + Page puts each
+   type's pages in the right place and Checks warns when a page is moved out of it, with a
+   one-click fix. Enforcing would change book order itself (`ecad_model::book`), which numbering,
+   references and Contents read, for a case Checks already covers.
+2. **Network and Single-line before their generators exist.** *Recommend:* offer them now as drawn
+   pages. Hand-drawn single-lines are common; the later generators
+   add a generated kind to the type without changing pages already drawn.
+3. **Panel layout before its page exists.** *Recommend:* list the type in Settings and show it disabled in + Page with a tooltip. Plain pages now would need moving
+   when the panel layout strip and scale arrive.
+4. **Rev 3's sheet and numbering settings.** *Recommend:* keep them on the same screen, under the
+   type table, in one folded section. Moving them to Project info or Standards belongs to the
+   lanes that redo those screens.
+5. **Which wire categories the legend shows.** *Recommend:* only categories in use, with equal
+   colour and cross-section merged (`L1, L2, L3 · 2.5 mm² · black`), as on board 1.16. Listing
+   every category would show unused ones.
+6. **A symbol legend that does not fit.** *Recommend:* shrink the cells once, then `and N more` with
+   an information check. A second cover sheet would take number 02 from Revision history.
+7. **Where notes live.** *Recommend:* one project property, `cover.notes`, so deleting and adding
+   the cover again keeps them.
+8. **Block toggles per page or per project.** *Recommend:* project (and standard). Owner answer 4
+   allows page-level values only for function, location and sheet, and a project has one cover.
+9. **Turning a generated page off.** *Recommend:* it deletes the page (a new `deletepage`, generated
+   pages only), and `u` brings it back. A generated page stores nothing, so nothing is lost. A
+   "hidden" page would have to be skipped by numbering, Contents and Print Book.
+10. **Title block: on the type or on the frame style?** *Recommend:* the type names it (built-in
+    `frame` = the frame style's, so nothing changes today). Board 5.02 sets it per type. 055's
+    designer should agree, since 055 adds the layouts.
+11. **Superseded by Q13's answer:** Renumber pages works by folder start numbers. *Was:*
+    **Renumber existing pages by type.** *Recommend:* not in 054. Old projects keep their numbers;
+    out-of-range pages get the Checks warning. A "Put pages in their groups and ranges" command can
+    follow once the owner has tried types on a real project.
+12. **The cover heading.** *Recommend:* `<title> · Electrical documentation`, the suffix a registry
+    text a project or standard can change or empty.
+13. **Answered (owner, 2026-11-14):** pages start at 1 and each new page adds one; a folder can
+    carry a start number; **Renumber pages** renumbers each folder from its start (§4.3, §4.4).
+    Per-type number blocks are not a default. *Was:* **Board 1.02 numbers schematic pages 01–05;
+    board 5.02 gives Schematic the 100s.**
+    *Recommend:* follow 5.02 (the settings board). 1.02 shows rev 3's numbering.
+14. **References to a zoneless page.** *Recommend:* unchanged in 054 (they still give the zone).
+    Revisit with the panel layout page, the first zoneless page with references.
+15. **Tester.** *Recommend:* yes for 054a (FP3 changes how the model resolves a page's sheet); no
+    for 054b.
+
+## 15. Split
+
+Size L. Two steps on `feature/page-types`, in order:
+
+- **054a: page types and numbering** (M): §2–§5 (folder start numbers and Renumber pages
+  included), §8.3, §9 (type and folder checks), §10.1's types index, FP1–FP3, FP5 (`page.type`),
+  FP6, FP7. Tester.
+- **054b: generated cover pages** (M): §6–§8, the two use indexes, FP4, FP5 (`front.cover.*`). Reviewer.
+
+054b needs 054a's Cover sheet type for placement and the Sheet section; the cover's blocks and
+indexes can be built while 054a is in test.
+
+## 16. Tokens (`ecad.front.*`, overlay, never printed)
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `ecad.front.derived` | `sheet.selection`, dashed 4–3 px, 1 px | Outline of a derived cover block, on screen |
+| `ecad.front.typed` | `sheet.loose_end`, dashed 4–3 px, 1 px | Outline of the Notes block, on screen |
+| `ecad.front.caption` | `sheet.selection`, 9 px UI type, right-aligned | A derived block's source caption |
+| `ecad.front.swatch` | 8 × 2.5 mm, outline `ecad.wire-weight` in ink | Wire-colour swatch (prints) |
+
+## 17. Out of scope
+
+- Title block layouts, fields, logo and the editor (055); a drawing-number pattern per page.
+- The panel layout page, its strip and scale; generated network and single-line drawings.
+- Deleting drawn pages; number blocks per page type (owner, Q13).
+- Structure code descriptions (Project info ▸ Functions and locations, later).
+- Contents columns for revision and date (033 "Later").
+
+## 18. Decisions
+
+- **Overseer, 2026-11-14:** FP1–FP6 approved (§11). 054a gets a tester (§13, Q15's first half),
+  because FP3 changes how the model resolves a page's sheet.
+- **Owner (Carl, through the overseer), 2026-11-14:**
+  - **Q13:** pages start at 1 and each new page adds one. A folder can carry a start number
+    (Schematic 100, Terminal 300). **Renumber pages** renumbers each folder from its start.
+    Per-type number blocks are not a default (§4.3, §4.4; the type has no range or group fields).
+  - **Q1:** + Page inserts after the current page with the next available number. Front, Body and
+    Back never decide where a page goes; position stays a type field for the picker's order and
+    the generated front pages (§2.1, §4.1).
+  - **Q2–Q12, Q14, Q15:** as recommended (Q11 is superseded by Q13).
+- **Overseer, 2026-11-14:** FP7 approved (a folder's start number as the project property
+  `folder.<id>.start`, §11).
+- **Owner, fix round (2026-11-15):** `position` (Front/Body/Back) is dropped entirely: "if I don't
+  know what it does, a user wouldn't." The Settings column and the In the Book row go; + Page lists
+  types in catalogue order; the generated kinds a type holds come from the type itself (the hidden
+  field `holds`, copied with the type).
+- **Owner, fix round additions (2026-11-15):** the cover blocks are edited in one shared table
+  editor (§8.1a; the inline notes box goes); "Front pages" is **Generated pages** and the built-in
+  "Front sheet" is **Cover sheet** (ID `front` kept); a type switch **Checks and references** and a
+  built-in **Plain** type with it off (§3.4).

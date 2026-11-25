@@ -1,27 +1,15 @@
-//! Brief 047 through MCP (brief 011 rule, design 047 §7.5): `partline` (add, kit, edit, remove),
+//! MCP contract: `partline` (add, kit, edit, remove),
 //! `bomitem` (add, edit, delete) and `article` each record one transaction by
 //! `Author::Agent(<client>)` and are refused with writes off; a `for` naming a fuse the bank lacks
 //! is refused in words and writes nothing; `bom` works with writes off and records nothing;
 //! hostile values are errors in words.
 
-use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::Author;
+use ecad_engine::agent::policy;
 use serde_json::{Value, json};
 
-use crate::mcp_contracts::{AGENT, Client};
+use crate::common::{assert_one_labelled, writer};
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("mcp 047", 47, Options { write: true, agent: None }).unwrap())
-}
-
-/// One transaction since `n`, by the agent, labelled `label`.
-fn one_by_agent(c: &mut Client, n: usize, label: &str) {
-    let log = c.log();
-    assert_eq!(log.len(), n + 1, "one transaction for {label}");
-    let t = log.last().unwrap();
-    assert_eq!(t.author, Author::Agent(AGENT.into()));
-    assert_eq!(t.label, label);
-}
+const WRITER_SEED: u64 = 47;
 
 fn component(v: &Value) -> String {
     v["component"].as_str().unwrap().to_string()
@@ -29,26 +17,26 @@ fn component(v: &Value) -> String {
 
 #[test]
 fn partline_bomitem_and_article_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(WRITER_SEED);
     let k = component(&c.exec("place", json!({"symbol": "coil", "at": [100, 100]})));
     let f = component(&c.exec("place", json!({"symbol": "fusebank8", "at": [200, 100]})));
 
     let n = c.log().len();
     let v = c.exec("partline", json!({"component": k, "add": {"part_number": "AB-1NO", "maker": "Generic", "description": "Aux block"}}));
     assert_eq!(v["lines"], json!([1]));
-    one_by_agent(&mut c, n, "Add part line");
+    assert_one_labelled(&mut c, n, "Add part line");
 
     let n = c.log().len();
     c.exec("partline", json!({"component": k, "kit": "Starter set", "add": [{"part_number": "SUP-1"}, {"part_number": "LBL-1"}]}));
-    one_by_agent(&mut c, n, "Add kit Starter set");
+    assert_one_labelled(&mut c, n, "Add kit Starter set");
 
     let n = c.log().len();
     c.exec("partline", json!({"component": k, "line": 2, "set": {"qty": 2}}));
-    one_by_agent(&mut c, n, "Edit part line");
+    assert_one_labelled(&mut c, n, "Edit part line");
 
     let n = c.log().len();
     c.exec("partline", json!({"component": k, "line": 3, "remove": true}));
-    one_by_agent(&mut c, n, "Remove part line");
+    assert_one_labelled(&mut c, n, "Remove part line");
 
     // A fuse the bank lacks: refused in words, nothing written.
     let n = c.log().len();
@@ -58,15 +46,15 @@ fn partline_bomitem_and_article_by_the_agent() {
 
     let n = c.log().len();
     let item = c.exec("bomitem", json!({"description": "DIN rail 35x7.5", "qty": 2, "unit": "m"}))["item"].as_str().unwrap().to_string();
-    one_by_agent(&mut c, n, "Add item");
+    assert_one_labelled(&mut c, n, "Add item");
     let n = c.log().len();
     c.exec("bomitem", json!({"item": item, "set": {"part_number": "DR-35"}}));
-    one_by_agent(&mut c, n, "Edit item");
+    assert_one_labelled(&mut c, n, "Edit item");
 
     let n = c.log().len();
     let v = c.exec("article", json!({"part_number": "AB-1NO", "article_number": "A-0110"}));
     assert_eq!(v["message"], "Set A-0110 on 1 part (1 line).");
-    one_by_agent(&mut c, n, "Set article number");
+    assert_one_labelled(&mut c, n, "Set article number");
 
     // `bom` reads the new fields, with the article column for this call only.
     let n = c.log().len();
@@ -74,12 +62,12 @@ fn partline_bomitem_and_article_by_the_agent() {
     let aux = rows.iter().find(|r| r["part_number"] == "AB-1NO").unwrap();
     assert_eq!(aux["article_number"], "A-0110");
     let rail = rows.iter().find(|r| r["part_number"] == "DR-35").unwrap();
-    assert_eq!((rail["qty"].clone(), rail["unit"].clone(), rail["entries"][0]["item"].clone()), (json!(2), json!("m"), json!(true)));
+    assert_eq!((rail["qty"].clone(), rail["unit"].clone(), rail["entries"][0]["item"].clone()), (json!(2), json!("m"), json!(item)));
     assert_eq!(c.log().len(), n, "reading records nothing");
 
     let n = c.log().len();
     c.exec("bomitem", json!({"item": item, "delete": true}));
-    one_by_agent(&mut c, n, "Delete item");
+    assert_one_labelled(&mut c, n, "Delete item");
 
     // Hostile values: errors in words, never a panic, nothing written.
     let n = c.log().len();

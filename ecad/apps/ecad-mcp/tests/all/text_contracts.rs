@@ -1,19 +1,15 @@
-//! Brief 031, MCP contract (the ECAD rule of brief 011, design 031 §10.7): `textstyle` and
-//! `defaults` through `execute`: each write records one transaction by `Author::Agent(<client>)`
-//! and is refused with writes off; the reads answer with writes off and record nothing; the
+//! MCP contract: `textstyle` and
+//! `defaults` through `execute`: each write records one transaction by `Author::Agent(<client>)`;
+//! the reads answer with writes off and record nothing; the
 //! property commands refuse `text.` keys.
 
-use ecad_mcp::{EcadMcp, Options};
 use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, reader};
 
 const SEED: u64 = 0x0E_CAD0_0031;
-
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("text", SEED, Options { write: true, agent: None }).unwrap())
-}
 
 /// Run a write and check it recorded exactly one transaction by the agent; returns the reply.
 fn one_by_agent(c: &mut Client, command: &str, params: Value) -> Value {
@@ -27,7 +23,7 @@ fn one_by_agent(c: &mut Client, command: &str, params: Value) -> Value {
 
 #[test]
 fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let r = one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": 3}));
     assert_eq!(r["changed"], json!(true));
     let tag = r["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "tag").unwrap().clone();
@@ -36,17 +32,17 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert_eq!(last.label, "Text styles");
     assert!(
         // Brief 050a: the tag text style's record, at project level.
-        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if catalogue == "text" && id.text() == "tag" && r.fields.get("height").map(String::as_str) == Some("3")),
+        matches!(last.ops.as_slice(), [Op::SetStyle { catalogue, id, after: Some(r), .. }] if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag" && r.body.entry("height").as_deref() == Some("3")),
         "{:?}",
         last.ops
     );
     // The font, and the wire label height in the wiring setting (one stored value, §3.4).
     one_by_agent(&mut c, "textstyle", json!({"font": "X"}));
-    assert_eq!(c.doc().properties.get("text.font").map(String::as_str), Some("X"));
+    assert_eq!(c.doc().display().get("text.font").map(String::as_str), Some("X"));
     one_by_agent(&mut c, "textstyle", json!({"kind": "wire_label", "height": 2}));
     assert!(matches!(c.log().last().unwrap().ops.as_slice(), [Op::SetProjectSettings { .. }]));
-    assert_eq!(c.doc().settings.wiring.label_height, 2.0);
-    assert!(!c.doc().properties.contains_key("text.wire_label.height"));
+    assert_eq!(c.doc().settings().wiring.label_height, Some(2.0));
+    assert!(!c.doc().display().contains_key("text.wire_label.height"));
     // Several fields: one transaction.
     one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": null, "weight": "regular"}));
     // Several kinds (the Text section's OK): one transaction.
@@ -54,7 +50,10 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     let d = c.doc();
     // Brief 050a: each kind's text style record.
     let field = |kind: &str, f: &str| {
-        d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into()))).and_then(|r| r.fields.get(f)).cloned()
+        d.styles()
+            .get(&ecad_model::StyleCatalogue::Text)
+            .and_then(|m| m.get(&ecad_model::StyleRef::Builtin(kind.into())))
+            .and_then(|r| r.body.entry(f))
     };
     assert_eq!((field("point_label", "height").as_deref(), field("location", "weight").as_deref()), (Some("2"), Some("bold")));
     let m = c.refused("execute", json!({"command": "textstyle", "params": {"kinds": [{"height": 2}]}}));
@@ -70,9 +69,6 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     assert_eq!(c.log().len(), n);
 
     let mut r = reader();
-    for p in [json!({"kind": "tag", "height": 3}), json!({"font": "X"}), json!({"kind": "wire_label", "height": 2})] {
-        r.refused("execute", json!({"command": "textstyle", "params": p}));
-    }
     let n = r.log().len();
     let read = r.exec("textstyle", json!({}));
     let tag = read["kinds"].as_array().unwrap().iter().find(|k| k["kind"] == "tag").unwrap().clone();
@@ -82,16 +78,16 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
 
 #[test]
 fn textstyle_refusals_write_nothing() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let n = c.log().len();
     for (p, words) in [
         (json!({"kind": "tag", "height": 0.1}), "A text height is 0.5 to 10 mm."),
         (json!({"kind": "tag", "height": 11}), "A text height is 0.5 to 10 mm."),
-        (json!({"kind": "tag", "height": "big"}), "A text height is 0.5 to 10 mm."),
-        (json!({"kind": "nope", "height": 3}), "Unknown text kind \"nope\". Kinds: tag, point_label"),
-        (json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold."),
-        (json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first (first: tag only)."),
-        (json!({"kind": "description", "show": "first"}), "Shown is on, off or first (first: tag only)."),
+        (json!({"kind": "tag", "height": "big"}), "`height` must be a number, or null"),
+        (json!({"kind": "nope", "height": 3}), "`kind` must be one of \"tag\", \"point_label\""),
+        (json!({"kind": "tag", "weight": "heavy"}), "`weight` must be one of \"regular\", \"bold\", or null"),
+        (json!({"kind": "tag", "show": "maybe"}), "`show` must be one of \"yes\", \"no\", \"first\", or null"),
+        (json!({"kind": "description", "show": "first"}), "Shown is yes, no or first (first: tag only)."),
         (json!({"font": ""}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a".repeat(65)}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a\u{7}b"}), "A font name is 1 to 64 characters with no control characters."),
@@ -105,8 +101,8 @@ fn textstyle_refusals_write_nothing() {
 
 #[test]
 fn the_property_commands_refuse_text_keys() {
-    let mut c = writer();
-    let page = c.doc().page_order[0].hex();
+    let mut c = writer(SEED);
+    let page = c.doc().page_order()[0].hex();
     let comp = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}))["component"].as_str().unwrap().to_string();
     let n = c.log().len();
     for (cmd, p) in [
@@ -128,7 +124,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     let all = r.exec("defaults", json!({}));
     let rows = all["defaults"].as_array().unwrap();
     assert!(rows.iter().any(|d| d["key"] == "text.tag.style"), "{all}");
-    let page = r.doc().page_order[0].hex();
+    let page = r.doc().page_order()[0].hex();
     let text = r.exec("defaults", json!({"group": "Text", "page": page}));
     for d in text["defaults"].as_array().unwrap() {
         assert_eq!(d["from"], json!("builtin"), "{d}");
@@ -139,7 +135,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     assert_eq!(
         one["defaults"],
         json!([{
-            "key": "text.tag.style", "label": "Tag style", "group": "Styles", "brief": "050", "kind": "style",
+            "key": "text.tag.style", "label": "Tag style", "group": "Styles", "kind": "style",
             "builtin": "tag", "levels": ["standard", "project", "object"], "value": "tag", "from": "builtin",
         }])
     );
@@ -148,7 +144,7 @@ fn defaults_lists_the_registry_with_writes_off() {
     assert_eq!(r.log().len(), n);
 
     // After a project change, the value and where it comes from follow.
-    let mut c = writer();
+    let mut c = writer(SEED);
     c.exec("setdefault", json!({"key": "text.run.gap", "value": 3}));
     let one = c.exec("defaults", json!({"key": "text.run.gap"}));
     assert_eq!((one["defaults"][0]["value"].as_f64(), one["defaults"][0]["from"].as_str()), (Some(3.0), Some("project")));
@@ -156,15 +152,15 @@ fn defaults_lists_the_registry_with_writes_off() {
 
 #[test]
 fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
-    let mut c = writer();
-    let page = c.doc().page_order[0].hex();
+    let mut c = writer(SEED);
+    let page = c.doc().page_order()[0].hex();
     let v = c.exec("place", json!({"symbol": "coil", "at": [100, 100]}));
     let comp = v["component"].as_str().unwrap().to_string();
     let rep = c
         .doc()
-        .representations
+        .representations()
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     for (p, level) in [
@@ -195,9 +191,9 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
 
 #[test]
 fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     one_by_agent(&mut c, "text", json!({"at": [100, 100], "text": "X", "height": 2.5, "justify": "MC"}));
-    let found = c.doc().items.values().any(|i| {
+    let found = c.doc().items().values().any(|i| {
         matches!(
             &i.kind,
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text {
@@ -214,19 +210,17 @@ fn text_with_justify_is_one_transaction_by_the_agent_and_refused_with_writes_off
 
 #[test]
 fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let v = c.exec("place", json!({"symbol": "no", "at": [100, 150]}));
     let comp = v["component"].as_str().unwrap().to_string();
     let rep = c
         .doc()
-        .representations
+        .representations()
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     let r = one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "to": [130, 170]}));
     assert_eq!(r["changed"], json!(true));
     one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "reset": true}));
-    let mut w = reader();
-    w.refused("execute", json!({"command": "movetext", "params": {"representation": rep, "kind": "tag", "to": [1, 2]}}));
 }

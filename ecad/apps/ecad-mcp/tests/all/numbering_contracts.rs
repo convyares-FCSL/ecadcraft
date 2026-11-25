@@ -1,26 +1,23 @@
-//! Brief 026, MCP contract (the ECAD rule of brief 011): `renumber` (preview and apply),
+//! MCP contract: `renumber` (preview and apply),
 //! `finalise`, `setprop` tag with each `conflict`, `setprop tag_fixed`, `numbering`,
 //! `issuerevision` with `provisional`, and the merge choice `one`, each through `execute`: the
 //! transaction it records, `Author::Agent(<client>)`, and that the writes are refused with writes
 //! off while the previews and the settings read answer.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::sheet::Grid;
-use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId};
+use ecad_model::document::sheet::Grid;
+use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
+use crate::common::writer;
 use crate::mcp_contracts::{AGENT, Client, TempDir, reader};
 
 const SEED: u64 = 0x0E_CAD0_0026;
 
-fn writer() -> Client {
-    Client::new(EcadMcp::in_memory("numbering", SEED, Options { write: true, agent: None }).unwrap())
-}
-
 /// The point at the middle of column `col` (0-based) and row `row` of the first page's frame.
 fn cell(c: &mut Client, col: u32, row: u32) -> [f64; 2] {
     let doc = c.doc();
-    let page: PageId = doc.page_order[0];
+    let page: PageId = doc.page_order()[0];
     let g = Grid::of(&doc, page);
     [g.frame_left() + (f64::from(col) + 0.5) * g.column_width(), g.frame_top() - (f64::from(row) + 0.5) * g.row_height()]
 }
@@ -39,8 +36,8 @@ fn coil_at(c: &mut Client, col: u32, row: u32, tag: Option<&str>) -> String {
 }
 
 fn tag_of(c: &mut Client, comp: &str) -> Option<String> {
-    let id = ComponentId::parse(comp).unwrap();
-    c.doc().components.get(&id).and_then(|x| x.properties.get("tag").cloned())
+    let id = DeviceId::parse(comp).unwrap();
+    c.doc().devices().get(&id).and_then(|x| x.tag_shown())
 }
 
 fn last_is_agents(c: &mut Client) {
@@ -49,7 +46,7 @@ fn last_is_agents(c: &mut Client) {
 
 #[test]
 fn renumber_previews_and_applies_one_transaction_by_the_agent() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let (a, cc) = (cell(&mut c, 0, 1), cell(&mut c, 2, 1));
     let k07 = coil(&mut c, a, Some("-K07"));
     let k01 = coil(&mut c, cc, Some("-K01"));
@@ -85,7 +82,7 @@ fn renumber_previews_and_applies_one_transaction_by_the_agent() {
 
 #[test]
 fn apply_on_a_stale_preview_is_refused_and_records_nothing() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let k = coil_at(&mut c, 0, 1, Some("-K05"));
     let pv = c.exec("renumber", json!({"preview": true}));
     c.exec("setprop", json!({"component": k, "key": "description", "value": "Pump"}));
@@ -97,7 +94,7 @@ fn apply_on_a_stale_preview_is_refused_and_records_nothing() {
 
 #[test]
 fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let k4 = coil_at(&mut c, 0, 1, Some("-K04"));
     // A contact, so that it can later join the coil (018: one coil per device).
     let at = cell(&mut c, 1, 1);
@@ -114,7 +111,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     last_is_agents(&mut c);
     assert_eq!(c.log().last().unwrap().label, "Swap tags");
     assert_eq!((tag_of(&mut c, &k4).as_deref(), tag_of(&mut c, &k2).as_deref()), (Some("-K02"), Some("-K04")));
-    let fixed = |c: &mut Client, k: &str| c.doc().components[&ComponentId::parse(k).unwrap()].properties.get("tag_fixed").cloned();
+    let fixed = |c: &mut Client, k: &str| c.doc().devices()[&DeviceId::parse(k).unwrap()].is_fixed().then(|| "yes".to_string());
     assert_eq!(fixed(&mut c, &k4).as_deref(), Some("yes"));
     // Next: the next free tag, fixed.
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "next"}));
@@ -124,25 +121,25 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "merge"}));
     assert_eq!(r["merged"], json!(true), "{r}");
     last_is_agents(&mut c);
-    assert!(!c.doc().components.contains_key(&ComponentId::parse(&k2).unwrap()));
+    assert!(!c.doc().devices().contains_key(&DeviceId::parse(&k2).unwrap()));
     // tag_fixed: released and fixed again, each one transaction.
     let n = c.log().len();
-    c.exec("setprop", json!({"component": k4, "key": "tag_fixed", "value": null}));
+    c.set_tag_state(&json!(k4), "automatic");
     assert_eq!(fixed(&mut c, &k4), None);
-    c.exec("setprop", json!({"component": k4, "key": "tag_fixed", "value": "yes"}));
+    c.set_tag_state(&json!(k4), "fixed");
     assert_eq!(c.log().len(), n + 2);
     last_is_agents(&mut c);
 }
 
 #[test]
 fn cable_tags_share_the_namespace_and_swap() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     for y in [0.0, 10.0, 20.0, 30.0] {
         c.exec("wire", json!({"points": [[0, y], [60, y]]}));
     }
     let w1 = c.exec("cableslash", json!({"from": [20, -3], "to": [20, 13]}))["cable"].as_str().unwrap().to_string();
     let w2 = c.exec("cableslash", json!({"from": [40, 17], "to": [40, 33]}))["cable"].as_str().unwrap().to_string();
-    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].properties.get("tag").cloned();
+    let cable_tag = |c: &mut Client, k: &str| c.doc().cables()[&ecad_model::CableId::parse(k).unwrap()].tag_shown();
     assert_eq!((cable_tag(&mut c, &w1).as_deref(), cable_tag(&mut c, &w2).as_deref()), (Some("-W01"), Some("-W02")));
     // A device may not take a cable's tag, except by the next free one.
     let k = coil_at(&mut c, 3, 3, None);
@@ -155,7 +152,7 @@ fn cable_tags_share_the_namespace_and_swap() {
 
 #[test]
 fn numbering_finalise_and_issue_with_provisional() {
-    let mut c = writer();
+    let mut c = writer(SEED);
     let n0 = c.log().len();
     let r = c.exec("numbering", json!({}));
     assert_eq!(r["provisional"], json!(false));
@@ -181,8 +178,8 @@ fn numbering_finalise_and_issue_with_provisional() {
     let n = c.log().len();
     c.exec("issuerevision", json!({"provisional": "finalise"}));
     let log = c.log();
-    assert_eq!(log.len(), n + 2, "Finalise, then the issue");
-    assert_eq!(log[n].label, "Finalise numbering");
+    assert_eq!(log.len(), n + 1, "Finalise and the issue are one transaction (S4)");
+    assert_eq!(log[n].label, "Issue Rev A");
     assert_eq!(log[n].author, Author::Agent(AGENT.into()));
     assert_eq!((tag_of(&mut c, &b).as_deref(), tag_of(&mut c, &a).as_deref()), (Some("-K01"), Some("-K02")));
     // Issue anyway: one transaction.
@@ -211,7 +208,7 @@ fn writes_are_refused_with_writes_off_and_the_previews_read() {
         ("renumber", json!({})),
         ("finalise", json!({})),
         ("numbering", json!({"provisional": true})),
-        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag_fixed", "value": "yes"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag", "value": "{\"state\":\"fixed\",\"tag\":\"-K1\"}"})),
         ("issuerevision", json!({"provisional": "issue"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
@@ -241,10 +238,10 @@ fn merge_choice_one_makes_two_devices_one_in_the_merge_transaction() {
     assert_eq!(c.log().len(), n + 1);
     last_is_agents(&mut c);
     let doc = c.doc();
-    let main_id = ComponentId::parse(&main_k).unwrap();
-    assert!(doc.components.contains_key(&main_id));
-    assert!(!doc.components.contains_key(&ComponentId::parse(&branch_k).unwrap()), "the branch's device joined main's");
-    let reps = doc.representations_of(ecad_model::Subject::Component(main_id)).count();
+    let main_id = DeviceId::parse(&main_k).unwrap();
+    assert!(doc.devices().contains_key(&main_id));
+    assert!(!doc.devices().contains_key(&DeviceId::parse(&branch_k).unwrap()), "the branch's device joined main's");
+    let reps = doc.representations_of(ecad_model::Subject::Device(main_id)).count();
     assert_eq!(reps, 2, "one device with both symbols");
 }
 

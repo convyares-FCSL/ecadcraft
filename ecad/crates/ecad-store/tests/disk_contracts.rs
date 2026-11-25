@@ -1,10 +1,9 @@
-//! Files on disk (proposal §20.5): the file medium, the writer lock and the replacement steps.
-#![cfg(not(target_arch = "wasm32"))]
+//! Files on disk: file identity, the writer lock and the replacement steps.
 
 use std::path::{Path, PathBuf};
 
+use ecad_store::FileIdentity;
 use ecad_store::disk::{self, LockAttempt, WriterLock};
-use ecad_store::{FileIdentity, FileMedium, Medium};
 
 /// A fresh folder under the system temp folder, removed when dropped.
 struct TempDir(PathBuf);
@@ -31,37 +30,6 @@ fn acquired(project: &Path, who: &str) -> (WriterLock, Option<String>) {
         LockAttempt::Acquired { lock, leftover } => (lock, leftover),
         LockAttempt::HeldByOther { holder } => panic!("lock held by {holder:?}"),
     }
-}
-
-#[test]
-fn the_file_medium_appends_flushes_truncates_and_reads() {
-    let d = TempDir::new("medium");
-    let p = d.path("a.ecad");
-    let mut m = FileMedium::create_new(&p).unwrap();
-    assert!(FileMedium::create_new(&p).is_err(), "never overwrites");
-    m.append(b"hello ").unwrap();
-    m.append(b"world").unwrap();
-    m.flush().unwrap();
-    assert_eq!(m.len(), 11);
-    assert_eq!(m.read_range(6, 5).unwrap(), b"world");
-    assert_eq!(m.read_range(9, 50).unwrap(), b"ld", "short at the end");
-    m.truncate(5).unwrap();
-    assert_eq!(m.read_all().unwrap(), b"hello");
-    // Injected faults: a torn append, a failed flush, a failed truncate.
-    m.faults.partial_append = Some(2);
-    assert!(m.append(b"XYZ").is_err());
-    assert_eq!(m.read_all().unwrap(), b"helloXY");
-    m.faults.fail_next_flush = true;
-    assert!(m.flush().is_err());
-    m.faults.fail_next_truncate = true;
-    assert!(m.truncate(0).is_err());
-    assert_eq!(m.len(), 7, "a failed truncate changes nothing");
-    // Read-only handles refuse writes.
-    drop(m);
-    let mut r = FileMedium::open(&p, false).unwrap();
-    assert!(r.append(b"!").is_err());
-    assert!(r.truncate(0).is_err());
-    assert_eq!(r.read_all().unwrap(), b"helloXY");
 }
 
 #[test]
@@ -125,14 +93,14 @@ fn replacement_steps_are_atomic_and_identity_tracks_the_file() {
     assert_ne!(disk::temp_path(&target), temp, "unique names");
     disk::write_new_file(&temp, b"new").unwrap();
     assert!(disk::write_new_file(&temp, b"x").is_err(), "never overwrites");
-    let handle = FileMedium::open(&temp, false).unwrap();
+    let handle = FileIdentity::at(&temp).unwrap();
     disk::replace(&temp, &target).unwrap();
     disk::sync_dir(&disk::parent_dir(&target)).unwrap();
     assert_eq!(std::fs::read(&target).unwrap(), b"new");
     assert!(!temp.exists());
-    // The open handle follows the renamed file. That the path now names a different file than
+    // An identity holds its file open and follows it when renamed. That the path now names a different file than
     // before: see `identity_changes_when_another_file_replaces_the_path`.
-    assert_eq!(handle.identity().unwrap(), FileIdentity::at(&target).unwrap());
+    assert_eq!(handle, FileIdentity::at(&target).unwrap());
     assert_eq!(disk::parent_dir(Path::new("x.ecad")), PathBuf::from("."));
     assert_eq!(disk::sibling(&target, ".lock"), d.path("p.ecad.lock"));
 }
@@ -150,8 +118,7 @@ fn identity_changes_when_another_file_replaces_the_path() {
     disk::replace(&temp, &target).unwrap();
     assert_ne!(before, FileIdentity::at(&target).unwrap());
     // Deleted and recreated, while a handle to the old file is still open (as the writer's is).
-    let open = FileMedium::open(&target, true).unwrap();
-    let before = open.identity().unwrap();
+    let before = FileIdentity::at(&target).unwrap();
     disk::remove_file(&target).unwrap();
     std::fs::write(&target, b"recreated").unwrap();
     assert_ne!(before, FileIdentity::at(&target).unwrap());
@@ -295,5 +262,26 @@ fn another_process_is_told_who_holds_the_lock_where_the_system_shows_it() {
     match attempt {
         LockAttempt::HeldByOther { holder } => assert_eq!(holder.as_deref(), expected_holder(&child_record)),
         LockAttempt::Acquired { .. } => panic!("the child's lock was not respected"),
+    }
+}
+
+#[test]
+fn one_path_rule_reads_dots_either_separator_and_existing_folders_alike() {
+    let t = TempDir::new("same-path");
+    let (folder, unborn) = (t.path("Project"), t.path("Project").join("release").join("Rev A"));
+    std::fs::create_dir_all(&folder).unwrap();
+    // Not on disk yet: compared by spelling, `.` and `..` read.
+    assert!(disk::same_path(&unborn, &folder.join("release").join("x").join("..").join(".").join("Rev A")));
+    assert!(disk::same_or_below(&unborn, &folder));
+    assert!(!disk::same_or_below(&folder, &unborn));
+    // On disk: compared by canonical path.
+    assert!(disk::same_path(&folder, &t.path("Project").join("..").join("Project")));
+    assert!(!disk::same_path(&folder, &t.path("Other")));
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(disk::same_path(&unborn, &t.path("PROJECT").join("Release").join("rev a")));
+    }
+    if cfg!(windows) {
+        let slashed = std::path::PathBuf::from(unborn.to_string_lossy().replace('\\', "/"));
+        assert!(disk::same_path(&unborn, &slashed));
     }
 }

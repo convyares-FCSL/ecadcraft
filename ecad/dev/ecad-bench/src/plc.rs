@@ -1,0 +1,363 @@
+//! PLC timings, through the app's project on a copy of the version 2
+//! file. The racks and cards are added on the copy here, not by the generator, so every earlier row
+//! stays comparable with earlier baselines.
+//!
+//! # Semantics
+//! - The copy gains 10 racks (a `plccpu` each) with 12 cards each (DI, DQ, AI, RTD and IOL bodies in
+//!   turn) in slots 1–12, spread over its first 30 pages (fewer when it has fewer); it is saved and
+//!   opened again, so the measured project starts clean.
+//! - **plcbuild**: the PLC model built from scratch (the report models already built), as on first
+//!   show. Target < 30 ms.
+//! - **slotmove**: a card moved from slot 2 to 20 (the cards after it change address), committed
+//!   and updated. Target < 16 ms.
+//! - **chfence**: Place Channels across 16 wires (a new DI card), committed and updated. < 16 ms.
+//! - **plcstyle**: one rack's address style changed (`plcaddress`), committed and updated. < 16 ms.
+//! - **iolist**: every I/O row made (the models built). < 50 ms. **iolistupd**: one channel's
+//!   text set (`plcchannel`), committed, updated and its card's rows made again. < 5 ms.
+//! - **work**: how many racks and cards read differently after a slot move (the model itself is
+//!   rebuilt after every commit).
+//!
+//! - The PLC tag import and export, without sync:
+//!   **plcimport**, a 5 000-tag generic CSV read, normalised and matched to the channels, dry run
+//!   (< 60 ms); **plcexport**, every rack as generic CSV text (< 30 ms); **drives**, Drives of every
+//!   channel from its rows (< 20 ms).
+//!
+//! Each edit is undone after it is measured.
+
+use std::path::Path;
+use std::time::Instant;
+
+use cadcraft_engine::Session;
+use ecad_engine::ProjectHandle;
+use ecad_model::{Author, DeviceId, PageId, Placement, Pt};
+use serde_json::json;
+
+use crate::measure::{median, path_text, remove};
+
+const OPEN_SEED: u64 = 0x0045_0000;
+const RACKS: usize = 10;
+const CARDS: usize = 12;
+const PAGES: usize = 30;
+const BODIES: [&str; 5] = ["plcdi", "plcdq", "plcai", "plcrtd", "plciol"];
+
+/// What the PLC timings measured, in milliseconds.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct MeasuredPlc {
+    pub plcbuild_ms: f64,
+    pub racks: usize,
+    pub cards: usize,
+    /// Racks and cards one slot move recomputed.
+    pub work: usize,
+    pub slotmove_ms: f64,
+    /// Place Channels across 16 wires (a new DI card), committed and updated.
+    pub chfence_ms: f64,
+    /// One rack's address style changed, committed and updated.
+    pub plcstyle_ms: f64,
+    /// Every I/O row made from scratch, and one channel text edited (committed,
+    /// updated, its card's rows made again).
+    pub iolist_ms: f64,
+    pub iolistupd_ms: f64,
+    pub rows: usize,
+    /// The card frames of the fenced page made (< 8 ms); one channel
+    /// text edited, committed, updated and the frames made again (< 4 ms); the first rack's tiles
+    /// made (< 10 ms); the `plcrack` sheet drawn (< 30 ms).
+    pub plcframe_ms: f64,
+    pub plcframeupd_ms: f64,
+    pub plcstrip_ms: f64,
+    pub plcrack_ms: f64,
+    /// Tag import, export and drives.
+    pub plcimport_ms: f64,
+    pub plcexport_ms: f64,
+    pub drives_ms: f64,
+}
+
+fn ms(t: Instant) -> f64 {
+    t.elapsed().as_secs_f64() * 1000.0
+}
+
+fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    s.execute(cmd, &params).map_err(|e| format!("{cmd} {params}: {e}"))
+}
+
+/// Add the racks and cards (one transaction per rack, straight on the ledger).
+pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
+    project.configure(s, |p| -> Result<(), String> {
+        let pages: Vec<PageId> = p.ledger.document().page_order().iter().take(PAGES).copied().collect();
+        if pages.is_empty() {
+            return Err("the project has no pages".into());
+        }
+        let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        let cpu = ecad_electrical::symbols::catalogue::by_key("plccpu").ok_or("no plccpu")?;
+        // Tags from the project's history (the project's own counter is private to it).
+        let mut high = ecad_electrical::devices::tags::TagHigh::default();
+        for r in 0..RACKS {
+            let page = pages[(r * 3) % pages.len()];
+            let mut ops = Vec::new();
+            let at = |i: usize| Placement {
+                origin: Pt::new(600.0 + 40.0 * i as f64, 600.0 + 60.0 * r as f64),
+                rotation: ecad_model::geometry::units::Radians(0.0),
+                mirror: false,
+                scale: 1.0,
+            };
+            let plan = ecad_electrical::devices::placing::plan_place(
+                &p.ledger,
+                &mut p.ids,
+                &mut high,
+                page,
+                style.clone(),
+                cpu,
+                at(0),
+                ecad_electrical::devices::placing::Target::New(None),
+            )?;
+            let rack: DeviceId = plan.component;
+            ops.extend(plan.ops);
+            p.ledger.commit(Author::User, "bench rack", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
+            for i in 0..CARDS {
+                let page = pages[(r * 3 + i / 4) % pages.len()];
+                let body = ecad_electrical::symbols::catalogue::by_key(BODIES[i % BODIES.len()]).ok_or("no card body")?;
+                let plan = ecad_electrical::devices::placing::plan_place(
+                    &p.ledger,
+                    &mut p.ids,
+                    &mut high,
+                    page,
+                    style.clone(),
+                    body,
+                    at(i + 1),
+                    ecad_electrical::devices::placing::Target::New(None),
+                )?;
+                let card = plan.component;
+                ops.extend(plan.ops);
+                let slot = u32::try_from(i + 1).map_err(|e| e.to_string())?;
+                ecad_electrical::plc::rack::put_new_card(p.ledger.document(), &mut ops, card, rack, slot);
+                p.ledger.commit(Author::User, "bench card", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })??;
+    run(s, "qsave", json!({}))?;
+    Ok(())
+}
+
+/// Measure the PLC on a copy of `path` (in `scratch`), `runs` times each.
+///
+/// # Errors
+/// Opening, a refused command, or a missing page.
+pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, String> {
+    let copy = scratch.join("plc.ecad");
+    remove(&copy);
+    std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
+    let result = (|| {
+        ecad_engine::install();
+        {
+            let mut s = Session::empty();
+            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            populate(&project, &mut s)?;
+            drop(project);
+        }
+        crate::measure::release_lock_file(&copy);
+        let mut s = Session::empty();
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::cables::views::Settings::none())?;
+        let mut out = MeasuredPlc::default();
+        let mut build = Vec::new();
+        for _ in 0..runs {
+            build.push(project.configure(&mut s, |p| {
+                p.reports();
+                let doc = p.ledger.document();
+                let t = Instant::now();
+                let built = ecad_engine::plc::draw::Plc::build(doc);
+                let took = ms(t);
+                std::hint::black_box(&built);
+                took
+            })?);
+        }
+        out.plcbuild_ms = median(&mut build);
+        let (racks, cards, first) = project.read(&mut s, |p, _| {
+            let o = p.kept_reports();
+            let racks = o.map_or(0, |o| o.plc.racks.len());
+            let cards = o.map_or(0, |o| o.plc.cards.len());
+            let first =
+                o.and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)).and_then(|r| o.and_then(|o| o.plc.cards_of(r).get(1).map(|c| c.id)));
+            (racks, cards, first)
+        })?;
+        (out.racks, out.cards) = (racks, cards);
+        let card = first.ok_or("no card was added")?;
+        // slotmove: a card from slot 2 to the free slot 20, committed and updated, then undone.
+        let mut moves = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcslot", json!({"card": card.hex(), "slot": 20}))?;
+            moves.push(ms(t));
+            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_reports().map_or(0, |o| o.plc.last_changed.len()))?);
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.slotmove_ms = median(&mut moves);
+        // 16 wires on the page shown, for the fence (setup, not timed). The pack's 20 mm
+        // pitch (a fence across closer wires is refused).
+        for i in 0..16 {
+            let x = 900.0 + 20.0 * f64::from(i);
+            run(&mut s, "wire", json!({"points": [[x, 250.0], [x, 150.0]]}))?;
+        }
+        let mut fences = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;
+            fences.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.chfence_ms = median(&mut fences);
+        let rack = project.read(&mut s, |p, _| p.kept_reports().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
+        let mut styles = Vec::new();
+        for _ in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcaddress", json!({"rack": rack.hex(), "style": "iec"}))?;
+            styles.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.plcstyle_ms = median(&mut styles);
+        let mut lists = Vec::new();
+        for _ in 0..runs {
+            lists.push(project.configure(&mut s, |p| {
+                p.reports();
+                let doc = p.ledger.document();
+                let Some(o) = p.kept_reports() else { return (0.0, 0) };
+                let t = Instant::now();
+                let n: usize = ecad_electrical::plc::iolist::cards_in_order(&o.plc)
+                    .into_iter()
+                    .map(|c| ecad_electrical::plc::iolist::rows_of(doc, &o.plc, c).len())
+                    .sum();
+                (ms(t), n)
+            })?);
+        }
+        out.rows = lists.first().map_or(0, |x| x.1);
+        let mut times: Vec<f64> = lists.into_iter().map(|x| x.0).collect();
+        out.iolist_ms = median(&mut times);
+        let mut upd = Vec::new();
+        for k in 0..runs {
+            let t = Instant::now();
+            run(&mut s, "plcchannel", json!({"card": card.hex(), "channel": 0, "text": format!("Bench {k}")}))?;
+            project.configure(&mut s, |p| {
+                p.reports();
+                let doc = p.ledger.document();
+                if let Some(o) = p.kept_reports() {
+                    for c in &o.plc.rows_changed {
+                        if let Some(cd) = o.plc.cards.get(c) {
+                            std::hint::black_box(ecad_electrical::plc::iolist::rows_of(doc, &o.plc, cd));
+                        }
+                    }
+                }
+            })?;
+            upd.push(ms(t));
+            run(&mut s, "undo", json!({}))?;
+        }
+        out.iolistupd_ms = median(&mut upd);
+        measure_051(&project, &mut s, runs, rack, &mut out)?;
+        measure_056(&project, &mut s, runs, &mut out)?;
+        Ok(out)
+    })();
+    crate::measure::release_lock_file(&copy);
+    remove(&copy);
+    result
+}
+
+/// A generic CSV tag table of `n` I/O tags (bits of outputs, then of inputs).
+fn tag_table(n: u32) -> String {
+    let mut t = String::from("name,address,type,comment\n");
+    for k in 0..n {
+        let (dir, k2) = if k % 2 == 0 { ('Q', k / 2) } else { ('I', k / 2) };
+        t.push_str(&format!("T{k:05},%{dir}{}.{},Bool,Bench {k}\n", k2 / 8, k2 % 8));
+    }
+    t
+}
+
+/// The tag import, export and drives rows, on the project as [`measure`] left it.
+fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut MeasuredPlc) -> Result<(), String> {
+    let five = tag_table(5_000);
+    let mut imports = Vec::new();
+    for _ in 0..runs {
+        let t = Instant::now();
+        run(s, "plcimport", json!({"text": five, "dry_run": true}))?;
+        imports.push(ms(t));
+    }
+    out.plcimport_ms = median(&mut imports);
+    let mut exports = Vec::new();
+    for _ in 0..runs {
+        let t = Instant::now();
+        run(s, "plcexport", json!({}))?;
+        exports.push(ms(t));
+    }
+    out.plcexport_ms = median(&mut exports);
+    let mut drives = Vec::new();
+    for _ in 0..runs {
+        drives.push(project.configure(s, |p| {
+            p.reports();
+            let doc = p.ledger.document();
+            let Some(o) = p.kept_reports() else { return 0.0 };
+            let t = Instant::now();
+            for c in ecad_electrical::plc::iolist::cards_in_order(&o.plc) {
+                for r in ecad_electrical::plc::iolist::rows_of(doc, &o.plc, c) {
+                    std::hint::black_box(ecad_electrical::plc::signals::drives_words(&r.targets));
+                }
+            }
+            ms(t)
+        })?);
+    }
+    out.drives_ms = median(&mut drives);
+    Ok(())
+}
+
+/// The fenced card rows, on the project as [`measure`] left it.
+fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad_model::DeviceId, out: &mut MeasuredPlc) -> Result<(), String> {
+    // A fenced card kept on the page shown (setup, not timed).
+    let v = run(s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;
+    let card = v.get("card").and_then(|c| c.as_str()).and_then(ecad_model::DeviceId::parse).ok_or("no fenced card")?;
+    let page = project.read(s, |p, _| p.ledger.document().representations_of(ecad_model::Subject::Device(card)).next().map(|(_, r)| r.page))?;
+    let page = page.ok_or("the fenced card is on no page")?;
+    let frames = |project: &ProjectHandle, s: &mut Session| -> Result<f64, String> {
+        project.read(s, |p, _| {
+            let t = Instant::now();
+            std::hint::black_box(ecad_engine::plc::draw::card::parts_on_page(p.ledger.document(), page));
+            ms(t)
+        })
+    };
+    let mut first = Vec::new();
+    for _ in 0..runs {
+        first.push(frames(project, s)?);
+    }
+    out.plcframe_ms = median(&mut first);
+    let mut upd = Vec::new();
+    for k in 0..runs {
+        let t = Instant::now();
+        run(s, "plcchannel", json!({"card": card.hex(), "channel": 1, "text": format!("Frame {k}")}))?;
+        project.read(s, |p, _| std::hint::black_box(ecad_engine::plc::draw::card::parts_on_page(p.ledger.document(), page)))?;
+        upd.push(ms(t));
+        run(s, "undo", json!({}))?;
+    }
+    out.plcframeupd_ms = median(&mut upd);
+    let mut strip = Vec::new();
+    for _ in 0..runs {
+        strip.push(project.configure(s, |p| {
+            p.reports();
+            let doc = p.ledger.document();
+            let Some(o) = p.kept_reports() else { return 0.0 };
+            let Some(r) = o.plc.racks.get(&rack) else { return 0.0 };
+            let t = Instant::now();
+            std::hint::black_box(ecad_electrical::plc::overview::rack_tiles(doc, &o.plc, r));
+            ms(t)
+        })?);
+    }
+    out.plcstrip_ms = median(&mut strip);
+    let sheet = run(s, "newpage", json!({"generated": "plcrack"}))?;
+    let sheet = sheet.get("page").and_then(|c| c.as_str()).and_then(ecad_model::PageId::parse).ok_or("no plcrack page")?;
+    let mut rack_sheet = Vec::new();
+    for _ in 0..runs {
+        rack_sheet.push(project.configure(s, |p| {
+            p.reports();
+            let doc = p.ledger.document();
+            let t = Instant::now();
+            std::hint::black_box(ecad_engine::pages::generated::parts_of(doc, sheet, p.kept_reports()));
+            ms(t)
+        })?);
+    }
+    out.plcrack_ms = median(&mut rack_sheet);
+    Ok(())
+}

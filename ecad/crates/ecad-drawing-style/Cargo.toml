@@ -1,0 +1,22 @@
+[package]
+name = "ecad-drawing-style"
+description = "The look of an ECAD page, drawn on the definitions of ecad-model and the rules of ecad-electrical"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-model = { workspace = true }
+ecad-electrical = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Command parameters carry their JSON Schema (the generic runner).
+schemars = { workspace = true }
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode).
+ecad-model = { workspace = true, features = ["verify-invariants"] }

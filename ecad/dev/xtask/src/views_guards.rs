@@ -1,0 +1,424 @@
+//! Every derived view has one way in, the project's `Views`. This guard refuses direct full
+//! builds of a view type (`ReportModels::build(`, `RefIndex::build(`, …) outside `Views` and the
+//! view's own module.
+//!
+//! Read over `src/` of every product and Dev crate (the bench included), outside `//` comments and
+//! outside a file's trailing `#[cfg(test)]` module. A view's own module may build the view and its
+//! parts ([`OWN_MODULES`]: an update that rebuilds, the report models building their strips), and so
+//! may `Views` itself (ecad-electrical's `views/`); every own-module file that does, outside `Views`
+//! and the view notes, is listed with its reason ([`OWN_BUILDS`]). Working views out from scratch
+//! (`.detached(`, …) happens only in the files [`FRESH_BUILDS`] lists, and the bench's probes
+//! ([`PROBES`]) time full rebuilds on purpose. The lists have no counts: a listed file that no
+//! longer does it fails until it is removed.
+//!
+//! In ecad-electrical, no match over `Effect`/`EffectKind` ends in a wildcard arm, so a new effect
+//! kind needs a decision in every view's note, and no view note routes a property key by its prefix
+//! (`.starts_with("`): a key's meaning belongs in its definition. Both are bans. Clippy's
+//! `wildcard_enum_match_arm` cannot replace the first: it flags a wildcard over any enum.
+
+use std::path::PathBuf;
+
+use serde_json::Value;
+
+/// The view types whose `::build(` is counted.
+const VIEW_TYPES: &[&str] = &["ReportModels", "Checks", "RefIndex", "connectors::Index", "Uses", "Plc", "Strips", "StripPages"];
+
+/// The modules where a view may build itself or its parts,
+/// and `Views`. A path ending in `/` is a folder.
+const OWN_MODULES: &[&str] = &[
+    "crates/ecad-electrical/src/views/",
+    "crates/ecad-electrical/src/checks/view.rs",
+    "crates/ecad-electrical/src/connectors/view.rs",
+    "crates/ecad-electrical/src/devices/view.rs",
+    "crates/ecad-electrical/src/pages/frame_view.rs",
+    "crates/ecad-electrical/src/pages/generated_view.rs",
+    "crates/ecad-electrical/src/pages/tree_view.rs",
+    "crates/ecad-electrical/src/pages/view.rs",
+    "crates/ecad-electrical/src/properties/view.rs",
+    "crates/ecad-electrical/src/references/view.rs",
+    "crates/ecad-electrical/src/reports/view.rs",
+    "crates/ecad-electrical/src/reports/kept/",
+    "crates/ecad-electrical/src/reports/mod.rs",
+    "crates/ecad-electrical/src/terminal_strips/pages.rs",
+    "crates/ecad-electrical/src/terminal_strips/mod.rs",
+    "crates/ecad-electrical/src/plc/",
+    "crates/ecad-electrical/src/checks/",
+    "crates/ecad-electrical/src/checks/mod.rs",
+    "crates/ecad-electrical/src/references/devices/index.rs",
+    "crates/ecad-electrical/src/connectors/mod.rs",
+    "crates/ecad-electrical/src/pages/front.rs",
+];
+
+/// Bench files that build views directly on purpose, each with its reason: they time a full rebuild
+/// (the reference point for deciding which views keep an update map).
+const PROBES: &[(&str, &str)] = &[
+    ("dev/ecad-bench/src/views.rs", "times each view's full rebuild"),
+    ("dev/ecad-bench/src/plc.rs", "times the PLC model's full rebuild"),
+    ("dev/ecad-bench/src/strips.rs", "times the strip model's and the strip pages' full rebuild"),
+];
+
+/// The calls that work out views of a state from scratch, outside `Views` (`.detached(`,
+/// `.report_models(`, and `Detached::build(` for a build moved off the UI thread).
+const FRESH_CALLS: &[&str] = &[".detached(", ".report_models(", "Detached::build("];
+
+/// Every file allowed to work out views from scratch, and why: a state the project does not keep,
+/// or a check that must not trust the kept views. A file not listed may not.
+const FRESH_BUILDS: &[(&str, &str)] = &[
+    ("crates/ecad-engine/src/dev/checks.rs", "debugger projection check, on a copy, must not trust the kept models"),
+    ("crates/ecad-engine/src/checks.rs", "the `checks` command's from-scratch pass, on request"),
+    ("crates/ecad-engine/src/pages/preview.rs", "previews: a page outside its window, and an issued revision's state"),
+    ("crates/ecad-engine/src/project/changes.rs", "recovery check of a rebuilt page, must not trust the kept models"),
+    ("crates/ecad-engine/src/project/mod.rs", "live facts: an open page against a fresh projection"),
+    ("crates/ecad-engine/src/releases/release.rs", "release: the issued and the finalised states, not kept"),
+    ("dev/ecad-bench/src/bom.rs", "bench verify mode: the kept BOM model against a rebuild"),
+];
+
+/// Every own-module file (not `Views` or a view note) with a direct build, and why: each must be a
+/// view rebuilding itself or its parts, or a verify pass against a rebuild.
+const OWN_BUILDS: &[(&str, &str)] = &[
+    ("crates/ecad-electrical/src/pages/front.rs", "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
+    ("crates/ecad-electrical/src/reports/kept/mod.rs", "The report models build their strips and strip pages on first show"),
+    ("crates/ecad-electrical/src/reports/kept/update.rs", "The verify pass compares the strips with a rebuild and the strip pages follow"),
+    (
+        "crates/ecad-electrical/src/terminal_strips/pages.rs",
+        "StripPages builds itself again after every commit (no update map, decision 7: 0.5 ms on large)",
+    ),
+    ("crates/ecad-electrical/src/references/devices/index.rs", "RefIndex::verify compares the kept index with a rebuild"),
+];
+
+/// `Views` and every feature's view module: the view notes, where no key is routed by prefix.
+const DERIVED: &[&str] = &[
+    "crates/ecad-electrical/src/views/",
+    "crates/ecad-electrical/src/checks/view.rs",
+    "crates/ecad-electrical/src/connectors/view.rs",
+    "crates/ecad-electrical/src/devices/view.rs",
+    "crates/ecad-electrical/src/pages/frame_view.rs",
+    "crates/ecad-electrical/src/pages/generated_view.rs",
+    "crates/ecad-electrical/src/pages/tree_view.rs",
+    "crates/ecad-electrical/src/pages/view.rs",
+    "crates/ecad-electrical/src/properties/view.rs",
+    "crates/ecad-electrical/src/references/view.rs",
+    "crates/ecad-electrical/src/reports/view.rs",
+];
+
+/// Whether `rel` is `Views` or a feature's view module.
+fn is_view_module(rel: &str) -> bool {
+    DERIVED.iter().any(|m| if m.ends_with('/') { rel.starts_with(m) } else { rel == *m })
+}
+
+/// The crate whose matches over effects and view notes are checked.
+const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
+
+/// Whether `rel` is a view's own module, or `Views`.
+fn is_own_module(rel: &str) -> bool {
+    OWN_MODULES.iter().any(|m| if m.ends_with('/') { rel.starts_with(m) } else { rel == *m })
+}
+
+/// Whether `line` builds a view type directly.
+fn is_place(line: &str) -> bool {
+    VIEW_TYPES.iter().any(|t| {
+        let pat = format!("{t}::build(");
+        line.match_indices(&pat).any(|(i, _)| {
+            // A whole type name: not the tail of a longer one (`MyOutputs::build(`).
+            line[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+        })
+    })
+}
+
+/// The lines of one file (outside `//` comments and its trailing `#[cfg(test)]` module) for which
+/// `hit` holds, as `rel:line: text`.
+fn lines_where(rel: &str, text: &str, hit: impl Fn(&str) -> bool) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let code = line.trim_start();
+        if code.starts_with("#[cfg(test)]") {
+            break;
+        }
+        if code.starts_with("//") {
+            continue;
+        }
+        let code = code.split("//").next().unwrap_or_default();
+        if hit(code) {
+            out.push(format!("{rel}:{}: {}", i + 1, line.trim()));
+        }
+    }
+    out
+}
+
+/// The direct view builds in one file.
+fn places(rel: &str, text: &str) -> Vec<String> {
+    lines_where(rel, text, is_place)
+}
+
+/// The from-scratch view calls in one file.
+fn fresh(rel: &str, text: &str) -> Vec<String> {
+    lines_where(rel, text, |code| FRESH_CALLS.iter().any(|c| code.contains(c)))
+}
+
+/// `text`'s code lines up to its trailing `#[cfg(test)]` module, with `//` comments, the insides
+/// of string literals and brace character literals blanked, so braces can be counted.
+fn code_lines(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        if line.trim_start().starts_with("#[cfg(test)]") {
+            break;
+        }
+        let line = line.replace("'{'", "' '").replace("'}'", "' '");
+        let mut code = String::new();
+        let (mut in_str, mut esc) = (false, false);
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            if in_str {
+                match (esc, c) {
+                    (true, _) => esc = false,
+                    (false, '\\') => esc = true,
+                    (false, '"') => {
+                        in_str = false;
+                        code.push('"');
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+            if c == '/' && chars.peek() == Some(&'/') {
+                break;
+            }
+            if c == '"' {
+                in_str = true;
+            }
+            code.push(c);
+        }
+        out.push(code);
+    }
+    out
+}
+
+/// Whether an arm's pattern names an effect variant (`Effect::Wire { .. }`, `EffectKind::Prop`).
+fn is_effect_arm(arm: &str) -> bool {
+    let head = arm.trim_start_matches('|').trim_start();
+    let path = head.split(|c: char| c.is_whitespace() || c == '(' || c == '{').next().unwrap_or_default();
+    path.contains("Effect::") || path.contains("EffectKind::")
+}
+
+/// The change in brace depth over one code line.
+fn braces(code: &str) -> i64 {
+    code.matches('{').count() as i64 - code.matches('}').count() as i64
+}
+
+/// In one file: the wildcard arms of matches over effects, and the `.starts_with("` calls inside
+/// fns that take an `Effect` (anywhere, with `whole`), each as `rel:line: text`.
+fn effect_routing(rel: &str, text: &str, whole: bool) -> (Vec<String>, Vec<String>) {
+    let raw: Vec<&str> = text.lines().collect();
+    let site = |i: usize| format!("{rel}:{}: {}", i + 1, raw.get(i).map_or("", |l| l.trim()));
+    let (mut wild, mut prefix) = (Vec::new(), Vec::new());
+    // Open matches: the depth of their arms, whether an arm names an effect, wildcard arm lines.
+    let mut matches: Vec<(i64, bool, Vec<usize>)> = Vec::new();
+    // The depth an effect-taking fn's body closes at, and a signature still being read.
+    let (mut in_fn, mut sig): (Option<i64>, Option<String>) = (None, None);
+    let mut depth = 0i64;
+    for (i, code) in code_lines(text).iter().enumerate() {
+        let t = code.trim();
+        if let Some((arm_depth, over, wilds)) = matches.last_mut()
+            && depth == *arm_depth
+            && !t.is_empty()
+            && !t.starts_with('}')
+        {
+            *over |= is_effect_arm(t);
+            if t.starts_with("_ =>") || t.starts_with("_ if ") {
+                wilds.push(i);
+            }
+        }
+        if in_fn.is_none() {
+            match sig.as_mut() {
+                Some(s) => s.push_str(t),
+                None if t.contains("fn ") => sig = Some(t.to_string()),
+                None => {}
+            }
+            if let Some(s) = &sig {
+                if s.contains('{') {
+                    in_fn = s.contains("Effect<").then_some(depth);
+                    sig = None;
+                } else if s.ends_with(';') {
+                    sig = None;
+                }
+            }
+        }
+        if (whole || in_fn.is_some()) && t.contains(".starts_with(\"") {
+            prefix.push(site(i));
+        }
+        let opens_match = (t.starts_with("match ") || t.contains(" match ")) && t.ends_with('{');
+        depth += braces(code);
+        if opens_match {
+            matches.push((depth, false, Vec::new()));
+        }
+        while matches.last().is_some_and(|(d, _, _)| depth < *d) {
+            if let Some((_, true, wilds)) = matches.pop() {
+                wild.extend(wilds.into_iter().map(site));
+            }
+        }
+        if in_fn.is_some_and(|d| depth <= d) {
+            in_fn = None;
+        }
+    }
+    (wild, prefix)
+}
+
+/// The problems of one list of files with reasons: every file found that is not listed (with its
+/// places), and every listed file that was not found.
+fn listed(table: &[(&str, &str)], found: Vec<(String, Vec<String>)>, what: &str, fix: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (p, why) in table {
+        if !found.iter().any(|(f, sites)| f == p && !sites.is_empty()) {
+            out.push(format!("{p}: listed ({why}) but has no {what} left; remove the entry"));
+        }
+    }
+    for (rel, sites) in found {
+        if !sites.is_empty() && !table.iter().any(|(p, _)| *p == rel) {
+            out.push(format!("{rel}: {} {what}; {fix}", sites.len()));
+            out.extend(sites.into_iter().map(|f| format!("    {f}")));
+        }
+    }
+    out
+}
+
+/// The guard's problem, if any.
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
+    let mut found = Vec::new();
+    let mut fresh_found: Vec<(String, Vec<String>)> = Vec::new();
+    let (mut own_found, mut wild_found, mut prefix_found) = (Vec::new(), Vec::new(), Vec::new());
+    for (_, class, dir, _) in super::classed_packages(meta)? {
+        let (false, Some(dir)) = (matches!(class, super::Class::Exempt), dir) else {
+            continue;
+        };
+        let mut paths = Vec::new();
+        super::rust_files(&dir.join("src"), &mut paths);
+        for f in paths {
+            let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+            if rel.starts_with(EFFECT_CRATE) {
+                let (wild, prefix) = effect_routing(&rel, &text, is_view_module(&rel));
+                if !wild.is_empty() {
+                    wild_found.push((rel.clone(), wild));
+                }
+                if !prefix.is_empty() {
+                    prefix_found.push((rel.clone(), prefix));
+                }
+            }
+            if is_own_module(&rel) {
+                let own = places(&rel, &text);
+                if !is_view_module(&rel) && !own.is_empty() {
+                    own_found.push((rel, own));
+                }
+                continue;
+            }
+            if PROBES.iter().any(|(p, _)| *p == rel) {
+                continue;
+            }
+            found.extend(places(&rel, &text));
+            let f = fresh(&rel, &text);
+            if !f.is_empty() {
+                fresh_found.push((rel, f));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    if !found.is_empty() {
+        out.push(format!("views: {} direct builds of a derived view outside Views; read the view through the project's Views", found.len()));
+        out.extend(found.into_iter().map(|f| format!("    {f}")));
+    }
+    let what = "from-scratch view calls (`.detached(`, `.report_models(`, `Detached::build(`)";
+    out.extend(listed(FRESH_BUILDS, fresh_found, what, "read the kept view, or add the file to FRESH_BUILDS with its reason"));
+    let fix = "rebuild only the view itself, or verify; else add it to OWN_BUILDS with its reason";
+    out.extend(listed(OWN_BUILDS, own_found, "view builds inside a view's own module", fix));
+    out.extend(listed(&[], wild_found, "wildcard arms in matches over effects", "name every effect the match passes over"));
+    let fix = "say what the key is in its definition and route on that";
+    out.extend(listed(&[], prefix_found, "property keys routed by prefix in a view's note", fix));
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_builds_are_found() {
+        let rows: &[(&str, usize)] = &[
+            ("let o = ReportModels::build(&doc);", 1),
+            ("let i = crate::connectors::Index::build(doc);", 1),
+            ("let i = ecad_model::index::Index::build(doc);", 0),
+            ("let o = MyReportModels::build(&doc);", 0),
+            ("// ReportModels::build(&doc) in a comment", 0),
+            ("let s = Strips::build(doc, &o, &cx); let p = StripPages::build(doc, &s);", 1),
+        ];
+        for (text, want) in rows {
+            assert_eq!(places("f.rs", text).len(), *want, "{text}");
+        }
+    }
+
+    #[test]
+    fn from_scratch_calls_are_found() {
+        let rows: &[(&str, usize)] = &[
+            ("let d = p.derived().detached(&then);", 1),
+            ("let o = engine_views().report_models(doc);", 1),
+            ("let d = ecad_electrical::views::Detached::build(inputs, &then);", 1),
+            ("pub fn detached(&self, doc: &Document) -> Detached {", 0),
+            ("// views.detached(doc) in a comment", 0),
+        ];
+        for (text, want) in rows {
+            assert_eq!(fresh("f.rs", text).len(), *want, "{text}");
+        }
+    }
+
+    #[test]
+    fn every_listed_file_has_a_reason() {
+        for (path, why) in FRESH_BUILDS.iter().chain(OWN_BUILDS).chain(PROBES) {
+            assert!(!why.trim().is_empty(), "{path}");
+        }
+    }
+
+    #[test]
+    fn effect_wildcards_and_key_prefixes_are_found() {
+        // (source, whole file, wildcard arms over effects, prefix routes)
+        let rows: &[(&str, bool, usize, usize)] = &[
+            ("fn n(e: &Effect<'_>) -> bool {\n    match e {\n        Effect::Wire { .. } => true,\n        _ => false,\n    }\n}", false, 1, 0),
+            (
+                "fn n(e: &Effect<'_>) -> bool {\n    match e {\n        Effect::Wire { .. } => true,\n        Effect::Page { .. } => false,\n    }\n}",
+                false,
+                0,
+                0,
+            ),
+            // A wildcard over something else, nested in an effect arm.
+            (
+                "fn n(e: &Effect<'_>) {\n    match e {\n        Effect::Item { before, .. } => match before {\n            Some(_) => {}\n            _ => {}\n        },\n        Effect::Page { .. } => {}\n    }\n}",
+                false,
+                0,
+                0,
+            ),
+            ("fn n(e: &Effect<'_>) {\n    let x = match e {\n        EffectKind::Prop => 1,\n        _ if true => 2,\n    };\n}", false, 1, 0),
+            ("fn n(e: &Effect<'_>, key: &str) -> bool {\n    key.starts_with(\"plc.\")\n}", false, 0, 1),
+            ("fn other(key: &str) -> bool {\n    key.starts_with(\"plc.\")\n}", false, 0, 0),
+            ("fn other(key: &str) -> bool {\n    key.starts_with(\"plc.\")\n}", true, 0, 1),
+            ("fn other(key: &str) -> bool {\n    // key.starts_with(\"plc.\")\n    let s = \"{ _ => }\";\n    true\n}", true, 0, 0),
+        ];
+        for (text, whole, wild, prefix) in rows {
+            let (w, p) = effect_routing("f.rs", text, *whole);
+            assert_eq!((w.len(), p.len()), (*wild, *prefix), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_views_own_module_may_build_it() {
+        let rows: &[(&str, bool)] = &[
+            ("crates/ecad-electrical/src/reports/kept/mod.rs", true),
+            ("crates/ecad-electrical/src/references/devices/index.rs", true),
+            ("crates/ecad-electrical/src/views/mod.rs", true),
+            ("crates/ecad-electrical/src/pages/generated.rs", false),
+            ("crates/ecad-electrical/src/xref_extra.rs", false),
+            ("crates/ecad-engine/src/releases/release.rs", false),
+        ];
+        for (rel, want) in rows {
+            assert_eq!(is_own_module(rel), *want, "{rel}");
+        }
+    }
+}

@@ -1,0 +1,92 @@
+//! The Text panel: over the right panel, closed by default, opened by Ctrl+/ or the
+//! status bar's Commands button. Its **Commands** tab is today's Developer section
+//! ([`crate::developer`]): the ECAD command field with the exact command names and JSON MCP uses,
+//! the debugger, Inspect Project, Agent access and the primitives page. The Ask tab comes later.
+//!
+//! One shell command is answered here: `ui.cadchrome` (with `on` or `off`, or alone to flip)
+//! turns the developer switch.
+
+use ecad_widgets::tokens::{Icon, size, space};
+use eframe::egui::{self, Rect, pos2, vec2};
+
+use crate::developer;
+use crate::shell::app::App;
+
+/// Accessible labels.
+pub(crate) const COMMANDS_TAB: &str = "Commands";
+pub(crate) const CLOSE: &str = "Close the Text panel";
+
+/// Draw the Text panel in `rect`.
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
+    let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
+    let close = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.text.head", |ui| {
+        ui.horizontal_centered(|ui| {
+            let r = ecad_widgets::prim::Chip::new(COMMANDS_TAB).selected(true).show(ui).response;
+            r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, true, COMMANDS_TAB));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add(ecad_widgets::prim::IconButton::new(Icon::Close, CLOSE)).clicked()
+            })
+            .inner
+        })
+        .inner
+    });
+    if close {
+        t.shell.state.text_panel = false;
+        t.developer.open = false;
+        return;
+    }
+    let body = Rect::from_min_max(pos2(rect.left() + space::M, head.bottom()), pos2(rect.right() - space::M, rect.bottom()));
+    let running = t.cad.session.running.is_some();
+    let project = t.project_open();
+    let snapshots = t.files.snapshots.is_some();
+    // The Developer section is the Commands tab: folding it closes the panel (Agent access is
+    // in Settings).
+    let actions = crate::shell::in_rect(ui, body, "ecad.shell.text.body", |ui| {
+        developer::show(
+            ui,
+            developer::Parts {
+                dev: &mut t.developer,
+                command: &mut t.command.text,
+                hint: t.command.hint,
+                focus: &mut t.command.focus,
+                debugger: &mut t.debugger,
+                running,
+                snapshots,
+                project,
+            },
+        )
+    });
+    t.shell.state.text_panel = t.developer.open;
+    if t.command.text.trim().is_empty() {
+        t.command.hint = None;
+    }
+    for a in actions {
+        match a {
+            developer::Action::Run(line) if is_cad_chrome(&line) => t.cad_chrome_command(&line),
+            developer::Action::Run(line) if crate::canvas::is_sheet_command(&line) => t.sheet_command(&line),
+            a => t.developer_action(a),
+        }
+    }
+}
+
+/// Whether `line` is the `ui.cadchrome` command.
+pub(crate) fn is_cad_chrome(line: &str) -> bool {
+    line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case(crate::shell::CAD_CHROME_COMMAND))
+}
+
+impl App {
+    /// `ui.cadchrome [on|off]`: the developer switch; the reply says what it is now.
+    pub fn cad_chrome_command(&mut self, line: &str) {
+        let arg = line.split_whitespace().nth(1).map(str::to_ascii_lowercase);
+        let on = match arg.as_deref().map(|a| (a, ecad_model::naming::words::flag(a))) {
+            Some((_, Some(on))) => on,
+            None => !self.shell.state.cad_chrome,
+            Some((other, None)) => {
+                self.developer.reply = vec![format!("ui.cadchrome takes on or off, not {other:?}.")];
+                return;
+            }
+        };
+        self.set_cad_chrome(on);
+        self.developer.reply = vec![format!("CADCraft's interface is {}.", if on { "shown in the main view" } else { "hidden" })];
+    }
+}

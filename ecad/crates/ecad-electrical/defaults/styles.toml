@@ -1,0 +1,59 @@
+# The page, cable and rating table catalogues and the wire category. Wire types are typed records
+# in `wire_types.toml`.
+# Built-in defaults. Values only: each key's kind, range, levels and
+# label stay in the registry (`src/defaults/`), so this file cannot widen what is allowed.
+# Keys under [values] are registry keys; lengths are millimetres. [fields.<catalogue>] are a style
+# field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
+
+[values]
+"wire.category" = "none"
+
+[fields.page]
+sheet = "project"
+frame = "project"
+title_block = "frame"
+zones = "yes"
+checks = "yes"
+holds = "none"
+
+[styles.page.front]
+holds = "front"
+zones = "no"
+
+[styles.page.schematic]
+
+[styles.page.network]
+
+[styles.page.singleline]
+
+[styles.page.panel]
+zones = "no"
+
+[styles.page.report]
+holds = "report"
+zones = "no"
+
+[styles.page.plain]
+zones = "no"
+checks = "no"
+
+[fields.cable]
+size = ""
+material = "cu"
+max_temperature = 70.0
+conductor_class = "5"
+rated_current = ""
+rated_at = 30.0
+core_colours = ""
+core_scheme = ""
+part_number = ""
+maker = ""
+description = ""
+cores = ""
+shield = "none"
+gland = ""
+outer_diameter = ""
+
+[fields.ratingtable]
+source = ""
+rows = ""

@@ -1,6 +1,6 @@
 //! ecad-inspector
 //!
-//! ECAD's developer inspector (brief 029). A developer and test tool: it never ships, and no
+//! ECAD's developer inspector. A developer and test tool: it never ships, and no
 //! product crate depends on it (`cargo xtask layers`).
 //!
 //! - [`protocol`]: a versioned JSON protocol (`{"v":1,"id":…,"op":…}`) over a [`source::Source`],
@@ -11,8 +11,7 @@
 //! - [`text`] and [`cli`]: `ecadinspect <file> <view>`, the text views.
 //!
 //! Excluded: anything that writes a project file; the drawing Checks and derived locations
-//! (`ecad-cadcraft`); version 1 files (a message and `ecad upgrade`); attaching to a running app
-//! session (a later source).
+//! (`ecad-engine`); attaching to a running app session (a later source).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod cli;

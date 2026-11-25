@@ -8,7 +8,7 @@
     §5). Every view is a protocol call; nothing on the page writes, and the protocol has no op
     that writes.
   - Snapshots mode, opened from disk or with "Open snapshots…": reads ecad-inspect/1 and /2 JSON
-    snapshots exactly as before (`cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>`).
+    snapshots exactly as before (`cargo run -p ecad-engine --example experiment_snapshots -- <dir>`).
 
   Every value goes through esc(). No inline event handlers: the server's Content-Security-Policy
   runs only this script.
@@ -117,6 +117,13 @@ function render() {
     const text = x ? `${esc(x.label)} <span class="mono">(${esc(x.short)})</span>` : `<span class="mono">${esc(short(hex))}</span>`;
     return q && ((x && x.label.toLowerCase().includes(q)) || hex.includes(q) || (x && x.short.includes(q))) ? `<mark>${text}</mark>` : text;
   };
+  // Where a cable core is (owner ruling, 2026-11-18): its wire, the line it waits on, or unplaced.
+  const corePlaceId = (p) => (p && p.wire) || (p && p.route && p.route.route) || "";
+  const corePlace = (p) => {
+    if (p && p.wire) return name(p.wire);
+    if (p && p.route) return `line ${name(p.route.route)} (no wire yet, ${p.route.landed ? `landed at ${name(p.route.landed)}` : "no end landed"})`;
+    return "unplaced";
+  };
   const d = s.document;
   const ok = (b) => (b === null || b === undefined ? `<span class="warn">n/a</span>` : b ? `<span class="ok">yes</span>` : `<span class="bad">NO</span>`);
   const checks = s.checks;
@@ -132,60 +139,53 @@ function render() {
     <h2>Checks</h2><table>
     <tr><th>Replay equals live</th><td>${ok(checks.replay_equals_live)}</td></tr>
     <tr><th>Invariants hold</th><td>${ok(checks.invariants_hold)}</td></tr>
-    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
+    <tr><th>Route ends off their connection point</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
     <tr><th>Nets (derived)</th><td>${esc(checks.nets.length)}</td></tr>
     </table></div></div>
     <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
     ${s.pages.map((p) => `<tr><td>${name(p.id)}</td><td>${ok(p.open)}</td><td>${ok(p.projection_matches)}</td><td>${esc(p.mapped_handles ?? "")}</td></tr>`).join("")}</table></div>`;
   const f = s.persistence;
-  const records = new Map(((f && f.records) || []).map((r) => [r.seq, r]));
   if (f) {
-    const hd = f.header;
     h += `<h2>Persistence (when the snapshot was taken)</h2><div class="wrap"><table>
     <tr><th>Persistence</th><td>${esc(f.persistence)}${f.in_memory ? " (test store, in memory)" : ""}</td></tr>
     <tr><th>File</th><td class="mono">${esc(f.path ?? "none yet")}</td></tr>
     <tr><th>Writer lock</th><td class="mono">${esc(f.lock_file ?? "not held")}</td></tr>
-    <tr><th>Header</th><td>${hd ? `container ${esc(hd.container)} v${esc(hd.container_version)}, schema ${esc(hd.schema_version)}, codec ${esc(hd.codec)}, writer ${esc(hd.writer)}` : "none"}</td></tr>
-    <tr><th>Verified bytes / writer persisted</th><td>${esc(f.verified_len ?? "")} / ${esc(f.writer_persisted ?? "")}</td></tr>
+    <tr><th>Head in the file</th><td>${esc(f.writer_persisted ?? "")}</td></tr>
     <tr><th>Read-only</th><td>${f.read_only ? `<span class="warn">${esc(f.read_only)}</span>` : "no"}</td></tr>
     <tr><th>Unconfirmed Save As</th><td>${f.unconfirmed ? '<span class="warn">yes</span>' : "no"}</td></tr>
-    <tr><th>Failed save attempt</th><td>${f.attempt ? `<span class="warn">${esc(JSON.stringify(f.attempt))}</span>` : "none"}</td></tr>
-    ${f.preserved_tail != null ? `<tr><th>Preserved tail</th><td class="mono">${esc(f.preserved_tail)}</td></tr>` : ""}
     <tr><th>Opening found</th><td>${esc(f.open_report ?? "")}</td></tr>
-    <tr><th>Records in the file</th><td>${esc(records.size)}</td></tr>
     </table></div>`;
   }
 
-  const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
+  const termsOf = (c) => Object.entries(d.connection_points ?? {}).filter(([, t]) => t.owner?.device === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
-  h += `<h2>Components and terminals</h2><div class="wrap"><table><tr><th>Component</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
-  for (const [c, comp] of Object.entries(d.components)) {
+  h += `<h2>Devices and connection points</h2><div class="wrap"><table><tr><th>Device</th><th>Properties</th><th>Connection points</th><th>Representations</th></tr>`;
+  for (const [c, comp] of Object.entries(d.devices)) {
     const ts = termsOf(c);
     if (!match([c, ...ts.map(([t]) => t)])) continue;
-    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Component === c);
-    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
+    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Device === c);
+    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t, x]) => `${name(t)}${x.accepts !== undefined && x.accepts !== 2 ? ` (takes ${esc(x.accepts)})` : ""}`).join("<br>")}</td>
       <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
   }
-  h += `</table></div><h2>Conductors</h2><div class="wrap"><table><tr><th>Conductor</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
-  for (const [w, c] of Object.entries(d.conductors)) {
-    if (!match([w, ...c.ends.filter(Boolean)])) continue;
-    const cables = Object.entries(d.cables).filter(([, k]) => k.members.some((m) => m.conductor === w)).map(([k]) => name(k));
-    const shown = Object.values(d.representations).some((r) => r.subject.Conductor === w);
-    h += `<tr><td>${name(w)}</td><td>${c.ends[0] ? name(c.ends[0]) : '<span class="muted">open</span>'}</td><td>${c.ends[1] ? name(c.ends[1]) : "open"}</td>
-      <td>${cables.join(", ")}</td><td>${shown ? "yes" : '<span class="warn">not shown</span>'}</td></tr>`;
+  h += `</table></div><h2>Wires</h2><div class="wrap"><table><tr><th>Wire</th><th>End A</th><th>End B</th><th>Net</th><th>Order</th><th>Conductor</th><th>Cables</th></tr>`;
+  for (const [w, c] of Object.entries(d.wires)) {
+    if (!match([w, c.net, c.conductor, ...c.ends])) continue;
+    const cables = Object.entries(d.cables).filter(([, k]) => k.cores.some((m) => m.position && m.position.wire === w)).map(([k]) => name(k));
+    h += `<tr><td>${name(w)}</td><td>${name(c.ends[0])}</td><td>${name(c.ends[1])}</td><td>${name(c.net)}</td>
+      <td>${esc(c.net_order)}${c.order_fixed ? " (fixed)" : ""}</td><td>${name(c.conductor)}</td><td>${cables.join(", ")}</td></tr>`;
   }
-  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Members (in order)</th></tr>`;
+  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Shield</th><th>Members (in order)</th></tr>`;
   for (const [k, c] of Object.entries(d.cables)) {
-    if (!match([k, ...c.members.map((m) => m.conductor)])) continue;
-    h += `<tr><td>${name(k)}</td><td>${c.members.map((m) => name(m.conductor) + (m.core ? ` core ${esc(m.core)}` : "")).join("<br>")}</td></tr>`;
+    if (!match([k, ...c.cores.map((m) => corePlaceId(m.position))])) continue;
+    h += `<tr><td>${name(k)}</td><td>${esc(c.shield ?? "")}</td><td>${c.cores.map((m) => corePlace(m.position) + (m.label ? ` core ${esc(m.label)}` : "") + (m.colours ? ` ${esc(m.colours)}` : "") + (m.purpose === "spare" ? " (spare)" : "") + (m.through && m.through.length ? ` through ${m.through.map(name).join(", ")}` : "")).join("<br>")}</td></tr>`;
   }
   h += `</table></div><h2>Transactions (1-${esc(s.seq)})</h2>`;
   for (const t of [...s.transactions].reverse()) {
     const kind = typeof t.kind === "string" ? t.kind : Object.keys(t.kind)[0] + " of " + short(Object.values(t.kind)[0].of);
     const txt = JSON.stringify(t.ops);
     if (q && !txt.toLowerCase().includes(q) && !t.label.toLowerCase().includes(q)) continue;
-    const rec = records.get(t.seq);
-    const where = t.seq <= s.persisted ? `<span class="ok">saved</span>${rec ? ` at offset ${esc(rec.offset)} (${esc(rec.len)} bytes)` : ""}` : rec ? `<span class="warn">written, unconfirmed</span> at offset ${esc(rec.offset)}` : '<span class="warn">pending</span>';
+    const inFile = f && f.writer_persisted != null && t.seq <= f.writer_persisted;
+    const where = t.seq <= s.persisted ? '<span class="ok">saved</span>' : inFile ? '<span class="warn">written, unconfirmed</span>' : '<span class="warn">pending</span>';
     h += `<details><summary><b>${esc(t.seq)}</b> ${esc(t.label)} <span class="pill">${esc(kind)}</span> <span class="mono">${esc(short(t.id))}</span> · ${esc(t.ops.length)} ops · ${where}</summary>
       ${t.ops.map((op) => { const [n, body] = Object.entries(op)[0]; return `<details><summary>${esc(n)}</summary><pre>${esc(JSON.stringify(body, null, 1))}</pre></details>`; }).join("")}</details>`;
   }
@@ -332,7 +332,6 @@ async function show() {
   if (!info) return;
   const out = $("out");
   let h = info.problem ? msg(info.problem, "bad") : "";
-  if (info.v1_header) h += `<h2>Version 1 header</h2><pre>${esc(info.v1_header)}</pre>`;
   if (info.head_hex) h += `<h2>First bytes</h2><pre>${esc(info.head_hex)}</pre>`;
   const o = info.open || {};
   if (o.state === "damaged") {
@@ -374,31 +373,41 @@ const views = {
     const p = await call("project");
     if (p.error) return msg(p.error, "bad");
     const pr = p.ok;
-    const props = Object.entries(pr.properties).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
-    const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${v}`).join(" · "))}</td></tr>`).join("");
+    const info = Object.entries(pr.info || {}).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
+    const props = Object.entries(pr.display).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+    const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))}</td></tr>`).join("");
+    const entries = (l) => (l || []).map((e) => `<tr><td>${esc(e.code)}</td><td>${esc(e.tag)}</td><td>${esc((e.descriptions || []).join(" · "))}</td><td class="mono">${esc(e.id)}</td></tr>`).join("");
+    const locs = entries(pr.locations), funcs = entries(pr.functions);
+    const folders = (pr.folders || []).map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.parent)}</td><td>${esc(f.start)}</td><td class="mono">${esc(f.id)}</td></tr>`).join("");
     const counts = Object.entries(pr.counts).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
     const o = info.open || {};
-    return `<div class="grid"><div><h2>Project</h2><table>${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+    return `<div class="grid"><div><h2>Project</h2><table>${info}${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr><tr><th>wire numbers by</th><td>${esc(pr.number_by)}</td></tr>
+      <tr><th>location</th><td>${esc(pr.location)}</td></tr><tr><th>function</th><td>${esc(pr.function)}</td></tr>
       <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
       <div><h2>Counts</h2><table>${counts}</table></div></div>
+      ${folders ? `<h2>Folders</h2>${table(["Folder", "In", "Start", "ID"], [folders])}` : ""}
+      ${locs ? `<h2>Locations</h2>${table(["Code", "Tag", "Descriptions", "ID"], [locs])}` : ""}
+      ${funcs ? `<h2>Functions</h2>${table(["Code", "Tag", "Descriptions", "ID"], [funcs])}` : ""}
       ${revs ? `<h2>Revisions</h2>${table(["#", "fields"], [revs])}` : ""}
-      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Items", "Devices", "Wires", "Properties"],
-      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td><td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
+      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Kind", "Page type", "Sheet", "Title block", "Function", "Location", "Items", "Devices", "Wires", "Display"],
+      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.kind)}${r.strip ? ` (strip ${esc(r.strip)})` : ""}</td>
+        <td>${esc(r.page_type)}</td><td>${esc(r.sheet)}</td><td>${esc(r.title_block)}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td>
+        <td class="mono">${esc(JSON.stringify(r.display))}</td></tr>`));
   },
   async devices() {
     return `<h2>Devices</h2>` + (await paged("devices", "devices", { detail: true }, ["Tag", "Function", "Location", "Definition", "Pages", "Connection points", "Properties"],
       (r) => `<tr><td>${esc(r.tag ?? "(no tag)")}${r.duplicate ? ' <span class="pill bad">duplicate</span>' : ""}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td>
         <td>${esc(r.definition)}</td><td>${join(r.pages)}</td>
-        <td>${r.points.map((p) => `${esc(p.name)}${p.wires.length ? ` → ${join(p.wires)}` : ""}`).join("<br>")}</td>
+        <td>${r.points.map((p) => `${esc(p.name)}${p.accepts !== 2 ? ` (takes ${esc(p.accepts)})` : ""}${p.wires.length ? ` → ${join(p.wires)}` : ""}`).join("<br>")}</td>
         <td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
   },
   async wiring() {
     return `<h2>Nets</h2>` + (await paged("nets", "nets", {}, ["Number", "Fixed", "Potential", "Place", "Connection points", "Wires"],
       (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${r.fixed ? "yes" : ""}</td><td>${esc(r.potential)}</td><td>${esc(r.place)}</td><td>${join(r.points)}</td><td>${esc(r.wires)}</td></tr>`)) +
-      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Cross-section", "Colour", "Cable", "Core"],
-      (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td>${esc(r.cross_section)}</td><td>${esc(r.colour)}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
-      `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Members", "Ends"],
-      (r) => `<tr><td>${esc(r.tag)}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
+      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Net", "Order", "Size", "Colours", "Potential", "Rating and load", "Cable", "Core"],
+      (r) => `<tr><td>${esc(r.number ?? "(none)")}${r.fixed ? " (fixed)" : ""}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td class="mono">${esc(short(r.net || ""))}</td><td>${esc(r.net_order)}${r.order_fixed ? " (fixed)" : ""}</td><td>${esc(r.size)}</td><td>${esc(r.colours)}</td><td>${esc(r.potential)}</td><td>${(r.rating || []).map(esc).join("<br>")}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
+      `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Shield", "Members", "Ends"],
+      (r) => `<tr><td>${esc(r.tag)}</td><td>${esc(r.shield ?? "")}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}${m.colours ? ` ${esc(m.colours)}` : ""}${m.purpose === "spare" ? " (spare)" : ""}${m.through && m.through.length ? ` through ${m.through.map(esc).join(", ")}` : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
   },
   async history() {
     const b = await call("branches");
@@ -408,8 +417,7 @@ const views = {
     let h = `<h2>Branches</h2>` + table(["Name", "Status", "Head", "Fork", "Rows", "ID"], b.ok.rows.map((r) =>
       `<tr><td>${esc(r.name)}${r.release_line ? ' <span class="pill">release line</span>' : ""}</td><td>${esc(r.status)}</td><td>${esc(r.head)}</td>
        <td>${r.fork ? `${esc(r.fork.parent)} after ${esc(r.fork.seq)}` : "the project root"}</td><td>${esc(r.rows)}</td><td class="mono">${esc(r.id)}</td></tr>`));
-    h += `<h2>Log</h2><div class="bar"><label>Branch <select id="logbranch">${names.map((n) => `<option ${n === branch ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
-      <button type="button" id="export">Export JSONL</button></div>`;
+    h += `<h2>Log</h2><div class="bar"><label>Branch <select id="logbranch">${names.map((n) => `<option ${n === branch ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>`;
     h += await paged("log", "log", { branch }, ["#", "Time", "Author", "Kind", "Label", "Ops", "Stored", "Compression", "Record"],
       (r) => `<tr><td>${esc(r.seq)}</td><td>${esc(utc(r.time_ms))}</td><td>${esc(JSON.stringify(r.author))}</td><td>${esc(typeof r.kind === "string" ? r.kind : JSON.stringify(r.kind))}</td>
         <td>${esc(r.label)}</td><td>${esc(r.ops)}</td><td>${esc(r.stored)}</td><td>${esc(r.compression)}</td>
@@ -448,7 +456,7 @@ const views = {
       const i = inv.ok;
       h += `<h2>Invariants (the opened state)</h2><table><tr><th>Invariants</th><td>${i.invariants ? `<span class="bad">${esc(i.invariants)}</span>` : '<span class="ok">hold</span>'}</td></tr>
         <tr><th>Index</th><td>${i.index ? `<span class="bad">${esc(i.index)}</span>` : '<span class="ok">matches a rebuild</span>'}</td></tr>
-        <tr><th>Attached ends off their connection point</th><td>${i.mismatches ? `<span class="bad">${esc(i.mismatches)}</span>` : '<span class="ok">0</span>'}</td></tr></table>`;
+        <tr><th>Route ends off their connection point</th><td>${i.mismatches ? `<span class="bad">${esc(i.mismatches)}</span>` : '<span class="ok">0</span>'}</td></tr></table>`;
     }
     const v = (await call("verify")).ok || {};
     info.verify = v;
@@ -515,17 +523,6 @@ if (server) {
   $("out").addEventListener("click", async (e) => {
     const t = e.target;
     if (t.id === "reconnect") { connect(); return; }
-    if (t.id === "export") {
-      const branch = $("logbranch") ? $("logbranch").value : "main";
-      const r = await call("export_jsonl", { branch });
-      if (r.error) { alert(`${r.error.why}\n${r.error.way_out}`); return; }
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([r.ok.text], { type: "application/x-ndjson" }));
-      a.download = `${(info && info.source.name) || "export"}.${branch}.jsonl`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      return;
-    }
     if (t.dataset.page) { const st = lists[t.dataset.page]; st.from = Math.max(0, st.from + Number(t.dataset.dir) * PAGE); show(); return; }
     if (t.dataset.table) { lists.rows = { from: 0, q: "", table: t.dataset.table }; show(); return; }
     if (t.dataset.form) { showRow(t.closest("details"), t.dataset.form); }

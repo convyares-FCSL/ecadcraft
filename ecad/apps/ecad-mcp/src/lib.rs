@@ -1,8 +1,8 @@
-//! ecad-mcp: ECAD over the Model Context Protocol, headless (brief 011).
+//! ecad-mcp: ECAD over the Model Context Protocol, headless.
 //!
 //! It composes CADCraft's MCP server (`cadcraft-mcp`) from ECAD's side, with no upstream change:
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
-//! the trial does. On top of CADCraft's server it adds:
+//! the desktop app does. On top of CADCraft's server it adds:
 //!
 //! - **a write gate** ([`policy`]): read-only unless started with `--write`, and read-only
 //!   whatever the flag when the project opened read-only. Writes reach the project only through
@@ -17,7 +17,7 @@
 //! CADCraft's `command_line`, `script`, `cancel`, `new_drawing` and `open` tools are not offered:
 //! typed lines could reach file commands and several commands per call.
 //!
-//! **Bridged mode** (brief 035, [`bridge`]): with `--connect PORT` one server is headless until
+//! **Bridged mode** ([`bridge`]): with `--connect PORT` one server is headless until
 //! the ECAD window answers on the port, and bridged once one does: every call then goes to the
 //! window, which runs the same gate ([`gate`]) on the person's own session between two frames,
 //! recording the agent as the author for that call only. `--launch` opens the window
@@ -30,50 +30,22 @@
 pub mod args;
 pub mod bridge;
 pub mod demo;
-pub mod gate;
 pub mod launch;
-pub mod policy;
-pub mod tools;
 
 use std::cell::RefCell;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
-use cadcraft_engine::Session;
 use cadcraft_mcp::{Backend, Headless, Server};
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_engine::agent::{CADCRAFT_TOOLS, MAX_BATCH, MAX_REQUEST_BYTES, UNNAMED_AGENT, agent_name, gate, not_offered, tools};
+use ecad_engine::cad::Session;
+use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::Author;
 use serde_json::{Value, json};
-
-/// Longest request line, in bytes; a longer line is answered with an Invalid Request error and
-/// skipped without being kept in memory.
-pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-/// Most messages in one JSON-RPC batch.
-pub const MAX_BATCH: usize = 64;
-/// Most transactions one tool call may record. One `execute` runs one command, which records at
-/// most one; a call that records more is undone and refused.
-pub const MAX_TRANSACTIONS_PER_CALL: usize = 1;
-/// Longest agent name recorded as an author, in characters.
-pub const MAX_AGENT_NAME: usize = 64;
-/// The author name before (or without) a client name.
-pub const UNNAMED_AGENT: &str = "unnamed MCP client";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const INVALID_PARAMS: i64 = -32602;
-
-/// CADCraft's tools that ECAD's server offers; the others are refused as unknown tools.
-pub const CADCRAFT_TOOLS: &[&str] = &["execute", "list_commands", "inspect_drawing", "query_entities", "find_text", "render"];
-
-/// Said when an agent asks for a CADCraft tool ECAD's server does not offer.
-pub fn not_offered(name: &str) -> String {
-    let why = match name {
-        "command_line" | "script" | "cancel" => " ECAD changes go through `execute` only (one command with JSON parameters per call).",
-        "new_drawing" | "open" => " The project is opened by the person who starts the server.",
-        _ => "",
-    };
-    format!("unknown tool `{name}`.{why} `tools/list` shows the tools this server offers.")
-}
 
 /// How the server was asked to run.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -83,35 +55,6 @@ pub struct Options {
     /// The author name to record instead of the client's own name (`--agent`).
     pub agent: Option<String>,
 }
-
-/// Characters that change how text is shown without being visible: bidirectional overrides and
-/// isolates, zero-width spaces and joiners, and the byte-order mark. An author name never holds
-/// them, so a name cannot pose as another.
-fn invisible(c: char) -> bool {
-    matches!(
-        c,
-        '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
-    )
-}
-
-/// An author name as recorded: control, bidirectional and zero-width characters dropped, spaces
-/// trimmed, at most [`MAX_AGENT_NAME`] characters; empty becomes [`UNNAMED_AGENT`].
-pub fn agent_name(given: &str) -> String {
-    let s: String = given.chars().filter(|c| !c.is_control() && !invisible(*c)).take(MAX_AGENT_NAME).collect();
-    let s = s.trim();
-    if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
-}
-
-/// How a transaction's author is shown (as the debugger shows it).
-pub fn author_text(a: &Author) -> String {
-    match a {
-        Author::User => "user".into(),
-        Author::Agent(n) => format!("agent {n}"),
-    }
-}
-
-/// Said when the project cannot be read to check a call; the call is refused (fail closed).
-pub const UNREADABLE: &str = "Refused: the project could not be checked just now (it is busy). Nothing was changed; try again.";
 
 /// Opens the headless session and its project when the first headless call needs it
 /// (`--connect`: a project the window may have open is never locked before then).
@@ -151,14 +94,14 @@ impl State {
             let open = self.opener.as_mut().ok_or(NO_LOCAL)?;
             let (mut headless, project) = open()?;
             let name = self.agent.clone();
-            project.configure(&mut headless.session, |p| p.author = Author::Agent(name))?;
+            project.configure(&mut headless.session, |p| p.caller.author = Author::Agent(name))?;
             self.local = Some(Local { headless, project });
         }
         self.local.as_mut().ok_or_else(|| NO_LOCAL.to_string())
     }
 
     /// Whether the next call goes to the window (probing while undecided). Bridging closes the
-    /// headless project, so its file's writer lock is released (review of PR #69, 1).
+    /// headless project, so its file's writer lock is released.
     fn bridged(&mut self) -> Result<bool, String> {
         let (agent, write) = (self.agent.clone(), self.write);
         let b = match self.link.as_mut() {
@@ -173,7 +116,7 @@ impl State {
 
     /// A `--connect` server keeps a headless project **file** open only once headless has
     /// recorded something (it then sticks). Until then the file is closed after every request
-    /// line, so it is not locked while the person opens it in the window (review of PR #69, 1). A
+    /// line, so it is not locked while the person opens it in the window. A
     /// project in memory locks nothing and stays open.
     fn release_unstuck(&mut self) {
         if !self.link.as_ref().is_some_and(|l| l.mode != bridge::Mode::Headless { stuck: true }) {
@@ -220,7 +163,7 @@ impl State {
     pub(crate) fn set_agent(&mut self, name: &str) -> Result<(), String> {
         let name = agent_name(name);
         if let Some(l) = self.local.as_mut() {
-            l.project.configure(&mut l.headless.session, |p| p.author = Author::Agent(name.clone()))?;
+            l.project.configure(&mut l.headless.session, |p| p.caller.author = Author::Agent(name.clone()))?;
         }
         self.agent = name;
         Ok(())
@@ -356,10 +299,10 @@ pub struct EcadMcp {
 
 /// Install the ECAD commands, or say why they are missing.
 fn install() -> Result<(), String> {
-    ecad_cadcraft::install();
-    // Brief 024: `printbook` plots through CADCraft's PDF plotter.
-    ecad_cadcraft::printbook::install_io();
-    if cadcraft_engine::find_command("wire").is_none() {
+    ecad_engine::install();
+    // `printbook` plots through CADCraft's PDF plotter.
+    ecad_engine::export::printbook::install_io();
+    if ecad_engine::cad::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }
     Ok(())
@@ -368,11 +311,11 @@ fn install() -> Result<(), String> {
 /// Open the project file at `path` headless; also what opening found, in words.
 fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, String), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path)?;
+    let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
     let mut headless = Headless { session: Session::empty() };
     // Writes off: the file is opened for reading only, so it is never changed, not even by the
-    // database's own bookkeeping (brief 021: a version 2 file is a redb database).
-    let seed = ecad_cadcraft::session_seed();
+    // database's own bookkeeping (a project file is a redb database).
+    let seed = ecad_engine::session_seed();
     let (project, summary) = if write {
         ProjectHandle::open_file(&mut headless.session, &path, seed)?
     } else {
@@ -384,7 +327,7 @@ fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, Strin
 /// Create the project file at `path` headless (it must not exist yet), saved straight away.
 fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path)?;
+    let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
     if std::path::Path::new(&path).exists() {
         return Err(format!("{path} already exists; open it without --create"));
     }
@@ -395,7 +338,7 @@ fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     }
     let mut headless = Headless { session: Session::empty() };
     let name = std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-    let project = Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
+    let project = Project::create_with(&mut headless.session, &name, ecad_engine::session_seed(), Persistence::File)?;
     headless.session.execute("saveas", &json!({ "path": path })).map_err(|e| e.to_string())?;
     Ok((headless, project))
 }
@@ -418,7 +361,7 @@ pub fn opener(project: Option<String>, create: bool, write: bool) -> Opener {
             create_local(p)
         }
         Some(p) => open_local(p, write).map(|(h, pr, _)| (h, pr)),
-        None => memory_local("Untitled", ecad_cadcraft::session_seed()),
+        None => memory_local("Untitled", ecad_engine::session_seed()),
     })
 }
 
@@ -446,7 +389,7 @@ impl EcadMcp {
         Self::build(Some(Local { headless, project }), None, None, opts)
     }
 
-    /// A `--connect` server (brief 035): headless until an ECAD window answers on `port`, bridged
+    /// A `--connect` server: headless until an ECAD window answers on `port`, bridged
     /// once one does; `opener` opens the headless project at the first headless call. With
     /// `launch`, a call that finds no window opens one first.
     ///
@@ -457,7 +400,7 @@ impl EcadMcp {
         Self::build(None, Some(opener), Some(bridge::Link::new(port, launch)), opts)
     }
 
-    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the trial).
+    /// Open the project file at `path` (`~` and a missing `.ecad` are handled as in the desktop app).
     /// Returns the server and what opening found, in words. A project another session is editing,
     /// or a damaged one, opens read-only: writes are then refused whatever `opts.write` says.
     ///
@@ -754,6 +697,6 @@ mod tests {
     fn agent_names() {
         assert_eq!(agent_name("  claude-code\n"), "claude-code");
         assert_eq!(agent_name("\u{7}"), UNNAMED_AGENT);
-        assert_eq!(agent_name(&"a".repeat(500)).chars().count(), MAX_AGENT_NAME);
+        assert_eq!(agent_name(&"a".repeat(500)).chars().count(), ecad_engine::agent::MAX_AGENT_NAME);
     }
 }

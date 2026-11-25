@@ -13,16 +13,16 @@
 #   workspace on Linux and natively on Windows. The ECAD workspace runs what
 #   `cargo xtask ci` runs, split into parallel jobs (2026-11-14; as one job per platform it took
 #   52 min on Linux and 104 min on Windows on PR #99):
-#   - `cargo xtask lint`: fmt, clippy with all features and with the default ones, layers, the
-#     patch guard and wasm;
+#   - `cargo xtask lint`: fmt, clippy with all features and with the default ones, layers and the
+#     patch guard (ECAD is desktop-only, so there is no wasm step; owner, 2026-11-15);
 #   - every test with all features, the slow set included, through cargo-nextest in three shards:
-#     ecad-bench's tests except the translation oracle (its tier equivalence tests are the
-#     longest), and the rest, with the oracle, split in two;
+#     ecad-bench's tests except the slow translation test (its tier equivalence tests are the
+#     longest), and the rest, with the translation test, split in two;
 #   - the fast tests with default features, and the doctests (nextest does not run doctests);
 #   - Windows: clippy (both feature sets), every fast test (both feature sets), the doctests, and
 #     the slow tests except those that only compute in memory, which run on Linux
 #     (`ci-windows` in ecad/.config/nextest.toml names them and says why; owner, 2026-11-14).
-#     fmt, layers, the patch guard and wasm give the same result on any host, so they run on
+#     fmt, layers and the patch guard give the same result on any host, so they run on
 #     Linux only;
 #   - the large-tier load bench (`cargo xtask bench --tier large`), on pull requests into main and
 #     by hand; its results are kept as an artifact.
@@ -104,6 +104,29 @@ jobs:
         working-directory: ecad
         run: cargo test --workspace --all-features --no-run
 
+  # CADCraft's web app must still build after our seam edits (UPSTREAM-PATCHES.md: engine, fonts,
+  # io, ui-egui, all of which cadcraft-web depends on), so a change here can't break it before it
+  # goes upstream. A wasm32 `cargo check` of cadcraft-web compiles exactly those crates as the web
+  # app does. Pull requests only (owner, 2026-11-22).
+  cadcraft-wasm:
+    name: CADCraft web app builds for wasm32 (our seam edits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: wasm32-unknown-unknown
+      # No cache: a pull request's copy is visible to that pull request alone and fills the store
+      # (owner, 2026-11-14), and no push runs this job to write one, so every run starts cold.
+      - name: cargo check --target wasm32-unknown-unknown -p cadcraft-web
+        # Upstream's own wasm check (`cargo xtask wasm`) does not deny warnings, and upstream's
+        # canvas/rebuild.rs has wasm-only dead code; any compile error still fails the job.
+        env:
+          RUSTFLAGS: ""
+        run: cargo check --target wasm32-unknown-unknown -p cadcraft-web
+
   fmt:
     name: Format
     # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
@@ -154,7 +177,7 @@ jobs:
         run: cargo test --workspace
 
   ecad-lint:
-    name: ECAD lint (fmt, clippy, layers, patch guard, wasm)
+    name: ECAD lint (fmt, clippy, layers, patch guard)
     # The gate: pull requests into main, pushes to main, by hand; never a push to dev.
     if: github.base_ref == 'main' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -167,12 +190,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ecad
           shared-key: ecad-lint
-      - name: fmt, clippy, layers, patch guard, wasm
+      - name: fmt, clippy, layers, patch guard
         working-directory: ecad
         run: cargo xtask lint
 
@@ -187,11 +209,12 @@ jobs:
       matrix:
         shard:
           # ecad-bench's tier equivalence tests are the longest (the medium tier ~20 min), so they
-          # get a shard of their own; its translation oracle (4.5 min) runs with the rest, so the
-          # two do not share the shard's cores (owner, 2026-11-14).
-          - { name: ecad-bench, filter: "package(ecad-bench) and not binary(translate_differential)", partition: "" }
-          - { name: rest 1 of 2, filter: "not package(ecad-bench) or binary(translate_differential)", partition: "--partition hash:1/2" }
-          - { name: rest 2 of 2, filter: "not package(ecad-bench) or binary(translate_differential)", partition: "--partition hash:2/2" }
+          # get a shard of their own; its slow translation test (`translate_differential`, ~2.5 min,
+          # a module of the `all` test binary) runs with the rest, so the two do not share the
+          # shard's cores (owner, 2026-11-14).
+          - { name: ecad-bench, filter: "package(ecad-bench) and not test(/^translate_differential::/)", partition: "" }
+          - { name: rest 1 of 2, filter: "not package(ecad-bench) or (package(ecad-bench) and test(/^translate_differential::/))", partition: "--partition hash:1/2" }
+          - { name: rest 2 of 2, filter: "not package(ecad-bench) or (package(ecad-bench) and test(/^translate_differential::/))", partition: "--partition hash:2/2" }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable

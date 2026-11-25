@@ -1,0 +1,47 @@
+[package]
+name = "ecad-app"
+description = "ECAD application: the shell, panels, dialogs and lists of the ECAD desktop program "
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ecad-engine = { path = "../../crates/ecad-engine" }
+ecad-model = { workspace = true }
+ecad-file = { workspace = true }
+# The debugger shows times as the store writes them (`ecad_store::disk::utc`).
+ecad-store = { workspace = true }
+# Brief 074: the release check plan, by its own path.
+ecad-electrical = { workspace = true }
+ecad-drawing-style = { workspace = true }
+# Brief 037: the style, fonts and primitives of ECAD's interface.
+ecad-widgets = { path = "../../crates/ecad-widgets" }
+# The sheet colours the canvas paints.
+cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
+# The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`
+# remembers the window's size and position.
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "wgpu", "accesskit", "wayland", "x11", "persistence"] }
+serde_json = { workspace = true }
+# Brief 038: the shell state and page views in eframe storage.
+serde = { workspace = true }
+# Brief 035: upstream's control token; the included upstream control server names `egui` and
+# `log` directly (eframe's versions). The shared write gate and tools are `ecad_engine::agent`.
+cadcraft-mcp = { path = "../../../crates/mcp" }
+egui = { version = "0.37", default-features = false }
+log = "0.4"
+
+[dev-dependencies]
+# Every test run checks invariants in full as well (verify mode).
+ecad-model = { workspace = true, features = ["verify-invariants"] }
+# The UI tests apply ops directly with `apply_ops` (test-only feature); the bridge tests make an
+# ECAD command panic (fault injection).
+ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }
+# The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
+egui_kittest = "=0.37.0"
+# The tests name engine types beyond `ecad_engine::cad`; the library does not.
+cadcraft-engine = { path = "../../../crates/engine" }

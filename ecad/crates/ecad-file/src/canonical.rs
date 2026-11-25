@@ -1,4 +1,4 @@
-//! The canonical form of a record (proposal §20.10): RFC 8785, the JSON Canonicalization Scheme.
+//! The canonical form of a record: RFC 8785, the JSON Canonicalization Scheme.
 //!
 //! Used for hashing, and as the exact bytes the JSON Lines codec writes, so a record written by
 //! this crate is already canonical. Independent of `serde_json`'s map ordering (which a feature
@@ -10,21 +10,14 @@ use serde_json::Value;
 pub const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// Why a value has no canonical form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CanonicalError {
     /// NaN or ±∞ (cannot occur in parsed JSON, but can in values built in memory).
+    #[error("a number is not finite")]
     NonFinite,
     /// An integer that a double cannot hold exactly.
+    #[error("integer {0} is not exactly representable as a double")]
     InexactInteger(String),
-}
-
-impl std::fmt::Display for CanonicalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CanonicalError::NonFinite => f.write_str("a number is not finite"),
-            CanonicalError::InexactInteger(n) => write!(f, "integer {n} is not exactly representable as a double"),
-        }
-    }
 }
 
 /// The canonical bytes of `v`.
@@ -92,7 +85,7 @@ fn integer(magnitude: u64, negative: bool, n: &serde_json::Number) -> Result<Str
     es_number(if negative { -d } else { d })
 }
 
-/// A double as ECMAScript `Number.prototype.toString` writes it (RFC 8785 §3.2.2.3): shortest
+/// A double as ECMAScript `Number.prototype.toString` writes it (RFC 8785, number serialization): shortest
 /// round-trip digits, plain notation for 1e-6 ≤ |x| < 1e21, exponent notation otherwise, and
 /// `-0` as `0`.
 ///

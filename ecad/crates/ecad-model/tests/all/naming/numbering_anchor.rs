@@ -1,0 +1,101 @@
+//! Numbering anchors a device at its representation of the
+//! lowest rank the adapter supplies, and no representation's role is read.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use ecad_model::naming::id::{DefinitionId, DeviceId, ItemId, LayerId, PageId, RepresentationId};
+use ecad_model::naming::numbering::{self, Kind, Request, Scope};
+use ecad_model::naming::tag::HighWater;
+use ecad_model::{Device, Form, Item, ItemKind, Page, Representation, Style, SymbolInstance};
+use ecad_model::{Document, Placement, Pt, Subject};
+
+/// Two pages. Each symbol: (representation, device, tag, page, x, y, role).
+fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
+    let mut d = Document::default();
+    let style = Style { layer: LayerId(1), color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    d.edit_parts(|parts| {
+        for i in 0..2u128 {
+            let p = PageId(1000 + i);
+            parts.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
+            parts.page_order.push(p);
+        }
+        for (rid, c, tag, page, x, y, role) in syms {
+            let comp = Device::default().with_tag(Some(tag), ecad_model::naming::tag::TagState::Automatic);
+            parts.devices.entry(DeviceId(*c)).or_insert(comp);
+            let item = ItemId(5000 + rid);
+            let pg = parts.page_order[*page];
+            let kind = ItemKind::Symbol(SymbolInstance {
+                definition: DefinitionId(9),
+                placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 },
+            });
+            parts.items.insert(item, Item { page: pg, style: style.clone(), kind });
+            let rep = Representation {
+                subject: Subject::Device(DeviceId(*c)),
+                page: pg,
+                form: Form::Symbol,
+                role: <ecad_model::Role as ecad_model::Word>::parse(role).expect("a role word"),
+                items: vec![item],
+                connection_points: BTreeMap::new(),
+            };
+            parts.representations.insert(RepresentationId(*rid), rep);
+        }
+    });
+    d
+}
+
+fn req() -> Request {
+    Request {
+        kinds: [Kind::Devices].into_iter().collect(),
+        scope: Scope::All,
+        start: Some(1),
+        digits: None,
+        strips: BTreeSet::new(),
+        positions: BTreeMap::new(),
+    }
+}
+
+fn tags(d: &Document, rank: numbering::Rank<'_>) -> BTreeMap<u128, String> {
+    let p = numbering::plan_ranked(d, &req(), &HighWater::new(), rank).unwrap();
+    let mut x = d.clone();
+    for op in &p.ops {
+        op.apply(&mut x).unwrap();
+    }
+    x.devices().iter().filter_map(|(id, c)| c.tag().map(|t| (id.0, t.to_string()))).collect()
+}
+
+/// Device 1: a contact at the top-left of page 0 and its coil on page 1. Device 2: a coil on page
+/// 0, right of device 1's contact.
+fn two_devices(contact_role: &str) -> Document {
+    fixture(&[(11, 1, "-K09", 0, 50.0, 200.0, contact_role), (12, 1, "-K09", 1, 50.0, 200.0, "head"), (21, 2, "-K08", 0, 300.0, 200.0, "head")])
+}
+
+#[test]
+fn the_rank_hook_anchors_a_device_at_its_head() {
+    let d = two_devices("contact");
+    let head_first = |r: &Representation| if r.role == ecad_model::Role::Part(ecad_model::PartRole::Head) { 0 } else { 1 };
+    let t = tags(&d, &head_first);
+    assert_eq!(t[&2], "-K01", "device 2's coil is on page 0");
+    assert_eq!(t[&1], "-K02", "device 1 is numbered at its coil on page 1");
+    // Without a rank: the first symbol in drawing order.
+    let t = tags(&d, &|_| 0);
+    assert_eq!((t[&1].as_str(), t[&2].as_str()), ("-K01", "-K02"));
+    let plain = numbering::plan(&d, &req(), &HighWater::new()).unwrap();
+    let ranked_flat = numbering::plan_ranked(&d, &req(), &HighWater::new(), &|_| 0).unwrap();
+    assert_eq!(format!("{:?}", plain.ops), format!("{:?}", ranked_flat.ops));
+}
+
+#[test]
+fn a_role_is_not_read_without_a_rank() {
+    let (a, b) = (two_devices("contact"), two_devices("other"));
+    assert_eq!(tags(&a, &|_| 0), tags(&b, &|_| 0));
+    let n = numbering::plan(&b, &req(), &HighWater::new()).unwrap();
+    let m = numbering::plan(&a, &req(), &HighWater::new()).unwrap();
+    assert_eq!(format!("{:?}", n.ops), format!("{:?}", m.ops));
+    // Checks' anchor: the first in drawing order, whatever the roles.
+    let want = Some((PageId(1000), Pt::new(50.0, 200.0)));
+    assert_eq!(numbering::rep_anchor(&a, Subject::Device(DeviceId(1))), want);
+    assert_eq!(numbering::rep_anchor(&b, Subject::Device(DeviceId(1))), want);
+    // The coil (stored as `other`) on page 1 is not preferred over page 0.
+    let c = fixture(&[(11, 1, "-K09", 1, 50.0, 200.0, "other"), (12, 1, "-K09", 0, 300.0, 100.0, "contact")]);
+    assert_eq!(numbering::rep_anchor(&c, Subject::Device(DeviceId(1))), Some((PageId(1000), Pt::new(300.0, 100.0))));
+}

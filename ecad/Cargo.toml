@@ -1,10 +1,10 @@
 # The ECAD workspace. It is separate from CADCraft's root workspace on purpose: upstream files stay
-# untouched, and CADCraft crates are used by path. See docs/document-architecture-proposal.md §8.
+# untouched, and CADCraft crates are used by path. See docs/developer/architecture.md.
 [workspace]
 resolver = "3"
-# `dev/` holds developer and test tools, never shipped (design 029 §12): product crates do not
+# `dev/` holds developer and test tools, never shipped: product crates do not
 # depend on them (`cargo xtask layers`).
-members = ["crates/*", "apps/*", "dev/*", "xtask"]
+members = ["crates/*", "apps/*", "dev/*"]
 
 [workspace.package]
 version = "0.3.0-dev"
@@ -16,21 +16,33 @@ repository = "https://github.com/convyares-FCSL/ecadcraft"
 [workspace.dependencies]
 ecad-model = { path = "crates/ecad-model" }
 ecad-store = { path = "crates/ecad-store" }
-ecad-inspect = { path = "crates/ecad-inspect" }
 ecad-file = { path = "crates/ecad-file" }
+ecad-drawing-style = { path = "crates/ecad-drawing-style" }
+ecad-electrical = { path = "crates/ecad-electrical" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
-# Container v2 (brief 021, EEP-0005 §2.3): the redb version is pinned exactly; changing it is a
+# Command parameter schemas: the engine and ecad-electrical (each command's parameters struct).
+schemars = "1.2"
+# Words of the strict enums: `word()`, `parse()` and the word
+# list derived from one attribute per variant. Derive only.
+strum = { version = "0.28", features = ["derive"] }
+# The container (docs/reference/file-format.md): the redb version is pinned exactly; changing it is a
 # deliberate change with its own review and tests, never a routine update.
 redb = "=4.5.0"
-# Zstandard (overseer, 2026-11-09): libzstd through `zstd` natively; `ruzstd` (pure Rust) decodes
-# in the wasm reader. Both pinned; a change is a deliberate change with its own review.
+# Zstandard (overseer, 2026-11-09): libzstd through `zstd`. Pinned; a change is a deliberate
+# change with its own review.
 zstd = "=0.13.4"
-ruzstd = "=0.9.1"
+# Per-chunk and per-page work in parallel, and the app's background pool:
+# MIT OR Apache-2.0, the version CADCraft's `cadcraft-render` already links. Results come back in
+# input order; closures return `Result` and never panic.
+rayon = "1.12"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unreachable_pub = "deny"
+private_interfaces = "deny"
+private_bounds = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
@@ -39,14 +51,14 @@ too_many_arguments = "allow"
 type_complexity = "allow"
 
 # Dependencies (crates.io and CADCraft's crates by path; not ECAD's own) are optimised: they are
-# compiled once and cached, and egui and wgpu stay usable in tests and the trial.
+# compiled once and cached, and egui and wgpu stay usable in tests and the app.
 [profile.dev.package."*"]
 opt-level = 2
 # Smaller debug builds (owner, 2026-11-14): build folders were reaching 30-60 GB.
 debug = false
 
 # ECAD's own crates build unoptimised for dev and test, so a change recompiles quickly (owner
-# decision, 2026-11-08, brief 017). A test too slow at this level is marked slow, not optimised.
+# decision, 2026-11-08). A test too slow at this level is marked slow, not optimised.
 [profile.dev]
 opt-level = 0
 # File and line in backtraces, without full debug info (build folders were reaching 30-60 GB).
@@ -57,7 +69,7 @@ debug = "line-tables-only"
 # Re-copy on every upstream sync. Entries the ECAD graph does not use (hayro-syntax and hayro-jbig2)
 # are left out; upstream itself dropped egui_demo_lib, egui_inspection and egui_system_font_provider
 # in 0.18.0. egui_extras is used since CADCraft 0.18.0 (cadcraft-ui-egui). The PDF backend is used
-# since brief 011: `ecad-mcp` uses `cadcraft-mcp`, whose `cadcraft-io` writes PDF (krilla).
+# since `ecad-mcp` uses `cadcraft-mcp`: its `cadcraft-io` writes PDF (krilla).
 [patch.crates-io]
 krilla = { version = "=0.8.2", git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0" }
 # Keep the complete egui family and native event bridge on reviewed fork commits.

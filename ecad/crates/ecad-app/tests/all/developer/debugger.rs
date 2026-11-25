@@ -1,0 +1,278 @@
+//! The debugger panel in the app, without a window: closed by default, opened from the banner,
+//! rebuilt only when something changes, never waiting for a busy project, and following the
+//! worked example of `ecad/docs/developer/debugger.md`, "The debugger" (place, wire, save, move, undo, save).
+
+use std::path::PathBuf;
+
+use cadcraft_engine::Session;
+use ecad_app::developer::debugger::{Action, CheckKind, View, saved_summary};
+use ecad_app::shell::app::App;
+use ecad_engine::BUSY;
+use ecad_engine::dev::debug::{ObjectId, RecordState};
+use serde_json::Value;
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> Self {
+        let p = std::env::temp_dir().join(format!("ecad-app-dbg-{name}-{}", ecad_store::disk::unique()));
+        std::fs::create_dir_all(&p).unwrap();
+        TempDir(p)
+    }
+    fn path(&self, name: &str) -> String {
+        self.0.join(name).display().to_string()
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn new_app() -> App {
+    ecad_engine::install();
+    ecad_engine::cables::views::isolate_for_tests();
+    let mut t = App::new(None).unwrap();
+    crate::pages::project_panel::open_panels(&mut t);
+    t
+}
+
+fn ok(t: &mut App, line: &str) {
+    let e = t.submit_command(line);
+    assert!(e.is_none(), "{line}: {e:?}");
+}
+
+fn frame(t: &mut App, ctx: &eframe::egui::Context) {
+    let mut out = ctx.run_ui(eframe::egui::RawInput::default(), |ui| {
+        t.logic(ui.ctx());
+        t.ui(ui);
+    });
+    out.textures_delta.clear();
+}
+
+/// Every view of the panel lays out without failing.
+fn every_view(t: &mut App, ctx: &eframe::egui::Context) {
+    for v in View::ALL {
+        t.debugger.view = v;
+        frame(t, ctx);
+    }
+    t.debugger.view = View::Selection;
+}
+
+/// Select the objects the handle map gives for `ids` (as clicking them would).
+fn select_ecad(t: &mut App, pick: impl Fn(&ecad_model::Document) -> Vec<ecad_model::ItemId>) {
+    let p = t.project().unwrap().clone();
+    let handles = p
+        .read(&mut t.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let page = doc.page_order()[0];
+            pick(doc).into_iter().filter_map(|i| p.pages[&page].map.item(i)).collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert!(!handles.is_empty());
+    t.cad.session.set_selection(handles);
+}
+
+#[test]
+fn the_debugger_is_closed_until_opened_and_rebuilds_only_on_change() {
+    let mut t = new_app();
+    let ctx = eframe::egui::Context::default();
+    frame(&mut t, &ctx);
+    assert!(!t.debugger.open, "never shown by default");
+    assert_eq!(t.debugger.builds, 0, "a closed panel copies nothing");
+    t.toggle_debugger();
+    assert!(t.debugger.open);
+    assert_eq!(t.debugger.builds, 1);
+    for _ in 0..5 {
+        frame(&mut t, &ctx);
+    }
+    assert_eq!(t.debugger.builds, 1, "nothing changed: no new snapshot");
+    ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
+    frame(&mut t, &ctx);
+    assert_eq!(t.debugger.builds, 2);
+    t.debugger_action(Action::Refresh);
+    assert_eq!(t.debugger.builds, 3, "Refresh always takes a new snapshot");
+    every_view(&mut t, &ctx);
+    t.debugger_action(Action::Close);
+    assert!(!t.debugger.open);
+}
+
+#[test]
+fn a_busy_project_keeps_the_previous_snapshot_marked_stale() {
+    let mut t = new_app();
+    t.toggle_debugger();
+    let seq = t.debugger.snapshot().unwrap().head;
+    let p = t.project().unwrap().clone();
+    let other = p.clone();
+    let mut dbg = std::mem::take(&mut t.debugger);
+    p.configure(&mut t.cad.session, |_held| dbg.refresh(&other, &mut Session::empty(), true)).unwrap();
+    assert_eq!(dbg.stale(), Some(BUSY));
+    assert_eq!(dbg.snapshot().unwrap().head, seq, "the previous snapshot is still shown");
+    let ctx = eframe::egui::Context::default();
+    t.debugger = dbg;
+    frame(&mut t, &ctx);
+    assert_eq!(t.debugger.stale(), None, "the next refresh succeeds");
+}
+
+/// The worked example of `ecad/docs/developer/debugger.md`, "The debugger": what to inspect when placing, wiring,
+/// saving, moving and undoing.
+#[test]
+fn the_quick_start_debugger_example_runs_headless() {
+    let d = TempDir::new("example");
+    let mut t = new_app();
+    let ctx = eframe::egui::Context::default();
+    t.toggle_debugger();
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!(snap.label(), "live at seq 1");
+    assert_eq!(
+        saved_summary(snap),
+        "Saved through transaction 0; 1 pending (in memory only). The Project panel counts 0: a new project's own setup \
+is not counted as a change until the project has a file."
+    );
+    assert_eq!(snap.record_state(1), RecordState::Pending, "a new project is in memory only");
+
+    // 1. Place a coil, select it: Selection → item → representation → component; one pending
+    //    transaction created it.
+    ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
+    let symbol =
+        |d: &ecad_model::Document| d.items().iter().filter(|(_, i)| matches!(i.kind, ecad_model::ItemKind::Symbol(_))).map(|(id, _)| *id).collect();
+    select_ecad(&mut t, symbol);
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!(snap.label(), "live at seq 2");
+    assert_eq!(snap.selection.len(), 1);
+    assert_eq!(snap.selection[0].entity, "Block Reference");
+    t.debugger.follow_selection(0);
+    let focus = t.debugger.focus().to_vec();
+    assert!(matches!(focus[0], ObjectId::Item(_)));
+    assert!(focus.iter().any(|i| matches!(i, ObjectId::Device(_))));
+    assert_eq!(focus.iter().filter(|i| matches!(i, ObjectId::ConnectionPoint(_))).count(), 2, "the coil's terminals");
+    assert_eq!(t.debugger.touching(), vec![2]);
+    t.debugger.select_tx(Some(2));
+    frame(&mut t, &ctx);
+    let place = &t.debugger.log()[1];
+    assert_eq!(place.label, "Place symbol");
+    let names: Vec<&str> = place.ops.iter().map(ecad_model::Op::name).collect();
+    assert!(names.contains(&"CreateDevice") && names.contains(&"LinkRepresentation"), "{names:?}");
+    assert_eq!(t.debugger.snapshot().unwrap().record_state(2), RecordState::Pending);
+    t.debugger.read_row();
+    assert!(t.debugger.record().unwrap().as_ref().unwrap_err().contains("no file yet"));
+
+    // 2. Wire from the coil's A1 to its A2 (a wire runs between two connection points, design
+    //    072): the wire's trail shows the route drawn and the wire made, before (none) and after
+    //    (its two connection points).
+    ok(&mut t, r#"wire {"points":[[90,0],[110,0]]}"#);
+    let route = |d: &ecad_model::Document| {
+        let (c, _) = d.wires().iter().next().unwrap();
+        vec![ecad_model::connectivity::derive::route_on_page(d, *c, d.page_order()[0]).unwrap().0]
+    };
+    select_ecad(&mut t, route);
+    frame(&mut t, &ctx);
+    t.debugger.follow_selection(0);
+    assert!(t.debugger.focus().iter().any(|i| matches!(i, ObjectId::Wire(_))));
+    let touching = t.debugger.touching();
+    assert!(touching.contains(&3), "{touching:?}");
+    t.debugger.select_tx(Some(3));
+    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::dev::objects::op_view).collect();
+    assert!(views.iter().any(|v| v.name == "AddRoute" && v.before.is_none()), "the route drawn");
+    let made = views.iter().find(|v| v.name == "CreateWire").unwrap();
+    assert!(made.before.is_none());
+    assert_eq!(made.after.as_ref().unwrap()["ends"].as_array().map(Vec::len), Some(2), "its two connection points");
+    frame(&mut t, &ctx);
+
+    // 3. Save As: everything is saved; the wire's row in the version 2 file decodes to exactly
+    //    that transaction (brief 021).
+    let path = d.path("debug-demo.ecad");
+    t.save_as(&path).unwrap();
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!((snap.head, snap.persisted), (3, 3));
+    assert_eq!(saved_summary(snap), "Saved through transaction 3; 0 pending (in memory only).");
+    assert_eq!(snap.record_state(3), RecordState::Saved);
+    assert_eq!(snap.file.path.as_deref(), Some(path.as_str()));
+    t.debugger.select_tx(Some(3));
+    t.debugger.read_row();
+    let rec = t.debugger.record().unwrap().as_ref().unwrap();
+    assert_eq!(rec.check, Ok(()));
+    assert!(rec.shown.starts_with(b"{\""), "the decompressed record");
+    every_view(&mut t, &ctx);
+
+    // 4. Move the coil: a pending transaction that modifies the wire's route too.
+    select_ecad(&mut t, symbol);
+    ok(&mut t, "move 100,0 100,-10");
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!((snap.head, snap.persisted), (4, 3));
+    assert_eq!(snap.record_state(4), RecordState::Pending);
+    select_ecad(&mut t, route);
+    frame(&mut t, &ctx);
+    t.debugger.follow_selection(0);
+    // The coil's terminal (created by #2) is attached to the wire, so its trail starts there.
+    assert_eq!(t.debugger.touching(), vec![2, 3, 4], "terminal placed, wired, then moved with the coil");
+
+    // 5. Undo: a new pending transaction that undoes the move.
+    ok(&mut t, "u");
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!(snap.head, 5);
+    assert_eq!(ecad_file::history::tx_kind(&t.debugger.log()[4], t.debugger.log()), "undo of #4");
+    assert_eq!(snap.record_state(5), RecordState::Pending);
+    assert_eq!(t.debugger.touching(), vec![2, 3, 4, 5]);
+    // History at seq 2 (before the wire) is rebuilt from the copy; the live project is unchanged.
+    t.debugger.show_at(2);
+    let h = t.debugger.historical().unwrap();
+    assert!(h.doc.as_ref().unwrap().wires().is_empty());
+    let p = t.project().unwrap().clone();
+    assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap(), 5);
+    every_view(&mut t, &ctx);
+
+    // 6. Save: the move and its undo become saved, appended after the wire's record.
+    t.save().unwrap();
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    assert_eq!(snap.persisted, 5);
+    assert_eq!(snap.record_state(4), RecordState::Saved);
+    // 7. The checks, on request only.
+    assert!(t.debugger.checks().is_empty(), "no check ran by itself");
+    for k in [CheckKind::Replay, CheckKind::Projection, CheckKind::File] {
+        t.debugger_action(Action::Check(k));
+    }
+    // They run on the background pool; the next frame takes their results.
+    assert!(t.debugger.wait_for_checks(std::time::Duration::from_secs(30)));
+    frame(&mut t, &ctx);
+    let ran = t.debugger.checks();
+    assert_eq!(ran.len(), 3);
+    assert!(ran.iter().all(|r| r.check.ok && r.check.at_seq == 5), "{ran:?}");
+    t.debugger.view = View::Checks;
+    frame(&mut t, &ctx);
+    let _ = t.cad.run("qsave", Value::Null);
+}
+
+/// The Storage and Branches views (brief 021): the file's facts live, its table sizes on request.
+#[test]
+fn the_storage_and_branches_views_show_the_version_2_file() {
+    let d = TempDir::new("storage");
+    let mut t = new_app();
+    ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
+    t.toggle_debugger();
+    let ctx = eframe::egui::Context::default();
+    t.debugger.view = View::Storage;
+    frame(&mut t, &ctx);
+    assert!(t.debugger.snapshot().unwrap().file.storage.is_none(), "no file yet");
+    t.save_as(&d.path("storage.ecad")).unwrap();
+    frame(&mut t, &ctx);
+    let snap = t.debugger.snapshot().unwrap();
+    let st = snap.file.storage.clone().unwrap();
+    assert_eq!((st.head, st.snapshot_seq), (2, 2), "the first save writes a snapshot at the head");
+    t.debugger_action(Action::ReadStorage);
+    for v in [View::Storage, View::Branches] {
+        t.debugger.view = v;
+        frame(&mut t, &ctx);
+    }
+    ok(&mut t, r#"place {"at":[150,0],"rotation":0}"#);
+    t.save().unwrap();
+    frame(&mut t, &ctx);
+    assert_eq!(t.debugger.snapshot().unwrap().file.storage.clone().unwrap().head, 3);
+    frame(&mut t, &ctx);
+}

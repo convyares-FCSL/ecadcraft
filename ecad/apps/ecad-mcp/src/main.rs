@@ -1,7 +1,7 @@
-//! `ecad-mcp`: ECAD over MCP on stdin and stdout, headless (brief 011).
+//! `ecad-mcp`: ECAD over MCP on stdin and stdout, headless.
 //!
 //! Usage: `ecad-mcp [--write] [--agent <name>] [--connect <port>] [--launch] [--create] [<project.ecad>]`. Logs go to stderr
-//! only; stdout carries JSON-RPC. See `ecad/docs/quick-start.md`.
+//! only; stdout carries JSON-RPC. See `ecad/docs/user/quick-start.md`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::process::ExitCode;
@@ -10,6 +10,10 @@ use ecad_mcp::EcadMcp;
 use ecad_mcp::args::{Invocation, USAGE, parse_args};
 
 fn main() -> ExitCode {
+    // Verify mode: the model reads no environment, so the program passes the switch in.
+    ecad_model::document::ledger::set_verify_invariants(ecad_model::document::ledger::verify_switch_on(
+        std::env::var_os("ECAD_VERIFY_INVARIANTS").as_deref(),
+    ));
     let (project, create, options, connect, launch) = match parse_args(std::env::args_os().skip(1)) {
         Ok(Invocation::Serve { project, create, options, connect, launch }) => (project, create, options, connect, launch),
         Ok(Invocation::Help) => {
@@ -17,7 +21,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Ok(Invocation::Version) => {
-            println!("ecad-mcp {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
+            println!("ecad-mcp {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_engine::UPSTREAM_COMMIT);
             return ExitCode::SUCCESS;
         }
         Err(e) => {
@@ -26,7 +30,7 @@ fn main() -> ExitCode {
         }
     };
     if let Some(port) = connect {
-        // Brief 035: one server, headless until the window answers on the port. The headless
+        // One server, headless until the window answers on the port. The headless
         // project is opened only at the first headless call, so a file the window has open is
         // never locked here first.
         if let Some(p) = &project {
@@ -53,7 +57,7 @@ fn main() -> ExitCode {
     let opened = match (&project, create) {
         (Some(p), true) => EcadMcp::create(p, options).map(|s| (s, format!("Created {p}."))),
         (Some(p), false) => EcadMcp::open(p, options),
-        (None, _) => EcadMcp::in_memory("Untitled", ecad_cadcraft::session_seed(), options)
+        (None, _) => EcadMcp::in_memory("Untitled", ecad_engine::session_seed(), options)
             .map(|s| (s, "A new project in memory; it cannot be saved.".to_string())),
     };
     let mut server = match opened {
