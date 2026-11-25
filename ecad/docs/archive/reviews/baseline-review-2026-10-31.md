@@ -1,3 +1,5 @@
+Historical record (2026-10-31). Not current; see [the archive index](../README.md).
+
 # Baseline review, 2026-10-31
 
 Brief 000, branch `ecad/baseline-review`, at `c7c448d` (`dev` at `5cdbb2d` plus the housekeeping

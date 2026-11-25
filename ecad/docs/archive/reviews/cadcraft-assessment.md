@@ -1,3 +1,5 @@
+Historical record (2026-10-12). Not current; see [the archive index](../README.md).
+
 # CADCraft assessment (Phase 0)
 
 > **Written:** 2026-10-12 against `dev` at `0305243` (CADCraft 0.6.2). **Purpose:** decide how the

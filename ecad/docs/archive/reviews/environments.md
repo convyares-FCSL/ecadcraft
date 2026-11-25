@@ -1,3 +1,5 @@
+Historical record (2026-10-12). Not current; see [developer/build.md](../../developer/build.md).
+
 # Environments: where ECAD builds and runs
 
 > **Status:** developer notes on the environments ECAD has been built and run in, what to check

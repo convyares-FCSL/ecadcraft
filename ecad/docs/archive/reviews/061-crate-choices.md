@@ -1,3 +1,5 @@
+Historical record (2026-11-15). Not current; see [design/decisions.md](../../design/decisions.md).
+
 # 061: Which standard crates ECAD adopts in 0.2.3 and 0.2.4
 
 Status: Draft, for the owner's decision. Docs only; no code or `Cargo.toml` changes come with it.

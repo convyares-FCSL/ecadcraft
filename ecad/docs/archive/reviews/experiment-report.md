@@ -1,3 +1,5 @@
+Historical record (2026-10-12). Not current; see [the archive index](../README.md).
+
 # Bounded integration experiment: report
 
 > **Written:** 2026-10-12; **revised** after the focused implementation review, and again after
