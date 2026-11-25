@@ -106,8 +106,9 @@ declares (the document, an id, a point), and that return something that is not a
 needs nothing the engine has, so it belongs in a Core crate, usually `ecad-electrical`. No file may have one,
 apart from:
 
-- the areas on `EXEMPT`, each with its reason: `agent/` (the gate's answers), `dev/` (read-only developer views
-  of a live session) and `translate/` (movement, kept beside the movement code);
+- the areas on `EXEMPT`, each with its reason: `agent/` (the gate's answers), `generic.rs` (the generic runner's
+  reply envelope, built at the edge until replies are typed), `dev/` (read-only developer views of a live session)
+  and `translate/` (movement, kept beside the movement code);
 - the functions on `ADAPTERS`: thin wrappers over something only the engine has (CADCraft's fonts and DXF reader,
   the local time zone, the live ledger), which the textual test cannot see.
 

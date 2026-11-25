@@ -69,6 +69,7 @@ const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 #[rustfmt::skip]
 const EXEMPT: &[(&str, &str)] = &[
     ("crates/ecad-engine/src/agent/", "the agent gate and tools: the undo step, issue order, transaction summary and list paging an agent's session answers with"),
+    ("crates/ecad-engine/src/generic.rs", "generic runner: reply envelope built at the edge; typed in 0.2.4 item 2"),
     ("crates/ecad-engine/src/dev/", "the dev tools (snapshot, live debugger, projection check): read-only views of a live session, never shipped behaviour"),
     ("crates/ecad-engine/src/translate/", "movement: the drawn shape of a moved primitive, kept beside the movement code, where a mistake is most expensive"),
 ];
