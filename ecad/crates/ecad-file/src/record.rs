@@ -14,9 +14,10 @@ use crate::records;
 
 /// Meaning of record contents this build reads and writes, written to the file's `schema_version`
 /// meta. **Every change of the file format bumps it** (a record's fields or meaning, an op, a
-/// canonical form); a file of another number opens read-only, named by its version and never as
-/// damaged. The golden test pins this number with the hash of the golden project's last
-/// transaction, so a changed format with the old number fails there.
+/// canonical form, a model type's shape as a snapshot chunk stores it); a file of another number
+/// opens read-only, named by its version and never as damaged. A test pins this number with two
+/// hashes of the golden fixture, its last transaction and its snapshot's chunks (the crate doc
+/// says what they cover), so a changed format with the old number fails there.
 ///
 /// - 1: the first format.
 /// - 2: typed revisions, point names.
@@ -55,55 +56,41 @@ struct TxRaw {
     ops: Vec<Value>,
 }
 
-/// Names of the ops schema version 1 knows.
-pub(crate) const OP_NAMES: &[&str] = &[
-    "AddPage",
-    "RemovePage",
-    "ModifyPage",
-    "AddLayer",
-    "RemoveLayer",
-    "AddItem",
-    "ModifyItem",
-    "RemoveItem",
-    "CreateDevice",
-    "DeleteDevice",
-    "ModifyDevice",
-    "SetDeviceDefinition",
-    "AddConnectionPoint",
-    "RemoveConnectionPoint",
-    "LinkRepresentation",
-    "ModifyRepresentation",
-    "UnlinkRepresentation",
-    "CreateWire",
-    "DeleteWire",
-    "ModifyWire",
-    "AddRoute",
-    "RemoveRoute",
-    "ModifyRoute",
-    "CreateCable",
-    "DeleteCable",
-    "ModifyCable",
-    "SetProperty",
-    "EmbedDefinition",
-    "RemoveDefinition",
-    "SetProjectSettings",
-    "NameVersion",
-    "UnnameVersion",
-    "AddFolder",
-    "RemoveFolder",
-    "ModifyFolder",
-    "SetStyle",
-    "SetStandard",
-    "ModifyProject",
-    "AddDeviceLink",
-    "RemoveDeviceLink",
-    "CreateAid",
-    "DeleteAid",
-    "ModifyAid",
-    "CreateLoosePart",
-    "DeleteLoosePart",
-    "ModifyLoosePart",
-];
+/// The op names this build reads: the variants of [`records::Op`], as serde names them. Taken
+/// from the enum itself, so an op added there is known here without a second list.
+pub(crate) fn op_names() -> &'static [&'static str] {
+    static NAMES: std::sync::OnceLock<&'static [&'static str]> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        let mut names: &'static [&'static str] = &[];
+        // Serde's derive hands its variant list to `deserialize_enum` before reading anything.
+        let _ = records::Op::deserialize(VariantNames(&mut names));
+        names
+    })
+}
+
+/// A deserializer that reads nothing: it keeps the variant names an enum's derive passes to
+/// `deserialize_enum` and stops.
+struct VariantNames<'a>(&'a mut &'static [&'static str]);
+
+impl<'de> serde::Deserializer<'de> for VariantNames<'_> {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom("only an enum's variant names are read"))
+    }
+
+    fn deserialize_enum<V: serde::de::Visitor<'de>>(
+        self, _name: &'static str, variants: &'static [&'static str], _: V,
+    ) -> Result<V::Value, Self::Error> {
+        *self.0 = variants;
+        Err(serde::de::Error::custom("only an enum's variant names are read"))
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf option unit unit_struct
+        newtype_struct seq tuple tuple_struct map struct identifier ignored_any
+    }
+}
 
 /// Why a record could not be decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,7 +170,7 @@ pub fn decode_tx(v: &Value) -> Result<m::Transaction, DecodeError> {
     match record_type(v) {
         Some("tx") => {}
         Some("checkpoint") => {
-            return Err(DecodeError::RecordType("checkpoint records are not supported (checkpoints are disabled, §20.8)".into()));
+            return Err(DecodeError::RecordType("this file holds a checkpoint record, which this version of ECAD does not read".into()));
         }
         Some(other) => return Err(DecodeError::RecordType(format!("unknown record type {other:?}"))),
         None => return Err(DecodeError::RecordType("record has no type".into())),
@@ -208,7 +195,7 @@ fn decode_op(v: Value) -> Result<m::Op, DecodeError> {
         Some(Value::String(s)) => s,
         _ => return Err(DecodeError::Parse("an op has no name".into())),
     };
-    if !OP_NAMES.contains(&name.as_str()) {
+    if !op_names().contains(&name.as_str()) {
         return Err(DecodeError::UnknownOp(format!("op {name:?} is not known to this build")));
     }
     let version = obj.remove("v").and_then(|v| v.as_u64()).ok_or_else(|| DecodeError::Parse(format!("op {name} has no version")))?;

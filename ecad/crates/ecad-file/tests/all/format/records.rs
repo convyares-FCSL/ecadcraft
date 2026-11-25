@@ -270,3 +270,35 @@ fn the_golden_project_opens() {
     assert_eq!(o.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());
     assert_eq!(o.ledger.document(), f.ledger.document());
 }
+
+/// The op names a file may hold are the op enum's own variants: every op the golden fixture
+/// writes reads back by its name, and a name the enum lacks is an unknown op, not a parse error.
+#[test]
+fn op_names_come_from_the_op_enum() {
+    use ecad_file::record::{DecodeError, decode_tx, tx_value};
+    let f = fixture();
+    let mut prev = chain::seed(ChainKind::Project, PROJECT.0);
+    let mut seen = std::collections::BTreeSet::new();
+    for tx in f.ledger.log() {
+        let v = tx_value(tx, &prev).unwrap();
+        for op in v["ops"].as_array().unwrap() {
+            seen.insert(op["op"].as_str().unwrap().to_string());
+        }
+        assert_eq!(decode_tx(&v).unwrap().ops, tx.ops, "{}", tx.label);
+        prev = chain::tx_hash(&ecad_file::canonical::canonical(&v).unwrap());
+    }
+    assert!(seen.len() > 10, "{seen:?}");
+    let mut v = tx_value(&f.ledger.log()[0], &chain::seed(ChainKind::Project, PROJECT.0)).unwrap();
+    v["ops"][0]["op"] = "NoSuchOp".into();
+    assert_eq!(decode_tx(&v).unwrap_err(), DecodeError::UnknownOp("op \"NoSuchOp\" is not known to this build".into()));
+}
+
+/// A checkpoint record is refused in plain words.
+#[test]
+fn a_checkpoint_record_is_refused_in_plain_words() {
+    let v = serde_json::json!({"type": "checkpoint"});
+    assert_eq!(
+        ecad_file::record::decode_tx(&v).unwrap_err(),
+        ecad_file::record::DecodeError::RecordType("this file holds a checkpoint record, which this version of ECAD does not read".into())
+    );
+}
