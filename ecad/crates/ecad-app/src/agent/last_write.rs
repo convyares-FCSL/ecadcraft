@@ -151,18 +151,17 @@ impl App {
             };
             let mut top: Option<egui::Pos2> = None;
             for b in &o.boxes {
-                let corners = [b.min, ecad_engine::cad::Vec2::new(b.max.x, b.min.y), b.max, ecad_engine::cad::Vec2::new(b.min.x, b.max.y)];
-                let pts: Vec<egui::Pos2> = corners.iter().map(|p| xf.to_screen(*p)).collect();
                 let width = (OUTLINE_MM * xf.scale as f32).max(line::HAIRLINE_PX);
                 let (dash, gap) = ((DASH_MM * xf.scale as f32).max(3.0), (GAP_MM * xf.scale as f32).max(2.0));
-                let mut ring = pts.clone();
-                if let Some(first) = pts.first() {
-                    ring.push(*first);
-                }
+                // Only the part on screen is dashed: one dash costs a mesh, so a box from a
+                // hostile far point (1e308 mm) would ask for more dashes than memory holds.
+                let Some(shown) = on_screen(egui::Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max)), rect.expand(width + dash)) else {
+                    continue;
+                };
+                let ring = [shown.left_top(), shown.right_top(), shown.right_bottom(), shown.left_bottom(), shown.left_top()];
                 painter.extend(egui::Shape::dashed_line(&ring, egui::Stroke::new(width, ecad_widgets::color(c)), dash, gap));
-                let tl = pts.iter().fold(egui::pos2(f32::MAX, f32::MAX), |a, p| egui::pos2(a.x.min(p.x), a.y.min(p.y)));
-                if top.is_none_or(|t| tl.y < t.y) {
-                    top = Some(tl);
+                if top.is_none_or(|t| shown.min.y < t.y) {
+                    top = Some(shown.min);
                 }
             }
             if let Some(at) = top.filter(|p| p.is_finite()) {
@@ -240,4 +239,29 @@ fn chip(ui: &egui::Ui, painter: &egui::Painter, at: egui::Pos2, name: &str, c: C
     // Its accessible name, so tests and the control channel find it.
     let resp = ui.interact(r, egui::Id::unique((label, name)), egui::Sense::hover());
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label}: {name}")));
+}
+
+/// The part of `outline` (screen points) inside `view`, when the outline is finite and meets it.
+fn on_screen(outline: egui::Rect, view: egui::Rect) -> Option<egui::Rect> {
+    if !(outline.min.is_finite() && outline.max.is_finite()) {
+        return None;
+    }
+    let shown = outline.intersect(view);
+    shown.is_positive().then_some(shown)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_part_of_an_outline_on_screen_is_dashed() {
+        let view = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(800.0, 600.0));
+        let far = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(f32::MAX, 20.0));
+        assert_eq!(on_screen(far, view), Some(egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(800.0, 20.0))));
+        let endless = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(f32::INFINITY, 20.0));
+        assert_eq!(on_screen(endless, view), None);
+        let away = egui::Rect::from_min_max(egui::pos2(900.0, 10.0), egui::pos2(950.0, 20.0));
+        assert_eq!(on_screen(away, view), None);
+    }
 }

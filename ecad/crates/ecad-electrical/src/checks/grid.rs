@@ -105,13 +105,15 @@ impl Grid {
         self.placed.get(&c).map(|p| p.cells.clone()).unwrap_or_default()
     }
 
-    /// Routes with a free end in any of `cells` (and the 8 cells round each).
+    /// Routes with a free end in any of `cells` (and the 8 cells round each). A cell at the edge of
+    /// the grid's range (a point at about 1e308 mm) has no neighbours past that edge.
     pub(super) fn loose_near(&self, cells: &BTreeSet<Cell>) -> BTreeSet<RouteId> {
         let mut out = BTreeSet::new();
         for (page, x, y) in cells {
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    if let Some(s) = self.ends.get(&(*page, x + dx, y + dy)) {
+                    let (Some(nx), Some(ny)) = (x.checked_add(dx), y.checked_add(dy)) else { continue };
+                    if let Some(s) = self.ends.get(&(*page, nx, ny)) {
                         out.extend(s.iter().map(|(c, _)| *c));
                     }
                 }
@@ -153,4 +155,18 @@ pub(super) fn near_segment(p: Pt, a: Pt, b: Pt) -> bool {
     let t = if len2 > 0.0 { (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
     let q = Pt::new(a.x + t * dx, a.y + t * dy);
     q.is_finite() && q.near(p, ON_WIRE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cell_at_the_edge_of_the_range_has_no_neighbours_past_it() {
+        let page = PageId(1);
+        let far = cell_of(page, Pt::new(1e308, -1e308));
+        assert_eq!(far, Some((page, i64::MAX, i64::MIN)));
+        let cells: BTreeSet<Cell> = far.into_iter().collect();
+        assert!(Grid::default().loose_near(&cells).is_empty());
+    }
 }
