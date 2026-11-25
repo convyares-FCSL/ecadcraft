@@ -18,8 +18,7 @@
 //!   - a worktree with uncommitted changes or untracked files;
 //!   - one holding ignored files other than its build folders (`target`, `ecad/target`), which
 //!     `git worktree remove` would delete with it (notes, `private/`, kept projects);
-//!   - a branch with an open pull request (`gh pr list`); without a working `gh`, a branch
-//!     `docs/features.md` lists as not done (its State is not "In `dev`").
+//!   - a branch with an open pull request (`gh pr list`), or any branch when `gh` cannot say.
 //!
 //!   The main worktree and the one running this are never removed.
 //! - `--dry-run` deletes and removes nothing, and says what it would do.
@@ -202,9 +201,9 @@ fn merged_worktrees(repo: &Path, root: &Path) -> Result<Vec<Worktree>, String> {
 }
 
 /// Why `w` (merged) must be kept, if it must: uncommitted or untracked files, ignored files other
-/// than its build folders, an open pull request (`pr_open`: `None` when it cannot be asked), or,
-/// when that cannot be asked, a branch in `not_done`.
-pub(crate) fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, not_done: &BTreeSet<String>) -> Option<String> {
+/// than its build folders, or an open pull request (`pr_open`: `None` when it cannot be asked, and then
+/// the worktree is kept).
+pub(crate) fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>) -> Option<String> {
     let status = match git(&w.path, &["status", "--porcelain", "--ignored"]) {
         Ok(s) => s,
         Err(e) => return Some(format!("its status could not be read: {e}")),
@@ -232,23 +231,8 @@ pub(crate) fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, 
     match pr_open(branch) {
         Some(true) => Some("it has an open pull request".into()),
         Some(false) => None,
-        None if not_done.contains(branch) => Some("docs/features.md lists it as not done (and gh is not available to ask)".into()),
-        None => None,
+        None => Some("gh is not available to ask whether it has an open pull request".into()),
     }
-}
-
-/// The branches `docs/features.md` lists for features whose State is not "In `dev`".
-pub(crate) fn not_done_branches(features_md: &str) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for line in features_md.lines().filter(|l| l.starts_with('|')) {
-        let cells: Vec<&str> = line.split('|').map(str::trim).collect();
-        let (Some(branches), Some(state)) = (cells.get(2), cells.get(4)) else { continue };
-        if state.starts_with("In `dev`") || state.starts_with("State") || state.starts_with("---") {
-            continue;
-        }
-        out.extend(branches.split('`').skip(1).step_by(2).filter(|b| b.contains('/')).map(str::to_string));
-    }
-    out
 }
 
 /// Whether `branch` has an open pull request, by `gh` in `repo`; `None` when `gh` cannot say.
@@ -318,13 +302,12 @@ pub(crate) fn clean_builds(args: &[String], ecad: &Path) -> Result<(), String> {
     if let Err(e) = git(repo, &["fetch", "--quiet", "origin", "dev"]) {
         println!("note: git fetch origin dev failed ({e}); using the origin/dev already here");
     }
-    let not_done = not_done_branches(&std::fs::read_to_string(ecad.join("docs").join("features.md")).unwrap_or_default());
     let pr_open = |b: &str| gh_pr_open(repo, b);
     match merged_worktrees(repo, &root) {
         Ok(ws) => {
             for w in ws {
                 let name = w.branch.as_deref().unwrap_or_default();
-                if let Some(why) = keep_reason(&w, &pr_open, &not_done) {
+                if let Some(why) = keep_reason(&w, &pr_open) {
                     println!("kept worktree {} ({name}, merged into origin/dev): {why}", w.path.display());
                     continue;
                 }
@@ -474,9 +457,8 @@ mod tests {
         let merged = merged_worktrees(&repo, &wt).unwrap();
         assert_eq!(names(&merged), ["clean", "dirty", "ignored", "pr"], "not `later` (a commit after its merge) nor `fresh` (nothing of its own)");
         let pr_open = |b: &str| Some(b == "feature/pr");
-        let none = BTreeSet::new();
         let reasons: Vec<(String, Option<String>)> =
-            merged.iter().map(|w| (names(std::slice::from_ref(w))[0].clone(), keep_reason(w, &pr_open, &none))).collect();
+            merged.iter().map(|w| (names(std::slice::from_ref(w))[0].clone(), keep_reason(w, &pr_open))).collect();
         for (name, why) in &reasons {
             match name.as_str() {
                 "clean" => assert_eq!(why, &None, "build output alone does not keep it"),
@@ -486,15 +468,10 @@ mod tests {
                 other => panic!("{other}"),
             }
         }
-        // Without gh: features.md's not-done branches are kept.
+        // Without gh: a merged worktree is kept, as nothing can say it has no open pull request.
         let no_gh = |_: &str| None;
-        let md = "| Feature | Branch | Briefs | State |\n| --- | --- | --- | --- |\n| A | `feature/pr` | 1 | Designing |\n| B | `feature/clean` | 2 | In `dev` |\n";
-        let not_done = not_done_branches(md);
-        assert_eq!(not_done.iter().collect::<Vec<_>>(), ["feature/pr"]);
-        let pr_w = merged.iter().find(|w| w.branch.as_deref() == Some("feature/pr")).unwrap();
-        assert!(keep_reason(pr_w, &no_gh, &not_done).is_some_and(|w| w.contains("features.md")));
         let clean_w = merged.iter().find(|w| w.branch.as_deref() == Some("feature/clean")).unwrap();
-        assert_eq!(keep_reason(clean_w, &no_gh, &not_done), None);
+        assert!(keep_reason(clean_w, &no_gh).is_some_and(|w| w.contains("gh is not available")));
         let _ = Command::new("git").args(["worktree", "prune"]).current_dir(&repo).output();
         let _ = std::fs::remove_dir_all(&base);
     }
