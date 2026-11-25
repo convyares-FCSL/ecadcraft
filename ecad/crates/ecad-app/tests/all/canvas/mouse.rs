@@ -1,6 +1,6 @@
-//! Drawing by mouse and keyboard, headless: the quick-start example built by clicks and keys
-//! in a 1280×800 window (egui_kittest, elements by name), Esc and undo from the keyboard, and the
-//! hover tooltip.
+//! Drawing by mouse and keyboard, headless: the example of "Make a device from a drawing"
+//! (`ecad/docs/user/devices.md`) built by clicks and keys in a 1280×800 window
+//! (egui_kittest, elements by name), Esc and undo from the keyboard, and the hover tooltip.
 
 use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::geom::Vec2;
@@ -109,7 +109,7 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
     );
     click(&mut h, near);
     assert!(h.state().cad.session.running.is_none(), "a click on a terminal finishes the wire");
-    // The result: the quick-start's structure (IDs aside), drawn by clicks.
+    // The result: that example's structure (IDs aside), drawn by clicks.
     let d = doc(&mut h);
     assert_eq!(d.devices().len(), 2);
     assert_eq!(d.wires().len(), 1);

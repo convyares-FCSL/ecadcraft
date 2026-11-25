@@ -1,7 +1,7 @@
 //! UI checks of drawing with the mouse, driving
 //! the app headless (egui_kittest, elements by name) in a 1280×800 window.
 //!
-//! - the quick-start example built with connection points placed by **clicks** (Midpoint override
+//! - the example of "Make a device from a drawing" (`user/devices.md`) built with connection points placed by **clicks** (Midpoint override
 //!   typed) gives the same structure as the same example built by JSON.
 //! - a typed point near (not on) a connection point does not attach, even with the pointer
 //!   resting on the drawing (Dynamic Input must not turn a typed value into a cursor capture).

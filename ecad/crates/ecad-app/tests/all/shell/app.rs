@@ -383,9 +383,9 @@ fn frames_lay_out_headless_with_every_dialog() {
     one_frame(&mut t, &ctx);
 }
 
-/// The quick-start guide's manual steps, typed through the ECAD command window's field. Mouse steps
-/// (window selection, dragging) are replaced by their JSON forms; how they look on screen is not
-/// checked. Keep in step with `ecad/docs/quick-start.md`.
+/// The steps of "Make a device from a drawing" in `ecad/docs/user/devices.md`, typed through the command
+/// window's field. Mouse steps (window selection, dragging) are replaced by their JSON forms; how they look on
+/// screen is not checked. Keep in step with that section.
 #[test]
 fn the_quick_start_runs_headless() {
     use cadcraft_engine::doc::EntityKind;
@@ -454,7 +454,7 @@ fn the_quick_start_runs_headless() {
     let _ = t.submit_command(r#"undo {"mode":"mark"}"#);
     assert!(t.cad.session.log[n..].iter().any(|l| l.contains("not supported")));
     // 6. Two pages in one page window: switch from the Project panel; a quiet tab close, then a
-    // click shows the page again with its content (design 016, quick start 5E).
+    // click shows the page again with its content (user/devices.md, "Make a device from a drawing").
     ok(&mut t, r#"newpage {"title":"2"}"#);
     ok(&mut t, r#"wire {"points":[[0,0],[30,0]]}"#);
     assert_eq!(t.cad.session.docs.len(), 1, "one page window");
@@ -485,9 +485,9 @@ fn the_quick_start_runs_headless() {
     assert_eq!(
         ecad_app::shell::app::status_line(&t.status().unwrap()),
         format!("Project \"demo\": 2 pages, file {path}, no unsaved changes."),
-        "the Project panel's status line the guide quotes"
+        "the status line: project name, page count, file, no unsaved changes"
     );
-    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"), "the tab the guide quotes");
+    assert!(t.cad.session.docs.iter().any(|d| d.title == "demo - page 1: 1"), "the page window's title names the project and page");
     assert!(t.cad.session.log.iter().any(|l| l.starts_with("Saved:")));
     let saved = doc(&mut t);
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap();

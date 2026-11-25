@@ -13,7 +13,7 @@ project. Save and Save As write .ecad project files; keep them in a local folder
     ".\n--snapshots <dir>  allow exporting inspector snapshots (diagnostic files, not saved projects)\n\
 --control <port>   agent access on for this run (Read and change, 127.0.0.1:<port>; not remembered)\n\
 --cad-ui           show CADCraft's own interface inside the main view (the developer switch)\n\
-See ecad/docs/quick-start.md."
+See ecad/docs/user/quick-start.md."
 );
 
 /// What the command line asks for.

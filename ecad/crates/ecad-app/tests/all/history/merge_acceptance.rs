@@ -82,7 +82,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     let (mut h, dir, k1) = opened("merge");
     // On main the branch bar's merge buttons are not there (main merges into nothing).
     assert!(!exists(&h, "ecad.project.branch.merge"), "no Merge into on main");
-    // Step 9: a branch, a change and a wire; Merge into main… in the branch bar.
+    // user/history.md "Merge a branch into main": a branch, a change and a wire; Merge into main… in the branch bar.
     ok(&mut h, r#"branch {"name":"Option B"}"#);
     h.run_steps(3);
     assert!(exists(&h, "ecad.project.branch.merge") && exists(&h, "ecad.project.branch.update"), "both buttons visible on a branch");
@@ -91,7 +91,10 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     let n = log_len(&mut h);
     click(&mut h, "ecad.project.branch.merge");
     let d = h.state().dialogs.merge.clone().expect("the merge dialog is open");
-    eprintln!("5J.9 preview: title={} header={} counts={} note={:?}", d.preview["title"], d.preview["header"], d.preview["counts"], d.switch_note);
+    eprintln!(
+        "Merge a branch into main, preview: title={} header={} counts={} note={:?}",
+        d.preview["title"], d.preview["header"], d.preview["counts"], d.switch_note
+    );
     assert_eq!(d.preview["title"], json!("MERGE \"Option B\" INTO main"));
     assert!(
         d.switch_note.as_deref().is_some_and(|s| s.contains("switches to main") && s.contains("saving \"Option B\" first")),
@@ -106,7 +109,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     );
     let changes: Vec<String> =
         d.preview["changes"].as_array().unwrap().iter().map(|c| format!("{} {}", c["sign"].as_str().unwrap(), c["text"].as_str().unwrap())).collect();
-    eprintln!("5J.9 changes: {changes:?}");
+    eprintln!("Merge a branch into main, changes: {changes:?}");
     assert!(changes.iter().any(|c| c.contains("-K01 · Description") && c.contains("Pump 1")), "{changes:?}");
     assert!(d.close_branch, "Close branch ticked by default");
     // Cancel writes nothing and stays on the branch.
@@ -129,7 +132,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     h.state_mut().save().unwrap();
     h.run_steps(2);
     assert_eq!(status(&mut h, "Option B"), "merged");
-    // Step 12: Update from main… on a branch after main changed.
+    // user/history.md "Update a branch from main": Update from main… on a branch after main changed.
     ok(&mut h, r#"branch {"name":"Option D"}"#);
     ok(&mut h, r#"wire {"points":[[0,170],[30,170]]}"#);
     ok(&mut h, r#"switchbranch {"branch":"main","save":true}"#);
@@ -138,7 +141,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     h.run_steps(3);
     click(&mut h, "ecad.project.branch.update");
     let d = h.state().dialogs.merge.clone().expect("the update dialog is open");
-    eprintln!("5J.12 preview: title={} header={} counts={}", d.preview["title"], d.preview["header"], d.preview["counts"]);
+    eprintln!("Update a branch from main, preview: title={} header={} counts={}", d.preview["title"], d.preview["header"], d.preview["counts"]);
     assert!(d.preview["title"].as_str().unwrap().starts_with("UPDATE \"Option D\" FROM main"), "{}", d.preview["title"]);
     assert!(d.preview["header"].as_str().unwrap().starts_with("Brings main's changes since"), "{}", d.preview["header"]);
     assert!(!exists(&h, "ecad.merge.close"), "no Close box on an update");

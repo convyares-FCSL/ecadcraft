@@ -14,7 +14,7 @@ project, a new project that is never saved. Read-only unless --write is given.\n
                    headless until it answers, then bridged (ecad_connection says which)\n\
   --launch         with --connect: open the ECAD window when nothing answers\n\
   --create         create <project.ecad> (it must not exist yet) and save it before serving\n\
-See ecad/docs/quick-start.md.";
+See ecad/docs/user/quick-start.md.";
 
 /// What the command line asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
