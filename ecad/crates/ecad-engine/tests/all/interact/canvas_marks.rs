@@ -1,7 +1,7 @@
 //! The canvas, the adapter's part: overlay marks in the token colours and sizes,
 //! colour codes and two-colour wires (screen colours, mono and colour print, the information
-//! check for an unknown code), overlay never printed, `print.colour`, and text heights as cap
-//! heights in the sheet font.
+//! check for an unknown code), overlay never printed, `print.colour`, the sheet each project is
+//! shown on, and text heights as cap heights in the sheet font.
 
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::{Color, Rgb};
@@ -166,6 +166,48 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     assert!(ecad_electrical::defaults::print::mono_param(&doc, &json!({"colour": "sepia"})).is_err());
     // No information check for a known code.
     assert!(!ecad_engine::checks::all(&doc, 0.01).iter().any(|c| c.kind == Kind::UnknownColour));
+}
+
+/// The colour `w`'s route is drawn in on the open page of `h`.
+fn route_colour(h: &mut H, w: WireId) -> Option<Color> {
+    let page = h.first_page();
+    let doc = h.doc();
+    let handle = h.p(|p| draw::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER)).iter().find(|r| r.conductor == w)?.handle?;
+    h.pv(|p, pg| pg.entities_of(p, page)).iter().find(|e| e.handle == handle).map(|e| e.common.color)
+}
+
+/// The sheet is each project's own display state: switching one project to the dark sheet
+/// redraws its page and marks in the dark colours and leaves another project in the same process
+/// (a window beside an agent session) on paper. The dark page passes the projection check, and a
+/// print of it is still on paper.
+#[test]
+fn each_project_keeps_its_own_sheet() {
+    let (mut dark, w) = colour_page(0x40_0010, "GNYE");
+    let (mut paper, w2) = colour_page(0x40_0011, "GNYE");
+    assert_eq!(dark.run("canvassheet", json!({"dark": true})).unwrap()["changed"], json!(true));
+    assert_eq!(dark.run("canvassheet", json!({"dark": true})).unwrap()["changed"], json!(false), "already dark");
+    let pe = ecad_model::palette::wire::PE;
+    assert_eq!(route_colour(&mut dark, w), Some(Color::True(rgb(pe.dark.solid))));
+    assert_eq!(route_colour(&mut paper, w2), Some(Color::True(rgb(pe.paper.solid))), "the other project stays on paper");
+    let rings = |h: &mut H| {
+        let uid = h.s.state().unwrap().uid;
+        h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Ring).map(|m| m.color).collect::<Vec<_>>()
+    };
+    let (on_dark, on_paper) = (rings(&mut dark), rings(&mut paper));
+    assert!(!on_dark.is_empty() && on_dark.iter().all(|c| *c == rgb(ecad_model::palette::sheet::DARK.connection_point)), "{on_dark:?}");
+    assert!(!on_paper.is_empty() && on_paper.iter().all(|c| *c == rgb(PAPER.connection_point)), "{on_paper:?}");
+    // A fresh projection for the check uses the project's sheet: the dark page passes it.
+    let inputs = dark.project.debug_projection_inputs(&mut dark.s).unwrap();
+    let check = ecad_engine::dev::checks::verify_projection(&inputs);
+    assert!(check.ok, "{:?}", check.lines);
+    // A print is on paper whatever the screen shows.
+    let (page, doc) = (dark.first_page(), dark.doc());
+    let (printed, _) = printbook::build_in(&doc, &[page], &Default::default(), 0.01, None, false, true).unwrap();
+    assert!(printed.model.iter().any(|e| e.common.color == Color::True(rgb(pe.paper.solid))), "the print draws the paper green");
+    assert!(printed.model.iter().all(|e| e.common.color != Color::True(rgb(pe.dark.solid))), "never the dark one");
+    // And back.
+    assert_eq!(dark.run("canvassheet", json!({"dark": false})).unwrap()["changed"], json!(true));
+    assert_eq!(route_colour(&mut dark, w), Some(Color::True(rgb(pe.paper.solid))));
 }
 
 #[test]

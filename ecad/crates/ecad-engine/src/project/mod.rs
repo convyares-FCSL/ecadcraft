@@ -300,29 +300,32 @@ fn placeholder_drawing() -> Drawing {
 }
 
 /// Project one page of `doc` onto `base` (a drawing whose tables and header are kept), reusing
-/// handles from `prev` for objects that are still there. Pages drawn from the report models use
-/// `reports` ([`crate::pages::generated::parts_of`]).
+/// handles from `prev` for objects that are still there, in the colours of the paper sheet. Pages
+/// drawn from the report models use `reports` ([`crate::pages::generated::parts_of`]).
 ///
 /// # Errors
 /// An item that cannot be drawn (missing layer or definition).
 pub fn project_page(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, reports: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0, reports)
+    project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0, reports, &ecad_model::palette::sheet::PAPER)
 }
 
 /// [`project_page`] with cable views: each cable in `fan` whose fan can be drawn on
 /// the page is shown as its fan ([`crate::cables::views::fan_on_page`], with tolerance `tol`) on layer
 /// [`crate::cables::views::LAYER`] instead of its member routes and slashes. Everything else is projected
-/// exactly as by [`project_page`]. Both draw each cable reference's derived text on that layer
-/// too ([`ecad_electrical::references::cables::markers_on_page`]).
+/// exactly as by [`project_page`], in the colours of sheet `colours` (paper or dark). Both draw
+/// each cable reference's derived text on that layer too
+/// ([`ecad_electrical::references::cables::markers_on_page`]).
 ///
 /// # Errors
 /// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
 pub fn project_page_with(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, reports: Option<&ReportModels>,
+    colours: &'static ecad_model::palette::Sheet,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_framed(doc, page, base, prev, fan, tol, &crate::pages::generated::parts_of(doc, page, reports))
+    project_page_framed(doc, page, base, prev, fan, tol, &crate::pages::generated::parts_of(doc, page, reports), colours)
 }
 
 /// [`project_page_with`] with the sheet frame's parts already worked out (the project keeps them
@@ -330,10 +333,12 @@ pub fn project_page_with(
 ///
 /// # Errors
 /// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn project_page_framed(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
+    colours: &'static ecad_model::palette::Sheet,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_shown(doc, page, base, prev, fan, tol, frame, false)
+    project_page_shown(doc, page, base, prev, fan, tol, frame, false, colours)
 }
 
 /// [`project_page_with`] as the page window shows it: with Show Hidden Text, the project's pending
@@ -345,10 +350,10 @@ pub(crate) fn project_page_framed(
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_pending(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
-    sheet: usize, reports: Option<&ReportModels>,
+    sheet: usize, reports: Option<&ReportModels>, colours: &'static ecad_model::palette::Sheet,
 ) -> Result<(Drawing, HandleMap), String> {
     let frame = crate::pages::generated::shown_parts(doc, page, reports, pending, sheet);
-    project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text)
+    project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text, colours)
 }
 
 /// [`project_page_framed`] with Show Hidden Text (see [`project_page_pending`]).
@@ -358,9 +363,9 @@ pub fn project_page_pending(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn project_page_shown(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
-    hidden_text: bool,
+    hidden_text: bool, colours: &'static ecad_model::palette::Sheet,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_kept(doc, page, base, prev, fan, tol, frame, hidden_text, None)
+    project_page_kept(doc, page, base, prev, fan, tol, frame, hidden_text, None, colours)
 }
 
 /// [`project_page_shown`] with the kept PLC model, when built.
@@ -370,7 +375,7 @@ pub(crate) fn project_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn project_page_kept(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
-    hidden_text: bool, plc: Option<&ecad_electrical::plc::kept::Plc>,
+    hidden_text: bool, plc: Option<&ecad_electrical::plc::kept::Plc>, colours: &'static ecad_model::palette::Sheet,
 ) -> Result<(Drawing, HandleMap), String> {
     let mut d = base.clone();
     for l in doc.layers().values() {
@@ -447,11 +452,11 @@ pub(crate) fn project_page_kept(
         map.insert_item(id, h);
     }
     // Wires and cores in their colours, two-colour ones with dashes (wires.rs).
-    crate::wires::draw::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev);
+    crate::wires::draw::colour_routes(doc, page, &mut d, &mut ents, &mut map, prev, colours);
     // Wire routes in their category's line type and weight.
     crate::wires::draw::style_routes(doc, page, &mut ents, |i| map.item(i));
     // Location box outlines in their location style.
-    crate::locations::draw::style_boxes(doc, page, &mut ents, |i| map.item(i));
+    crate::locations::draw::style_boxes(doc, page, &mut ents, |i| map.item(i), colours);
     let mut groups = Vec::new();
     for (rid, r) in doc.representations_on(page).filter(|(_, r)| r.form == Form::Drawn) {
         let mut members: Vec<Handle> = r.items.iter().filter_map(|i| map.item(*i)).collect();
@@ -466,7 +471,7 @@ pub(crate) fn project_page_kept(
         }
     }
     // The project's text styles, for every derived text of the page.
-    let draw = crate::styles::draw::DrawStyles::new(doc);
+    let draw = crate::styles::draw::DrawStyles::new(doc, colours);
     for (k, f) in &fans {
         map.quiet.extend(f.quiet.iter().copied());
         for (i, part) in f.parts.iter().enumerate() {
@@ -514,7 +519,7 @@ pub(crate) fn project_page_kept(
         let h = prev.reference(part.rep, part.index).unwrap_or_else(|| d.new_handle());
         let mut e = device_reference_entity(&draw, &part, h);
         // A continuation's other-end text in the sheet's Ink 2.
-        crate::continuations::draw::colour(doc, &part, &mut e);
+        crate::continuations::draw::colour(doc, &part, &mut e, colours);
         ents.push(e);
         map.insert_device_reference(part.rep, part.index, h);
     }
@@ -580,7 +585,7 @@ pub(crate) fn project_page_kept(
     // The sheet frame and title block: derived, never stored, and drawn first so
     // everything else lies on top of it (picks find the drawing, not the frame).
     // The frame style's line colour, on the frame's own lines (ink otherwise).
-    let frame_rgb = crate::pages::frame::line_colour(doc, page);
+    let frame_rgb = crate::pages::frame::line_colour(doc, page, colours);
     for (i, part) in frame.iter().enumerate() {
         let index = u32::try_from(i).map_err(|_| "the frame has too many parts")?;
         let h = prev.frame_part(index).unwrap_or_else(|| d.new_handle());
@@ -607,7 +612,18 @@ impl Project {
             self.reports();
         }
         let plc = self.kept_reports().map(|o| &o.plc);
-        project_page_kept(self.ledger.document(), page, base, prev, &self.display.views, self.tolerance, &parts, self.display.show_hidden_text, plc)
+        project_page_kept(
+            self.ledger.document(),
+            page,
+            base,
+            prev,
+            &self.display.views,
+            self.tolerance,
+            &parts,
+            self.display.show_hidden_text,
+            plc,
+            self.display.sheet,
+        )
     }
 
     /// The frame parts of `page` (its shown sheet), from the kept copy when nothing it shows can
@@ -984,6 +1000,7 @@ impl Project {
                             self.frame.pending,
                             self.sheet_index(*p),
                             reports.as_ref(),
+                            self.display.sheet,
                         )
                         .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
                         .unwrap_or(false),

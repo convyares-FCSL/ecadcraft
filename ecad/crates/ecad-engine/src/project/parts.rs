@@ -33,6 +33,11 @@ pub struct Storage {
 pub struct Display {
     /// Cables shown in fan view; every other cable is traditional.
     pub views: BTreeSet<CableId>,
+    /// The sheet the pages are shown on (paper or dark, `canvassheet`): the colours the page
+    /// window is projected in and the overlay marks are drawn in. A viewing preference of this
+    /// session, per project; a print is projected for paper whatever it is. Paper when a project
+    /// is opened.
+    pub sheet: &'static ecad_model::palette::Sheet,
     /// Show Hidden Text: pages also draw their hidden derived texts, dimmed. Not undoable, never
     /// printed. Off when a project is opened.
     pub show_hidden_text: bool,

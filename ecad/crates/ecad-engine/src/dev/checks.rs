@@ -23,6 +23,8 @@ pub struct ProjectionInputs {
     pub hidden_text: bool,
     /// The project's pending flag, so the fresh frame shows the same Rev box.
     pub pending: bool,
+    /// The sheet the pages are shown on, so the fresh projection draws the same colours.
+    pub colours: &'static ecad_model::palette::Sheet,
 }
 
 /// One open page's drawing and handle map.
@@ -307,6 +309,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.pending,
             p.sheet,
             reports.as_ref(),
+            inputs.colours,
         )
         .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
@@ -331,6 +334,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.pending,
             p.sheet,
             reports.as_ref(),
+            inputs.colours,
         );
         ok &= v.ok();
         lines.push(format!("page {title}: {}", v.summary()));

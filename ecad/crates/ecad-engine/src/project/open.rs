@@ -67,6 +67,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,
@@ -163,6 +164,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,
@@ -301,6 +303,7 @@ impl Project {
             },
             display: super::parts::Display {
                 views: BTreeSet::new(),
+                sheet: &ecad_model::palette::sheet::PAPER,
                 show_hidden_text: false,
                 view_settings: crate::cables::views::Settings::none(),
                 said_not_remembered: false,

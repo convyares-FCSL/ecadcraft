@@ -13,8 +13,7 @@ Shared helpers are in `tests/all/common/`. Tests are named `<module path>::<test
 `cargo test -p <crate> <name>` runs one module's tests. Never add a new `tests/*.rs` file: each one is its own
 executable and links egui and wgpu again, which is where most of the build time goes.
 
-Two crates keep a second executable on purpose: `ecad-store/tests/disk_contracts.rs`, and
-`ecad-engine/tests/sheet_switch.rs`, which switches a process-wide setting and so needs a process of its own.
+One crate keeps a second executable on purpose: `ecad-store/tests/disk_contracts.rs`.
 
 Which crate a test belongs to:
 

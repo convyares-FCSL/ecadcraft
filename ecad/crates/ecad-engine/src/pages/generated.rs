@@ -101,7 +101,8 @@ fn content(
 ) -> Vec<Part> {
     let (l, b, r, t) = area(input);
     let mut d = Draw { k: unit_scale(input.unit), x0, out: Vec::new() };
-    let draws = DrawStyles::new(doc);
+    // Sizes and fonts only: the parts take their colours from the frame.
+    let draws = DrawStyles::new(doc, &ecad_model::palette::sheet::PAPER);
     let draw = |kind| ecad_drawing_style::text::fonts::text_draw_of(&draws, kind, input.unit);
     let (header, cell_draw, heading) = (draw(TextKind::TableHeader), draw(TextKind::Table), draw(TextKind::TableHeading));
     // The cover's blocks.

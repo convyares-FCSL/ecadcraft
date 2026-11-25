@@ -158,8 +158,6 @@ impl Project {
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
-        // One sheet for the projection, any rebuild and the check (see `draw::pin_sheet`).
-        let _sheet = crate::cables::draw::pin_sheet();
         let Some(view) = self.pages.get(&page) else { return };
         let Some(uid) = view.uid else { return };
         let Some(current) = pg.doc(uid).map(|st| st.doc.clone()) else { return };
@@ -204,6 +202,7 @@ impl Project {
                     self.frame.pending,
                     self.sheet_index(page),
                     reports.as_ref(),
+                    self.display.sheet,
                 );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());

@@ -301,6 +301,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 p.frame.pending,
                 p.shown_sheet(*page).0,
                 reports.as_ref(),
+                p.display.sheet,
             )
             .unwrap();
             assert!(d.model == st.doc.model, "page {page}: drawing differs from the projection");

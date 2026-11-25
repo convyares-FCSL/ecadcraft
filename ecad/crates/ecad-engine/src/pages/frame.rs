@@ -75,9 +75,9 @@ pub fn entity(part: &Part, handle: Handle) -> Entity {
     }
 }
 
-/// The frame style's line colour of `page` as drawn, or `None` for ink.
-pub fn line_colour(doc: &Document, page: PageId) -> Option<cadcraft_engine::doc::color::Rgb> {
-    crate::cables::draw::colour_rgb(&ecad_drawing_style::catalogues::frame::frame_draw(doc, page).colour, crate::cables::draw::projection_sheet())
+/// The frame style's line colour of `page` as drawn on `sheet`, or `None` for ink.
+pub fn line_colour(doc: &Document, page: PageId, sheet: &ecad_model::palette::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
+    crate::cables::draw::colour_rgb(&ecad_drawing_style::catalogues::frame::frame_draw(doc, page).colour, sheet)
 }
 
 /// [`entity`] in the frame style's line colour `rgb`: the frame's own lines take it;

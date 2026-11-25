@@ -51,6 +51,9 @@ pub struct Preview {
     drawing: Option<Arc<Drawing>>,
     /// The project change count the projection was made at.
     projected_at: Option<u64>,
+    /// The sheet the project is shown on, as the projection was made for it: the image's
+    /// background and colours.
+    sheet: &'static ecad_model::palette::Sheet,
     /// What the texture shows: image size and view.
     drawn: Option<([u32; 2], PreviewView)>,
     texture: Option<egui::TextureHandle>,
@@ -80,6 +83,7 @@ impl Preview {
             ring,
             drawing: None,
             projected_at: None,
+            sheet: &ecad_model::palette::sheet::PAPER,
             drawn: None,
             texture: None,
             size: [DEFAULT_SIZE[0] as u32, DEFAULT_SIZE[1] as u32],
@@ -111,13 +115,14 @@ impl Preview {
         if let Some((doc, name)) = self.revision.clone() {
             // A frozen copy: projected once.
             if self.drawing.is_none() && self.error.is_none() {
-                let tol = project.read(s, |p, _| p.tolerance).unwrap_or(1e-6);
+                let (tol, sheet) = project.read(s, |p, _| (p.tolerance, p.display.sheet)).unwrap_or((1e-6, &ecad_model::palette::sheet::PAPER));
+                self.sheet = sheet;
                 self.title = format!(
                     "{name} · page {}: {}",
                     ecad_electrical::references::cables::page_number(&doc, page),
                     doc.pages().get(&page).map(|x| x.title.as_str()).unwrap_or_default()
                 );
-                match ecad_engine::pages::preview::preview_drawing_of(&doc, page, tol) {
+                match ecad_engine::pages::preview::preview_drawing_of(&doc, page, tol, sheet) {
                     Ok(d) => {
                         if self.view.height <= 0.0 {
                             self.view = PreviewView::extents(&d, self.size[0], self.size[1]);
@@ -131,9 +136,9 @@ impl Preview {
             }
             return true;
         }
-        let since = self.projected_at;
-        // One short read: the change count, whether anything since touches this page, and (only
-        // then) the projection and the title.
+        let (since, shown_on) = (self.projected_at, self.sheet);
+        // One short read: the change count, whether anything since touches this page or the sheet
+        // changed, and (only then) the projection, its sheet and the title.
         let read = project.read(s, |p, _| {
             let count = p.change_count();
             let doc = p.ledger.document();
@@ -145,16 +150,18 @@ impl Preview {
                 ecad_electrical::references::cables::page_number(doc, page),
                 doc.pages().get(&page).map(|x| x.title.as_str()).unwrap_or_default()
             );
-            let stale = match since {
-                None => true,
-                Some(n) => p.changes_since(n).is_none_or(|t| t.contains(&page)),
-            };
+            let stale = *p.display.sheet != *shown_on
+                || match since {
+                    None => true,
+                    Some(n) => p.changes_since(n).is_none_or(|t| t.contains(&page)),
+                };
             let drawing = stale.then(|| preview_drawing(p, page));
-            Some((count, title, drawing))
+            Some((count, title, drawing, p.display.sheet))
         });
         let Ok(read) = read else { return true }; // busy: try again next frame
-        let Some((count, title, drawing)) = read else { return false };
+        let Some((count, title, drawing, sheet)) = read else { return false };
         self.title = title;
+        self.sheet = sheet;
         match drawing {
             Some(Ok(d)) => {
                 if self.view.height <= 0.0 {
@@ -178,7 +185,7 @@ impl Preview {
         if self.drawn == Some((self.size, self.view)) && self.texture.is_some() {
             return;
         }
-        let paper = ecad_engine::cables::draw::sheet().sheet;
+        let paper = self.sheet.sheet;
         let bg = [paper.r, paper.g, paper.b];
         match rasterise(d, self.view, self.size[0], self.size[1], bg, 96.0 / 25.4) {
             Ok(img) => {
@@ -208,7 +215,7 @@ impl Preview {
     pub fn show(&mut self, ctx: &egui::Context) -> Option<Action> {
         let s = ecad_widgets::SHELL;
         let col = ecad_widgets::color;
-        let sheet = ecad_engine::cables::draw::sheet();
+        let sheet = self.sheet;
         let mut action = None;
         let mut window = egui::Window::new("Preview")
             .id(egui::Id::unique(WINDOW_ID))

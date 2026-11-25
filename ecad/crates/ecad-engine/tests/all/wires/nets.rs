@@ -497,7 +497,7 @@ fn wire_labels_take_the_wire_label_text_style() {
     });
     let l = &bold[0];
     assert!((l.width - width.unwrap()).abs() < 1e-9, "the box is the font's width");
-    let draw = h.p(|p| ecad_engine::styles::draw::DrawStyles::new(p.ledger.document()));
+    let draw = h.p(|p| ecad_engine::styles::draw::DrawStyles::new(p.ledger.document(), p.display.sheet));
     let e = ecad_engine::wires::draw::label_entity(&draw, l, cadcraft_engine::doc::Handle(1));
     let cadcraft_engine::doc::EntityKind::Text(t) = &e.kind else { panic!("{e:?}") };
     assert_eq!(t.style, ecad_drawing_style::text::STYLE_BOLD);
