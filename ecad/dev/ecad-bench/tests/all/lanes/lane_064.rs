@@ -51,11 +51,17 @@ fn references_view_agrees(tier: Tier, stride: usize) -> usize {
     let engine = EngineInputs { look: metrics.clone(), registry: &ecad_drawing_style::REGISTRY };
     let inputs = Inputs { engine: &engine, frame_page: None, rating: None };
     let mut view = ReferencesView::build(&Document::default());
-    let mut doc = Document::default();
+    // `before` follows `doc` one transaction behind (each transaction applied to both), so no
+    // document is copied per transaction: a copy costs time in proportion to the project.
+    let (mut before, mut doc) = (Document::default(), Document::default());
     let mut checked = 0;
     let log = g.ledger.log();
     for (i, tx) in log.iter().enumerate() {
-        let before = doc.clone();
+        if i > 0 {
+            for op in log.get(i - 1).map(|t| t.ops.as_slice()).unwrap_or_default() {
+                op.apply(&mut before).unwrap();
+            }
+        }
         for op in &tx.ops {
             op.apply(&mut doc).unwrap();
         }
