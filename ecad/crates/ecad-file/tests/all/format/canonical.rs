@@ -142,36 +142,65 @@ fn record_and_definition_hashes_are_pinned() {
     }
 }
 
-/// Every format number with the head hash the golden fixture's history has under it. **A format
-/// change bumps `ecad_file::SCHEMA_VERSION`** (a record's fields or meaning, an op, the canonical
-/// form): the head hash of this fixture then changes, and this table gets a new row with the new
-/// number. A changed head under an unchanged number is the forgotten bump.
+/// Every format number with what the golden fixture is under it: the head hash of its
+/// transaction records, and the hash of its snapshot (every chunk key with its chunk's hash, the
+/// chunks being serde's form of the model types). **A format change bumps
+/// `ecad_file::SCHEMA_VERSION`** (a record's fields or meaning, an op, the canonical form, or a
+/// model type's shape as a snapshot stores it): one of the two hashes then changes, and this table
+/// gets a new row with the new number. A changed hash under an unchanged number is the forgotten
+/// bump. Versions before 4 pinned the records only.
 // Version 2 covers S4 and S6 (nothing was released between them); version 3 also covers the
 // fixture's device types (#108), added before it was released; version 4 covers all of D4's device
 // data (one bump for the whole step).
-const SCHEMA_PINS: &[(u64, &str)] = &[
-    (2, "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274"),
-    (3, "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b"),
-    (4, "bba0dba2c97e0691f06395ccafcc06eb33220013604c1727625b2e26a8b7401d"),
+const SCHEMA_PINS: &[Pin] = &[
+    Pin { version: 2, records: "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274", snapshot: None },
+    Pin { version: 3, records: "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b", snapshot: None },
+    Pin {
+        version: 4,
+        records: "bba0dba2c97e0691f06395ccafcc06eb33220013604c1727625b2e26a8b7401d",
+        snapshot: Some("34a3584aef3e558715012eb141212311ed9163961e3374906202ef90ca5f3f42"),
+    },
 ];
 
-#[test]
-fn the_schema_version_is_bumped_with_every_format_change() {
+/// One row of [`SCHEMA_PINS`].
+struct Pin {
+    version: u64,
+    /// The head hash of the fixture's transaction records.
+    records: &'static str,
+    /// The hash of the fixture's snapshot chunk set.
+    snapshot: Option<&'static str>,
+}
+
+/// The golden fixture's records head and snapshot hash, as this build writes them.
+fn golden_hashes() -> (String, String) {
     use crate::common::*;
     use ecad_file::chain::{self, ChainKind};
+    use ecad_file::chunks::{ModelMeta, build_full};
     let f = fixture();
     let mut prev = chain::seed(ChainKind::Project, PROJECT.0);
+    let mut high = ecad_model::naming::tag::HighWater::default();
     for tx in f.ledger.log() {
         let v = ecad_file::record::tx_value(tx, &prev).unwrap();
         prev = chain::tx_hash(&canonical(&v).unwrap());
+        ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
     }
-    let head = chain::hex(&prev);
-    let pinned = SCHEMA_PINS.iter().find(|(v, _)| *v == ecad_file::SCHEMA_VERSION);
-    assert_eq!(
-        pinned.map(|(_, h)| *h),
-        Some(head.as_str()),
-        "the golden fixture's head hash is {head} under SCHEMA_VERSION {}: the file format changed, so bump          `ecad_file::SCHEMA_VERSION` (files of the old number then open read-only as an older format) and add          ({}, \"{head}\") to SCHEMA_PINS; if only the number is new, add its row",
-        ecad_file::SCHEMA_VERSION,
-        ecad_file::SCHEMA_VERSION + 1,
+    let (set, _) = build_full(f.ledger.document(), &ModelMeta { tag_high: high }).unwrap();
+    // Key and hash of every chunk, in key order: the keys carry the bucketing, the hashes the bytes.
+    let listed: String = set.chunks.iter().map(|(k, h)| format!("{k} {}\n", chain::hex(h))).collect();
+    (chain::hex(&prev), chain::hex(&ecad_file::schema::chunk_hash(listed.as_bytes())))
+}
+
+#[test]
+fn the_schema_version_is_bumped_with_every_format_change() {
+    let (records, snapshot) = golden_hashes();
+    let v = ecad_file::SCHEMA_VERSION;
+    let pin = SCHEMA_PINS.iter().find(|p| p.version == v);
+    let ask = format!(
+        "under SCHEMA_VERSION {v}: the file format changed, so bump `ecad_file::SCHEMA_VERSION` (files of the old number then \
+         open read-only as an older format) and add Pin {{ version: {}, records: \"{records}\", snapshot: Some(\"{snapshot}\") }} \
+         to SCHEMA_PINS; if only the number is new, add its row",
+        v + 1
     );
+    assert_eq!(pin.map(|p| p.records), Some(records.as_str()), "the golden fixture's records head is {records} {ask}");
+    assert_eq!(pin.and_then(|p| p.snapshot), Some(snapshot.as_str()), "the golden fixture's snapshot hash is {snapshot} {ask}");
 }

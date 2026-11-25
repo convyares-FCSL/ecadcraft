@@ -1,14 +1,19 @@
 //! ecad-file: ECAD project files (`.ecad`), one format: a redb database.
 //!
 //! - **Records** ([`records`], [`record`]): the transaction records every file stores, at the schema version
-//!   [`record::SCHEMA_VERSION`], separate from `ecad-model` and converted explicitly, so a model change never
-//!   silently changes the format. The exceptions are stored as the model writes them: a device's type
-//!   (`DeviceType`, with its ratings), tag (`TagSlot`), location and function (`Place`) and user values
-//!   (`UserValue`), whose words and fields are strict already; a second copy of them would only have to be kept
-//!   in step. The golden fixture holds one device of each type with every field written out, so a field added
-//!   to a device type does not compile until the fixture names it, and a changed word or field changes the
-//!   pinned hash that asks for a new schema version. Ops are written flat, `{"op": name, "v": n, ...}`; any op version but the
-//!   current one is refused (no upcasts before v1).
+//!   [`record::SCHEMA_VERSION`], separate from `ecad-model` and converted explicitly. The exceptions are stored
+//!   as the model writes them: a device's type (`DeviceType`, with its ratings), tag (`TagSlot`), location and
+//!   function (`Place`) and user values (`UserValue`), whose words and fields are strict already; a second copy
+//!   of them would only have to be kept in step. Ops are written flat, `{"op": name, "v": n, ...}`; any op
+//!   version but the current one is refused (no upcasts before v1).
+//! - **What the schema version pins**: two hashes of the golden fixture (`tests/all/common`), checked by
+//!   `the_schema_version_is_bumped_with_every_format_change`: the head of its transaction records (record
+//!   fields, op names and versions, the canonical form, the chain), and its snapshot (every chunk key and the
+//!   hash of every chunk's bytes; chunks are serde's form of the model types, see [`chunks`]). A change to
+//!   either fails that test until [`record::SCHEMA_VERSION`] is bumped. The fixture holds one device of each
+//!   type with every field written out, so a field added to a device type does not compile until the fixture
+//!   names it. Only what the fixture holds is pinned: a model field it leaves at a value serde skips can change
+//!   shape unseen.
 //! - **Integrity** ([`canonical`], [`chain`]): RFC 8785 canonical form (the bytes stored and hashed), and an
 //!   unkeyed SHA-256 history chain with domain-separated seeds for projects and libraries. It detects
 //!   accidental damage, reordering and divergence; it does not resist deliberate rewriting.
@@ -24,7 +29,8 @@
 //! - **Binding** ([`binding`]): a project bound to its file (open, Save, Save As, status) and the checks on a
 //!   path typed for one; the caller passes the home folder.
 //!
-//! Not here: library files and checkpoints (neither exists yet), and other codecs.
+//! Not here: library files and checkpoints (neither exists yet; a checkpoint record is refused), and other
+//! codecs.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod binding;

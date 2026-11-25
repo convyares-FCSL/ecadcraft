@@ -12,7 +12,9 @@
 //!   only when its count crosses a power of two.
 //!
 //! A chunk's JSON is serde's form of the model types (struct fields in declaration order, maps in
-//! key order): deterministic for a build, so equal content dedupes. Building is incremental: only
+//! key order): deterministic for a build, so equal content dedupes. That form is part of the file
+//! format: the golden fixture's chunk hashes are pinned with [`crate::SCHEMA_VERSION`] (see the
+//! crate doc), so a model type whose shape changes asks for a bump. Building is incremental: only
 //! the keys a range of transactions touched ([`Dirty`]) are rebuilt; the rest keep their hashes.
 
 use std::collections::{BTreeMap, BTreeSet};

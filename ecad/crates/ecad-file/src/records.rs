@@ -1,7 +1,8 @@
 //! The records at [`crate::record::SCHEMA_VERSION`]: the file format's own types.
 //!
-//! These mirror `ecad-model` deliberately: the model may change shape freely, while these types
-//! change only with a schema version. The model types a record holds as they are (a device's
+//! These mirror `ecad-model` deliberately: the model may change shape without changing the
+//! transaction records, while these types change only with a schema version. (Snapshot chunks
+//! store the model types themselves; the crate doc says how the schema version covers them.) The model types a record holds as they are (a device's
 //! `DeviceType`, `TagSlot`, `Place`, `UserValue`) are the format too; the crate doc says why and
 //! how the golden fixture guards them. Every struct refuses unknown fields.
 //! IDs use the model's ID types, whose serialised form (32 hex digits) is itself part of this
@@ -765,7 +766,7 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
     }
 }
 
-/// An op, version 1 of every op. In the file each op is written flat:
+/// An op, at [`OP_VERSION`]. In the file each op is written flat:
 /// `{"op": "<Name>", "v": 1, …fields…}` (see [`crate::record`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1016,7 +1017,7 @@ fn mlayer(l: StyleLayer) -> m::StyleLayer {
     }
 }
 
-/// The current version of every op in schema version 1.
+/// The version every op is written in; an op of any other version is refused.
 pub const OP_VERSION: u64 = 1;
 
 // ---------------------------------------------------------------------------------------------
