@@ -240,7 +240,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Frame(_) => {}
         // A device cross-reference stands for its contact or head representation.
         Mapped::DeviceReference(rep) => r.representation = Some(rep),
-        // A link line stands for its strip.
+        // A jumper bar's line stands for its strip.
         Mapped::JumperBar(..) => {}
         // A T's dot stands for the route that ends there.
         Mapped::Tee(_) => {}

@@ -971,9 +971,9 @@ pub(crate) fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &s
     }
 }
 
-/// Checks rows of one strip: orphan places, links across partitions,
-/// links naming missing positions. The go-to is the strip's last terminal, or the link's first
-/// drawn terminal.
+/// Checks rows of one strip: orphan places, jumper bars across partitions, jumper bars naming
+/// missing positions. The go-to is the strip's last terminal block, or the jumper bar's first drawn
+/// terminal block.
 pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
@@ -1005,7 +1005,7 @@ pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripDat
                 page: go.map(|(p, _)| p),
                 at: go.map(|(_, a)| a),
                 object: obj(first),
-                which: format!("{}: link {} crosses the partition after {at}", s.tag, l.text),
+                which: format!("{}: jumper bar {} crosses the partition after {at}", s.tag, l.text),
                 fix: Some(Fix::JumperBarAcrossPartition(s.component, n, u16::try_from(i).unwrap_or(u16::MAX))),
             });
         }
@@ -1015,7 +1015,7 @@ pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripDat
                 page: go.map(|(p, _)| p),
                 at: go.map(|(_, a)| a),
                 object: obj(first),
-                which: format!("{}: link {} names {}, which {} does not have", s.tag, l.text, l.missing.join(", "), s.tag),
+                which: format!("{}: jumper bar {} names {}, which {} does not have", s.tag, l.text, l.missing.join(", "), s.tag),
                 fix: Some(Fix::JumperBarOrphan(s.component, n)),
             });
         }
@@ -1024,8 +1024,8 @@ pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripDat
 }
 
 /// The JSON forms that carry out a fix, one per button: (button words, command,
-/// params), each one transaction (**Move to end**, **Remove**; **Split link at 4**, **Remove
-/// partition**; **Drop missing positions**, **Delete link**). Empty when the strip or key is gone.
+/// params), each one transaction (**Move to end**, **Remove**; ***Split jumper bar at 4**,
+/// **Remove partition**; **Drop missing positions**, **Delete jumper bar**). Empty when the strip or key is gone.
 pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, &'static str, serde_json::Value)> {
     use serde_json::json;
     match fix {
@@ -1042,7 +1042,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
         Fix::JumperBarAcrossPartition(c, n, i) => {
             let Some(label) = o.strips.get(c).and_then(|s| s.rows.get(usize::from(i))).map(|r| r.label.clone()) else { return Vec::new() };
             vec![
-                (format!("Split link at {label}"), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "split_at": label})),
+                (format!("Split jumper bar at {label}"), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "split_at": label})),
                 ("Remove partition".to_string(), "accessory", json!({"strip": c.hex(), "at": label, "remove": ["partition"]})),
             ]
         }
@@ -1054,7 +1054,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             .collect(),
         Fix::JumperBarOrphan(c, n) => vec![
             ("Drop missing positions".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "drop_missing": true})),
-            ("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})),
+            ("Delete jumper bar".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
         Fix::MoveToNextFree(t) => {
             vec![("Move to next free".to_string(), "terminalblocklabel", json!({"connection_point": t.hex(), "move_to": "next"}))]
@@ -1073,7 +1073,7 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
                 let v = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
                 out.push(("Drop missing levels".to_string(), "setprop", json!({"component": c.hex(), "key": key, "value": v})));
             }
-            out.push(("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})));
+            out.push(("Delete jumper bar".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})));
             out
         }
         Fix::Plc(c, f) => o.plc.fix_commands(c, f),

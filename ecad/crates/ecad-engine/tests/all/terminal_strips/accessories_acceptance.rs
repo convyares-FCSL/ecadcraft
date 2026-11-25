@@ -430,7 +430,7 @@ fn f_orphans_and_their_fixes() {
     rows_have_a_way_out(&mut a.h, "accessory-orphan");
     let rows = checks_of(&mut a.h, "jumper-bar-orphan");
     assert_eq!(rows.len(), 1, "{rows:?}");
-    assert!(rows[0]["which"].as_str().unwrap_or("").contains("link 3-6"), "{}", rows[0]);
+    assert!(rows[0]["which"].as_str().unwrap_or("").contains("jumper bar 3-6"), "{}", rows[0]);
     rows_have_a_way_out(&mut a.h, "jumper-bar-orphan");
     // Remove: the key cleared.
     step(&mut a.h, "setprop", json!({"component": s, "key": "acc.after.10", "value": null}));
@@ -466,7 +466,7 @@ fn p_jumper_bar_across_partition_is_a_warning_with_fixes() {
     assert!(v.is_ok(), "a jumper bar across a partition is never refused: {v:?}");
     let rows = checks_of(&mut a.h, "jumper-bar-across-partition");
     assert_eq!(rows.len(), 1, "{rows:?}");
-    assert_eq!(rows[0]["which"], "-X01: link 3-6 crosses the partition after 4", "{}", rows[0]);
+    assert_eq!(rows[0]["which"], "-X01: jumper bar 3-6 crosses the partition after 4", "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "warning", "{}", rows[0]);
     rows_have_a_way_out(&mut a.h, "jumper-bar-across-partition");
     // Split jumper bar at 4: two jumper bars, one transaction.

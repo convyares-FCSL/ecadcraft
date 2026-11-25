@@ -81,7 +81,7 @@ pub(crate) struct Terminalblocklabel {
     /// The transaction's label.
     pub label: &'static str,
     pub message: String,
-    /// The link lines that follow a relabel.
+    /// The jumper bar lines that follow a relabel.
     pub lines: Vec<String>,
 }
 

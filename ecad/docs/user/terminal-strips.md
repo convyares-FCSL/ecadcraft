@@ -14,7 +14,7 @@ The **Terminal** group in the tool strip holds the tools:
 | Tool | Does |
 | --- | --- |
 | **Terminal** / **Terminals across wires** | Place Terminals: a click on a wire, or a line across several wires, puts one terminal block on each wire crossed |
-| **Draw a jumper bar** | Draw Bridge: a wire between two terminal blocks of one strip (a bridge) |
+| **Draw a jumper bar** | Jumper: click the positions of one strip; Enter makes the jumper bar (see [Jumper bars](#jumper-bars)) |
 | **Renumber…** | Renumber the positions in drawing order |
 | **Terminal manager** (foot of the flyout) | Opens Project ▸ Terminals |
 
@@ -38,7 +38,8 @@ panel's devices) and the outside (the field, or a cable core).
 - A fuse terminal placed as a device of its own shows in Checks (**Fuse terminals that are devices of
   their own**) with **Make strip position**: it becomes a fuse position of the nearest strip on the page,
   keeping its wires and rating. Also by search (Ctrl+K, **Make strip position**) or `toposition`.
-- **Draw a jumper bar** draws a real wire. A jumper bar as a part is made with **Jumper** (below).
+- A bridge made of real wire is drawn with **Bridge** in the **Wire** group: a wire between two terminal
+  blocks of one strip.
 
 ## The strip in the inspector
 
@@ -86,8 +87,8 @@ ECAD adds nothing by a rule. They appear in the terminal plan in position order 
 A jumper bar joins positions of one strip into one net. It is a part owned by the strip, not a wire,
 and is drawn as a dashed line through its terminal blocks on every page.
 
-1. Choose **Jumper** (terminal block wheel, or search) and click the positions; Enter ends. Consecutive
-   picks take the positions between them.
+1. Choose **Draw a jumper bar** (Terminal group, or search), or **Jumper** on a terminal block's wheel,
+   and click the positions; Enter ends. Consecutive picks take the positions between them.
 2. Hovering the line shows its positions and the bars needed. Selecting it shows its **Positions** in the
    inspector; type `1-5` to extend it. Erase the line to delete the jumper bar.
 
@@ -95,8 +96,9 @@ On a multi-level strip a jumper bar joins one level across positions (the `+` le
 for example) or the levels of one position. The BOM counts jumper bars as bought: span divided by the
 bar size (10 unless the strip or project says otherwise), rounded up.
 
-Checks: **Link crosses a partition**, **Link names positions the strip lacks**, **Link names a level the
-position lacks**.
+Checks: **Jumper bar crosses a partition** (fix: **Split jumper bar at** or **Remove partition**),
+**Jumper bar names positions the strip lacks** (**Drop missing positions** or **Delete jumper bar**),
+**Jumper bar names a level the position lacks** (**Drop missing levels** or **Delete jumper bar**).
 
 ## Strip pages
 
@@ -106,7 +108,7 @@ Add a generated page from **New page ▾** in the Book (see [Pages](pages.md#gen
 - **Terminal strips**: a picture of each strip as wired on the rail. One column per level, inside
   conductors up to their targets, outside conductors down, each with its wire number and core label; the
   terminal block's own place beside its label. PE levels are hatched, spare positions dashed, a fuse
-  shows its break mark and rating. Jumper bars run in lanes with a dot on each linked level; accessories
+  shows its break mark and rating. Jumper bars run in lanes with a dot on each level they join; accessories
   are columns of their own; markers are small boxes on top. Each cable has a bar under its cores and a
   box with its tag, type and maker. Long strips run onto further sheets, never splitting a position;
   each sheet is titled `Terminal strips: -X01 <description> (2/3)`.

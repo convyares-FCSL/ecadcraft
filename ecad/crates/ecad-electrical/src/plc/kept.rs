@@ -143,7 +143,7 @@ impl Plc {
                 }
                 out.extend(iolist::cards_on_nets_of_connection_points(doc, self, &ts));
             }
-            // A strip link joins its positions' nets.
+            // A jumper bar joins its positions' nets.
             Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::connectivity::jumper_bars::jumper_bar_number(key.raw).is_some() => {
                 out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
             }

@@ -204,12 +204,12 @@ check_kinds! {
     AccessoryOrphan = "accessory-orphan", Warning, "Accessory at a position the strip lacks";
     /// Placed strip accessories without a part number (one count row).
     NoAccessoryPart = "no-accessory-part", Info, "Strip accessories without a part number", count;
-    /// A link spanning a partition.
-    JumperBarAcrossPartition = "jumper-bar-across-partition", Warning, "Link crosses a partition";
-    /// A link naming positions the strip does not have.
-    JumperBarOrphan = "jumper-bar-orphan", Warning, "Link names positions the strip lacks";
+    /// A jumper bar spanning a partition.
+    JumperBarAcrossPartition = "jumper-bar-across-partition", Warning, "Jumper bar crosses a partition";
+    /// A jumper bar naming positions the strip does not have.
+    JumperBarOrphan = "jumper-bar-orphan", Warning, "Jumper bar names positions the strip lacks";
     /// A `jumper_bar.<n>` key on a device that is not a terminal strip.
-    JumperBarOnNonStrip = "jumper-bar-on-non-strip", Warning, "Link on a device that is not a strip";
+    JumperBarOnNonStrip = "jumper-bar-on-non-strip", Warning, "Jumper bar on a device that is not a strip";
     /// A contact table the user placed overlaps the title block.
     TableOverTitle = "table-over-title", Warning, "Contact table over the title block";
     /// A generated page grew onto another page's number.
@@ -218,8 +218,8 @@ check_kinds! {
     LevelTwice = "level-twice", Error, "Terminal level drawn twice";
     /// A position whose levels are drawn by symbols of two types.
     PositionMixed = "position-mixed", Warning, "Position mixes terminal types";
-    /// A link naming a level its position does not have.
-    LevelMissing = "level-missing", Warning, "Link names a level the position lacks";
+    /// A jumper bar naming a level its position does not have.
+    LevelMissing = "level-missing", Warning, "Jumper bar names a level the position lacks";
     /// Fuse terminals that are devices of their own (one count row).
     FuseDevice = "fuse-device", Info, "Fuse terminals that are devices of their own";
     /// Fuse positions with no rating (one count row).
@@ -401,12 +401,12 @@ pub enum Fix {
     /// The strip's orphan key (index into its kept orphans): **Move to end** (items
     /// appended to `acc.end`, key cleared) or **Remove** (key cleared).
     AccessoryOrphan(DeviceId, u16),
-    /// Link `n` crossing the partition after position index `at`: **Split link at**
+    /// Jumper bar `n` crossing the partition after position index `at`: **Split jumper bar at**
     /// (`jumper split_at`) or **Remove partition** (`accessory remove [partition]`).
     JumperBarAcrossPartition(DeviceId, u16, u16),
-    /// Link `n` names missing positions: **Drop missing positions** or **Delete link**.
+    /// Jumper bar `n` names missing positions: **Drop missing positions** or **Delete jumper bar**.
     JumperBarOrphan(DeviceId, u16),
-    /// **Remove** a link key from a device that is not a strip.
+    /// **Remove** a jumper bar key from a device that is not a strip.
     JumperBarOnNonStrip(DeviceId),
     /// **Move table…** starts `mirrormove` for the device.
     MoveTable(DeviceId),
@@ -418,7 +418,7 @@ pub enum Fix {
     /// **Move to new position** (the other type's levels; `terminalblocklabel {terminal,
     /// move_to: "new"}`).
     MoveToNewPosition(ConnectionPointId),
-    /// Link `n` names missing levels: **Drop missing levels** or **Delete link**.
+    /// Jumper bar `n` names missing levels: **Drop missing levels** or **Delete jumper bar**.
     LevelMissing(DeviceId, u16),
     /// **Show** the fuse terminal devices, each with **Make strip position**
     /// (`toposition`).

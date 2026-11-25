@@ -207,13 +207,13 @@ fn checks_rows_have_working_fixes() {
     f.acc(json!({"at": "4", "add": ["partition"]}));
     f.jumper(json!({"strip": f.strip.hex(), "positions": "3-5"}));
     let v = f.h.run("checks", json!({"kinds": ["jumper-bar-across-partition"]})).unwrap();
-    assert!(v.to_string().contains("-X01: link 3-5 crosses the partition after 4"), "{v}");
+    assert!(v.to_string().contains("-X01: jumper bar 3-5 crosses the partition after 4"), "{v}");
     let fixes = f.h.cfg(|p| {
         let o = p.reports().clone();
         let fix = o.checks().into_iter().find(|c| c.kind == ecad_electrical::checks::Kind::JumperBarAcrossPartition).and_then(|c| c.fix).unwrap();
         ecad_electrical::reports::accessory_fix_commands(&o, fix)
     });
-    assert_eq!(fixes[0].0, "Split link at 4");
+    assert_eq!(fixes[0].0, "Split jumper bar at 4");
     f.jumper(json!({"jumper_bar": {"strip": f.strip.hex(), "n": 1}, "positions": "3-6"}));
     let head = f.h.head();
     f.h.run(fixes[0].1, fixes[0].2.clone()).unwrap();

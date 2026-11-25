@@ -525,7 +525,15 @@ pub const ACTIONS: &[Action] = &[
         1,
         &["terminals", "across", "row of terminals"],
     ),
-    tool("terminal_block.jumper_bar", "bridge", "Draw a jumper bar", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "terminal"]),
+    tool(
+        "terminal_block.jumper_bar",
+        "jumper",
+        "Draw a jumper bar",
+        Icon::Connect,
+        ToolGroup::TerminalBlock,
+        2,
+        &["jumper bar", "jumper", "terminal"],
+    ),
     coming_tool("terminal_block.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::TerminalBlock, 3),
     coming_tool("terminal_block.reorder", "Reorder the strip…", Icon::Move, ToolGroup::TerminalBlock, 4),
     group_app(
@@ -555,7 +563,7 @@ pub const ACTIONS: &[Action] = &[
         &["connector", "plug", "socket", "d-sub", "m12", "mated"],
     ),
     // ---- Wire.
-    tool("wire.bridge", "bridge", "Bridge", Icon::Connect, ToolGroup::Wire, 1, &["link", "between terminals"]),
+    tool("wire.bridge", "bridge", "Bridge", Icon::Connect, ToolGroup::Wire, 1, &["wire between terminals"]),
     group_app(
         "wire.continuation",
         "place",
@@ -865,7 +873,6 @@ pub const ACTIONS: &[Action] = &[
     // The terminal wheel holds strip terminals only (its jumper, plan
     // and accessory slots do not apply to a connector pin), so Rename pin is a Ctrl+K action.
     search_only("connector.renamepin", "pinlabel", Params::App(App::Template), "Rename pin", Icon::Edit, &["pinlabel", "connector pin", "pin name"]),
-    search_only("terminal_block.jumpertool", "jumper", Params::Start, "Jumper", Icon::Connect, &["terminal", "link"]),
     search_only(
         "terminal_block.accessorytool",
         "accessory",

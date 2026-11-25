@@ -865,7 +865,7 @@ fn l_checks_rows_and_their_fixes() {
     m.h.run("setprop", json!({"component": x1.hex(), "key": "jumper_bar.2", "value": "1.4-3.4"})).unwrap();
     let rows = checks_of(&mut m.h, "level-missing");
     assert_eq!(rows.len(), 1, "{rows:?}");
-    assert!(s(&rows[0]["which"]).contains("-X01: link 2 names"), "{}", rows[0]);
+    assert!(s(&rows[0]["which"]).contains("-X01: jumper bar 2 names"), "{}", rows[0]);
     assert_eq!(rows[0]["severity"], "warning");
     rows_have_a_way_out(&mut m.h, "level-missing");
     step(&mut m.h, "jumper", json!({"jumper_bar": {"strip": x1.hex(), "n": 2}, "delete": true}));

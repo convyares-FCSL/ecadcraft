@@ -156,7 +156,7 @@ pub(crate) fn verify_page_pending(
     for part in crate::plc::draw::card::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::device_reference_entity(&draw, &part, Handle(0)))).or_default() += 1;
     }
-    // Link lines, derived the same way.
+    // Jumper bar lines, derived the same way.
     for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
         *fan_expected.entry(computed_key(&crate::project::jumper_bar_entity(&part, Handle(0)))).or_default() += 1;
     }

@@ -447,7 +447,7 @@ fn hostile_strip_and_core_input_is_refused_with_a_way_forward() {
     assert!(t.h.run("setprop", json!({"component": x1.hex(), "key": "terminal_blocks", "value": long})).is_err());
     assert!(t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "1000"})).unwrap_err().contains("at most 100"));
     let e = t.h.run("bridge", json!({"from": terms[0].hex(), "to": terms[0].hex()})).unwrap_err();
-    assert!(e.contains("Pick two different terminals"), "{e}");
+    assert_eq!(e, "Pick two different terminal blocks: a bridge is a wire from one terminal block to another.");
     let e = t.h.run("terminalblocks", json!({"from": [0, 280], "to": [10, 280]})).unwrap_err();
     assert!(e.contains("The line crosses no wire. Draw it across the wires to land."), "{e}");
     let e = t.h.run("terminalblocks", json!({"from": [90, 180], "to": [260, 180], "strip": t.m1.hex()})).unwrap_err();

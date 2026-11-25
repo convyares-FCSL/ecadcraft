@@ -335,7 +335,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         .chain(changed_handles.iter().copied())
         .filter(|h| drawn(cx.map, *h))
         .chain(changed_handles.iter().copied().filter(|h| tag_text(cx.map, *h)))
-        // A link line moved or copied with other objects is drawn again from its link.
+        // A jumper bar's line moved or copied with other objects is drawn again from its jumper bar.
         .chain(changed_handles.iter().copied().filter(|h| matches!(cx.map.get(*h), Some(Mapped::JumperBar(..)))))
         .chain(added_handles.iter().copied().filter(|h| copied_source(h, &|m, x| matches!(m.get(x), Some(Mapped::JumperBar(..))))))
         .chain(added_handles.iter().copied().filter(|h| copied_drawn(h)))
@@ -414,7 +414,7 @@ pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
             // A fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::cables::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(rid)) => erased_references.push(rid),
-            // Erasing a link line deletes its link (and its own part keys).
+            // Erasing a jumper bar's line deletes the jumper bar (and its own part keys).
             Some(Mapped::JumperBar(c, n)) => {
                 erased_jumper_bars.insert((c, n));
             }

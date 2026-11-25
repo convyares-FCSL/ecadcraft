@@ -16,7 +16,7 @@ pub const EDITOR: &str = "ecad.table.editor";
 pub const SAVE: &str = "ecad.table.save";
 pub const CANCEL: &str = "ecad.table.cancel";
 pub const ADD: &str = "ecad.table.add";
-pub const LINK: &str = "ecad.table.jumper_bar";
+pub const LINK: &str = "ecad.table.link";
 
 /// What the person may do with the rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

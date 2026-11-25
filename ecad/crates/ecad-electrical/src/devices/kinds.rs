@@ -13,7 +13,7 @@ pub enum ObjectKind {
     Wire,
     /// A wire's end (attached or loose).
     WireEnd,
-    /// A terminal of a terminal strip (the DIN-rail device), or the strip's link line.
+    /// A terminal of a terminal strip (the DIN-rail device), or a jumper bar's line on the strip.
     TerminalBlock,
     /// A cable's slash or fan.
     Cable,
