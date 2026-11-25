@@ -887,27 +887,39 @@ fn ac11_cover_notes_writes_are_bounded() {
 /// the cover stay bounded.
 ///
 /// Each category is its own wire style with its own cross-section, so each is its own legend line;
-/// each wire lands on two connection points spread over the page, so it carries a wire and takes
-/// its category. The commands run straight through the session and the whole project is checked
-/// every 50th step and at the end, and verify mode checks every 50th commit in full: checking
-/// after every step would make the run quadratic.
+/// each wire lands on two connection points, so it carries a wire and takes its category. The
+/// wires sit 40 to a schematic page over ten pages, as a real drawing spreads them. The commands
+/// run straight through the session and the whole project is checked every 50th step and at the
+/// end, and verify mode checks every 50th commit in full: checking after every step would make the
+/// run quadratic.
 #[test]
 #[ignore = "slow: 400 categories and wires (tester 054, run by name)"]
 fn ac15_hundreds_of_categories_in_use_are_bounded() {
     const N: usize = 400;
-    let (mut h, cover, sch) = with_cover(0x54_1502);
-    h.activate(sch);
-    // 30 lines a row, 13 mm apart, rows 5 mm apart: spread over the A3 drawing area.
-    let at = |i: usize| ((10 + (i % 30) * 13) as f64, (10 + (i / 30) * 5) as f64);
-    let ends: Vec<(f64, f64)> = (0..N)
-        .flat_map(|i| {
-            let (x, y) = at(i);
-            [(x, y), (x + 10.0, y)]
-        })
-        .collect();
-    h.points_at(&ends);
+    const PER_PAGE: usize = 40;
+    let (mut h, cover, first) = with_cover(0x54_1502);
+    let mut sheets = vec![first];
+    while sheets.len() * PER_PAGE < N {
+        let last = *sheets.last().unwrap();
+        sheets.push(new_page(&mut h, json!({"type": "schematic", "after": last.hex()})));
+    }
+    // 8 lines a row, 45 mm apart, rows 50 mm apart: 40 lines spread over the A3 drawing area.
+    let at = |i: usize| {
+        let k = i % PER_PAGE;
+        ((20 + (k % 8) * 45) as f64, (20 + (k / 8) * 50) as f64)
+    };
     ecad_model::document::ledger::set_verify_every(50);
     for i in 0..N {
+        if i % PER_PAGE == 0 {
+            h.activate(sheets[i / PER_PAGE]);
+            let ends: Vec<(f64, f64)> = (i..i + PER_PAGE)
+                .flat_map(|j| {
+                    let (x, y) = at(j);
+                    [(x, y), (x + 10.0, y)]
+                })
+                .collect();
+            h.points_at(&ends);
+        }
         let style = h.s.execute("setstyle", &json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i)}})).unwrap();
         let (x, y) = at(i);
         let w = h.s.execute("wire", &json!({"points": [[x, y], [x + 10.0, y]]})).unwrap();
