@@ -222,7 +222,7 @@ fn screenshots_of_the_banner_history_and_outline() {
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
-    let port = crate::window::bridge::free_port();
+    let port = crate::common::free_port();
     t.agent.control_flag(port);
     let mut h =
         Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).renderer(crate::window::common::Collect(deltas.clone())).build_ui_state(

@@ -14,13 +14,8 @@ use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;
 use serde_json::{Value, json};
 
+use crate::common::free_port;
 use crate::mcp_contracts::{AGENT, Client, TempDir};
-
-/// A loopback port nothing listens on (bound, read, released).
-pub(crate) fn free_port() -> u16 {
-    let l = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    l.local_addr().unwrap().port()
-}
 
 fn os(args: &[&str]) -> Vec<std::ffi::OsString> {
     args.iter().map(Into::into).collect()

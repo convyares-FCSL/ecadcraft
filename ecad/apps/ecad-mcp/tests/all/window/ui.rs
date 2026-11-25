@@ -48,7 +48,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
     assert_eq!(h.state().agent.status_text(), "Off");
     // Read and change, as the combo does: saved, and the listener starts.
     h.state_mut().agent_set_mode(Mode::Write);
-    h.state_mut().agent.port_text = crate::window::bridge::free_port().to_string();
+    h.state_mut().agent.port_text = crate::common::free_port().to_string();
     h.state_mut().agent_apply_port();
     h.run_steps(3);
     let port = h.state().agent.pref.port;
@@ -74,7 +74,7 @@ fn the_developer_row_shows_off_listening_and_this_run_and_saves_the_choice() {
 fn control_flag_shows_this_run_only_and_locks_the_mode() {
     let d = dir("flag");
     let mut h = app_with(&d);
-    let port = crate::window::bridge::free_port();
+    let port = crate::common::free_port();
     h.state_mut().agent.control_flag(port);
     h.run_steps(3);
     assert_eq!(h.state().agent.status_text(), format!("● Listening on 127.0.0.1:{port} (this run only, --control)"));

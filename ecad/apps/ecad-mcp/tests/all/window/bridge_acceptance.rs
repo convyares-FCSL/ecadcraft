@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 
 use ecad_app::shell::app::App;
 
+use crate::common::free_port;
 use crate::window::common::{self, Opts};
 
 fn harness_with(deltas: Option<crate::window::common::Deltas>) -> Harness<'static, App> {
@@ -42,11 +43,6 @@ const GUARD: Duration = Duration::from_secs(10);
 
 /// Each test has its own settings folder (`Agent::use_settings`), so tests run in parallel.
 fn lock() {}
-
-fn free_port() -> u16 {
-    let l = TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    l.local_addr().unwrap().port()
-}
 
 fn listening(port: u16) -> bool {
     TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(300)).is_ok()

@@ -8,6 +8,8 @@ use ecad_mcp::args::{Invocation, parse_args};
 use ecad_mcp::{EcadMcp, Options};
 use serde_json::{Value, json};
 
+use crate::common::free_port;
+
 fn args(a: &[&str]) -> Result<Invocation, String> {
     parse_args(a.iter().map(OsString::from))
 }
@@ -31,10 +33,6 @@ fn connect_and_launch_parse_or_are_refused_in_words() {
 fn call(s: &mut EcadMcp, id: u64, tool: &str, arguments: Value) -> Value {
     let line = json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": tool, "arguments": arguments}});
     serde_json::from_str(&s.handle_line(&line.to_string()).unwrap()).unwrap()
-}
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
 }
 
 #[test]

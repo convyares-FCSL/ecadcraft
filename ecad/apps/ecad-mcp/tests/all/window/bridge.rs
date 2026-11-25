@@ -18,12 +18,9 @@ use ecad_model::Author;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
 
-pub(crate) type H = Harness<'static, App>;
+use crate::common::free_port;
 
-/// A loopback port nothing listens on now.
-pub(crate) fn free_port() -> u16 {
-    TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap().port()
-}
+pub(crate) type H = Harness<'static, App>;
 
 /// An app with agent access on (Read and change) at a free port, its listener started.
 pub(crate) fn live_app() -> (H, u16) {
