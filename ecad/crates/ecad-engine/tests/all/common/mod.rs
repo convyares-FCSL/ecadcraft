@@ -544,6 +544,51 @@ pub(crate) fn wired_lines(
     (ops, out)
 }
 
+/// Ops drawing `n` loose lines on `page` straight to the ledger (fixtures too large to draw one
+/// by one): one drawn device holding one connection point per line, where the line's first end
+/// lands; its other end is free, so it carries no wire. `line(i)` gives line `i`'s two end points.
+/// Returns the ops and, in order, each line's route with the connection point it landed on.
+pub(crate) fn loose_lines(
+    ids: &mut ecad_model::IdAllocator, page: PageId, style: ecad_model::Style, n: usize, line: impl Fn(usize) -> (Pt, Pt),
+) -> (Vec<ecad_model::Op>, Vec<(ecad_model::RouteId, ConnectionPointId)>) {
+    use ecad_model::{ConnectionPoint, Device, Form, Op, Representation, RouteEnd, Subject};
+    let device: DeviceId = ids.fresh();
+    let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
+    let mut cps = std::collections::BTreeMap::new();
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let (a, b) = line(i);
+        let ta: ConnectionPointId = ids.fresh();
+        ops.push(Op::AddConnectionPoint {
+            id: ta,
+            connection_point: ConnectionPoint {
+                owner: device.into(),
+                label: Some(i.to_string()),
+                key: None,
+                accepts: Default::default(),
+                protective_earth: false,
+            },
+        });
+        cps.insert(ta, a);
+        let (r, _, add) = ecad_electrical::wires::routes::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Free]);
+        ops.extend(add);
+        out.push((r, ta));
+    }
+    let rep: ecad_model::RepresentationId = ids.fresh();
+    ops.push(Op::LinkRepresentation {
+        id: rep,
+        rep: Representation {
+            subject: Subject::Device(device),
+            page,
+            form: Form::Drawn,
+            role: ecad_model::Role::Part(ecad_model::PartRole::Head),
+            items: Vec::new(),
+            connection_points: cps,
+        },
+    });
+    (ops, out)
+}
+
 /// Wire `w`'s line on `page`: the item drawing its route there (`wires::routes::route_of_wire_on`) and
 /// the item's path (design 072 §4.3; what `derive::route_on_page` gave before routes).
 pub(crate) fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {

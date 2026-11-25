@@ -902,8 +902,8 @@ fn fan_view_keeps_the_reference_drawn() {
     r.h.check();
 }
 
-/// Design check J: a cable of `MAX_CABLE_MEMBERS` (10 000) wires with a reference is continued on
-/// another page in one transaction, in bounded time, with a stub per wire.
+/// Design check J: a cable of `MAX_CABLE_MEMBERS` (10 000) loose lines with a reference is
+/// continued on another page in one transaction, in bounded time, with a stub per line.
 #[test]
 #[ignore = "slow: ten-thousand-wire cable, about 7 s"]
 fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
@@ -914,8 +914,13 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     let ops = h.cfg(|p| {
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let cable: CableId = p.ids.fresh();
-        let (mut ops, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
-        let cores = made.into_iter().map(|(c, _, _)| Core::on_wire(c, None)).collect();
+        // Loose lines landed on the left only: a line with a free end carries no wire, and only
+        // such a line can continue on another page.
+        let (mut ops, made) = crate::common::loose_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
+        let cores = made
+            .into_iter()
+            .map(|(route, landed)| Core { position: ecad_model::CorePosition::Route { route, landed: Some(landed) }, ..Core::unplaced(None) })
+            .collect();
         ops.push(Op::CreateCable { id: cable, cable: Cable { cores, ..Cable::default() } });
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         ops.push(Op::AddItem { id: it, item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) } });

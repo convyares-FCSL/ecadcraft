@@ -993,15 +993,17 @@ fn ac6_a_large_cable_continues_in_bounded_time() {
     const N: usize = 1_000;
     let mut h = H::new(SEED + 15);
     let supply = h.first_page();
-    let mut wires = Vec::with_capacity(N);
+    // Loose lines landed on the left only: a line with a free end carries no wire, and only such
+    // a line can continue on another page.
+    let lefts: Vec<(f64, f64)> = (0..N).map(|i| (0.0, i as f64)).collect();
+    h.points_at(&lefts);
     for i in 0..N {
         let y = i as f64;
         // Straight through the session: the harness's per-step checks would make this quadratic.
-        h.points_at(&[(0.0, y), (60.0, y)]);
-        let v = h.s.execute("wire", &json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
-        wires.push(v["conductor"].as_str().unwrap().to_string());
+        h.s.execute("wire", &json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
-    let c: CableId = id(&h.run("cableadd", json!({"conductors": wires, "tag": "BIG"})).unwrap(), "cable");
+    let top = N as f64;
+    let c: CableId = id(&h.run("cableslash", json!({"from": [30, -1], "to": [30, top], "tag": "BIG"})).unwrap(), "cable");
     h.run("cablereference", json!({"cable": c.hex(), "at": [65, 5]})).unwrap();
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(field);

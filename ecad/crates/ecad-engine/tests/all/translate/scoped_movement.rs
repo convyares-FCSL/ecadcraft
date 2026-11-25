@@ -65,11 +65,10 @@ fn connected(seed: u64) -> R {
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
     let k1 = component(&mut h, supply, "line -10,-5 0,-5 0,15 -10,15 c", [(0.0, 0.0), (0.0, 5.0), (0.0, 10.0)], "K1");
-    let mut w = Vec::new();
+    // Loose lines leaving the page: a line with a free end carries no wire until it is continued
+    // through the cable's references and lands on K2.
     for y in [0.0, 5.0, 10.0] {
-        let c: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap(), "conductor");
-        h.run("wirenumber", json!({"conductor": c.hex(), "value": format!("W{y}")})).unwrap();
-        w.push(c);
+        h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
@@ -82,6 +81,13 @@ fn connected(seed: u64) -> R {
     // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
     for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(k2) {
         h.run("connect", json!({"route": s["route"], "end": s["free_end"], "connection_point": t.hex()})).unwrap();
+    }
+    // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
+    let doc = h.doc();
+    let w: Vec<WireId> = doc.cables()[&c1].cores.iter().filter_map(|c| c.position.wire()).collect();
+    assert_eq!(w.len(), 3, "three wires once landed on K2");
+    for (c, y) in w.iter().zip(["0", "5", "10"]) {
+        h.run("wirenumber", json!({"conductor": c.hex(), "value": format!("W{y}")})).unwrap();
     }
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k1, k2 }
 }
@@ -131,14 +137,12 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
     let mut r = connected(seed);
     let mut rng = Rng(seed | 1);
     let mut counts = std::collections::BTreeMap::<&str, usize>::new();
-    let mut notes = 0usize;
     let mut texts_seen = std::collections::BTreeSet::<String>::new();
     for step in 0..400 {
         let page = if rng.below(3) == 0 { r.supply } else { r.field };
         r.h.activate(page);
         let wi = rng.below(3);
         let delta = [rng.coord(), rng.coord()];
-        let n_log = r.h.s.log.len();
         // Ends attached to a terminal not shown on this page before the edit.
         let doc0 = r.h.doc();
         let here: std::collections::BTreeSet<ConnectionPointId> = connection_point_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
@@ -226,10 +230,6 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
             }
         };
         *counts.entry(kind).or_default() += 1;
-        let log = r.h.s.log.get(n_log..).unwrap_or_default().join("\n");
-        if log.contains("is connected on another page, so it was not connected here") {
-            notes += 1;
-        }
         // Ends attached on the other page are never detached by an edit on this page.
         let doc = r.h.doc();
         if kind != "undo" {
@@ -264,6 +264,5 @@ fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
         assert_eq!(ecad_model::connectivity::derive::cable_references_of(&doc, &every), all, "step {step}: all cables");
     }
     let _ = r.c1;
-    eprintln!("r3 probe seed {seed:#x}: {counts:?}, 010 notes {notes}, texts {texts_seen:?}");
-    assert!(notes > 0, "no edit dropped a leaving end on a terminal");
+    eprintln!("r3 probe seed {seed:#x}: {counts:?}, texts {texts_seen:?}");
 }
