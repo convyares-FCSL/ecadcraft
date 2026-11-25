@@ -1,0 +1,637 @@
+Historical record (2026-11-14). Not current; see [user/plc.md](../../user/plc.md).
+
+# Design 056: the PLC signal list and PLC sync
+
+Status: Approved (overseer FP1–FP5 and owner answers, 2026-11-14: §14, §16). Brief:
+`docs/briefs/056-plc-signals.md` (Approved).
+Source: UI rev 4 build spec, "Project workspace ▸ PLC: the signal list" (transcribed by 054 into
+`docs/discussions/ui-2026-11/rev4-build-spec.md`), and board **2.03** (Project ▸ PLC: signals, PLC
+sync, tests). Where earlier rounds disagree with rev 4, rev 4 wins.
+Builds on 045 (racks, cards, channels, addresses, the I/O rows), 051 (tiles, the group strip,
+`plcpage`, the `plcrack` sheet, the channel table on 039), 039 (the table), rev 3 section E (the
+Project workspace: full-width table, Import, Export, "Open beside the page", the right panel shows
+the selection only).
+Follows `008.md` §2: one commit = one JSON-equivalent transaction, Esc writes nothing, feedback in
+words, never crash. UI rule: a feature adds a column set, a page kind or a command, never a new
+panel or dialog type.
+
+Format proposals: §14. Update maps: §12. Owner questions: §16. Tester: §17.
+Screenshots side by side with board 2.03 ship with the PR (051's rule, §13.2).
+
+**Owner's change (2026-11-14, after the first build, PR #112):** there is **no sync with an outside
+PLC**. Kept: **Export tags** (a generic CSV tag table) and **Import an I/O list**, a one-way fill of
+channels' tags and descriptions from such a table. Removed: Compare, the PLC column, the stored
+snapshot (`plc.sync.*`, FP2), the differences chip, the right panel's PLC sync section, `plcsync`
+and `plctake`, and the sync Checks rows. The right panel for a card becomes **a card editor**
+styled as board 2.03's right panel (§5). The sections below say what is built now; FP2 lapses.
+
+## 0. Why, what the code has today, and the files touched
+
+### 0.1 What exists (`origin/dev` `8b6c2ccd`)
+
+- `apps/ecad-trial/src/lists/plc.rs`: Project ▸ PLC (was Lists ▸ PLC): rack chips, tiles as the
+  table's group strip (`ecad_ui::table::strip`), the I/O column set (`Ch, Address, Pins,
+  Description, State, Wired to, Wire, Place`), `This card | All cards`. Description, Address and
+  Pins are inputs through `plcchannel`.
+- `apps/ecad-trial/src/lists/workspace.rs`: the tab row; **Import an I/O list** is a greyed
+  placeholder (`IMPORT_COMES`, "Importing a list comes later.").
+- `apps/ecad-trial/src/lists/detail.rs` `card()`: the right panel for a tile (Identity, Addresses,
+  Detailed page).
+- `crates/ecad-cadcraft/src/plc/`: `iolist.rs` (`Row`, `rows_of`, `csv_table`), `overview.rs`
+  (`Tile`, `rack_tiles`, `squares_of`), `channels.rs` (channel keys `plc.ch.<i>.text|address`,
+  `plcchannel`), `address.rs` (styles `byte.bit` → `I0.0`, `iec` → `%IX0.0`, `slot`, `none`),
+  `page.rs` (`plcpage`), `sheets.rs` (the `plcrack` and `iolist` sheets).
+- `Row.targets` are every tagged device on the channel's nets (`rows_of`), terminals included.
+- Export in Project tabs copies the table's CSV to the clipboard (`lists::copy_csv`). The app has
+  its own path dialog (`lib.rs` `FileDialog`); no `rfd`.
+- No XLSX reader or writer in the workspace (none is added: §7.1). `chrono` is a dependency of `ecad-cadcraft`.
+
+### 0.2 What board 2.03 adds
+
+1. A rack heading line (`Rack 1  -A01 to -A06 · 6 of 7 slots used · 66 channels, 44 in use`), a
+   legend at its right, and **Add a rack**.
+2. Wider tiles: a top line `Slot 2` and the card's kind (`16 outputs, relay`), tag, description,
+   squares, range, `9 of 16 in use`, page link or `not drawn yet` with **Make its page**. Free slot
+   tile: `+ Slot 6 is free / Add a card from the catalogue`.
+3. A card header over the table: `-A03 · output card · slot 2  16 channels, 9 in use, drawn in
+   detail on page 5`, then the chip `PLC: 2 differences`, **Compare**, **Export tags**, **→ Page 5**.
+4. Channel columns `Ch, Address, Tag, Description, Type, Safe, Drives, Page, PLC, Test`.
+5. A footer: `This overview is also page 10 of the book: generated, always current, each card a
+   link to its page.`
+6. The right panel for a card: Identity, Addresses (with a provisional address note), Detailed
+   page (**Go to page 5**, **Draw the missing channel**), Parts.
+
+### 0.3 Files touched
+
+| File | Change |
+| --- | --- |
+| `ecad/crates/ecad-cadcraft/src/plc/signals.rs` (**new**) | Channel tag and safe state (§4.3, §4.4), `Drives` (§4.5), the signal row (`iolist::Row` extended) |
+| `ecad/crates/ecad-cadcraft/src/plc/exchange.rs` (**new**) | Export tags and Import an I/O list (§6), `plcexport`, `plcimport`, `plccardtype`'s registration |
+| `ecad/crates/ecad-cadcraft/src/plc/tagtable.rs` (**new**) | The format layer (§7.2) and its one format, generic CSV; `plcexport` |
+| `ecad/crates/ecad-cadcraft/src/plc/{mod,channels,iolist,overview,sheets}.rs` | `specs()` lines; `plcchannel` gains `tag`, `safe`; rows gain the new fields; tile words (§3.3); sheet tile words |
+| `ecad/crates/ecad-cadcraft/src/plc/address.rs` | Style `percent` (`%I0.0`, `%IW64`) if Q5 is yes |
+| `ecad/crates/ecad-cadcraft/src/defaults/plc.rs` | §11's entries |
+| `ecad/crates/ecad-cadcraft/src/checks.rs` | One block: §9's kinds |
+| `ecad/crates/ecad-cadcraft/src/release.rs` | ` I/O list.csv` gains Tag, Safe, PLC columns (§7.2) |
+| `ecad/apps/ecad-trial/src/lists/plc.rs` | Rack heading, card header, chip, columns (§3, §4) |
+| `ecad/apps/ecad-trial/src/lists/card_editor.rs` (**new**) | The card editor (§5) |
+| `ecad/apps/ecad-trial/src/lists/workspace.rs` | Import and Export for the PLC tab (§6.6, §6.7) |
+| `ecad/apps/ecad-trial/src/lists/detail.rs` | Card and channel right panel (§5) |
+| Tests `tests/all/lanes/lane_056*` in ecad-cadcraft, ecad-mcp, ecad-trial; one `mod` line per `lanes/mod.rs` | §13 |
+| `ecad/crates/ecad-cadcraft/src/lanes.rs` | `("056", crate::plc::sync::specs)` and the tag table specs |
+| `ecad/crates/ecad-bench` | §12.4's rows |
+| `ecad/docs/quick-start/056-plc-signals.md` (**new**) | By clicking |
+| `ecad/tests/fixtures/plc/` (Q15) | Synthetic generic CSV tag tables |
+
+Not touched: `ecad-model`, `ecad-store`, `ecad-file`, upstream, CI.
+
+**Overlaps.** `plc/overview.rs` and `sheets.rs` with nothing in flight. `checks.rs` and
+`defaults/` are append-only blocks. `detail.rs` and `workspace.rs` are also edited by the rev 4
+Project briefs (Network, Wires and Cables ratings, Power): each adds its own arm; merge in order.
+The `plcrack` page's place in the book belongs to the page-types brief (054); 056 only changes
+what the page draws and asks 054 for its default place (§8).
+
+## 1. Goal and words
+
+Goal: **the PLC list is the signal list of the project: every channel has a PLC tag, a safe state
+and what it drives, and the list stays in step with the PLC programming project through a tag
+table that goes out and comes back.**
+
+| Word | Meaning |
+| --- | --- |
+| Signal | A channel of a card, with its tag. One row of the list. |
+| Tag | The channel's name in the PLC program (`Valve_Inlet`). Stored on the card as `plc.ch.<i>.tag`. Not the device tag (`-A03`): in the UI the column is **Tag** inside the PLC tab only, and the right panel says **PLC tag**. |
+| Tag table | A file of PLC tags: name, address, data type, comment. What PLC tools import and export. |
+| Snapshot | The last tag table imported, kept in the project (FP2). The PLC column compares against it. |
+| Sync state | Per channel: in sync, differs, not in PLC, only in PLC, or nothing to compare (§6.3). |
+| Safe state | What an output does when the PLC stops or the bus is lost: Off, On, Hold, or a value. |
+
+## 2. The screen (board 2.03)
+
+```
+ Devices 46  Terminals 13  [PLC 66]  Network 10 │ Wires 61  Cables 4  Power 7 │ Reports 5  Tests 58
+                                              [Filter channels] [Import an I/O list] [Export] [Open beside the page]
+ Rack 1  -A01 to -A06 · 6 of 7 slots used · 66 channels, 44 in use     ■ in use □ free ■ reserved ■ has a check [Add a rack]
+ ┌─────────┐┌─────────┐┏━━━━━━━━━┓┌─────────┐┌─────────┐┌─────────┐┌ ─ ─ ─ ─ ┐
+ │Slot 0 CPU││Slot 1 16 in│┃Slot 2 16 out┃│…        ││…        ││…        │  + Slot 6 is free
+ │-A01     ││-A02     │┃-A03     ┃│-A04     ││-A05     ││-A06     │  Add a card from
+ │…squares…││…        │┃…        ┃│         ││         ││         │  the catalogue
+ │%I0.0–…  ││not drawn│┃%Q2.0–%Q3.7┃│1 check  ││         ││Make its │
+ │20 of 24 ││Make its │┃9 of 16  page 5→┃│page 4 → ││page 5 → ││page     │
+ └─────────┘└─────────┘┗━━━━━━━━━┛└─────────┘└─────────┘└─────────┘└ ─ ─ ─ ─ ┘
+ ────────────────────────────────────────────────────────────────────────────────────────────────
+ -A03 · output card · slot 2   16 channels, 9 in use, drawn on page 5                    [Export tags] [→ Page 5]
+ Ch  Address  Tag            Description          Type  Safe  Drives    Page  Test
+ 0   %Q2.0   [Fan_On     ]  [Fan contactor on ]   DQ   [Off]  -K03:A1   none  —
+ 2   %Q2.2   [Valve_Inlet]  [Inlet valve open ]   DQ   [Off]  -Y01:1    5/B4  ✓ C
+ 8   %Q3.0   [Dosing_On  ]  [Dosing pump on   ]   DQ   [Off]  -K06:A1   5/D4  —
+ 9   %Q3.1   [free       ]
+ 6 more free channels.
+ ────────────────────────────────────────────────────────────────────────────────────────────────
+ input you set it here   grey text read from the drawing        This overview is also page 10 of the book …
+```
+
+The tab is 051's view, re-laid as the board. The table stays 039's table; the strip stays 039's
+group strip. Nothing here is a new panel.
+
+## 3. The rack overview
+
+### 3.1 Rack heading line
+
+Above the strip, one line per shown rack (rack chips stay as 051 §3.2 when there is more than one
+rack or cards in no rack):
+
+- `Rack <n>` in `ui_type.title` (`n` = the rack's position in tag order, 1-based), then
+  `<first tag> to <last tag> · <used slots> of <shown slots> slots used · <channels> channels,
+  <in use> in use` in `ui_type.small`, `shell.text_2`. "Shown slots" is 051 §3.3's count (up to the
+  highest occupied slot plus one free). No rack: `No rack · <n> cards · …`.
+- At the right: the legend (051 §3.4's four squares with words, `shell.text_3`) and **Add a rack**
+  (a button, `ecad.plc.addrack`): starts Place Symbol (018) with the search `rack` (CPU and
+  interface module bodies). Greyed with `Writes are off.` when writes are off.
+
+### 3.2 Tiles (051 §3.3, widened and reworded)
+
+Tile width `ecad.plc.tile_width` becomes **200 px** (board), height fits the content; strip scrolls
+sideways as before. Lines:
+
+| Line | Left | Right | Type token, colour |
+| --- | --- | --- | --- |
+| 1 | `Slot 2` (`Rack` tile: `Slot 0` when the CPU sits in slot 0, else `Rack`) | the card's kind words (§3.3) | `ui_type.caption`, `shell.text_3` |
+| 2 | tag `-A03` | — | `ui_type.title`, `shell.text`; `shell.provisional` with a dotted underline when the tag is provisional (026) |
+| 3 | the card's description, else its type name (`Output card`) | — | `ui_type.small`, `shell.text_2` |
+| 4 | the squares (051 §3.4, 8 per row) | — | — |
+| 5 | address range (`%Q2.0–%Q3.7`; inputs then outputs for mixed cards: `%I0.0–%I1.5 · %Q0.0–%Q1.1`) | — | `ui_type.small`, `shell.text_2` |
+| 6 | `9 of 16 in use` (`· 1 check` in `shell.error` when it has checks) | link: `page 5 →`, `pages 4, 5 →`, or `Make its page` | `ui_type.small`; link `shell.accent_text` |
+
+A card not drawn shows `not drawn yet` (`shell.warning`) on line 6 left and **Make its page**
+(`plcpage`, 051 §3.6) at the right. A card with no channels (PS, CM) shows `—` for lines 4–5 and
+`no channels` on line 6.
+
+**Free tile:** dashed border, centred `+`, `Slot 6 is free` (`ui_type.body`), `Add a card from the
+catalogue` (`ui_type.small`, `shell.text_3`); the whole tile is the button (051's `Place a card…`
+action: Place Symbol with search `card`, Rack and Slot preset). Writes off: greyed, tooltip.
+
+### 3.3 Card kind words (line 1 right)
+
+From the card type and its channel count: `CPU` (rack body), `16 inputs, 24 V`, `16 outputs,
+relay`, `4 analogue in`, `2 analogue out`, `4 RTD`, `4 IO-Link`, `power`, `comms`. The voltage or
+contact words come from the part (`plc.kind` part attribute, if the part sets it); without it only
+the count and direction (`16 outputs`). Mixed CPU: `14 in, 10 out`. No new property: the words are
+derived (§12.1).
+
+### 3.4 Squares and the legend
+
+051 §3.4 unchanged: used, free, reserved, has a check. The board's legend says **provisional
+address**; 045 and 051 have no provisional addresses (Q10 of 051 mapped this square to
+*reserved*). Kept as *reserved* here; a provisional address is owner question Q12.
+
+## 4. The channel table
+
+### 4.1 Card header (over the table)
+
+One line, `ecad.plc.cardhead`:
+
+- Left: `<tag> · <kind> · slot <n>` (`ui_type.title`), then `<count> channels, <in use> in use,
+  drawn on page <p>` (`pages 4, 5`; `not drawn yet`) in `ui_type.small`, `shell.text_2`.
+- Right, in this order:
+  - **Export tags** (`ecad.plc.exporttags`): §6.1, scope this card's rack.
+  - **→ Page 5** (`ecad.plc.gopage`): goes to the card's first run (051's link). Absent when not
+    drawn.
+
+`All cards` scope: the header reads `All cards · <n> cards, <channels> channels, <in use> in use`
+and the chip counts the project.
+
+### 4.2 Columns
+
+| Column | Kind | Width | From | Edit |
+| --- | --- | --- | --- | --- |
+| Ch | read | 32 | 045 channel shown | — |
+| Address | **input** | 80 | 045 live address; typed one marked `*` | `plcchannel {address}` (051) |
+| Tag | **input** | 140 | `plc.ch.<i>.tag` (§4.3) | `plcchannel {tag}` |
+| Description | **input** | 200 | `plc.ch.<i>.text` | `plcchannel {text}` (051) |
+| Type | read | 44 | channel signal type: `DI`, `DQ`, `AI`, `AO`, `RTD`, `IOL` (Q6) | — |
+| Safe | **input** (choice) for outputs; read `—` for inputs | 60 | `plc.ch.<i>.safe`, else the default (§4.4) | `plcchannel {safe}` |
+| Drives | read | 120 | §4.5 | — (go-to) |
+| Page | read | 56 | the cell's place (`5/B4`, project reference style); `none` | — (go-to) |
+| Test | read | 72 | §4.6 | — |
+
+`Pins`, `State`, `Wire` leave the `This card` scope (they stay in `All cards` and in the right
+panel; the row's state is the square's). The table's column chooser (039) can show them again.
+`All cards` keeps 051's columns plus Tag and Safe. (The board's PLC column went with sync, owner,
+2026-11-14.)
+
+Free channels: a free channel shows only `Ch`, `Address` and `free` in the Tag input as its
+placeholder; typing a tag or description makes it reserved (045 §6). After the first free channel
+of a run of free channels, the rest fold into one line `<n> more free channels.` (`shell.text_3`,
+click unfolds; `ecad.plc.morefree`).
+
+Footer of the table (039's footer row): `input` chip `you set it here`, `grey text read from the
+drawing` (rev 3's legend), and at the right §8's sentence.
+
+### 4.3 Tag (new channel property)
+
+- Key `plc.ch.<i>.tag` on the card (FP1), ≤ 128 characters, trimmed. Allowed: letters, digits, `_`,
+  and anything the tag table formats accept (§7.3); a tag with characters a format refuses gets a
+  Check, not a refusal (§9), so typing is never blocked by a target the user may not use.
+- Unique per PLC (a rack and its cards; cards in no rack are one PLC together): a second channel
+  with the same tag is refused with `Tag "Valve_Inlet" is already -A03 channel 2 (%Q2.2).` (case
+  insensitive, as PLC tools compare).
+- Empty: the channel has no tag. Export leaves it out (§6.6) unless **Make tags** fills it (Q8).
+- **Make tags** (`ecad.plc.maketags`, in the card header's `…` menu; `plcmaketags {card | rack}`):
+  fills empty tags of used and reserved channels from their descriptions (`Inlet valve open` →
+  `Inlet_valve_open`, spaces and dashes to `_`, other characters dropped, a digit first gets `_`
+  before it, duplicates get `_2`, `_3`), one transaction. Echo `Made 7 tags on -A03.`
+
+### 4.4 Safe state (new channel property)
+
+- Key `plc.ch.<i>.safe` (FP1). Outputs only (DQ, AO, IO-Link outputs). Inputs show `—` (read).
+- DQ values: `off`, `on`, `hold` (words in the choice: `Off`, `On`, `Hold`).
+- AO values: `hold`, `min`, `max`, or a value in the channel's units as text ≤ 16 (`4 mA`).
+- Unset: the default from the registry (`plc.safe.dq` `off`, `plc.safe.ao` `hold`, §11), shown in
+  `shell.text_2` with the origin badge (042) `default`. Setting the default's value writes it (the
+  row is then set here; the badge goes).
+- Exported in the generic CSV tag table (§7.3, an export-only column) and the release CSV; printed on the I/O sheet (Q9). The Tests brief (0.2.3) reads it for the stop tests.
+
+### 4.5 Drives (from the drawing)
+
+The device and pin the channel connects to, following the net **through** pass-through devices:
+
+1. Take 045's targets (tagged devices on the channel's nets).
+2. Drop targets that are pass-through: terminal strip positions, connector halves (plug, socket),
+   cable cores, link bars. Keep the rest (coils, valves, lamps, sensors, other cards).
+3. If a pass-through device's two sides are on different nets (a terminal's outside on another net
+   than its inside), follow to the other side's net once per pass-through, at most 8 hops, and
+   repeat 1–2 there. Cycle-safe (visited set).
+4. Show the first kept target as `-K03:A1`, more as `-K03:A1 +1` (tooltip lists all, with places).
+   No kept target but pass-throughs: show the last pass-through (`-X10:3`) in `shell.text_3`.
+   Nothing: empty.
+
+The worker confirms in the code whether terminal sides share a net (`ecad_model::wiring`) and
+writes the rule against what is there (house rule 3). For inputs the header still reads
+**Drives**; tooltip on the header: `For outputs, what the channel switches. For inputs, what feeds
+it.` (Q7 offers *Wired to* instead.) Click: goes to that device's point.
+
+### 4.6 Test column (designed here, filled by the Tests brief, 0.2.3)
+
+Read-only. Values, from a provider the Tests brief supplies (`plc::signals::TestState`, an enum
+056 defines with only `None` produced):
+
+| Value | Looks | Meaning |
+| --- | --- | --- |
+| `✓ C` | `shell.ok`, revision letter `ui_type.small` | Passed at revision C |
+| `↻ retest` | `shell.provisional`, dotted underline | Passed, then something it depends on changed |
+| `⊘ failed` | `shell.error` | Last result failed |
+| `⊘ blocked` | `shell.warning` | Cannot run yet (not in PLC; duplicate address) |
+| `—` | `shell.text_3` | No test yet |
+
+In 056 every row shows `—`; the column is shown (board) with the header tooltip `Tests come with
+the Tests tab.` Q11 offers hiding it until then. Blocked uses §6.3's state: the Tests brief marks a
+test blocked when the channel is *not in PLC*.
+
+## 5. Right panel
+
+The right panel shows the selection only (rev 3 §E).
+
+**A tile (card) selected: the card editor** (owner, 2026-11-14; `lists/card_editor.rs`), laid out
+as board 2.03's right panel and built only from the `ecad_ui` components
+([components.md](components.md)): Type is a `Segmented`, Rack a `Select`, ID (bold),
+Description, Slot, Function, Location, Start, Maker and Part number are `TextEntry`s with their
+grey hints, and the address rule is read (`read_text`). The inspector's sections and buttons hold
+them. Every edit is one command, as typed:
+
+- Title `-A03`, subtitle `Output card, 16 outputs, relay · rack 1, slot 2`.
+- **Identity:** **Type** (segmented `DI DQ AI AO RTD IOL`: `plccardtype {card, type}` swaps the
+  card body's symbol, one transaction; an I/O card's body points are the same for every type;
+  picking a type shows a confirm step that says what happens to the signals: `Change -A03 to a DI
+  card? Its channels become digital inputs (they were digital outputs); tags and descriptions
+  stay.`; a type with fewer channels than the signals in use is refused in words: `-A03 has 9
+  signals; an AO card has 4 channels. Move or remove 5 signals first.`),
+  **ID** (`setprop tag`), **Description** (`setprop description`), **Rack** (a choice of the racks
+  and None: `plcslot {card, rack}`), **Slot** (`plcslot {card, slot}`), **Function** and
+  **Location** (brief 052: the device's own entry, shown as its code in a value with a hint
+  (`=CTRL` `from page`, `+CAB1` `from box`, `from project`, else `set here`: where one of the
+  card's symbols is drawn, a box first, has that code); `—` only when unset, nothing inherited. A
+  click opens its entry; `setprop` stores the entry key and adds a new code to the list).
+- **Addresses:** **Start** (the block's first address; `plcaddress {card, start}`, which takes
+  `%Q4.0`, `Q4`, `IW64` or `4`; empty unpins; hint `automatic` or `pinned`), **Rule** (read:
+  `Follow slot order`, hint the rack's style `IEC`, `%`, `byte.bit`).
+- **Detailed page:** `5 · PLC outputs · 8 of 9 channels drawn`, **→ Go to page 5**, **Draw the
+  missing channel(s)** (`plcchannels {card, rest: true}`, when some used channel is not drawn), or
+  `Not drawn yet.` with **Make its page**; the note.
+- **Parts:** the part set as cards, one row each (owner, board 2.03): the main part named for what
+  the card is (`Output card, 16 outputs, relay`, its maker and part number, `main part`, `×1`),
+  then each accessory (`Front connector`, `×1`); `none yet` only when the card has no maker, part
+  number or part line;
+  **Maker** and **Part number** of the main part (`setprop`), **+ Accessory** (description, part
+  number, maker: `partline {component, add}`), **From catalogue** (greyed: the catalogue comes
+  later).
+
+A refusal shows under its field, in its words. Writes off: the fields read only.
+
+**A channel row selected:** title `-A03 channel 2`, subtitle `%Q2.2 · DQ · Valve_Inlet`, go-to
+`5/B4`; **Signal** (Tag, Description, Safe with `default` or `set here`, Address, Pins: set in the
+table), **Drawn** (place, wire, Drives with every kept target and its place), **Test** (`No tests
+yet.`).
+
+## 6. Tag tables in and out (owner's change of 2026-11-14)
+
+ECADCraft never talks to a PLC tool, and keeps nothing of a table it read (Q1, owner's change).
+`plc/exchange.rs`.
+
+### 6.1 Export tags
+
+**Export tags** (card header) opens the tab's path row: the file name offered is `<project> PLC
+tags.csv` in the folder last used while the app runs; **All racks** exports every rack, else the
+selected card's rack.
+
+1. Rows: used and reserved channels with a tag and an address; one row each (IO-Link: one per
+   direction). Data type from the card type: DI, DQ → `Bool`; AI, AO, RTD → `Int`; IO-Link →
+   `Word`. Comment = the description. Export-only columns `card, channel, safe, drives, page`.
+2. Left out, counted in the echo: channels without a tag, without an address, and tags the format
+   refuses (§7.4).
+3. Fields a spreadsheet would run as a formula (starting `=`, `+`, `-`, `@`, `＠`, a tab or a CR)
+   are written with a leading `'` (the review of #112, 3); device tags such as `-A03` are among
+   them. Reading takes the `'` off again, so an export reads back unchanged.
+4. Echo: `Wrote 38 tags of rack -A01 to Pump station PLC tags.csv; left out 3 without a tag.`
+5. Writes no project data; allowed with writes off. MCP: `plcexport` (§10), as text.
+
+### 6.2 Import an I/O list
+
+The tab bar's **Import an I/O list** (the board's words) opens the path row; **Import** reads the
+file (§7) and fills, one way, in **one transaction** `Import an I/O list` (`u` undoes it whole):
+
+1. Each row is matched to a channel by its normalised address (§6.3). The channel takes the row's
+   name as its **tag** and, when the row has a comment, the comment as its **description**
+   (`what: tags | descriptions | both`). A channel not in the file keeps its own.
+2. Rows at an address no channel has are counted and named in the echo (`1 row at an address no
+   card has (%I8.0)`), never placed. Import never adds cards, channels or addresses.
+3. **Tags stay unique per PLC** (without case): an import that would give two channels of one PLC
+   the same tag (two names in the file that differ only in case, or a name another channel keeps)
+   is refused whole: `The import would give two channels the tag "Pump": -A03 channel 0 (%Q2.0)
+   and -A03 channel 1 (%Q2.1). Nothing was imported.`
+4. Refusals in words, shown in the path row: unreadable file, unknown format, too many tags, a
+   column the format needs missing (`The file has no "address" column.`); rows with a bad address
+   or name are skipped and counted. `dry_run` says what it would set and writes nothing.
+5. An import that changes nothing records nothing. Writes off: refused with the brief 011
+   sentence.
+
+### 6.3 Address matching
+
+Addresses are normalised before comparing: strip `%`, spaces and `:P`; `E`→`I`, `A`→`Q`, `PE`→`I`,
+`PA`→`Q`; drop the IEC size letter `X` on bits (`%IX0.0` → `I0.0`); upper case. ECAD's own address
+(045 style, typed or live) is normalised the same way, so every 045 style except `slot` and `none`
+matches.
+
+## 7. Formats
+
+### 7.1 Generic CSV only in 056 (owner, Q3)
+
+056 reads and writes one format: the **generic CSV** tag table. It needs no dependency, works in
+wasm, opens in any spreadsheet, and any PLC tool's table can be mapped to it by a user in a
+spreadsheet. The release already writes CSV (027). Tests and agents use it.
+
+Vendor formats (TIA Portal, TwinCAT, Rockwell, CODESYS and the like) come in **0.5.0** with
+manufacturer data (owner, 2026-11-14). No XLSX crate is added in 056.
+
+Detection on import: a `.csv` (or pasted `text`) with the generic header is read; anything else is
+refused with `Only the generic CSV tag table can be read yet (name, address, type, comment).`
+
+### 7.2 The format layer (ready for more formats)
+
+`plc/tagtable.rs` keeps the formats behind one small interface, so 0.5.0 adds a format as one
+module and one registration, with no change to import, export, the commands or the UI:
+
+- `TagRow { name, address, data_type, comment }` (plus the export-only extras of §7.3): the one
+  row shape every format reads into and writes from. Matching (§6.3) sees only `TagRow`s.
+- `trait TagFormat { id(), label(), extensions(), sniff(bytes) -> bool, read(bytes, caps) ->
+  Result<Read, String>, write(rows) -> Result<Vec<u8>, String> }`, where `Read` carries the rows
+  and the skipped counts. `caps` holds §6.2's limits, so every reader is bounded the same way.
+- A registry `FORMATS: &[&dyn TagFormat]` with one entry in 056 (`csv`). `plcexport` and
+  `plcimport` take `format` as one of its ids; the path dialog's format choice lists its labels
+  (one entry now, so the choice is not drawn).
+- Address normalisation (§6.3) and the name rules each format applies on export (§7.4) are
+  functions of the format, so a vendor format with stricter names adds its own rule.
+
+### 7.3 Generic CSV
+
+Columns, in order: `name, address, type, comment`, then, on export only, `card, channel, safe,
+drives, page` (ignored on import). Addresses written in the project's style normalised to `%`
+form (`%Q2.2`). Fields quoted per RFC 4180. Import accepts `;` as separator when the header uses
+it (spreadsheets in some locales), and a UTF-8 BOM. A header the format needs missing is refused
+with words (`The file has no "address" column.`).
+
+The release's ` I/O list.csv` (045c) gains `tag`, `safe` and `plc` (the sync state word)
+columns at the end.
+
+### 7.4 Name rules on export
+
+A tag containing `"`, `,` or `;` is quoted (RFC 4180); a tag with a control character or longer than 128 characters is left out and counted (Check `plc-tag-chars`).
+
+## 8. The rack overview in the book
+
+051's generated `plcrack` page ("PLC racks") is the overview in ink. 056 changes:
+
+- Its tiles carry the §3.2 lines in ink: `Slot n` and kind, tag, description, squares, range,
+  `n of m in use`, the place of the card's first run (`→5/B4`) or `not drawn`.
+- **Always in the book:** a project with at least one rack gets the `plcrack` page without asking,
+  in the book's PLC group, before the I/O list; it disappears when the last rack goes. Where the
+  PLC group sits and how a generated page is numbered is the page-types brief's (054) rule; 056
+  asks 054 for `plcrack` and `iolist` to be default members of the PLC group.
+- On screen (Draw), a tile on the page is a link: a click goes to the card's first run, as a 025
+  cross-reference does (the place text is 025's reference).
+- The footer sentence in the PLC tab: `This overview is also page <n> of the book: generated,
+  always current, each card a link to its page.` with `page <n>` a link to it. No `plcrack` page
+  (054 not merged, or the user removed it): the sentence is absent.
+
+## 9. Checks (appended block; each with its fix)
+
+| Kind | Level | When | Fix / go-to |
+| --- | --- | --- | --- |
+| `plc-tag-twice` | Error | two channels of one PLC share a tag (case insensitive): possible only after a merge or a raw `setprop`; one row per channel, naming the others | go to each; **Rename** focuses the Tag cell |
+| `plc-tag-chars` | Warning | a tag export will leave out (§7.4) | focus the Tag cell |
+
+The sync rows (`plc-tag-missing`, `plc-not-in-plc`, `plc-differs`, `plc-no-card`) went with sync.
+Nothing is refused because of a check.
+
+## 10. Commands, JSON forms and MCP
+
+| Command | New or changed | JSON | Writes |
+| --- | --- | --- | --- |
+| `plcchannel` | changed | adds `tag?: text (null clears)`, `safe?: off\|on\|hold\|min\|max\|<value> (null clears)` | yes |
+| `plcmaketags` | **new** | `{card \| rack}` | yes |
+| `plcexport` | **new** | `{format?: csv, rack?: id or tag, path?: file}`; without `path` returns `{text, rows, left_out}` | no |
+| `plcimport` | **new** | `{path \| text, name?: ≤ 255 characters, format?: csv, dry_run?: bool, what?: both\|tags\|descriptions}` → `{read, io, skipped, tags, descriptions, unchanged, no_card, written, message}` | yes (not when `dry_run`) |
+| `plccardtype` | **new** | `{card, type: DI\|DQ\|AI\|AO\|RTD\|IOL}`: the card body's symbol, one transaction | yes |
+| `iolist` | changed | rows gain `plc_tag` (`tag` is the card's, 045), `safe`, `safe_default`, `drives: [{device, point, place}]`, `test: null` | no |
+| `plcracks` | changed | each slot gains `kind_words`, `in_use` | no |
+
+`text` on `plcimport` is for MCP and wasm (no file system); ≤ 16 MB. `path` is refused on wasm
+with words, and from an agent (MCP's file keys). MCP contract tests (brief 011 rule):
+`plcchannel {tag, safe}`, `plcmaketags`, `plcimport`, `plccardtype` record one transaction with
+`Author::Agent(<client>)` and are refused with writes off; `plcimport {dry_run: true}`,
+`plcexport`, `iolist` work with writes off and record nothing.
+
+## 11. Defaults (registry, `defaults/plc.rs`, appended)
+
+| Key | Kind | Built-in | Levels |
+| --- | --- | --- | --- |
+| `plc.safe.dq` | Choice `off`, `on`, `hold` | `off` | S P O (card) |
+| `plc.safe.ao` | Text ≤ 16: `hold`, `min`, `max` or a value | `hold` | S P O (card) |
+| `plc.address.style` | adds `percent` (`%I0.0`, `%IW64`) if Q5 is yes | unchanged (`byte.bit`) | S P O (rack) |
+
+## 12. Update maps and cost
+
+### 12.1 Rows and tiles
+
+The `Plc` model (045 §11.1) gains the tags and safe states read with the channel data
+(`plc.ch.<i>.tag|safe` are channel keys, already routed to `rows_changed` by the `plc.ch.` prefix;
+the worker checks). Changes:
+
+| Edit | Recomputed |
+| --- | --- |
+| `SetProperty(card, plc.ch.<i>.tag \| .safe)` | that card's rows (patched), its sync states (§12.2), its tile's `in use` words not at all (tags do not change use) |
+| `SetProperty(card, part \| plc.kind)` | that tile's kind words |
+| a net change on `channel_of_net`, or a pass-through's net | Drives of the channels on those nets only (`channel_of_net` and a `passthrough_of_net` index kept beside it) |
+| `setdefault plc.safe.*` | Safe cells of the cards that inherit it |
+| anything else | nothing |
+
+### 12.2 Sync states
+
+None since the owner's change: nothing of an imported table is kept, so no index exists to update.
+
+### 12.3 Pages
+
+`plcrack` redraws on 051's triggers plus a change of a tile's kind words or description. The I/O
+sheet adds Tag and Safe (Q9) and redraws on their keys. No other page changes.
+
+### 12.4 Bench (medium while building, large once at the end)
+
+| Row | Measures | Target |
+| --- | --- | --- |
+| `plcimport ms` | import a 5 000-tag generic CSV, dry run (parse, normalise, match to channels) | < 60 ms |
+| `plcexport ms` | export the large project as generic CSV | < 30 ms |
+| `drives ms` | Drives for all channels of the large project | < 20 ms |
+
+`iolist`, `plcstrip`, `netupd` must not get worse by more than 10 %.
+
+## 13. Acceptance
+
+Fixture **P56**: 051's P51 with tags on rack `-A01`'s cards, `-A03` as board 2.03 (channels 0–8
+used, 9–15 free), `-Y01` driven through terminal `-X10:3`; plus `P56-tags.csv` (generic) and
+`P56-tags-b.csv` (`;`-separated with a BOM, as a spreadsheet saves it) in which `%Q2.2` is `Valve_In`, `%Q3.0` is missing, `%Q3.4` is
+`Spare_Out4`, `%I8.0` is `Door_Sw`, and 300 memory tags.
+
+### 13.1 Checks the tester can run from outside
+
+| # | Do | Expect |
+| --- | --- | --- |
+| A | Open Project ▸ PLC on P56 | Rack heading `Rack 1  -A01 to -A06 · 6 of 7 slots used · …`; tiles with kind words, `n of m in use`, links; free tile `Slot 6 is free`; footer sentence with a working page link |
+| B | Select `-A03` | Card header with `PLC: not imported`; columns of §4.2; 6 free channels folded |
+| C | Type `Valve_Inlet` as tag of channel 2, then the same on channel 3 | First commits one transaction (`u` undoes); second refused with §4.3's sentence |
+| D | Set Safe of channel 4 to On; look at channel 1 | Ch 4 `On` set here; ch 1 `Off` with `default`; `setdefault plc.safe.dq on` changes ch 1 only |
+| E | Look at channel 2's Drives | `-Y01:1` (through `-X10:3`), tooltip lists both with places |
+| F | Import an I/O list with `P56-tags.csv`, `dry_run` | Counts (310 read, 10 I/O, 300 skipped); what it would set; nothing recorded |
+| G | Import it | One transaction `Import an I/O list`; ch 2 `Valve_In` (description `Inlet valve`), ch 12 `Spare_Out4`; ch 8 keeps `Dosing_On`; `%I8.0` named as no card; `u` undoes it whole; nothing of the table kept |
+| H | Import a table with `Pump` and `PUMP`, or a name another channel holds | Refused whole with §6.2's sentence; nothing recorded |
+| I | Export tags; import the file | Files open in a spreadsheet (formulas as text); importing the project's own export changes nothing; cleared tags come back |
+| J | Import `P56-tags-b.csv`; a `.xlsx`; a table with no `address` column | Same as G; §7.1's sentence; `The file has no "address" column.` |
+| K | The card editor | Type, ID, description, rack, slot, function, location, start, maker, part number, + Accessory each one command; refusals under the field |
+| L | Writes off | Tag, Safe inputs read; the editor reads only; Import refused; Export works |
+| M | Book | Placing the first rack adds the `plcrack` page in the same transaction (undo removes both), with the new tile lines |
+| N | MCP | §10's contract tests |
+| O | Hostile | Files: empty, binary garbage as `.csv`, 30 000 tags, a 300-character name, addresses `%Q99999.9`, `%Q2.9`, `%Q-1.0`, `%M0.0`, duplicate names, a CSV with unbalanced quotes, an `.xlsx` renamed `.csv`, a 16 MB single line; tags with control characters; Safe `9999 mA ` with spaces: refusal in words, skipped and counted, or a Checks row; never a panic |
+| P | Bench | §12.4 within target |
+
+### 13.2 Screenshots side by side
+
+1. Board 2.03 next to ours on P56 after an import (dark), with the card editor in the right panel.
+2. The card editor after editing the type and adding an accessory.
+3. The `plcrack` page next to 051's composite.
+4. Light theme of 1.
+
+Composites with board images are fine in the PR (the board is the owner's design); none may contain
+anything from a PLC vendor's software (house rule; an owner's TIA screenshot stays in `plan/`).
+
+### 13.3 Quick start (`docs/quick-start/056-plc-signals.md`)
+
+Open the sample, Project ▸ PLC, select a card, edit it in the right panel, type tags, Make tags,
+Export tags (CSV), edit one name in a spreadsheet, Import an I/O list.
+
+## 14. Format proposals (for the overseer)
+
+Pre-v1: no compatibility work. No new op, no record field, nothing in `ecad-model`.
+
+- **FP1. Channel keys** `plc.ch.<i>.tag` and `plc.ch.<i>.safe` on cards (045's FP3 pattern),
+  with `setprop_rule` value checks (§4.3 uniqueness and length, §4.4 values).
+- **FP2. (Lapsed with the owner's change of 2026-11-14: no snapshot is kept.)** Project properties `plc.sync.table` (the snapshot as canonical CSV text, ≤ 20 000 rows),
+  `plc.sync.source`, `plc.sync.at`. The first project property that holds a table. Merge (020)
+  treats it as one value: a conflict keeps one side whole (newer import wins on "take theirs"). The
+  worker confirms the property value size limit first.
+- **FP3. Import is ops.** `plcimport` records `SetProperty` ops (project snapshot keys, and with
+  `take: names` the channel tag keys) in one transaction labelled `Import PLC tags`; undo restores
+  the previous snapshot and names. `plctake` and `plcmaketags` likewise.
+- **FP4. Registry entries** of §11, and the address style value `percent` (Q5).
+- **FP5. Dependencies:** none. As drafted, FP5 proposed XLSX crates for the TIA Portal format.
+  Q3's answer (generic CSV only) drops them, and FP5 keeps only the format layer of §7.2: code, not
+  format.
+
+**Decision (overseer, 2026-11-14):** FP1–FP5 are approved. The conditions given for FP5's crates
+(permissive licences already on the house-rules allowlist, one crate for reading and writing
+preferred, wasm green) lapse with Q3. They apply again when 0.5.0 adds vendor formats. The
+house-rules allowlist is not edited in this repository.
+
+## 15. Out of scope
+
+- Tests themselves (generation, results, retest, FAT sheet): the Tests brief (0.2.3). 056 only
+  defines the column and `TestState`.
+- Talking to a PLC tool or a PLC online (Openness, OPC UA, project file parsing).
+- Vendor tag table formats (TIA Portal, TwinCAT, Rockwell, CODESYS): 0.5.0, with manufacturer
+  data (Q3). 056 leaves the format layer ready for them (§7.2).
+- Building racks and cards from a PLC hardware configuration (an "I/O list import" that creates
+  devices).
+- Per-channel data types beyond the card type default (Q4), PLC tag tables per program block,
+  structured tags, arrays.
+- Provisional addresses (Q12).
+- Network (2.04), Power, Wires/Cables ratings: their own briefs.
+- Several PLCs with separate snapshots (Q2 recommends one per project for now).
+
+## 16. Owner questions, and the answers
+
+**Owner (Carl, 2026-11-14, through the overseer):** Q1 and Q3 as below; all others "as
+recommended".
+
+1. **The file is the interface.** Export and import tag table files; no live link to the PLC tool.
+   **Answer: yes, file only.** No live link to the PLC tool, and no link to an external Excel file:
+   a file is read once on Import and written once on Export.
+2. **One snapshot per project.** **Answer: as recommended** (yes for 0.2.2; a snapshot per rack
+   when a real two-PLC project needs it).
+3. **Formats.** Drafted: generic CSV, then TIA Portal XLSX, both in 056. **Answer: generic CSV only
+   for now.** TIA Portal, TwinCAT and the like come in **0.5.0** with manufacturer data. No XLSX
+   crates in 056. The export and import layer is kept ready for more formats (§7.2).
+4. **Only names and addresses count as differences**; data type and comment differences show in
+   Compare only; the data type on export comes from the card type (`Bool`, `Int`, `Word`).
+   **Answer: as recommended (yes).**
+5. **A `percent` address style** (`%I0.0`, `%Q2.2`, `%IW64`), not the built-in default.
+   **Answer: as recommended** (add it; `byte.bit` stays built in).
+6. **Type column words:** **Answer: as recommended**: keep `DQ` everywhere.
+7. **Drives** as the header for inputs too, through terminals and plugs. **Answer: as recommended
+   (yes).**
+8. **Make tags** from descriptions, an explicit button. **Answer: as recommended (yes).**
+9. **I/O sheet gains Tag and Safe** (Description 100 → 70 mm). **Answer: as recommended (yes).**
+10. **Export never changes the sync state.** **Answer: as recommended (yes).**
+11. **Test column shown now with `—`.** **Answer: as recommended (yes).**
+12. **Provisional addresses:** **Answer: as recommended**: a separate brief; 056 keeps the
+    *reserved* square.
+13. **`Import tags`** as the button words. **Answer: as recommended (yes)**; with the owner's change of 2026-11-14 the importer is a one-way fill, and the button keeps the board's words, **Import an I/O list**.
+14. **Moved** counts as a difference, with **Use PLC's address** and its warning. **Answer: as
+    recommended (yes).**
+15. **Test fixtures.** Drafted: a synthetic TIA Portal export. **Answer: as recommended**: the
+    fixtures folder `ecad/tests/fixtures/plc/`. With Q3, no TIA export is needed: the worker writes
+    the synthetic CSV tag tables (`P56-tags.csv`, `P56-tags-b.csv`) as the project's own work.
+16. **Tester: yes.** **Answer: as recommended (yes).**
+
+## 17. Tester
+
+**Yes** (Q16). Import writes project data from a hostile file through a new reader, adds a table-sized project property (FP2), and records ops in one transaction that
+undo must reverse whole. The tester runs §13.1 A–P, with O (hostile files) and the round trip I
+first, and checks merge of two branches that each imported a table (FP2's whole-value conflict).
