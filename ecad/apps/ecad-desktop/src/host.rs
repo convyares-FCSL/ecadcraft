@@ -1,5 +1,5 @@
 //! What the app gets from the operating system: the default projects folder, the login name, the file
-//! manager, the local clock and CADCraft's file-pick hooks (the app has no disk, OS or
+//! manager, the project files in a folder, the local clock and CADCraft's file-pick hooks (the app has no disk, OS or
 //! time-zone access of its own).
 
 use std::path::Path;
@@ -17,6 +17,7 @@ pub fn host() -> Host {
         home: ecad_engine::home(),
         user: std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default(),
         open_folder,
+        list_projects,
         now_ms,
         local_time,
     }
@@ -35,6 +36,21 @@ pub fn open_folder(folder: &Path) -> std::io::Result<()> {
         "xdg-open"
     };
     std::process::Command::new(program).arg(folder).spawn().map(|_| ())
+}
+
+/// The `.ecad` files in `folder`, by name, sorted; none when the folder cannot be read. At most
+/// 500, so a huge folder cannot stall the Open dialog.
+fn list_projects(folder: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(folder) else { return Vec::new() };
+    let mut names: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| Path::new(n).extension().is_some_and(|x| x.eq_ignore_ascii_case("ecad")))
+        .take(500)
+        .collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names
 }
 
 fn now_ms() -> u64 {

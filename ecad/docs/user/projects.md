@@ -10,7 +10,7 @@ All of these are in the **Project menu**: click the project name at the far left
 | Item | Does |
 | --- | --- |
 | **New project** | A new, unsaved project; an open one is closed first, as **Close project** does |
-| **Open project…** | Asks for a `.ecad` path; an open project is closed first |
+| **Open project…** | Lists the `.ecad` files in a folder to pick from, or takes a typed path; an open project is closed first |
 | **Save** (Ctrl+S) | Saves; asks for a file name the first time, or when the project is read-only |
 | **Save As…** | Saves under a new name; the old file keeps its last saved state |
 | **Close project** | Closes; with unsaved changes it asks first |
@@ -19,6 +19,8 @@ From the command line: `ecad-desktop <project.ecad>` opens a file at start;
 `ecad-desktop` alone starts a new project.
 
 **The file dialog** is ECAD's own: type a path and press Enter. `.ecad` is added when missing.
+In **Open project…** the `.ecad` files of the folder in the path are listed below it: click one to
+open it, or type another folder (ending in `\` or `/`) to list that one.
 `~/` and `~\` mean your home folder (on Windows your user profile). The dialog suggests
 `C:\dev\ecad-projects` on Windows and `~/ecad-projects` elsewhere, and the first save into that
 folder creates it. No other missing folder is created: saving into one fails with a message and

@@ -30,8 +30,8 @@ Build options, environments and graphics fall-backs are in [the build guide](../
 
 - `cargo run --release -p ecad-desktop` starts with a new, unsaved project.
 - `cargo run --release -p ecad-desktop -- C:\dev\ecad-projects\demo.ecad` opens a saved one.
-- **Project menu ▸ Open project…** (click the project name at the far left of the top bar) opens
-  one when no project is open.
+- **Project menu ▸ Open project…** (click the project name at the far left of the top bar) closes
+  the open project (asking about unsaved changes) and lists the `.ecad` files to pick from.
 
 To try a filled project first, `cargo xtask demo` writes a small motor control panel to
 `C:\dev\ecad-projects\demo.ecad` (`~/ecad-projects/demo.ecad` on Linux). An existing file is

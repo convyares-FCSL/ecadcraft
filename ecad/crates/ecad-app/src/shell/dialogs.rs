@@ -261,6 +261,8 @@ impl App {
 
     fn file_dialog(&mut self, ctx: &egui::Context) {
         let example = self.in_default_folder("demo.ecad");
+        let projects = self.dialog_projects();
+        let mut picked: Option<String> = None;
         let Some(d) = &mut self.files.dialog else { return };
         let (heading, verb) = match d.kind {
             DialogKind::Open => ("Open project", "Open"),
@@ -288,6 +290,20 @@ impl App {
                 if let Some(e) = &d.error {
                     prim::note(ui, e, Tone::Error);
                 }
+                // Open: the project files in the typed folder, one click to open.
+                if let Some((folder, names)) = &projects {
+                    if names.is_empty() {
+                        prim::note(ui, &format!("No .ecad files in {}.", folder.display()), Tone::Neutral);
+                    } else {
+                        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                            for name in names {
+                                if action(ui, name, Kind::Quiet, &format!("ecad.file.pick.{name}"), None).clicked() {
+                                    picked = Some(name.clone());
+                                }
+                            }
+                        });
+                    }
+                }
             },
             |ui| {
                 let ok = action(ui, verb, Kind::Primary, verb, None).clicked();
@@ -295,6 +311,11 @@ impl App {
                 (ok, cancel)
             },
         );
+        if let Some(name) = picked {
+            self.pick_project(&name);
+            ctx.request_repaint();
+            return;
+        }
         let confirm = enter || shown.footer.0;
         let cancel = shown.footer.1 || shown.closed;
         if cancel {

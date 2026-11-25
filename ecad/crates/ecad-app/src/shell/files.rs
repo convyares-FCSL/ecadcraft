@@ -211,7 +211,32 @@ impl App {
             (DialogKind::SaveAs, Some(s)) => s.file.path.unwrap_or_else(|| self.in_default_folder(&format!("{}.ecad", s.name.to_lowercase()))),
             _ => self.in_default_folder(""),
         };
-        self.files.dialog = Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false });
+        self.files.dialog =
+            Some(FileDialog { kind, path: suggested, error: None, then_close, confirmed_replace: None, focused: false, listed: None });
+    }
+
+    /// The Open dialog's folder (the typed path's, or the path itself when it ends in a
+    /// separator) and the `.ecad` files in it; `None` for Save As or a path that does not resolve.
+    pub fn dialog_projects(&mut self) -> Option<(PathBuf, Vec<String>)> {
+        let typed = self.files.dialog.as_ref().filter(|d| d.kind == DialogKind::Open)?.path.trim().to_string();
+        let resolved = self.resolve(&typed).ok()?;
+        let folder = if typed.is_empty() || typed.ends_with(['/', '\\']) { resolved } else { resolved.parent()?.to_path_buf() };
+        let list = self.files.list_projects;
+        let d = self.files.dialog.as_mut()?;
+        if d.listed.as_ref().is_none_or(|(f, _)| *f != folder) {
+            d.listed = Some((folder.clone(), list(&folder)));
+        }
+        d.listed.clone()
+    }
+
+    /// Open the project file `name` from the Open dialog's list.
+    pub fn pick_project(&mut self, name: &str) {
+        let Some((folder, names)) = self.dialog_projects() else { return };
+        if !names.iter().any(|n| n == name) {
+            return;
+        }
+        self.set_dialog_path(&folder.join(name).to_string_lossy());
+        self.confirm_dialog();
     }
 
     /// Type a path into the open file dialog.

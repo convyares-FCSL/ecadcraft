@@ -104,7 +104,7 @@ pub enum DialogKind {
     SaveAs,
 }
 
-/// The app's own file dialog: a path field.
+/// The app's own file dialog: a path field, and for Open the project files in the typed folder.
 pub(crate) struct FileDialog {
     pub(crate) kind: DialogKind,
     pub(crate) path: String,
@@ -115,6 +115,8 @@ pub(crate) struct FileDialog {
     pub(crate) confirmed_replace: Option<String>,
     /// The path field has been given keyboard focus (once, when the dialog opens or fails).
     pub(crate) focused: bool,
+    /// Open: the folder last listed and its `.ecad` files (listed again when the folder changes).
+    pub(crate) listed: Option<(PathBuf, Vec<String>)>,
 }
 
 /// A close of a project with unsaved changes, held until the user answers.
@@ -222,6 +224,8 @@ pub struct Files {
     pub(crate) keep_open: Option<bool>,
     /// The home folder that `~` in typed paths stands for ([`crate::shell::host::Host::home`] by default).
     pub home: Option<PathBuf>,
+    /// The `.ecad` files in a folder ([`crate::shell::host::Host::list_projects`] by default).
+    pub list_projects: fn(&std::path::Path) -> Vec<String>,
     /// What New or Open asked for while a project was open: done once the project has closed,
     /// dropped when that close is cancelled.
     pub(crate) after_close: Option<AfterClose>,
@@ -431,6 +435,7 @@ impl App {
                 keep_open: None,
                 confirming_close: false,
                 home: crate::shell::host::host().home.clone(),
+                list_projects: crate::shell::host::host().list_projects,
                 after_close: None,
             },
             command: CommandField { text: String::new(), hint: None, focus: false, focus_drawing: false },

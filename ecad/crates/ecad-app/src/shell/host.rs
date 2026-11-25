@@ -1,5 +1,5 @@
 //! What the host program supplies: the platform's default projects folder, the person's login name,
-//! the file manager, and the clock. The app has no disk, OS or time-zone access of its own
+//! the file manager, the project files in a folder, and the clock. The app has no disk, OS or time-zone access of its own
 //! (layer purpose); ecad-desktop installs a [`Host`] at start-up, and until then [`Host::default`]
 //! answers with neutral values (UTC, no file manager).
 
@@ -17,6 +17,9 @@ pub struct Host {
     pub user: String,
     /// Open a folder in the system's file manager.
     pub open_folder: fn(&Path) -> std::io::Result<()>,
+    /// The `.ecad` file names in a folder, sorted (none when it cannot be read); the Open dialog
+    /// lists them to pick from.
+    pub list_projects: fn(&Path) -> Vec<String>,
     /// The wall clock, milliseconds since the epoch.
     pub now_ms: fn() -> u64,
     /// `%H:%M:%S`-style local time of `ms` since the epoch: the format is `HH:MM:SS` when `seconds`
@@ -26,6 +29,10 @@ pub struct Host {
 
 fn no_file_manager(_: &Path) -> std::io::Result<()> {
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no file manager is available"))
+}
+
+fn no_listing(_: &Path) -> Vec<String> {
+    Vec::new()
 }
 
 fn system_now_ms() -> u64 {
@@ -45,6 +52,7 @@ impl Default for Host {
             home: None,
             user: String::new(),
             open_folder: no_file_manager,
+            list_projects: no_listing,
             now_ms: system_now_ms,
             local_time: utc_time,
         }

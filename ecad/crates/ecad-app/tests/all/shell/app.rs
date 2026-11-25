@@ -595,6 +595,36 @@ fn new_and_open_close_the_open_project_first() {
     assert_eq!(t.status().unwrap().unsaved, 0);
 }
 
+fn ecad_files(folder: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(folder)
+        .map(|r| r.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".ecad")).collect())
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// The Open dialog lists the `.ecad` files in the typed folder, and one click opens one.
+#[test]
+fn open_lists_the_project_files_in_the_folder_to_pick_from() {
+    use ecad_app::pages::project_panel::Action;
+    let d = TempDir::new("pick");
+    let path = d.path("picked.ecad");
+    let mut t = new_app(None);
+    t.files.list_projects = ecad_files;
+    edit(&mut t);
+    save_via_dialog(&mut t, &path);
+    std::fs::write(d.0.join("notes.txt"), b"not a project").unwrap();
+    let saved = doc(&mut t);
+    t.panel_action(Action::OpenProject);
+    assert!(!t.project_open(), "saved, so closed without a question");
+    t.set_dialog_path(&format!("{}{}", d.0.display(), std::path::MAIN_SEPARATOR));
+    let (folder, names) = t.dialog_projects().unwrap();
+    assert_eq!((folder, names), (d.0.clone(), vec!["picked.ecad".to_string()]), "only .ecad files");
+    t.pick_project("picked.ecad");
+    assert!(t.dialog().is_none(), "{:?}", t.dialog());
+    assert_eq!(doc(&mut t), saved);
+}
+
 /// A project always opens on Draw: after New or Open from another workspace, and at start
 /// whichever workspace was stored.
 #[test]
