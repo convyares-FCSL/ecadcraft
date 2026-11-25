@@ -21,9 +21,9 @@
 //! - The graph's model (rows, session groups, time text, JSON rows) is
 //!   [`ecad_file::history`]; this module reads the project and the local zone for it.
 
-pub mod branches;
+pub(crate) mod branches;
 pub mod event_log;
-pub mod merging;
+pub(crate) mod merging;
 pub mod points;
 pub mod versions;
 use branches::{ArchivebranchParams, BranchParams, BranchesParams, RenamebranchParams, ReopenbranchParams, SwitchbranchParams};

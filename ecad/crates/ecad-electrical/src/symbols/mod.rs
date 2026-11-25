@@ -23,7 +23,7 @@
 pub mod anchors;
 pub mod builder;
 pub mod catalogue;
-pub mod cells;
+pub(crate) mod cells;
 pub mod commands;
 pub mod graphics;
 pub mod offers;

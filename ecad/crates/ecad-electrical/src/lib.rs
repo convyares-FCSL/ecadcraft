@@ -46,7 +46,7 @@ pub mod connectors;
 pub mod continuations;
 pub mod defaults;
 pub mod devices;
-pub mod error;
+pub(crate) mod error;
 pub mod fields;
 pub mod locations;
 pub mod merge;

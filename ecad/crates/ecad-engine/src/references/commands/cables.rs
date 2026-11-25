@@ -14,7 +14,7 @@ use crate::commands::input::{Command, Typed};
 use crate::commands::on_any_page;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<CablegotoParams>("cablegoto")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<CablegotoParams>("cablegoto")];
 
 /// Opens (or fronts) the page of the other end of a cable reference, centres the view on it and selects its
 /// point. Records nothing; works on a read-only project.

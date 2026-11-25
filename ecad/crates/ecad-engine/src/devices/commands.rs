@@ -39,7 +39,7 @@ fn style(p: &Project) -> Style {
 }
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[
+pub(crate) const TYPED: &[Typed] = &[
     Typed::of::<PlaceParams>("place"),
     Typed::of::<ConvertcomponentParams>("convertcomponent"),
     Typed::of::<AddConnectionPointParams>("addconnectionpoint"),

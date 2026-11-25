@@ -342,7 +342,7 @@ fn severity_glyph(s: Severity) -> &'static str {
 ///
 /// # Errors
 /// The file manager could not be started.
-pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
+pub(crate) fn open_folder(folder: &std::path::Path) -> Result<(), String> {
     (crate::shell::host::host().open_folder)(folder).map_err(|e| format!("Could not open {}: {e}", folder.display()))
 }
 
@@ -357,7 +357,7 @@ pub(crate) fn fill_folders(rows: &mut [crate::settings::sheets::RevRow], p: &eca
 /// The badge of the Project panel's Release button: errors (red), else warnings,
 /// from the counts the kept Checks and report models keep (O(1); no row is counted again);
 /// `None` when the Checks have not been kept yet (nothing is built for it).
-pub fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
+pub(crate) fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
     let (e, w, _) = p.kept_checks()?.counts();
     let (oe, ow, _) = p.kept_reports().map_or((0, 0, 0), ecad_electrical::reports::kept::ReportModels::check_counts);
     Some((e + oe, w + ow))

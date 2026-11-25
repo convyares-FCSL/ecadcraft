@@ -12,7 +12,7 @@
 //! policy goes only through the conductors the ops could have moved ([`Scope`]). Apart from the
 //! per-page drawing comparison, a translation costs in proportion to what the edit touched.
 
-pub mod oops;
+pub(crate) mod oops;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 

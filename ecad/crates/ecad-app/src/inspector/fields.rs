@@ -13,7 +13,7 @@ use crate::settings::sheets::PropsShared;
 
 /// Draw `row` of a section of `kind` editing `target`. `hint` is the grey word at the box's
 /// right (`auto`, `from page`); empty for none.
-pub fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, kind: &str, row: &Row, label: &str, hint: &str) {
+pub(crate) fn prop(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, kind: &str, row: &Row, label: &str, hint: &str) {
     let name = format!("ecad.props.{kind}.{}", row.key);
     let error = sh.errors.get(&row.key).cloned();
     let writable = sh.writable && row.editable && target.is_some();
@@ -116,7 +116,7 @@ fn tag_clash(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, r
 }
 
 /// A section's buttons, each pressed one pushed to the copy's `buttons`.
-pub fn buttons(ui: &mut egui::Ui, sh: &mut PropsShared, list: &[Button]) {
+pub(crate) fn buttons(ui: &mut egui::Ui, sh: &mut PropsShared, list: &[Button]) {
     if list.is_empty() {
         return;
     }

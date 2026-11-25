@@ -20,12 +20,12 @@ use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.
-pub const TABS: [&str; 2] = ["Page types", "Text styles"];
+pub(crate) const TABS: [&str; 2] = ["Page types", "Text styles"];
 /// Said where a project is needed.
 pub(crate) const NO_PROJECT: &str = "No project is open.";
 /// Save and Cancel (the popouts' names).
-pub const OK: &str = "ecad.projectprops.ok";
-pub const CANCEL: &str = "ecad.projectprops.cancel";
+pub(crate) const OK: &str = "ecad.projectprops.ok";
+pub(crate) const CANCEL: &str = "ecad.projectprops.cancel";
 /// The title block preview.
 pub(crate) const TITLE_BLOCK: &str = "settings.project.title_block";
 
@@ -34,7 +34,7 @@ fn grey(text: &str) -> egui::RichText {
 }
 
 /// Settings ▸ Project info.
-pub fn show(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui) {
     if !t.project_open() {
         ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;
@@ -276,7 +276,7 @@ fn title_block(ui: &mut egui::Ui, top: &[(&str, &str)], bottom: &[(&str, &str)])
 
 /// Settings ▸ Pages and sheets: the Project settings popout (sheet, references, tags, revisions,
 /// numbering, wires) on its first tab, the text styles on the second.
-pub fn pages(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn pages(t: &mut App, ui: &mut egui::Ui) {
     let text = t.settings.section == crate::settings::Section::TextStyles;
     let mut i = usize::from(text);
     ecad_widgets::prim::segmented(ui, &mut i, &TABS);
@@ -297,7 +297,7 @@ pub fn pages(t: &mut App, ui: &mut egui::Ui) {
 }
 
 /// The copy of `popout` drawn as `part`, filled first if there is none of that popout.
-pub fn body(t: &mut App, ui: &mut egui::Ui, popout: Popout, part: Part) {
+pub(crate) fn body(t: &mut App, ui: &mut egui::Ui, popout: Popout, part: Part) {
     if !t.project_open() {
         ecad_widgets::prim::read_value(ui, NO_PROJECT);
         return;

@@ -101,7 +101,7 @@ pub(crate) fn connection_point_hover(doc: &Document, c: DeviceId, here: Represen
 }
 
 /// A cable's hover line: `-W01  7G1.5: 5 used, 2 spare (6, GNYE)`; `None` with no offer.
-pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
+pub(crate) fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
     let cab = doc.cables().get(&k)?;
     let count = count_cores(crate::styles::cable::offer(doc, k), &cab.cores);
     let named = cab.properties.get("type").cloned().or_else(|| count.offer_text.clone())?;

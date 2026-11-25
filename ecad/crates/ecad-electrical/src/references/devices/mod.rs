@@ -51,4 +51,4 @@ pub mod parse;
 pub mod places;
 pub mod read;
 pub mod table;
-pub mod watch;
+pub(crate) mod watch;

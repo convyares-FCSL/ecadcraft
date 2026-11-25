@@ -28,12 +28,12 @@ pub(crate) struct Placing {
 impl Placing {
     /// The click makes (or adds to) a tagged device: the symbol is not tagless (a junction, a
     /// continuation) and the tool names its tag.
-    pub fn makes_device(&self) -> bool {
+    pub(crate) fn makes_device(&self) -> bool {
         self.tag.is_some() && self.symbol.is_none_or(|s| s.kind != symbols::Kind::Tagless)
     }
 
     /// The header: the tag (or the symbol's name) and `Contactor coil · not placed yet`.
-    pub fn head(&self) -> (String, String) {
+    pub(crate) fn head(&self) -> (String, String) {
         let name = self.symbol.map_or("Symbol", |s| s.name);
         if !self.makes_device() {
             return (name.to_string(), NOT_PLACED.to_string());
@@ -47,7 +47,7 @@ impl Placing {
     }
 
     /// What the click changes, as (mark, words): `ok`, `free` or `warning`.
-    pub fn changes(&self) -> Vec<(&'static str, String)> {
+    pub(crate) fn changes(&self) -> Vec<(&'static str, String)> {
         let mut out = Vec::new();
         let device = self.makes_device();
         let tag = self.tag.clone().unwrap_or_default();
@@ -77,7 +77,7 @@ impl Placing {
 }
 
 /// The device being placed, while Place Symbol runs and the picker or its chip shows.
-pub fn of(t: &App) -> Option<Placing> {
+pub(crate) fn of(t: &App) -> Option<Placing> {
     if t.picker_shown() == Shown::Nothing {
         return None;
     }
@@ -87,7 +87,7 @@ pub fn of(t: &App) -> Option<Placing> {
 }
 
 /// The body: Identity, Parts and What this click changes.
-pub fn show(ui: &mut egui::Ui, cx: &mut crate::inspector::Cx<'_>, p: &Placing, standard: &str) {
+pub(crate) fn show(ui: &mut egui::Ui, cx: &mut crate::inspector::Cx<'_>, p: &Placing, standard: &str) {
     let full = cx.full;
     // The page's Function and Location, which the new device takes.
     let page = cx.sh.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Page);

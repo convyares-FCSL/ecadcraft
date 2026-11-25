@@ -1,4 +1,4 @@
 //! Terminal strips, terminal blocks, accessories and jumper bars.
 
-pub mod detail;
+pub(crate) mod detail;
 pub mod plan;

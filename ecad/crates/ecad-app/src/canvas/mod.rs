@@ -21,10 +21,10 @@
 //! Excluded: the inspector's list of related placements (it shows [`related`]'s result), the
 //! agent's last write, proposal ghosts.
 
-pub mod leader;
-pub mod markers;
-pub mod selection;
-pub mod sheet;
+pub(crate) mod leader;
+pub(crate) mod markers;
+pub(crate) mod selection;
+pub(crate) mod sheet;
 
 use std::sync::{Arc, Mutex, PoisonError};
 

@@ -2,6 +2,6 @@
 
 pub mod commands;
 pub mod frame;
-pub mod front;
+pub(crate) mod front;
 pub mod generated;
 pub mod preview;

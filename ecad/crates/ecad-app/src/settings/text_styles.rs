@@ -11,7 +11,7 @@ use {ecad_model::look::Shown, ecad_model::look::TextKind};
 /// The section's element name.
 pub(crate) const SECTION_ID: &str = "ecad.projectsettings.text";
 /// The height refusal under a field.
-pub const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT;
+pub(crate) const BAD_HEIGHT: &str = ecad_electrical::styles::commands::text::BAD_HEIGHT;
 
 /// One row: a kind's fields as shown and as they were.
 #[derive(Debug, Clone, PartialEq)]

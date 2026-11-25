@@ -11,10 +11,10 @@ use crate::commands::err;
 use crate::commands::input::{Command, Typed};
 
 /// The command of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimport")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimport")];
 
 /// The command of this module.
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("titleblockimport", "Import Title Block", crate::commands::input::typed::<TitleblockimportParams>).noundo()]
 }
 

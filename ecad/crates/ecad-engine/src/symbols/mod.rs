@@ -1,4 +1,4 @@
 //! Symbols.
 
-pub mod commands;
-pub mod draw;
+pub(crate) mod commands;
+pub(crate) mod draw;

@@ -87,7 +87,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 /// The one place a release calls the numbering: the provisional items, the
 /// refusal without a choice, and [`numbering_seam::before_issue`] (Finalise numbering as its own
 /// transaction before the issue, or issue them as they are).
-pub mod numbering_seam {
+pub(crate) mod numbering_seam {
     use ecad_electrical::CmdError;
     use ecad_electrical::numbering::commands::{BeforeIssue, finalise_request, plan_for, way_before_issue};
     use serde_json::Value;
@@ -97,7 +97,7 @@ pub mod numbering_seam {
     use ecad_electrical::checks::Check;
 
     /// What `release` would refuse for provisional items without a choice (in numbering's words), if any.
-    pub fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
+    pub(crate) fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
         }
@@ -114,7 +114,7 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// The numbering refusal or a bad `provisional`.
-    pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::numbering::commands::BeforeIssue, String> {
+    pub(crate) fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::numbering::commands::BeforeIssue, String> {
         plan_before_issue(p, params).map_err(String::from)
     }
 

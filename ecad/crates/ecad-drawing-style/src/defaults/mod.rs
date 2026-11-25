@@ -2,7 +2,7 @@
 //! built-in data ([`data`]). The registry's mechanism is [`ecad_model::registry`].
 
 pub mod data;
-pub mod styles;
+pub(crate) mod styles;
 pub mod text;
 
 #[cfg(test)]

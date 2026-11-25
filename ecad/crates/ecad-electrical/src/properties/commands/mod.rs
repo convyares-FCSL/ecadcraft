@@ -8,9 +8,9 @@
 //!
 //! Excludes: the function and location codes themselves ([`crate::locations::commands::locations`]).
 
-pub mod devices;
-pub mod plc;
-pub mod wires;
+pub(crate) mod devices;
+pub(crate) mod plc;
+pub(crate) mod wires;
 use ecad_model::naming::tag::{self, TAG_KEY, TagSlot, TagState};
 use ecad_model::{AidId, CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject, WireId};
 use schemars::JsonSchema;

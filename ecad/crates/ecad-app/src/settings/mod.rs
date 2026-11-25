@@ -11,20 +11,19 @@
 //! Agent access), [`display`] (Appearance, with the developer switch from [`developer`]) and
 //! [`later`] (Libraries, Versions and backups, Shortcuts: what exists today, and what comes).
 
-pub mod agent;
+pub(crate) mod agent;
 pub mod designations;
-pub mod developer;
-pub mod display;
-pub mod later;
+pub(crate) mod developer;
+pub(crate) mod display;
+pub(crate) mod later;
 pub mod pages;
-pub mod project;
+pub(crate) mod project;
 pub mod sheets;
 pub(crate) mod sheets_window;
 pub mod standards;
-pub mod standards_list;
+pub(crate) mod standards_list;
 pub mod style_catalogues;
-pub mod text;
-pub mod text_styles;
+pub(crate) mod text_styles;
 
 use ecad_widgets::tokens::{Icon, space, ui_type};
 use eframe::egui::{self, Key, Modifiers, Rect, pos2, vec2};

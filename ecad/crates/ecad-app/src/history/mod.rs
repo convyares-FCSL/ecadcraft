@@ -1,5 +1,5 @@
 //! History.
 
-pub mod merge_dialog;
+pub(crate) mod merge_dialog;
 pub mod panel;
-pub mod release_dialog;
+pub(crate) mod release_dialog;

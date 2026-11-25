@@ -1060,7 +1060,7 @@ pub(crate) struct PageIndex<'a> {
 
 impl<'a> PageIndex<'a> {
     /// One pass over the representations on `page` (through the page index).
-    pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
+    pub(crate) fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
         let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), lines: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
             match r.subject {

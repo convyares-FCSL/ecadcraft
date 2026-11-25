@@ -325,7 +325,7 @@ fn names(root: &Path) -> Result<Names, String> {
 }
 
 /// The guard's problems, if any.
-pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let names = names(&root)?;
     let mut files = Vec::new();
@@ -358,10 +358,8 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
         if exempt(rel) {
             continue;
         }
-        if let Some(p) = super::ratchet_problem(rel, found.len(), 0, what, fix) {
-            out.push(p);
-            out.extend(found.iter().map(|f| format!("    {f}")));
-        }
+        out.push(format!("{rel}: {} {what}; {fix}", found.len()));
+        out.extend(found.iter().map(|f| format!("    {f}")));
     }
     for (area, _) in EXEMPT {
         if !files_seen.iter().any(|f| f == area || (area.ends_with('/') && f.starts_with(area))) {

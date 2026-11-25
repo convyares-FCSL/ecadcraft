@@ -20,7 +20,7 @@ pub(crate) const SECTION: &str = "ecad.project.detail.rating";
 
 /// What the section shows.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Panel {
+pub(crate) struct Panel {
     pub rating: Rating,
     /// The methods the project's rating table has rows for (all IEC names when none).
     pub methods: Vec<&'static str>,
@@ -42,12 +42,6 @@ struct Row {
 
 fn row(label: &'static str, value: impl Into<String>, note: impl Into<String>) -> Row {
     Row { label, value: value.into(), note: note.into(), tone: None, tip: String::new(), edit: None, strong: false, loc: None }
-}
-
-/// The folded summary and its tone: pass muted, fail in error.
-pub fn summary(r: &Rating) -> (String, Option<Tone>) {
-    let tone = if r.fails() { Some(Tone::Error) } else { None };
-    (r.summary(), tone)
 }
 
 fn subject_key(s: RatedSubject) -> (&'static str, String) {
@@ -199,7 +193,7 @@ fn after(r: &Rating) -> Vec<Row> {
 const BASIS_WORDS: [&str; 3] = ["Datasheet", "Table", "Manual"];
 
 /// Draw the section's body. Returns the `rating` calls asked for.
-pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
+pub(crate) fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     let s = ecad_widgets::SHELL;
     let r = &p.rating;
     let cable = matches!(r.subject, RatedSubject::Cable(_));

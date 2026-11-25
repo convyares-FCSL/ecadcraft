@@ -35,7 +35,7 @@ pub(crate) struct NetChoice {
 
 impl NetChoice {
     /// Whether any of the three is given.
-    pub fn is_given(&self) -> bool {
+    pub(crate) fn is_given(&self) -> bool {
         self.conductor.is_some() || self.connection_point.is_some() || self.number.is_some()
     }
 }

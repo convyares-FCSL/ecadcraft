@@ -12,19 +12,19 @@ use eframe::egui::{self, Color32, Rect, RichText, Stroke, pos2, vec2};
 use crate::title_blocks::Editor;
 
 /// Element names.
-pub const SHEET: &str = "library.tb.frame.sheet";
+pub(crate) const SHEET: &str = "library.tb.frame.sheet";
 pub(crate) const MARGINS: [&str; 4] =
     ["library.tb.frame.margin.left", "library.tb.frame.margin.right", "library.tb.frame.margin.bottom", "library.tb.frame.margin.top"];
-pub const COLUMNS: &str = "library.tb.frame.columns";
-pub const ROWS: &str = "library.tb.frame.rows";
+pub(crate) const COLUMNS: &str = "library.tb.frame.columns";
+pub(crate) const ROWS: &str = "library.tb.frame.rows";
 pub(crate) const COLUMN_LABELS: &str = "library.tb.frame.column_labels";
 pub(crate) const ROW_LABELS: &str = "library.tb.frame.row_labels";
 pub(crate) const LABELS_ALL: &str = "library.tb.frame.labels_all";
 pub(crate) const CENTRE_MARKS: &str = "library.tb.frame.centre_marks";
 pub(crate) const BORDER: &str = "library.tb.frame.border";
 pub(crate) const INNER: &str = "library.tb.frame.inner";
-pub const COLOUR: &str = "library.tb.frame.colour";
-pub const APPLY: &str = "library.tb.frame.apply";
+pub(crate) const COLOUR: &str = "library.tb.frame.colour";
+pub(crate) const APPLY: &str = "library.tb.frame.apply";
 
 /// The popover's values while it is open.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +82,7 @@ fn labels(ui: &mut egui::Ui, v: &mut GridLabels, name: &str) {
 }
 
 /// Draw the popover under `button`; Apply writes into the draft.
-pub fn show(ctx: &egui::Context, ed: &mut Editor) {
+pub(crate) fn show(ctx: &egui::Context, ed: &mut Editor) {
     let Some(edit) = ed.frame.as_mut() else { return };
     let s = ecad_widgets::SHELL;
     let at = ed.canvas.frame_button.map_or(pos2(400.0, 120.0), |r| pos2(r.right() - 380.0, r.bottom() + 6.0));

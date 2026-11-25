@@ -42,11 +42,11 @@ use crate::wires::{self, ON_WIRE};
 use ecad_model::look::Look;
 
 pub mod cables;
-pub mod devices;
+pub(crate) mod devices;
 mod grid;
 pub mod kept;
 pub mod nets;
-pub mod places;
+pub(crate) mod places;
 pub(crate) mod view;
 pub mod words_check;
 

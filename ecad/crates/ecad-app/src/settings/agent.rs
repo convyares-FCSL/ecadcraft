@@ -7,7 +7,7 @@ use crate::developer;
 use crate::shell::app::App;
 
 /// Draw the section.
-pub fn show(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui) {
     ecad_widgets::prim::read_value(ui, "Whether an agent (through ECAD's MCP bridge) may read this project, or read and change it.");
     ui.add_space(ecad_widgets::tokens::space::S);
     let busy = t.cad.session.running.is_some();

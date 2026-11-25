@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::common::{H, id};
 
 /// The synthetic rating table of design 057 §11 (not from any standard).
-pub const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
+pub(crate) const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
 # synthetic values for tests; not from any standard\n\
 capacity,E,pvc,3,1.5,20\n\
 grouping,E,3,0.90\n\

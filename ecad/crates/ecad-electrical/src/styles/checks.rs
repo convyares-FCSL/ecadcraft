@@ -25,7 +25,7 @@ use crate::checks::{Check, Fix, Kind, Object};
 
 /// Whether `effect` can change the style rows: its own rows ([`touches_own`]) or the page type and
 /// folder rows they include ([`crate::pages::page_types::touches_checks`]).
-pub fn touches(effect: &Effect<'_>) -> bool {
+pub(crate) fn touches(effect: &Effect<'_>) -> bool {
     touches_own(effect) || crate::pages::page_types::touches_checks(effect)
 }
 
@@ -121,7 +121,7 @@ impl crate::checks::CheckSource for StyleRows {
 }
 
 /// Every style row of `doc`.
-pub fn rows(doc: &Document, registry: &Registry) -> Vec<Check> {
+pub(crate) fn rows(doc: &Document, registry: &Registry) -> Vec<Check> {
     let mut out = Vec::new();
     // One drawing order for the rows' go-to places: the book is built at most once.
     let mut places = ecad_model::naming::numbering::Places::new(doc);

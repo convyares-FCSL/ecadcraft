@@ -6,7 +6,7 @@
 //! It excludes everything a person sees and clicks inside the window: that is ecad-app.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub mod args;
+pub(crate) mod args;
 pub mod folder;
 pub mod host;
 pub mod startup;

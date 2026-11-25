@@ -24,18 +24,18 @@
 //! and the per-project page views persist in eframe's storage ([`state`]).
 
 pub mod app;
-pub mod bar;
+pub(crate) mod bar;
 pub mod compare;
-pub mod conflicts;
+pub(crate) mod conflicts;
 pub mod connector;
 pub(crate) mod dialogs;
-pub mod drawer;
+pub(crate) mod drawer;
 pub(crate) mod files;
-pub mod glyphs;
+pub(crate) mod glyphs;
 pub mod host;
 pub(crate) mod hover;
 pub mod intent;
-pub mod keys;
+pub(crate) mod keys;
 pub mod layout;
 pub mod left;
 pub(crate) mod name_box;
@@ -44,11 +44,11 @@ pub mod placing;
 pub mod state;
 pub mod status_bar;
 pub mod table_editor;
-pub mod text_panel;
+pub(crate) mod text_panel;
 pub mod toggles;
 pub mod tool_strip;
 pub mod top_bar;
-pub mod wheel;
+pub(crate) mod wheel;
 
 use std::collections::BTreeSet;
 

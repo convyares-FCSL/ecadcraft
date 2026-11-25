@@ -42,7 +42,7 @@ pub(crate) fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representa
 
 /// The rows of "Where it is drawn" for device `c` with symbol `rep` selected, and how many are drawn;
 /// what they read is added to `deps`.
-pub fn rows(
+pub(crate) fn rows(
     doc: &Document, c: DeviceId, rep: RepresentationId, dev: &ecad_electrical::references::devices::classify::Device,
     places: &mut ecad_electrical::references::devices::places::Places<'_>, deps: &mut BTreeSet<ObjectRef>,
 ) -> (Vec<DrawnRow>, usize) {

@@ -13,7 +13,7 @@ use crate::shell::app::App;
 pub(crate) const WHERE: &str = "The theme is switched in the top bar; the sheet colour in the bottom bar's sheet colour menu (it changes the screen only: PDFs and prints use paper colours).";
 
 /// Draw the section.
-pub fn show(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui) {
     ui.set_max_width(760.0);
     // Every sheet colour the shell knows, by its own name (a new one must be named here).
     let sheet = match t.shell.state.sheet {

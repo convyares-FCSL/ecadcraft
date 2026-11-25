@@ -14,13 +14,13 @@
 //! Excluded: anything about projects or commands; the proposal row state; XLSX.
 
 pub mod cells;
-pub mod edit;
+pub(crate) mod edit;
 pub mod export;
-pub mod selection;
-pub mod source;
+pub(crate) mod selection;
+pub(crate) mod source;
 pub mod strip;
-pub mod tint;
-pub mod view_model;
+pub(crate) mod tint;
+pub(crate) mod view_model;
 
 pub use edit::{CellEdit, Refusal};
 pub use selection::Selection;

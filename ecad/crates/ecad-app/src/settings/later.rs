@@ -10,11 +10,11 @@ use crate::settings::{card, later_box, row};
 use crate::shell::app::App;
 
 /// Accessible names.
-pub const REVISIONS: &str = "settings.versions.revisions";
+pub(crate) const REVISIONS: &str = "settings.versions.revisions";
 pub(crate) const LIBRARIES: &str = "settings.libraries.sources";
 
 /// The keys, read only (the shell's keys and the action table's; [`crate::shell::keys`]).
-pub const KEYS: &[(&str, &str)] = &[
+pub(crate) const KEYS: &[(&str, &str)] = &[
     ("V", "Select"),
     ("D", "Draw"),
     ("T", "Text"),
@@ -64,7 +64,7 @@ pub(crate) fn libraries(t: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Settings ▸ Versions and backups: Revisions (the existing dialog); versions and backups later.
-pub fn versions(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn versions(t: &mut App, ui: &mut egui::Ui) {
     ui.set_max_width(760.0);
     let open = t.project_open();
     let mut revisions = false;

@@ -65,7 +65,7 @@ fn toggle(s: &mut Session, n: u64) -> Result<(), String> {
 ///
 /// # Errors
 /// The copy cannot be made or opened, or a step fails.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredHistory, String> {
+pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredHistory, String> {
     let copy = scratch.join("history.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;

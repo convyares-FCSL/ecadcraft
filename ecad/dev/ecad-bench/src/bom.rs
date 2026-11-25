@@ -50,7 +50,7 @@ fn timed(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, S
 ///
 /// # Errors
 /// A refused command, too few devices, or the kept BOM differs from a rebuild.
-pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], bom_page: PageId, runs: usize) -> Result<MeasuredBom, String> {
+pub(crate) fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], bom_page: PageId, runs: usize) -> Result<MeasuredBom, String> {
     let mut out = MeasuredBom::default();
     let one = devices.get(100).or(devices.first()).ok_or("no device")?.hex();
     let fifty: Vec<String> = devices.iter().take(50).map(|c| c.hex()).collect();

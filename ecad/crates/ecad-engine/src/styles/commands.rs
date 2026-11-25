@@ -20,10 +20,10 @@ use ecad_electrical::commands::input::{Said, nullable};
 use ecad_model::look::{Shown, TextKind};
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<ShowtextParams>("showtext"), Typed::of::<HiddentextParams>("hiddentext")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<ShowtextParams>("showtext"), Typed::of::<HiddentextParams>("hiddentext")];
 
 /// The commands of this module, appended to the registry by [`crate::commands::specs`].
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("showtext", "Show/Hide Text", crate::commands::input::typed::<ShowtextParams>)
             .interactive(crate::styles::interact::showtext)

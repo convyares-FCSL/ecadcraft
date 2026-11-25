@@ -31,7 +31,7 @@ use ecad_electrical::commands::input::TextOrNumber;
 use ecad_electrical::plc::channels::first_number;
 
 /// The command `plcpage`.
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("plcpage", "Make Card Page", typed::<PlcpageParams>).noundo()]
 }
 

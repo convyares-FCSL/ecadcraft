@@ -39,12 +39,12 @@ pub(crate) const PREVIEW_LINE: f32 = 40.0;
 /// The preview line's words for the PLC overview.
 pub(crate) const PLC_PREVIEW: &str = "The rack overview is Project \u{25b8} PLC: open it there.";
 
-pub const REPORT: ColumnId = ColumnId(0);
+pub(crate) const REPORT: ColumnId = ColumnId(0);
 pub(crate) const READS: ColumnId = ColumnId(1);
-pub const GROUPED: ColumnId = ColumnId(2);
-pub const LAYOUT: ColumnId = ColumnId(3);
+pub(crate) const GROUPED: ColumnId = ColumnId(2);
+pub(crate) const LAYOUT: ColumnId = ColumnId(3);
 pub(crate) const IN_BOOK: ColumnId = ColumnId(4);
-pub const GENERATED: ColumnId = ColumnId(5);
+pub(crate) const GENERATED: ColumnId = ColumnId(5);
 pub(crate) const EXPORTS: ColumnId = ColumnId(6);
 
 /// The list as a table source.
@@ -123,7 +123,7 @@ impl ReportsList {
 
 /// The Reports tab: the list, then the preview's line; the preview itself is the Reports window,
 /// hosted under it ([`crate::workspace::frame::reports_preview`]).
-pub fn show(t: &mut crate::shell::app::App, ui: &mut egui::Ui) {
+pub(crate) fn show(t: &mut crate::shell::app::App, ui: &mut egui::Ui) {
     use ecad_widgets::tokens::{size, space, ui_type};
     let s = ecad_widgets::SHELL;
     let Some(r) = t.dialogs.reports.as_mut() else { return };

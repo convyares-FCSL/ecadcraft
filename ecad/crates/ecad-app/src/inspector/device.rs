@@ -17,7 +17,7 @@ pub const OWN_CHECKS: &str = "ecad.inspector.own-checks";
 pub const DRAWN_ROW: &str = "ecad.inspector.drawn.row";
 pub(crate) const CONNECTION_ROW: &str = "ecad.inspector.connection.row";
 /// What a button that has nothing behind it yet says.
-pub const NOT_YET: &str = "Not available yet";
+pub(crate) const NOT_YET: &str = "Not available yet";
 
 /// A row the Layout tab draws.
 pub(crate) fn on_layout_tab(row: &Row) -> bool {
@@ -43,7 +43,7 @@ pub(crate) fn own_checks<'r>(cx: &Cx<'r>) -> Vec<&'r crate::checks::panel::Row> 
         .collect()
 }
 
-pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) {
+pub(crate) fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) {
     let view = std::mem::take(&mut cx.sh.view);
     match (&cx.insp.device, view.sections.first()) {
         (Some(_), Some(s)) if s.kind == SectionKind::Device => device(ui, cx, s, out),

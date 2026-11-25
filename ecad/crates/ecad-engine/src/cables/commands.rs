@@ -26,7 +26,7 @@ use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
 use ecad_electrical::commands::input::{Bounded, OrNull, Point, nullable};
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[
+pub(crate) const TYPED: &[Typed] = &[
     Typed::of::<CableslashParams>("cableslash"),
     Typed::of::<CableaddParams>("cableadd"),
     Typed::of::<CablecoreParams>("cablecore"),

@@ -169,7 +169,7 @@ fn mark(d: &mut Draw, cell: &Cell, r: R) {
 
 /// The cover's content inside the frame `input` (paper millimetres, sheet origin at `x0`), and how
 /// the legend fitted.
-pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendFit) {
+pub(crate) fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendFit) {
     let k = ecad_model::document::sheet::unit_scale(input.unit);
     let mut d = Draw { k, x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);

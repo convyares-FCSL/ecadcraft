@@ -31,10 +31,10 @@ use ecad_electrical::connectors::{self as cn, Names};
 use ecad_electrical::symbols::Starter;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];
 
 /// The commands this module adds (registered in `lanes.rs`).
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>)
             .interactive(crate::connectors::interact::connector)

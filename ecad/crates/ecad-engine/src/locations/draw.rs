@@ -7,7 +7,7 @@ use crate::styles::draw::DrawApply as _;
 use {ecad_electrical::locations::LAYER, ecad_electrical::locations::LINETYPE, ecad_electrical::locations::boxes_on};
 
 /// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `draw`
-pub fn label_entity(
+pub(crate) fn label_entity(
     draw: &crate::styles::draw::DrawStyles, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle,
 ) -> cadcraft_engine::doc::Entity {
     use cadcraft_engine::doc::{HAlign, VAlign};

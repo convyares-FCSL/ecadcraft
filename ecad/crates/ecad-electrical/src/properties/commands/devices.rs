@@ -124,7 +124,7 @@ pub(crate) fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Optio
 ///
 /// # Errors
 /// An unreadable placement; not a switching device ([`crate::references::devices::parse::with_table`]).
-pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
     let table = crate::references::devices::parse::table_of_typed(value)?;
     let after = crate::references::devices::parse::with_table(d, &crate::devices::tags::tag_words(doc, c), table)?;
@@ -162,7 +162,7 @@ pub(crate) fn text_refusal(f: TextField, e: TextError) -> CmdError {
 ///
 /// # Errors
 /// [`text_refusal`]'s words.
-pub fn with_text(d: &Device, f: TextField, value: Option<&str>) -> Result<Device, CmdError> {
+pub(crate) fn with_text(d: &Device, f: TextField, value: Option<&str>) -> Result<Device, CmdError> {
     d.with_text(f, value).map_err(|e| text_refusal(f, e))
 }
 

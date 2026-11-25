@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The checkouts under `root`: its folders and those of `root/_tmp`.
-pub fn checkouts(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn checkouts(root: &Path) -> Vec<PathBuf> {
     let dirs = |p: &Path| -> Vec<PathBuf> {
         let mut v: Vec<PathBuf> = std::fs::read_dir(p).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
         v.sort();
@@ -42,7 +42,7 @@ pub fn checkouts(root: &Path) -> Vec<PathBuf> {
 }
 
 /// The bytes under `p` (files only; links are not followed).
-pub fn size(p: &Path) -> u64 {
+pub(crate) fn size(p: &Path) -> u64 {
     let Ok(meta) = std::fs::symlink_metadata(p) else { return 0 };
     if !meta.is_dir() {
         return meta.len();
@@ -66,7 +66,7 @@ fn cargo_locks(target: &Path) -> Vec<PathBuf> {
 /// Whether a cargo is building into `target` (Windows: its `.cargo-lock` is open; it cannot be
 /// opened with no sharing).
 #[cfg(windows)]
-pub fn in_use(target: &Path) -> bool {
+pub(crate) fn in_use(target: &Path) -> bool {
     use std::os::windows::fs::OpenOptionsExt;
     cargo_locks(target).iter().any(|l| std::fs::OpenOptions::new().read(true).share_mode(0).open(l).is_err())
 }
@@ -94,7 +94,7 @@ pub fn in_use(target: &Path) -> bool {
 
 /// What happened to one build folder.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     Deleted(u64),
     WouldDelete(u64),
     /// In use: skipped (the bytes freed before a locked file was met).
@@ -106,7 +106,7 @@ const ASIDE: &str = "target.deleting-";
 
 /// Delete (or, with `dry_run`, measure) the build folder `target`: renamed aside first, so a
 /// folder in use is left exactly as it was.
-pub fn clean_target(target: &Path, dry_run: bool) -> Outcome {
+pub(crate) fn clean_target(target: &Path, dry_run: bool) -> Outcome {
     let bytes = size(target);
     if in_use(target) {
         return Outcome::Skipped(0);
@@ -138,13 +138,13 @@ fn leftovers(dir: &Path) -> Vec<PathBuf> {
 /// A worktree from `git worktree list --porcelain`: its folder and branch (`None`: detached or
 /// bare).
 #[derive(Debug, PartialEq, Eq)]
-pub struct Worktree {
+pub(crate) struct Worktree {
     pub path: PathBuf,
     pub branch: Option<String>,
 }
 
 /// Parse `git worktree list --porcelain`. The first entry is the main worktree.
-pub fn parse_worktrees(text: &str) -> Vec<Worktree> {
+pub(crate) fn parse_worktrees(text: &str) -> Vec<Worktree> {
     let mut out: Vec<Worktree> = Vec::new();
     for line in text.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
@@ -157,7 +157,7 @@ pub fn parse_worktrees(text: &str) -> Vec<Worktree> {
 }
 
 /// Whether `path` is under `root` (case-insensitive, `\` and `/` alike).
-pub fn under(path: &Path, root: &Path) -> bool {
+pub(crate) fn under(path: &Path, root: &Path) -> bool {
     // Canonical when the folder exists, so a short Windows name (`CARLVO~1`) and the long one git
     // prints compare equal.
     let norm = |p: &Path| {
@@ -204,7 +204,7 @@ fn merged_worktrees(repo: &Path, root: &Path) -> Result<Vec<Worktree>, String> {
 /// Why `w` (merged) must be kept, if it must: uncommitted or untracked files, ignored files other
 /// than its build folders, an open pull request (`pr_open`: `None` when it cannot be asked), or,
 /// when that cannot be asked, a branch in `not_done`.
-pub fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, not_done: &BTreeSet<String>) -> Option<String> {
+pub(crate) fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, not_done: &BTreeSet<String>) -> Option<String> {
     let status = match git(&w.path, &["status", "--porcelain", "--ignored"]) {
         Ok(s) => s,
         Err(e) => return Some(format!("its status could not be read: {e}")),
@@ -238,7 +238,7 @@ pub fn keep_reason(w: &Worktree, pr_open: &dyn Fn(&str) -> Option<bool>, not_don
 }
 
 /// The branches `docs/features.md` lists for features whose State is not "In `dev`".
-pub fn not_done_branches(features_md: &str) -> BTreeSet<String> {
+pub(crate) fn not_done_branches(features_md: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for line in features_md.lines().filter(|l| l.starts_with('|')) {
         let cells: Vec<&str> = line.split('|').map(str::trim).collect();
@@ -266,7 +266,7 @@ fn gb(bytes: u64) -> f64 {
 }
 
 /// `cargo xtask clean-builds --root <folder> [--dry-run]`; `ecad` is this checkout's `ecad/`.
-pub fn clean_builds(args: &[String], ecad: &Path) -> Result<(), String> {
+pub(crate) fn clean_builds(args: &[String], ecad: &Path) -> Result<(), String> {
     let mut root: Option<PathBuf> = None;
     let mut dry_run = false;
     let mut it = args.iter();

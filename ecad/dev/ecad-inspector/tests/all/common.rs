@@ -5,15 +5,15 @@ use std::path::PathBuf;
 
 use ecad_model::*;
 
-pub struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    pub fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let p = std::env::temp_dir().join(format!("ecad-inspector-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
-    pub fn path(&self, name: &str) -> PathBuf {
+    pub(crate) fn path(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
 }
@@ -24,10 +24,10 @@ impl Drop for TempDir {
     }
 }
 
-pub const PROJECT: ProjectId = ProjectId(0x00c1_1000_0000_0000_0000_0000_0000_0001);
+pub(crate) const PROJECT: ProjectId = ProjectId(0x00c1_1000_0000_0000_0000_0000_0000_0001);
 
 /// A small history: two pages, lines, a named version, an undo.
-pub fn history() -> Ledger {
+pub(crate) fn history() -> Ledger {
     let mut ids = IdAllocator::seeded(7);
     let mut l = Ledger::new(7);
     let (p1, p2, layer): (PageId, PageId, LayerId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -58,26 +58,26 @@ pub fn history() -> Ledger {
 }
 
 /// `ecadinspect <args>` (the text views): its output, or its error.
-pub fn run(args: &[&str]) -> std::result::Result<String, String> {
+pub(crate) fn run(args: &[&str]) -> std::result::Result<String, String> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut out = Vec::new();
     ecad_inspector::cli::views(&args, &mut out).map(|()| String::from_utf8(out).unwrap())
 }
 
 /// `history` written as the project file `p.ecad` in `dir`; its path.
-pub fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
+pub(crate) fn written(dir: &TempDir, l: &Ledger) -> PathBuf {
     let path = dir.path("p.ecad");
     ecad_file::Project::create(ecad_file::Store::create(&path).unwrap(), PROJECT, l, Some(5), "test", 16).unwrap();
     path
 }
 
-pub const WRITER: &str = "ecad-inspector tests";
+pub(crate) const WRITER: &str = "ecad-inspector tests";
 
 /// The rich fixture (design 029 §8): main with two pages, three devices (two tagged `-K1`, a
 /// duplicate), connection points, two wires on one net, a cable, a revision issued as a version,
 /// and the tag text `TITLE` in a page title and a property; a branch `Option B` forked from main
 /// with edits of its own. Snapshots every 16 transactions. Returns the file's path.
-pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
+pub(crate) fn rich(dir: &TempDir, title: &str) -> PathBuf {
     use ecad_file::{Project, Store};
     let mut ids = IdAllocator::seeded(0x1A5);
     let mut l = Ledger::new(11);
@@ -195,7 +195,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
 }
 
 /// One protocol request's reply, parsed.
-pub fn ask(src: Option<&dyn ecad_inspector::source::Source>, request: serde_json::Value) -> serde_json::Value {
+pub(crate) fn ask(src: Option<&dyn ecad_inspector::source::Source>, request: serde_json::Value) -> serde_json::Value {
     let reply = ecad_inspector::protocol::handle(src, &request.to_string());
     serde_json::from_str(&reply).unwrap()
 }

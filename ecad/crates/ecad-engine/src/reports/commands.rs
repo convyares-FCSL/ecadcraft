@@ -16,10 +16,10 @@ use crate::export::printbook::{self, Options, Scope};
 use crate::project::Project;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<PrintbookParams>("printbook"), Typed::of::<ReportsParams>("reports")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<PrintbookParams>("printbook"), Typed::of::<ReportsParams>("reports")];
 
 /// The commands this module adds.
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("printbook", "Print Book", crate::commands::input::typed::<PrintbookParams>).noundo(),
         CommandSpec::new("reports", "Reports", crate::commands::input::typed::<ReportsParams>).noundo(),
@@ -59,7 +59,7 @@ fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
 ///
 /// # Errors
 /// No page matches, or a projection, plot or write failure (nothing written).
-pub fn print_project(
+pub(crate) fn print_project(
     p: &mut Project, scope: &Scope, o: Options, path: Option<&str>, progress: &mut dyn FnMut(usize, usize) -> bool,
 ) -> Result<Value, CmdError> {
     if ecad_electrical::pages::generated::has_bom_page(p.ledger.document()) {

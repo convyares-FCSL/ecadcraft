@@ -31,7 +31,7 @@ fn slot_words(k: TextKind) -> &'static str {
     }
 }
 
-pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) {
+pub(crate) fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) {
     let full = cx.full;
     let Some(d) = cx.insp.device.clone() else {
         // Not one device: the defaults for what is selected (the page with nothing selected).

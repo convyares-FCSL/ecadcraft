@@ -7,8 +7,8 @@ use ecad_engine::cad::Vec2;
 use eframe::egui::{self, Rect, pos2};
 
 /// The grid's pitch and dot size on paper, mm.
-pub const GRID_MM: f64 = 5.0;
-pub const DOT_MM: f64 = 0.25;
+pub(crate) const GRID_MM: f64 = 5.0;
+pub(crate) const DOT_MM: f64 = 0.25;
 /// Dots closer than this on screen are not drawn (the grid would be a tint), px.
 pub(crate) const MIN_PITCH_PX: f64 = 10.0;
 /// Most dots drawn in one frame; above it the grid is left out.
@@ -24,7 +24,7 @@ pub(crate) fn screen_rect(xf: &Xf, lo: ecad_model::Pt, hi: ecad_model::Pt) -> Re
 }
 
 /// Paint the surround, the shadow and the grid of the sheet `frames` (drawing units) in `rect`.
-pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_model::palette::Sheet, frames: &[(ecad_model::Pt, ecad_model::Pt)], rect: Rect) {
+pub(crate) fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_model::palette::Sheet, frames: &[(ecad_model::Pt, ecad_model::Pt)], rect: Rect) {
     let sheets: Vec<Rect> = frames.iter().map(|(lo, hi)| screen_rect(xf, *lo, *hi)).filter(|r| r.is_positive() && r.is_finite()).collect();
     let Some(outer) = sheets.iter().copied().reduce(|a, b| a.union(b)) else { return };
     surround(p, rect, outer);

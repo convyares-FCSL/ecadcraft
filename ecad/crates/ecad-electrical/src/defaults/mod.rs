@@ -10,19 +10,19 @@
 use ecad_model::Document;
 use ecad_model::registry::{Entry, Kind, Level, Scope, resolve, wire_value};
 
-pub mod bom;
+pub(crate) mod bom;
 pub mod connectors;
-pub mod continuations;
+pub(crate) mod continuations;
 pub mod data;
 pub mod pages;
 pub mod plc;
 pub mod print;
-pub mod rating;
-pub mod settings;
+pub(crate) mod rating;
+pub(crate) mod settings;
 pub mod strip_pages;
-pub mod styles;
+pub(crate) mod styles;
 pub mod symbols;
-pub mod terminal_blocks;
+pub(crate) mod terminal_blocks;
 pub mod text;
 pub mod wires;
 

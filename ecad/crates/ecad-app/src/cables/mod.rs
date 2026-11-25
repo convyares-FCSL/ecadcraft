@@ -1,7 +1,7 @@
 //! Cables.
 
-pub mod detail;
+pub(crate) mod detail;
 pub mod editor;
 pub mod list;
-pub mod manager;
-pub mod view;
+pub(crate) mod manager;
+pub(crate) mod view;

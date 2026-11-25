@@ -10,7 +10,7 @@
 //! `name {json}`) always run the JSON form and never prompt. `cableview` records nothing: a cable's view is
 //! presentation only ([`crate::cables::views`]).
 
-pub mod input;
+pub(crate) mod input;
 pub mod reply;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};

@@ -25,7 +25,7 @@ pub(crate) const LEAVE_ALL: &str = "Leave all";
 /// A connector half's own location.
 pub(crate) const HALF: &str = "Half";
 /// Most rows shown; the rest are counted.
-pub const MAX_ROWS: usize = 8;
+pub(crate) const MAX_ROWS: usize = 8;
 
 /// One row: device id, tag, aspect word, from, to, and whether Half answers it.
 type Row = (ecad_model::DeviceId, String, &'static str, String, String, bool);

@@ -193,7 +193,7 @@ pub(super) fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut
 }
 
 /// The rows of the project's list: two entries of one aspect sharing a code.
-pub fn designation_rows(doc: &Document) -> Vec<Check> {
+pub(crate) fn designation_rows(doc: &Document) -> Vec<Check> {
     use crate::locations::designations::{self as d, Aspect};
     let mut out = Vec::new();
     for a in Aspect::ALL {

@@ -16,7 +16,7 @@ pub mod channels;
 pub mod commands;
 pub mod draw;
 pub mod edit;
-pub mod exchange;
+pub(crate) mod exchange;
 pub mod iolist;
 pub mod kept;
 pub mod overview;

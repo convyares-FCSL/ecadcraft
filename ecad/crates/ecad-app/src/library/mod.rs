@@ -13,7 +13,7 @@ pub mod details;
 pub mod draft;
 pub mod review;
 pub mod search;
-pub mod view;
+pub(crate) mod view;
 
 use ecad_electrical::symbols;
 use ecad_electrical::symbols::commands::Content;

@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 /// `doc` with `ops` applied (they must apply).
-pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
+pub(crate) fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
     let mut d = doc.clone();
     for op in ops {
         op.apply(&mut d).unwrap();
@@ -23,7 +23,7 @@ pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
 
 /// What `ops`, taking `before` to `after`, could change in the Devices list: the Devices feed's
 /// touch through the views' pipeline (design 064 §4.1).
-pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::devices::device_list::DeviceTouch {
+pub(crate) fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_electrical::devices::device_list::DeviceTouch {
     let metrics = std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth));
     let mut views =
         ecad_electrical::views::Views::new(ecad_electrical::views::EngineInputs { look: metrics, registry: &ecad_drawing_style::REGISTRY });
@@ -34,7 +34,7 @@ pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::O
 /// The cables whose references `ops` could change, effect by effect on `doc` before them (the
 /// page-order case is the references view's, after the commit); `None` when any effect could reach
 /// every cable.
-pub fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::collections::BTreeSet<ecad_model::CableId>> {
+pub(crate) fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::collections::BTreeSet<ecad_model::CableId>> {
     let effects = ecad_model::document::effect::Effects::of(ops);
     let mut out = std::collections::BTreeSet::new();
     for e in &effects {
@@ -47,7 +47,7 @@ pub fn cables_touched(doc: &Document, ops: &[ecad_model::Op]) -> Option<std::col
 
 /// What `before_ops` (the ops given) and the transaction `tx_ops` (with its extension), taking
 /// `before` to `after`, could change in the Properties palette: the Properties feed's objects.
-pub fn props_touched(
+pub(crate) fn props_touched(
     before: &Document, after: &Document, before_ops: &[ecad_model::Op], tx_ops: &[ecad_model::Op],
 ) -> Option<std::collections::BTreeSet<ecad_model::ObjectRef>> {
     let metrics = std::sync::Arc::new(ecad_drawing_style::text::fonts::FontLook(ecad_model::look::FixedWidth));
@@ -57,7 +57,7 @@ pub fn props_touched(
     views.finish(after, tx_ops, pending).props
 }
 
-pub struct H {
+pub(crate) struct H {
     pub s: Session,
     /// The project, reachable only through the handle's lock boundary.
     pub project: ProjectHandle,
@@ -65,16 +65,16 @@ pub struct H {
     pub trail: Vec<Document>,
 }
 
-pub fn hex(v: &Value, key: &str) -> String {
+pub(crate) fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
 }
 
-pub fn id<T: From<u128>>(v: &Value, key: &str) -> T {
+pub(crate) fn id<T: From<u128>>(v: &Value, key: &str) -> T {
     T::from(u128::from_str_radix(v[key].as_str().unwrap(), 16).unwrap())
 }
 
 impl H {
-    pub fn new(seed: u64) -> H {
+    pub(crate) fn new(seed: u64) -> H {
         ecad_engine::install();
         // Never the developer's own cable-views.json (brief 005 review M4).
         ecad_engine::cables::views::isolate_for_tests();
@@ -89,7 +89,7 @@ impl H {
 
     /// Take over a project made by [`ecad_engine::dev::test_support::ProjectBuilder`], with its trail started
     /// at the built document and the harness checks run once.
-    pub fn from_built(b: ecad_engine::dev::test_support::Built) -> H {
+    pub(crate) fn from_built(b: ecad_engine::dev::test_support::Built) -> H {
         let mut h = H { s: b.s, project: b.project, trail: Vec::new() };
         let d = h.doc();
         h.trail.push(d);
@@ -98,30 +98,30 @@ impl H {
     }
 
     /// Read the project. The session is borrowed for the call, so `f` cannot call it.
-    pub fn p<R>(&mut self, f: impl FnOnce(&Project) -> R) -> R {
+    pub(crate) fn p<R>(&mut self, f: impl FnOnce(&Project) -> R) -> R {
         self.project.read(&mut self.s, |p, _| f(p)).expect("project not busy")
     }
 
     /// Read the project together with its page drawings.
-    pub fn pv<R>(&mut self, f: impl FnOnce(&Project, &PagesRef<'_>) -> R) -> R {
+    pub(crate) fn pv<R>(&mut self, f: impl FnOnce(&Project, &PagesRef<'_>) -> R) -> R {
         self.project.read(&mut self.s, f).expect("project not busy")
     }
 
     /// Set up faults or the test medium.
-    pub fn cfg<R>(&mut self, f: impl FnOnce(&mut Project) -> R) -> R {
+    pub(crate) fn cfg<R>(&mut self, f: impl FnOnce(&mut Project) -> R) -> R {
         self.project.configure(&mut self.s, f).expect("project not busy")
     }
 
-    pub fn head(&mut self) -> u64 {
+    pub(crate) fn head(&mut self) -> u64 {
         self.p(|p| p.ledger.head())
     }
 
-    pub fn doc(&mut self) -> Document {
+    pub(crate) fn doc(&mut self) -> Document {
         self.p(|p| p.ledger.document().clone())
     }
 
     /// Run a command's JSON form; record the trail when it appended an edit.
-    pub fn run(&mut self, cmd: &str, params: Value) -> Result<Value, String> {
+    pub(crate) fn run(&mut self, cmd: &str, params: Value) -> Result<Value, String> {
         let before = self.head();
         let r = self.s.execute(cmd, &params).map_err(|e| e.to_string());
         self.after(before);
@@ -129,7 +129,7 @@ impl H {
     }
 
     /// Type at the command line.
-    pub fn cmdline(&mut self, text: &str) {
+    pub(crate) fn cmdline(&mut self, text: &str) {
         let before = self.head();
         self.s.cmdline(text).unwrap();
         self.after(before);
@@ -169,32 +169,32 @@ impl H {
         self.check();
     }
 
-    pub fn page_index(&mut self, page: PageId) -> Option<usize> {
+    pub(crate) fn page_index(&mut self, page: PageId) -> Option<usize> {
         self.pv(|p, pg| pg.index_of(p.pages.get(&page)?.uid?))
     }
 
     /// Make `page` the active page, as a click on its row in the desktop app's Project panel does
     /// (brief 016: one page window, the page projected into it).
-    pub fn activate(&mut self, page: PageId) {
+    pub(crate) fn activate(&mut self, page: PageId) {
         self.project.open_page(&mut self.s, page).expect("page shown");
     }
 
     /// [`Harness::activate`] (kept for the tests written when each page had its own tab).
-    pub fn activate_tab_only(&mut self, page: PageId) {
+    pub(crate) fn activate_tab_only(&mut self, page: PageId) {
         self.activate(page);
     }
 
-    pub fn first_page(&mut self) -> PageId {
+    pub(crate) fn first_page(&mut self) -> PageId {
         self.doc().page_order()[0]
     }
 
     /// Handle of an item on `page`.
-    pub fn handle_of(&mut self, page: PageId, item: ecad_model::ItemId) -> Handle {
+    pub(crate) fn handle_of(&mut self, page: PageId, item: ecad_model::ItemId) -> Handle {
         self.p(|p| p.pages[&page].map.item(item)).expect("item mapped")
     }
 
     /// Every handle (items and markers) of a drawn representation.
-    pub fn rep_handles(&mut self, page: PageId, component: DeviceId) -> Vec<String> {
+    pub(crate) fn rep_handles(&mut self, page: PageId, component: DeviceId) -> Vec<String> {
         let doc = self.doc();
         let map = self.p(|p| p.pages[&page].map.clone());
         let map = &map;
@@ -207,31 +207,31 @@ impl H {
     }
 
     /// The route drawing wire `c` on `page` (`wires::routes::route_of_wire_on`).
-    pub fn route_of(&mut self, page: PageId, c: WireId) -> ecad_model::RouteId {
+    pub(crate) fn route_of(&mut self, page: PageId, c: WireId) -> ecad_model::RouteId {
         ecad_electrical::wires::routes::route_of_wire_on(&self.doc(), c, page).expect("route")
     }
 
     /// The handle of wire `c`'s line on `page`.
-    pub fn route_handle(&mut self, page: PageId, c: WireId) -> Handle {
+    pub(crate) fn route_handle(&mut self, page: PageId, c: WireId) -> Handle {
         let r = self.route_of(page, c);
         self.line_handle(page, r)
     }
 
     /// The handle of route `r`'s line on `page`.
-    pub fn line_handle(&mut self, page: PageId, r: ecad_model::RouteId) -> Handle {
+    pub(crate) fn line_handle(&mut self, page: PageId, r: ecad_model::RouteId) -> Handle {
         let doc = self.doc();
         let (_, item, _) = ecad_electrical::wires::routes::route_item(&doc, r).expect("route item");
         self.handle_of(page, item)
     }
 
     /// The first and last point of wire `c`'s line on `page`.
-    pub fn route_ends(&mut self, page: PageId, c: WireId) -> (Pt, Pt) {
+    pub(crate) fn route_ends(&mut self, page: PageId, c: WireId) -> (Pt, Pt) {
         let r = self.route_of(page, c);
         let [a, b] = self.doc().routes()[&r].end_points().expect("points");
         (a, b)
     }
 
-    pub fn connection_point_pos(&mut self, page: PageId, t: ConnectionPointId) -> Pt {
+    pub(crate) fn connection_point_pos(&mut self, page: PageId, t: ConnectionPointId) -> Pt {
         ecad_model::connectivity::derive::connection_point_positions(&self.doc(), page)
             .into_iter()
             .find(|(x, _, _)| *x == t)
@@ -239,7 +239,7 @@ impl H {
             .expect("terminal shown")
     }
 
-    pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
+    pub(crate) fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
         self.pv(|p, pg| pg.entities_of(p, page))
             .iter()
             .filter(|e| matches!(e.kind, EntityKind::Line(_) | EntityKind::LwPolyline(_)))
@@ -248,27 +248,27 @@ impl H {
     }
 
     /// Proposal §17.4, checks 1-6 (6 with `allow_mismatch` false).
-    pub fn check(&mut self) {
+    pub(crate) fn check(&mut self) {
         self.check_with(false);
     }
 
-    pub fn check_with(&mut self, allow_mismatch: bool) {
+    pub(crate) fn check_with(&mut self, allow_mismatch: bool) {
         // Unsaved state as the engine reports it; the project is not locked here (and cannot be:
         // `pv` holds the session).
         let unsaved_per_doc: Vec<(u64, bool)> = self.s.docs.iter().enumerate().map(|(i, d)| (d.uid, self.s.doc_unsaved(i))).collect();
         self.pv(|p, pg| check_project(p, pg, &unsaved_per_doc, allow_mismatch));
     }
 
-    pub fn mapped(&mut self, page: PageId, h: Handle) -> Option<Mapped> {
+    pub(crate) fn mapped(&mut self, page: PageId, h: Handle) -> Option<Mapped> {
         self.p(|p| p.pages[&page].map.get(h))
     }
 
-    pub fn symbol_item(&mut self, c: DeviceId) -> ecad_model::ItemId {
+    pub(crate) fn symbol_item(&mut self, c: DeviceId) -> ecad_model::ItemId {
         self.subject_item(ecad_model::Subject::Device(c))
     }
 
     /// The symbol item of `s`'s first representation (a device's, or a continuation aid's).
-    pub fn subject_item(&mut self, s: ecad_model::Subject) -> ecad_model::ItemId {
+    pub(crate) fn subject_item(&mut self, s: ecad_model::Subject) -> ecad_model::ItemId {
         let doc = self.doc();
         let (_, r) = doc.representations_of(s).next().unwrap();
         let item = r.items[0];
@@ -328,7 +328,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
 }
 
 /// Close every document of `s`, as before reopening a saved project in a fresh session.
-pub fn close_all(s: &mut Session) {
+pub(crate) fn close_all(s: &mut Session) {
     while !s.docs.is_empty() {
         s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -336,14 +336,14 @@ pub fn close_all(s: &mut Session) {
 
 /// A fresh temporary folder whose name has spaces and a non-ASCII letter, as on a Windows desktop
 /// (`C:\Users\...\Schaltpläne 2026`). `tag` says which test made it.
-pub fn tmp_dir(tag: &str) -> PathBuf {
+pub(crate) fn tmp_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("ecad {tag} Schaltpl\u{e4}ne {}", ecad_store::disk::unique()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
 /// Open the project file at `path` in a fresh session, with its trail started at the opened document.
-pub fn reopen(path: &str, seed: u64) -> H {
+pub(crate) fn reopen(path: &str, seed: u64) -> H {
     // As `H::new`: run alone (as nextest runs every test), nothing else has installed ECAD's commands.
     ecad_engine::install();
     ecad_engine::cables::views::isolate_for_tests();
@@ -359,7 +359,7 @@ impl H {
     /// Connection points at `at` on the active page (design 072: a wire runs between two
     /// connection points): one drawn device holding one point per place, committed straight to the
     /// ledger. Returns the points, in the order given.
-    pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ConnectionPointId> {
+    pub(crate) fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ConnectionPointId> {
         use ecad_model::{Author, ConnectionPoint, Device, Form, Op, Representation, Subject};
         self.cfg(|p| {
             let page = p.active_page().unwrap_or(p.ledger.document().page_order()[0]);
@@ -401,7 +401,7 @@ impl H {
 
     /// `wire` through `points`, first putting a connection point at each end that has none (design
     /// 072: a line with a free end carries no wire). The command's JSON result.
-    pub fn wire_pp(&mut self, points: &[(f64, f64)]) -> Result<Value, String> {
+    pub(crate) fn wire_pp(&mut self, points: &[(f64, f64)]) -> Result<Value, String> {
         let doc = self.doc();
         let page = self.p(|p| p.active_page()).unwrap_or(doc.page_order()[0]);
         let shown: Vec<Pt> = ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
@@ -422,7 +422,7 @@ impl H {
     /// cable gains when it is continued on another page. Until lane F step F4 no command draws a
     /// cable on two pages (`cablecontinue` needs wires leaving the page through the reference), so
     /// tests about what two ends say of each other (texts, zones, markers, checks) pair them so.
-    pub fn reference_end(&mut self, cable: ecad_model::CableId, page: PageId, at: (f64, f64)) -> ecad_model::RepresentationId {
+    pub(crate) fn reference_end(&mut self, cable: ecad_model::CableId, page: PageId, at: (f64, f64)) -> ecad_model::RepresentationId {
         use ecad_model::{Form, Item, Op, Primitive, Representation, Subject};
         let doc = self.doc();
         let style = doc
@@ -452,30 +452,30 @@ impl H {
 
 /// Give device `c` (hex id) the tag state `state` (`automatic`, `fixed` or `provisional`), keeping its
 /// bare tag: the `tag` key takes the state and the tag as one value (S6, #3).
-pub fn set_tag_state(h: &mut H, c: &str, state: &str) -> Result<Value, String> {
+pub(crate) fn set_tag_state(h: &mut H, c: &str, state: &str) -> Result<Value, String> {
     let props = h.run("deviceprops", json!({"component": c}))?;
     let value = json!({"state": state, "tag": props["tag"]["tag"]}).to_string();
     h.run("setprop", json!({"component": c, "key": "tag", "value": value}))
 }
 
 /// `place` a symbol at `at`; the command's JSON result (`component`, ...).
-pub fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
+pub(crate) fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
 }
 
 impl H {
     /// Close every document of this session ([`close_all`]).
-    pub fn close_all(&mut self) {
+    pub(crate) fn close_all(&mut self) {
         close_all(&mut self.s);
     }
 }
 
-pub fn pts(v: &[(f64, f64)]) -> Value {
+pub(crate) fn pts(v: &[(f64, f64)]) -> Value {
     json!(v.iter().map(|(x, y)| json!([x, y])).collect::<Vec<_>>())
 }
 
 /// A small project: a drawn component with a terminal, a placed symbol, a wire between them.
-pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
+pub(crate) fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
     let mut h = H::new(seed);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
@@ -497,7 +497,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
 /// one): one drawn device holding two connection points per wire, a route between them landing
 /// on both (design 072 §4.3) with its line, and the wire. `line(i)` gives wire `i`'s two end
 /// points. Returns the ops and, in order, each wire with its route and its line's item.
-pub fn wired_lines(
+pub(crate) fn wired_lines(
     ids: &mut ecad_model::IdAllocator, page: PageId, style: ecad_model::Style, n: usize, line: impl Fn(usize) -> (Pt, Pt),
 ) -> (Vec<ecad_model::Op>, Vec<(WireId, ecad_model::RouteId, ecad_model::ItemId)>) {
     use ecad_model::{ConnectionPoint, Device, Form, Op, Representation, RouteEnd, Subject, Wire};
@@ -545,7 +545,7 @@ pub fn wired_lines(
 
 /// Wire `w`'s line on `page`: the item drawing its route there (`wires::routes::route_of_wire_on`) and
 /// the item's path (design 072 §4.3; what `derive::route_on_page` gave before routes).
-pub fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {
+pub(crate) fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {
     let r = ecad_electrical::wires::routes::route_of_wire_on(doc, w, page)?;
     let (_, item, it) = ecad_electrical::wires::routes::route_item(doc, r)?;
     match &it.kind {
@@ -557,7 +557,7 @@ pub fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model:
 /// A device's values as the `setprop` keys name them (design 072 §3): its property bag, with a PLC
 /// module's and station's typed fields under their keys (`plc.rack` as the station's ID, `plc.slot`,
 /// `plc.addr.start`, `plc.addr.size`, `plc.ch.<i>.text|address|tag|safe`).
-pub fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<String, String> {
+pub(crate) fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<String, String> {
     let Some(d) = doc.devices().get(&c) else { return Default::default() };
     let mut out = d.properties.clone();
     if let ecad_model::DeviceType::PlcModule(m) = &d.device_type {
@@ -582,7 +582,7 @@ pub fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<Strin
 
 /// A device's value of `setprop` key `k` ([`plc_view`], else [`ecad_model::Device::value`]);
 /// `plc.channels` is a module's count.
-pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
+pub(crate) fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
     if k == "plc.channels" {
         return match &doc.devices().get(&c)?.device_type {
             ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count().to_string()),
@@ -594,7 +594,7 @@ pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
 
 /// A hand-made op setting a PLC module's field named by `setprop` key `k` (as a file or a merge
 /// might hold it, bypassing the commands): one `ModifyDevice`. `plc.rack` takes any ID.
-pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> ecad_model::Op {
+pub(crate) fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> ecad_model::Op {
     let before = doc.devices()[&c].clone();
     let mut after = before.clone();
     let ecad_model::DeviceType::PlcModule(m) = &mut after.device_type else { panic!("{c:?} is not a module") };
@@ -622,7 +622,7 @@ pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> eca
 }
 
 /// Device `c`'s station data (design 072 §3); panics when it is not a station.
-pub fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::objects::plc::PlcRack {
+pub(crate) fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::objects::plc::PlcRack {
     match &doc.devices()[&c].device_type {
         ecad_model::DeviceType::PlcRack(r) => r.clone(),
         other => panic!("{c:?} is not a station: {other:?}"),

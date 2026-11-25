@@ -42,7 +42,7 @@ pub(crate) struct DevicesFeed {
 
 impl DevicesFeed {
     /// The last commit's touch, taken for the change log.
-    pub fn take(&mut self) -> DeviceTouch {
+    pub(crate) fn take(&mut self) -> DeviceTouch {
         std::mem::take(&mut self.touch)
     }
 }

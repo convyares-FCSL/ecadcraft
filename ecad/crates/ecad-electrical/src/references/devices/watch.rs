@@ -236,7 +236,7 @@ pub(crate) struct Watch {
 
 /// What a finished [`Watch`] found.
 #[derive(Debug, Clone, Default)]
-pub struct Outcome {
+pub(crate) struct Outcome {
     /// Pages whose references changed; `None` for every page.
     pub pages: Option<BTreeSet<PageId>>,
     /// The line about references left without another end.
@@ -249,12 +249,12 @@ pub struct Outcome {
 }
 
 /// Texts and tables derived for some devices, by page.
-pub type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
+pub(crate) type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
 
 impl Watch {
     /// Note one effect of the transaction. `before` says which side `doc` is: the
     /// state before the commit (the ops given to it) or after it (the transaction as recorded).
-    pub fn note(&mut self, doc: &Document, before: bool, effect: &Effect<'_>) {
+    pub(crate) fn note(&mut self, doc: &Document, before: bool, effect: &Effect<'_>) {
         if before {
             if !self.all_cables
                 && matches!(
@@ -284,7 +284,7 @@ impl Watch {
     }
 
     /// Whether the index must be made again whole (a page type's checks switched).
-    pub fn rebuilds(&self) -> bool {
+    pub(crate) fn rebuilds(&self) -> bool {
         self.rebuild
     }
 
@@ -292,7 +292,7 @@ impl Watch {
     /// state before the commit, with `idx` its index. `reuse` holds what the last commit derived,
     /// for the same `doc` (the caller keeps it only while the state is unchanged): a device found
     /// there is not derived again.
-    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn Look) {
+    pub(crate) fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn Look) {
         self.scope.resolve(doc, idx, m);
         let scope = (!self.all_cables).then_some(&self.cable_scope);
         self.cables = Some(crate::references::cables::Snapshot::take(doc, scope));
@@ -327,13 +327,13 @@ impl Watch {
 
     /// Bring `idx` up to date for the groups noted on both sides (the caller makes it again whole
     /// instead when [`Watch::rebuilds`]).
-    pub fn refresh(&self, doc: &Document, idx: &mut RefIndex) {
+    pub(crate) fn refresh(&self, doc: &Document, idx: &mut RefIndex) {
         idx.refresh(doc, &self.groups);
     }
 
     /// After the After notes: `doc` is the state after the commit and `idx` its index, already
     /// brought up to date. Says what changed. A watch never taken compares nothing.
-    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn Look) -> Outcome {
+    pub(crate) fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn Look) -> Outcome {
         let Some(cables) = self.cables.take() else { return Outcome::default() };
         if self.rebuild {
             self.scope.wide = true;

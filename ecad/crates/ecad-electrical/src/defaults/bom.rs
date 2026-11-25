@@ -28,20 +28,20 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
 
 /// `bom.column.article`: the Article number column of the BOM window, BOM page and CSV:
 /// off until the user adds it.
-pub static COLUMN_ARTICLE: Entry = entry("bom.column.article", "Article number column", Kind::Flag);
+pub(crate) static COLUMN_ARTICLE: Entry = entry("bom.column.article", "Article number column", Kind::Flag);
 
 /// `bom.column.rating`: the rating columns of the BOM window, BOM page and CSV, as rating field
 /// words separated by commas (`current, power`), or `none` (built in).
-pub static COLUMN_RATING: Entry =
+pub(crate) static COLUMN_RATING: Entry =
     entry("bom.column.rating", "Rating columns", Kind::Parsed { max_chars: 200, parse: |s| crate::reports::bom::rating_column_words(s).is_some() });
 
 /// `bom.lines`: part lines merged with equal parts (`flat`) or listed under their device
 /// (`nested`, By location only).
-pub static LINES: Entry = entry("bom.lines", "Part lines", Kind::Choice(<BomLines as ecad_model::Word>::WORDS));
+pub(crate) static LINES: Entry = entry("bom.lines", "Part lines", Kind::Choice(<BomLines as ecad_model::Word>::WORDS));
 
 /// `bom.item.unit`: the unit of a new item when none is given.
-pub static ITEM_UNIT: Entry =
+pub(crate) static ITEM_UNIT: Entry =
     entry("bom.item.unit", "Unit of a new item", Kind::Choice(<ecad_model::objects::loose_part::ItemUnit as ecad_model::Word>::WORDS));
 
 /// This lane's entries, in Standards order.
-pub static ENTRIES: &[&Entry] = &[&COLUMN_ARTICLE, &COLUMN_RATING, &LINES, &ITEM_UNIT];
+pub(crate) static ENTRIES: &[&Entry] = &[&COLUMN_ARTICLE, &COLUMN_RATING, &LINES, &ITEM_UNIT];

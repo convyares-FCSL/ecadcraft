@@ -15,10 +15,10 @@ use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
 
 pub(crate) const SETTING: ColumnId = ColumnId(0);
-pub const GROUP: ColumnId = ColumnId(1);
-pub const VALUE: ColumnId = ColumnId(2);
-pub const FROM: ColumnId = ColumnId(3);
-pub const KEY: ColumnId = ColumnId(4);
+pub(crate) const GROUP: ColumnId = ColumnId(1);
+pub(crate) const VALUE: ColumnId = ColumnId(2);
+pub(crate) const FROM: ColumnId = ColumnId(3);
+pub(crate) const KEY: ColumnId = ColumnId(4);
 
 /// The words of a source on a badge.
 pub(crate) fn source_word(s: Source) -> &'static str {
@@ -44,7 +44,7 @@ pub(crate) fn source_tone(s: Source) -> Tone {
 }
 
 /// A value as shown: a length with its unit.
-pub fn value_text(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
+pub(crate) fn value_text(e: &Entry, r: &ecad_model::registry::Resolved<'_>) -> String {
     match r.value {
         ecad_model::registry::Value::Length(x) => ecad_model::geometry::units::number_text(x, "mm"),
         ecad_model::registry::Value::Number(x) => ecad_model::geometry::units::number_text(x, ""),

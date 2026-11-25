@@ -28,7 +28,7 @@ use ecad_model::registry::styles::{Catalogue, Count, Reach, Row, chosen, exists,
 use crate::CmdError;
 
 pub mod cable;
-pub mod checks;
+pub(crate) mod checks;
 pub mod commands;
 pub mod page;
 pub mod ratingtable;

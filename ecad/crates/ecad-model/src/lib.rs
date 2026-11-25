@@ -17,13 +17,12 @@
 //!
 //! This crate contains **no** drawing engine, UI, file encoding or I/O, and depends on no CADCraft crate, so an
 //! upstream CADCraft change cannot alter the document, its history or replay.
-#![warn(unreachable_pub)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod connectivity;
 mod dev;
 pub mod document;
-pub mod error;
+pub(crate) mod error;
 pub mod geometry;
 pub mod look;
 pub mod merge;

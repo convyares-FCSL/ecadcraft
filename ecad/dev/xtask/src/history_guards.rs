@@ -49,7 +49,7 @@ fn word_then_space(rest: &str, words: &[&str]) -> Option<usize> {
 }
 
 /// The kind of history citation `text` (a comment's text) holds, if any.
-pub fn citation(text: &str) -> Option<&'static str> {
+pub(crate) fn citation(text: &str) -> Option<&'static str> {
     if text.contains('§') {
         return Some("a section mark");
     }
@@ -189,7 +189,7 @@ fn toml_files(dir: &std::path::Path) -> Vec<PathBuf> {
 }
 
 /// The guard's problems, if any.
-pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     for (_, _, dir, _) in super::classed_packages(meta)? {

@@ -6,9 +6,9 @@
 //! egui strokes have no cap style; ends are butt-ended at 1.5 px, which reads the same as round
 //! at this size.
 
-pub mod shell;
-pub mod tools;
-pub mod workspaces;
+pub(crate) mod shell;
+pub(crate) mod tools;
+pub(crate) mod workspaces;
 
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, pos2};
 use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size};

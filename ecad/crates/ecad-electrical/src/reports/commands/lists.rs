@@ -50,7 +50,7 @@ pub(crate) struct Paging {
 impl Paging {
     /// The paging a report call asks for: `limit` clamped to 1..=[`reports::MAX_LIMIT`]
     /// (default [`reports::DEFAULT_LIMIT`]), `after` 0 and `excel_safe` true by default.
-    pub fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
+    pub(crate) fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
         Paging {
             limit: limit.map_or(reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, reports::MAX_LIMIT),
             after: after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX)),

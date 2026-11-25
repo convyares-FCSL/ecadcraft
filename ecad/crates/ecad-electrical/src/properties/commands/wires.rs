@@ -14,9 +14,9 @@ use crate::properties::commands::{Build, PropRule};
 use ecad_model::registry::Level;
 
 /// The `setprop` key of a wire's size.
-pub const SIZE: &str = "size";
+pub(crate) const SIZE: &str = "size";
 /// The `setprop` key of a wire's colours.
-pub const COLOURS: &str = "colours";
+pub(crate) const COLOURS: &str = "colours";
 
 /// The refusal of a key a wire does not have.
 pub(crate) fn no_such_key(key: &str) -> CmdError {
@@ -175,7 +175,7 @@ pub(crate) fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<
 ///
 /// # Errors
 /// A value that is not a style reference (a built-in word or `#` and 32 hex digits).
-pub fn wire_type(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+pub(crate) fn wire_type(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, w) = wire_of(doc, o)?;
     let mut after = w.clone();
     after.wire_type = match value.map(str::trim).filter(|v| !v.is_empty()) {

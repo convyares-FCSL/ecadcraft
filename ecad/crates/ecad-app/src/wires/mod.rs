@@ -1,5 +1,5 @@
 //! Wires.
 
-pub mod detail;
+pub(crate) mod detail;
 pub mod list;
-pub mod rating;
+pub(crate) mod rating;

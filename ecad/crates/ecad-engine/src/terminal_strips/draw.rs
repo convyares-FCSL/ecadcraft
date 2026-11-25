@@ -188,7 +188,7 @@ struct Draws {
 
 /// The content of sheet `i` of graphic `connection_points` page `page` (paper millimetres, sheet origin at
 /// `x0`): its strip's columns that fall on this sheet. O(rows of that strip + what it draws).
-pub fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f64, o: &ReportModels) -> Vec<Part> {
+pub(crate) fn content(doc: &Document, page: PageId, input: &FrameInput, i: usize, x0: f64, o: &ReportModels) -> Vec<Part> {
     let (l, b, r, t) = ecad_electrical::pages::generated::area(input);
     let mut pen = Pen { k: unit_scale(input.unit), x0, out: Vec::new() };
     let draws = DrawStyles::new(doc);

@@ -7,7 +7,7 @@ use ecad_electrical::devices::ratings::dataset::{self, Insulation};
 use ecad_electrical::devices::ratings::parse;
 
 /// The synthetic rating table of design 057 §11 (not from any standard).
-pub const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
+pub(super) const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
 # synthetic values for tests; not from any standard\n\
 capacity,E,pvc,3,1.5,20\n\
 grouping,E,3,0.90\n\

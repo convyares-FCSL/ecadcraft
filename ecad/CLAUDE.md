@@ -181,6 +181,9 @@ cargo xtask patches               # only when files outside ecad/ changed
   mutate a project, and escape every value they display. Anything an end user runs stays Rust.
 - Never-crash rules apply: no `unwrap`/`expect`/`panic!` in non-test code, no `unsafe`, errors
   through each crate's error type.
+- **Visibility:** `pub(crate)` is the default for items and modules; `pub` only where another crate (its
+  integration tests and doc examples included) uses it. `unreachable_pub`, `private_interfaces` and
+  `private_bounds` are denied in `[workspace.lints.rust]`.
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
   `tests/all/<area>_contracts.rs`.

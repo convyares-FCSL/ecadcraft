@@ -10,7 +10,7 @@ use ecad_model::{ConnectionPointId, DeviceId, Document, ObjectRef, PageId, Repre
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
 /// thousands; the full lists are in Project).
-pub const MAX_ROWS: usize = 64;
+pub(crate) const MAX_ROWS: usize = 64;
 /// At most this many names of other connection points on one connection row.
 const MAX_OTHERS: usize = 3;
 
@@ -61,14 +61,14 @@ pub struct DeviceDetails {
 }
 
 /// A size as the Layout tab shows it: `2.5` and ` B` when bold.
-pub fn size_words(s: &ecad_model::look::TextStyle) -> String {
+pub(crate) fn size_words(s: &ecad_model::look::TextStyle) -> String {
     let h = (s.height * 100.0).round() / 100.0;
     let bold = matches!(s.weight, ecad_model::objects::styles::text::Weight::Bold);
     format!("{h}{}", if bold { " B" } else { "" })
 }
 
 /// Build the details of device `c` with symbol `rep` selected, adding what they read to `deps`.
-pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
+pub(crate) fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
     d.tag = ecad_electrical::devices::tags::tag_words(doc, c);
     d.description = doc.devices().get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
@@ -149,7 +149,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
 }
 
 /// The page a symbol is on (for the header of a page).
-pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
+pub(crate) fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::document::book::page_number(doc, page);
     let title = doc.pages().get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)

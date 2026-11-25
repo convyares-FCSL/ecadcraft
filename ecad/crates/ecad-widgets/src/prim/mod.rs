@@ -15,7 +15,7 @@
 
 pub(crate) mod button;
 pub(crate) mod field;
-pub mod kit;
+pub(crate) mod kit;
 pub(crate) mod label;
 pub(crate) mod row;
 pub(crate) mod segmented;

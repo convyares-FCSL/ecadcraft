@@ -22,7 +22,7 @@ use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols::Starter;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<WireParams>("wire"), Typed::of::<JoinwiresParams>("joinwires")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<WireParams>("wire"), Typed::of::<JoinwiresParams>("joinwires")];
 
 /// `auto` (any case) or nothing: leave it to the net.
 fn not_auto(v: Option<String>) -> Option<String> {

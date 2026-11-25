@@ -216,7 +216,7 @@ pub(crate) struct RackPlaces {
 
 impl RackPlaces {
     /// Note what one effect names.
-    pub fn note(&mut self, effect: &ecad_model::document::effect::Effect<'_>) {
+    pub(crate) fn note(&mut self, effect: &ecad_model::document::effect::Effect<'_>) {
         use ecad_model::document::effect::Effect;
         self.book_moved |= ecad_model::document::book::moves_pages_by_one(effect);
         match effect {
@@ -253,7 +253,7 @@ impl RackPlaces {
     }
 
     /// Whether what was noted moves a place of a card or rack of `plc` on `doc`, the state after.
-    pub fn touched(&self, doc: &Document, plc: &Plc) -> bool {
+    pub(crate) fn touched(&self, doc: &Document, plc: &Plc) -> bool {
         use ecad_model::Subject;
         let ours = |c: ecad_model::DeviceId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
         let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Device(c) if ours(c)));

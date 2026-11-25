@@ -142,7 +142,7 @@ pub(crate) fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), S
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, String> {
+pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, String> {
     let copy = scratch.join("plc.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;

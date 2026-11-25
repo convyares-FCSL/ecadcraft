@@ -494,21 +494,21 @@ pub enum Bundling {
 }
 
 /// The bounds of every rating input.
-pub mod bounds {
+pub(crate) mod bounds {
     use std::ops::RangeInclusive;
 
     /// Iz typed by hand, and a load, in amperes (0 is refused).
-    pub const AMPS: RangeInclusive<f64> = 0.0..=6300.0;
+    pub(crate) const AMPS: RangeInclusive<f64> = 0.0..=6300.0;
     /// A bundling or grouping factor.
     pub(crate) const FACTOR: RangeInclusive<f64> = 0.30..=1.00;
     /// A circuit count.
-    pub const CIRCUITS: RangeInclusive<u8> = 1..=20;
+    pub(crate) const CIRCUITS: RangeInclusive<u8> = 1..=20;
     /// An ambient temperature, °C.
-    pub const AMBIENT: RangeInclusive<f64> = -40.0..=90.0;
+    pub(crate) const AMBIENT: RangeInclusive<f64> = -40.0..=90.0;
     /// A supply voltage.
     pub(crate) const VOLTS: RangeInclusive<f64> = 1.0..=1000.0;
     /// A volt-drop limit, %.
-    pub const VD_LIMIT: RangeInclusive<f64> = 0.5..=20.0;
+    pub(crate) const VD_LIMIT: RangeInclusive<f64> = 0.5..=20.0;
 }
 
 /// Whether `a` is a current within [`bounds::AMPS`] (above 0).

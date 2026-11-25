@@ -35,7 +35,7 @@ pub mod library;
 pub mod pages;
 pub mod plc;
 pub mod publish;
-pub mod references;
+pub(crate) mod references;
 pub mod reports;
 pub mod settings;
 pub mod shell;

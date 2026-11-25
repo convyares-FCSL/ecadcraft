@@ -29,10 +29,10 @@ use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
 
 /// The commands this module adds (registered in `lanes.rs`).
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>).noundo()]
 }
 

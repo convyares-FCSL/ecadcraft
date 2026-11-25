@@ -302,7 +302,7 @@ fn cap(s: &str) -> String {
 }
 
 /// The question a plain undo of a merge stops at: `Some(true)` to undo it.
-pub fn undo_merge(ctx: &egui::Context, question: &str) -> Option<bool> {
+pub(crate) fn undo_merge(ctx: &egui::Context, question: &str) -> Option<bool> {
     let update = question.contains("Undo the update?");
     let title = if update { "Undo the update?" } else { "Undo the merge?" };
     let shown = Dialog::new(egui::Id::unique(UNDO_MERGE_ID), title, UNDO_MERGE_ID).small().show(

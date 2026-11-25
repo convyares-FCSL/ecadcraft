@@ -12,15 +12,15 @@ use ecad_file::{Project, Store, StoreError};
 use ecad_model::*;
 
 /// A fresh folder under the system temp folder, removed when dropped.
-pub struct TempDir(PathBuf);
+pub(crate) struct TempDir(PathBuf);
 
 impl TempDir {
-    pub fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let p = std::env::temp_dir().join(format!("ecad-v2-{name}-{}", ecad_store::disk::unique()));
         std::fs::create_dir_all(&p).unwrap();
         TempDir(p)
     }
-    pub fn path(&self, name: &str) -> PathBuf {
+    pub(crate) fn path(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
 }

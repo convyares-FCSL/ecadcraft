@@ -258,7 +258,7 @@ impl Subs {
     }
 
     /// The fuses a fuse insert would serve (a bank's fuses, a strip's fuse positions).
-    pub fn fuses(&self) -> &[String] {
+    pub(crate) fn fuses(&self) -> &[String] {
         match self {
             Subs::None => &[],
             Subs::Fuses(v) => v,
@@ -749,7 +749,7 @@ pub(crate) enum ArticleTarget {
 
 impl ArticleTarget {
     /// What it is, in words: `device`, `line`, `strip` or `item`.
-    pub fn what(&self) -> &'static str {
+    pub(crate) fn what(&self) -> &'static str {
         match self {
             ArticleTarget::Key(_, _, w) => w,
             ArticleTarget::Item(_) => "item",

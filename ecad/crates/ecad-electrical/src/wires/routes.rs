@@ -108,12 +108,12 @@ pub(crate) struct RouteEdits<'a> {
 }
 
 impl<'a> RouteEdits<'a> {
-    pub fn new(doc: &'a Document) -> Self {
+    pub(crate) fn new(doc: &'a Document) -> Self {
         RouteEdits { doc, after: BTreeMap::new() }
     }
 
     /// Route `r` as changed so far, to change further; `None` when there is no such route.
-    pub fn get(&mut self, r: RouteId) -> Option<&mut Route> {
+    pub(crate) fn get(&mut self, r: RouteId) -> Option<&mut Route> {
         if !self.after.contains_key(&r) {
             let route = self.doc.routes().get(&r)?.clone();
             self.after.insert(r, route);
@@ -122,7 +122,7 @@ impl<'a> RouteEdits<'a> {
     }
 
     /// End `e` of route `r` lands on `to`.
-    pub fn set_end(&mut self, r: RouteId, e: End, to: RouteEnd) {
+    pub(crate) fn set_end(&mut self, r: RouteId, e: End, to: RouteEnd) {
         if let Some(x) = self.get(r).and_then(|route| route.ends.get_mut(end_index(e))) {
             *x = to;
         }
@@ -130,7 +130,7 @@ impl<'a> RouteEdits<'a> {
 
     /// Every route end on connection point `from` (found through the index) lands on `to`
     /// instead: another point, or `Free` when the point goes.
-    pub fn repoint(&mut self, from: ConnectionPointId, to: RouteEnd) {
+    pub(crate) fn repoint(&mut self, from: ConnectionPointId, to: RouteEnd) {
         let routes: Vec<RouteId> = self.doc.routes_at(from).collect();
         for r in routes {
             if let Some(route) = self.get(r) {
@@ -142,7 +142,7 @@ impl<'a> RouteEdits<'a> {
     }
 
     /// The routes landing on route `from` land on route `to` at the same places.
-    pub fn retarget_tees(&mut self, from: RouteId, to: RouteId) {
+    pub(crate) fn retarget_tees(&mut self, from: RouteId, to: RouteId) {
         let tees: Vec<RouteId> = self.doc.tees_of(from).collect();
         for t in tees {
             if let Some(route) = self.get(t) {
@@ -158,7 +158,7 @@ impl<'a> RouteEdits<'a> {
     }
 
     /// The routes landing on route `r` end free where they are (before `r` goes).
-    pub fn free_tees(&mut self, r: RouteId) {
+    pub(crate) fn free_tees(&mut self, r: RouteId) {
         let tees: Vec<RouteId> = self.doc.tees_of(r).collect();
         for t in tees {
             if let Some(route) = self.get(t) {
@@ -170,13 +170,13 @@ impl<'a> RouteEdits<'a> {
     }
 
     /// Route `r` is removed by other ops: no change of it is planned.
-    pub fn forget(&mut self, r: RouteId) {
+    pub(crate) fn forget(&mut self, r: RouteId) {
         self.after.remove(&r);
     }
 
     /// The ops: a `ModifyRoute` per changed route, with a `ModifyItem` of its drawing when its
     /// points changed.
-    pub fn ops(self) -> Vec<Op> {
+    pub(crate) fn ops(self) -> Vec<Op> {
         let mut ops = Vec::new();
         for (r, after) in self.after {
             let Some(before) = self.doc.routes().get(&r) else { continue };

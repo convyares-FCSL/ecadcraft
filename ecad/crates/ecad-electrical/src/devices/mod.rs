@@ -25,7 +25,7 @@ pub mod kinds;
 pub mod merge;
 pub mod placing;
 pub mod ratings;
-pub mod supply;
+pub(crate) mod supply;
 pub mod tags;
 pub mod text_place;
 pub mod texts;

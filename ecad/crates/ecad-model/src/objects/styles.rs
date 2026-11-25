@@ -20,7 +20,7 @@ use crate::naming::id::{LibraryId, StandardId};
 
 pub mod cable;
 pub mod frame;
-pub mod location;
+pub(crate) mod location;
 pub mod page;
 pub mod rating;
 pub mod text;

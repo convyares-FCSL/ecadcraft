@@ -34,7 +34,9 @@ classification (`commands.md`). Source findings: end-gate review #25, #26, #35, 
 7. **Tests follow the folders**: `tests/all/<feature>/…` in each crate; no `lanes/`, `tester_NNN`,
    `*_tester` or brief numbers. Rule tests (a `&Document` in, a result out) live in
    `ecad-electrical/tests/all/<feature>/`; the engine keeps session, drawing and click tests (#69).
-8. **Narrow `pub`**: `pub(crate)` unless another crate uses it; `unreachable_pub` ratchet (#68). No
+8. **Narrow `pub`**: `pub(crate)` unless another crate uses it, modules included: a `pub mod` is one
+   another crate (its integration tests and doc examples count) names. The compiler enforces it:
+   `unreachable_pub`, `private_interfaces` and `private_bounds` are denied for the workspace (#68). No
    `pub use` between crates.
 9. **Size**: a file over ~1,500 lines is split by job inside its feature folder.
 

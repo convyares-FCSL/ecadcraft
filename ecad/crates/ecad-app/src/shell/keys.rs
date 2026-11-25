@@ -31,7 +31,7 @@ pub(crate) fn shortcut(k: ActionKey) -> (Modifiers, Key) {
 }
 
 /// Take the shell's keys from this frame's input and act on them.
-pub fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
+pub(crate) fn handle(t: &mut App, ctx: &egui::Context, slots: &Slots) {
     let typing = ctx.egui_wants_keyboard_input();
     let take = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
     for (i, k) in [Key::Num1, Key::Num2, Key::Num3, Key::Num4].into_iter().enumerate() {

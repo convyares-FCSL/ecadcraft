@@ -33,7 +33,7 @@ pub(super) fn cells_of_segment(page: PageId, a: Pt, b: Pt) -> Vec<Cell> {
 
 /// The per-page grid of route segments and free route ends.
 #[derive(Debug, Clone, Default)]
-pub struct Grid {
+pub(crate) struct Grid {
     segments: HashMap<Cell, BTreeSet<(RouteId, usize)>>,
     ends: HashMap<Cell, BTreeSet<(RouteId, End)>>,
     /// What each route put in the grid, to take it out again.

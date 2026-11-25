@@ -14,10 +14,10 @@ use crate::shell::app::App;
 
 /// Accessible labels.
 pub(crate) const COMMANDS_TAB: &str = "Commands";
-pub const CLOSE: &str = "Close the Text panel";
+pub(crate) const CLOSE: &str = "Close the Text panel";
 
 /// Draw the Text panel in `rect`.
-pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
     let close = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.text.head", |ui| {
         ui.horizontal_centered(|ui| {

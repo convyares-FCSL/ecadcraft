@@ -40,6 +40,9 @@ rayon = "1.12"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+unreachable_pub = "deny"
+private_interfaces = "deny"
+private_bounds = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "warn"

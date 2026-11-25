@@ -13,33 +13,33 @@ pub(crate) const LABEL_W: f32 = ecad_widgets::tokens::size::LABEL_COLUMN;
 /// A row's height (a value box is `size::CONTROL_SMALL`, centred in it).
 pub(crate) const FIELD_H: f32 = ecad_widgets::tokens::size::CONTROL;
 
-pub fn font(ui: &egui::Ui, style: ecad_widgets::tokens::ui_type::TypeStyle) -> egui::FontId {
+pub(crate) fn font(ui: &egui::Ui, style: ecad_widgets::tokens::ui_type::TypeStyle) -> egui::FontId {
     ecad_widgets::fonts::font(ui.ctx(), style)
 }
 
-pub fn text() -> Color32 {
+pub(crate) fn text() -> Color32 {
     ecad_widgets::color(ecad_widgets::SHELL.text)
 }
-pub fn text_2() -> Color32 {
+pub(crate) fn text_2() -> Color32 {
     ecad_widgets::color(ecad_widgets::SHELL.text_2)
 }
-pub fn text_3() -> Color32 {
+pub(crate) fn text_3() -> Color32 {
     ecad_widgets::color(ecad_widgets::SHELL.text_3)
 }
-pub fn raised() -> Color32 {
+pub(crate) fn raised() -> Color32 {
     ecad_widgets::color(ecad_widgets::SHELL.raised)
 }
-pub fn line() -> Color32 {
+pub(crate) fn line() -> Color32 {
     ecad_widgets::color(ecad_widgets::SHELL.line)
 }
 
 /// Text in a style and colour.
-pub fn rich(ui: &egui::Ui, s: impl Into<String>, style: ui_type::TypeStyle, colour: Color32) -> RichText {
+pub(crate) fn rich(ui: &egui::Ui, s: impl Into<String>, style: ui_type::TypeStyle, colour: Color32) -> RichText {
     RichText::new(s).font(font(ui, style)).color(colour)
 }
 
 /// A hairline across the panel (between sections), from edge to edge of `full`.
-pub fn rule(ui: &mut egui::Ui, full: egui::Rangef) {
+pub(crate) fn rule(ui: &mut egui::Ui, full: egui::Rangef) {
     ecad_widgets::panel::hairline(ui, full);
 }
 
@@ -51,7 +51,7 @@ pub fn section_name(id: &str) -> String {
 /// A titled section that folds: `˅ Title ......... summary`. `folded` holds the ids of the folded
 /// sections (a section starts folded when `start_folded` and it has never been toggled; the set
 /// then holds `!id` for an unfolded one). Returns whether it is open.
-pub fn section(
+pub(crate) fn section(
     ui: &mut egui::Ui, folded: &mut BTreeSet<String>, full: egui::Rangef, id: &str, title: &str, summary: &str, start_folded: bool,
     body: impl FnOnce(&mut egui::Ui),
 ) -> bool {
@@ -89,7 +89,7 @@ pub(crate) fn ellipsis(text: &str, n: usize) -> String {
 }
 
 /// A row: the grey label in its column, then `add` in the rest.
-pub fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+pub(crate) fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     ui.horizontal(|ui| {
         ui.set_min_height(FIELD_H);
         ui.spacing_mut().item_spacing.x = 0.0;
@@ -101,7 +101,7 @@ pub fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) ->
 }
 
 /// A value read from the drawing: grey text in the value column.
-pub fn read(ui: &mut egui::Ui, label: &str, value: &str, name: &str) -> Response {
+pub(crate) fn read(ui: &mut egui::Ui, label: &str, value: &str, name: &str) -> Response {
     row(ui, label, |ui| {
         let r = ui.add(egui::Label::new(rich(ui, value, ui_type::BODY, text_2())).truncate());
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, name));
@@ -111,7 +111,7 @@ pub fn read(ui: &mut egui::Ui, label: &str, value: &str, name: &str) -> Response
 
 /// The box a value set here sits in (`ecad_widgets::panel::field_box`), `w` wide in a row's height;
 /// returns the box.
-pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
+pub(crate) fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
     let (rect, _) = ui.allocate_exact_size(vec2(w, FIELD_H), Sense::hover());
     ecad_widgets::panel::field_box(ui, rect, "").0
 }
@@ -119,14 +119,14 @@ pub fn field_box(ui: &mut egui::Ui, w: f32) -> Rect {
 /// A text entry (`ecad_widgets::control::TextEntry`) with an optional grey `hint` at its right
 /// (`auto`, `from page`); `invalid` marks it (the caller shows the message under the row).
 /// Returns the edit's response.
-pub fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
+pub(crate) fn input(ui: &mut egui::Ui, buf: &mut String, placeholder: &str, hint: &str, name: &str, invalid: bool) -> Response {
     ecad_widgets::control::TextEntry::new(buf, name).placeholder(placeholder).hint(hint).invalid(invalid.then_some("")).show(ui)
 }
 
 /// A segmented control as wide as the row (`ecad_widgets::prim::Segmented`). `enabled` false shows it
 /// read from the drawing (no clicks); `why` is its tooltip. Each segment is named
 /// `<name>.<its text in lower case>`. Returns the segment clicked, also the selected one.
-pub fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, enabled: bool, name: &str, why: &str) -> Option<usize> {
+pub(crate) fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, enabled: bool, name: &str, why: &str) -> Option<usize> {
     // Out of range when nothing is selected, so no segment shows as chosen.
     let mut i = selected.unwrap_or(items.len());
     ecad_widgets::prim::Segmented::new(&mut i, items).fill_width().read_only(!enabled).name(name).hover_text(why).show(ui).clicked
@@ -134,7 +134,7 @@ pub fn segmented(ui: &mut egui::Ui, items: &[&str], selected: Option<usize>, ena
 
 /// A small button (secondary, or primary for a check's first fix); `disabled` gives the reason it
 /// does nothing yet.
-pub fn button(ui: &mut egui::Ui, label: &str, primary: bool, disabled: Option<&str>) -> Response {
+pub(crate) fn button(ui: &mut egui::Ui, label: &str, primary: bool, disabled: Option<&str>) -> Response {
     let kind = if primary { ecad_widgets::prim::Kind::Primary } else { ecad_widgets::prim::Kind::Secondary };
     let mut b = ecad_widgets::prim::Button::new(label).kind(kind).small();
     if let Some(why) = disabled {
@@ -145,7 +145,7 @@ pub fn button(ui: &mut egui::Ui, label: &str, primary: bool, disabled: Option<&s
 
 /// A one-line status pill (`ecad_widgets::panel::status_pill`): a tick or a dot, then the words, then
 /// `after` in the label grey.
-pub fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: &str) -> Response {
+pub(crate) fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: &str) -> Response {
     ui.horizontal(|ui| {
         let tone = if ok { ecad_widgets::prim::Tone::Ok } else { ecad_widgets::prim::Tone::Error };
         let r = ecad_widgets::panel::status_pill(ui, tone, words, name);

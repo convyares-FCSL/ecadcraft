@@ -7,7 +7,7 @@ use crate::shell::DEVELOPER_SWITCH;
 use crate::shell::app::App;
 
 /// Draw the section.
-pub fn show(t: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui) {
     let mut on = t.shell.state.cad_chrome;
     ui.checkbox(&mut on, DEVELOPER_SWITCH).on_hover_text(
         "CADCraft's menus, toolbar, Tool Sets, layers, layouts and command line, inside the main view. Also --cad-ui or ui.cadchrome.",

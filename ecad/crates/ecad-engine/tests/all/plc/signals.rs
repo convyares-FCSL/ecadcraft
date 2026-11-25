@@ -12,12 +12,12 @@ use crate::common::H;
 
 /// The generic tag table of fixture P56 (design 056 §13): `%Q2.2` is `Valve_In`, `%Q3.0` is
 /// missing, `%Q3.4` is `Spare_Out4`, `%I8.0` is `Door_Sw`, and 300 memory tags.
-pub const P56_TAGS: &str = include_str!("../../../../../tests/fixtures/plc/P56-tags.csv");
+pub(crate) const P56_TAGS: &str = include_str!("../../../../../tests/fixtures/plc/P56-tags.csv");
 /// The same as a spreadsheet saves it: `;`, a BOM, capitalised headers.
-pub const P56_TAGS_B: &str = include_str!("../../../../../tests/fixtures/plc/P56-tags-b.csv");
+pub(crate) const P56_TAGS_B: &str = include_str!("../../../../../tests/fixtures/plc/P56-tags-b.csv");
 
 /// -A03's channels 0–8 as board 2.03: (tag, description).
-pub const A03: [(&str, &str); 9] = [
+pub(crate) const A03: [(&str, &str); 9] = [
     ("Fan_On", "Fan contactor on"),
     ("Heater_On", "Heater relay on"),
     ("Valve_Inlet", "Inlet valve open"),
@@ -33,7 +33,7 @@ pub const A03: [(&str, &str); 9] = [
 /// DQ card `-A03` in slot 2 with channels 0–8 wired to lamps (channel 2 through terminal `-X01`),
 /// an AI, an AO and an RTD card; the rack in the `percent` style with outputs from byte 2, so
 /// `-A03` is `%Q2.0–%Q3.7`; -A03's tags and descriptions as the board.
-pub fn p56_lines() -> Vec<String> {
+pub(crate) fn p56_lines() -> Vec<String> {
     let mut v = vec![r#"place {"symbol":"plccpu","at":[30,250]}"#.to_string()];
     for (i, key) in ["plcdi", "plcdq", "plcai", "plcao", "plcrtd"].iter().enumerate() {
         v.push(format!(r#"place {{"symbol":"{key}","at":[{},250]}}"#, 70 + 40 * i));

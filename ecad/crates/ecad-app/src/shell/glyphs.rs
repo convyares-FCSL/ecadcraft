@@ -10,7 +10,7 @@ fn stroke(c: Color32) -> Stroke {
 }
 
 /// A push pin: a head, a collar and a needle, upright in `r`.
-pub fn pin(p: &Painter, r: Rect, c: Color32) {
+pub(crate) fn pin(p: &Painter, r: Rect, c: Color32) {
     let (cx, w, h) = (r.center().x, r.width(), r.height());
     let top = r.top() + h * 0.12;
     let head = Rect::from_min_max(pos2(cx - w * 0.2, top), pos2(cx + w * 0.2, top + h * 0.38));
@@ -21,7 +21,7 @@ pub fn pin(p: &Painter, r: Rect, c: Color32) {
 }
 
 /// List view: three lines.
-pub fn list(p: &Painter, r: Rect, c: Color32) {
+pub(crate) fn list(p: &Painter, r: Rect, c: Color32) {
     let r = r.shrink(r.width() * 0.15);
     for i in 0..3 {
         let y = r.top() + r.height() * (0.18 + 0.32 * i as f32);
@@ -54,7 +54,7 @@ pub(crate) fn checkbox(p: &Painter, r: Rect, on: bool, accent: Color32, line: Co
 }
 
 /// A tick.
-pub fn tick(p: &Painter, r: Rect, c: Color32) {
+pub(crate) fn tick(p: &Painter, r: Rect, c: Color32) {
     let a = pos2(r.left(), r.center().y);
     let b = pos2(r.left() + r.width() * 0.38, r.bottom() - r.height() * 0.1);
     let d = pos2(r.right(), r.top() + r.height() * 0.12);
@@ -63,7 +63,7 @@ pub fn tick(p: &Painter, r: Rect, c: Color32) {
 }
 
 /// A person: a head over shoulders (an author with no recorded name).
-pub fn person(p: &Painter, r: Rect, c: Color32) {
+pub(crate) fn person(p: &Painter, r: Rect, c: Color32) {
     let head = pos2(r.center().x, r.top() + r.height() * 0.3);
     p.circle_stroke(head, r.width() * 0.22, stroke(c));
     let shoulders =
@@ -97,7 +97,7 @@ pub(crate) fn thumbnail(p: &Painter, r: Rect, paper: Color32, ink: Color32, outl
 }
 
 /// A larger page preview (the page well's hover): frame, title block and the schematic sketch.
-pub fn preview(p: &Painter, r: Rect, paper: Color32, ink: Color32) {
+pub(crate) fn preview(p: &Painter, r: Rect, paper: Color32, ink: Color32) {
     p.rect_filled(r, 2.0, paper);
     let frame = r.shrink(6.0);
     p.rect_stroke(frame, 0.0, Stroke::new(1.0, ink), StrokeKind::Inside);

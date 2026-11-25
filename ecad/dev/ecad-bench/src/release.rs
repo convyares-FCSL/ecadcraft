@@ -76,7 +76,7 @@ fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<serde_js
 ///
 /// # Errors
 /// Opening, a refused command, or nothing to measure.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelease, String> {
+pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelease, String> {
     let dir = scratch.join("release-bench");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -176,7 +176,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRelea
 ///
 /// # Errors
 /// Opening, or a refused command.
-pub fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPrint, String> {
+pub(crate) fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPrint, String> {
     let dir = scratch.join("print-bench");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;

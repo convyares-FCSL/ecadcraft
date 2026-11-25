@@ -4,7 +4,7 @@ pub mod aid;
 pub mod devices;
 pub mod loose_part;
 pub mod plc;
-pub mod role;
+pub(crate) mod role;
 pub mod route;
 pub mod styles;
 pub mod title_block;

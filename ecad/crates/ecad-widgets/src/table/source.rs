@@ -207,7 +207,7 @@ impl Cell {
 }
 
 /// `12.5 mm`, `3`: a number with no trailing zeros, and its unit.
-pub fn number_text(v: f64, unit: &str) -> String {
+pub(crate) fn number_text(v: f64, unit: &str) -> String {
     let n = if v.is_finite() && v.fract() == 0.0 && v.abs() < 1e15 {
         format!("{}", v as i64)
     } else {

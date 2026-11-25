@@ -35,7 +35,7 @@ fn reference_style(s: &ProjectSettings) -> Option<Value<'_>> {
 }
 
 /// Digits an automatic tag number is padded to.
-pub static TAG_PADDING: Entry = Entry {
+pub(crate) static TAG_PADDING: Entry = Entry {
     key: mb::TAG_PADDING,
     label: "Tag number digits",
     group: "Tags",
@@ -47,7 +47,7 @@ pub static TAG_PADDING: Entry = Entry {
 };
 
 /// Digits a wire number is padded to.
-pub static WIRE_DIGITS: Entry = Entry {
+pub(crate) static WIRE_DIGITS: Entry = Entry {
     key: mb::WIRE_DIGITS,
     label: "Wire number digits",
     group: "Wire numbers",
@@ -59,7 +59,7 @@ pub static WIRE_DIGITS: Entry = Entry {
 };
 
 /// How label colours are written: IEC 60757 codes or three letters.
-pub static COLOUR_STYLE: Entry = Entry {
+pub(crate) static COLOUR_STYLE: Entry = Entry {
     key: mb::COLOUR_STYLE,
     label: "Wire colour codes",
     group: "Wire labels",
@@ -71,7 +71,7 @@ pub static COLOUR_STYLE: Entry = Entry {
 };
 
 /// What a new page's number adds to the one before it.
-pub static PAGE_NUMBER_STEP: Entry = Entry {
+pub(crate) static PAGE_NUMBER_STEP: Entry = Entry {
     key: mb::PAGE_NUMBER_STEP,
     label: "Page number step",
     group: "Pages",
@@ -83,7 +83,7 @@ pub static PAGE_NUMBER_STEP: Entry = Entry {
 };
 
 /// How cross-references name a place.
-pub static REFERENCE_STYLE: Entry = Entry {
+pub(crate) static REFERENCE_STYLE: Entry = Entry {
     key: mb::REFERENCE_STYLE,
     label: "Reference style",
     group: "Pages",
@@ -95,4 +95,4 @@ pub static REFERENCE_STYLE: Entry = Entry {
 };
 
 /// Every entry of this file.
-pub static ENTRIES: &[&Entry] = &[&TAG_PADDING, &WIRE_DIGITS, &COLOUR_STYLE, &PAGE_NUMBER_STEP, &REFERENCE_STYLE];
+pub(crate) static ENTRIES: &[&Entry] = &[&TAG_PADDING, &WIRE_DIGITS, &COLOUR_STYLE, &PAGE_NUMBER_STEP, &REFERENCE_STYLE];

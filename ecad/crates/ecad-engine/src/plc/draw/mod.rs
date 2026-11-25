@@ -2,7 +2,7 @@
 //! fonts, and the PLC sheets drawn.
 
 pub mod card;
-pub mod sheets;
+pub(crate) mod sheets;
 
 use ecad_model::{Document, Op};
 

@@ -380,14 +380,14 @@ macro_rules! rating_field {
 pub mod contacts;
 pub mod fields;
 pub mod indicator;
-pub mod ip_code;
+pub(crate) mod ip_code;
 pub mod load;
 pub mod motor;
 pub mod power_supply;
 pub mod protection;
 pub mod sensor;
 pub mod switching;
-pub mod terminal_strip;
+pub(crate) mod terminal_strip;
 pub use contacts::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, PoleKind};
 
 pub use power_supply::{PowerSupply, Psu, Transformer};

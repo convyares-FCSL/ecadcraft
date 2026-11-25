@@ -16,9 +16,9 @@
 //! moved; the sample values when the draft's bindings or the page shown change. Editing the draft
 //! reads nothing from the project.
 
-pub mod canvas;
+pub(crate) mod canvas;
 pub mod draft;
-pub mod frame_popover;
+pub(crate) mod frame_popover;
 pub mod inspector;
 pub mod list;
 

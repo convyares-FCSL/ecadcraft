@@ -190,7 +190,7 @@ pub(crate) struct BlockPlace {
 
 impl BlockPlace {
     /// The alignment point of a line whose top is at `top`: left, centre or right of the box.
-    pub fn line_at(&self, top: f64) -> ecad_model::Pt {
+    pub(crate) fn line_at(&self, top: f64) -> ecad_model::Pt {
         let x = match self.halign {
             TextHAlign::Right => self.rect.1.x,
             TextHAlign::Center => (self.rect.0.x + self.rect.1.x) / 2.0,

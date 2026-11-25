@@ -170,7 +170,7 @@ pub(crate) fn snap_point(p: (f64, f64), l: &TitleBlockLayout, on: bool) -> ((f64
 }
 
 /// The top item at `p` (mm), within `tol` mm.
-pub fn pick(l: &TitleBlockLayout, p: (f64, f64), tol: f64) -> Option<usize> {
+pub(crate) fn pick(l: &TitleBlockLayout, p: (f64, f64), tol: f64) -> Option<usize> {
     l.items.iter().enumerate().rev().find_map(|(i, item)| match item {
         BlockItem::Line { a, b, .. } => (segment_distance(p, *a, *b) <= tol).then_some(i),
         _ => item.bounds().filter(|r| p.0 >= r.x - tol && p.0 <= r.right() + tol && p.1 >= r.y - tol && p.1 <= r.top() + tol).map(|_| i),
@@ -215,7 +215,7 @@ fn set_rect(item: &mut BlockItem, r: BRect) {
 }
 
 /// The text shown for a field: the sample value, or its binding's name in grey.
-pub fn field_text(
+pub(crate) fn field_text(
     sample: Option<&Sample>, on: bool, b: &ecad_model::objects::title_block::Binding, if_empty: &ecad_model::objects::title_block::IfEmpty,
 ) -> (String, bool) {
     match sample.filter(|_| on) {
@@ -427,7 +427,7 @@ fn tag_of(item: &BlockItem) -> String {
 }
 
 /// Draw the canvas and handle the tools; returns what the window must do.
-pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_model::palette::Sheet, writable: bool) -> Vec<Act> {
+pub(crate) fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_model::palette::Sheet, writable: bool) -> Vec<Act> {
     let s = ecad_widgets::SHELL;
     let mut acts = Vec::new();
     let body = Rect::from_min_max(pos2(main.left() + crate::title_blocks::list::LIST_W, main.top() + browser::TABS_H), main.max);

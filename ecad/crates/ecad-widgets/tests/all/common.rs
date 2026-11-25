@@ -4,7 +4,7 @@ use egui_kittest::Harness;
 
 /// A harness drawing `app` each frame over `state`, with ECAD's fonts installed in the first
 /// frame (as the desktop app installs them on top of CADCraft's set) and ECAD's style applied.
-pub fn harness<'a, S>(mut app: impl FnMut(&mut egui::Ui, &mut S) + 'a, state: S) -> Harness<'a, S> {
+pub(crate) fn harness<'a, S>(mut app: impl FnMut(&mut egui::Ui, &mut S) + 'a, state: S) -> Harness<'a, S> {
     let mut first = true;
     let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
         move |ui, s| {
@@ -21,7 +21,7 @@ pub fn harness<'a, S>(mut app: impl FnMut(&mut egui::Ui, &mut S) + 'a, state: S)
 }
 
 /// Every stroke width in the last frame's shapes that is drawn in `color`.
-pub fn strokes_in(h: &Harness<'_, impl Sized>, color: egui::Color32) -> Vec<f32> {
+pub(crate) fn strokes_in(h: &Harness<'_, impl Sized>, color: egui::Color32) -> Vec<f32> {
     let mut out = Vec::new();
     for clipped in &h.output().shapes {
         collect(&clipped.shape, color, &mut out);

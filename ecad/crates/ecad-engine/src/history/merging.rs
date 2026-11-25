@@ -54,11 +54,11 @@ pub(crate) struct Sides {
 
 impl Sides {
     /// The parent (`main`) and the child (`branch`).
-    pub fn parent(&self) -> BranchId {
+    pub(crate) fn parent(&self) -> BranchId {
         if self.update { self.source } else { self.target }
     }
 
-    pub fn child(&self) -> BranchId {
+    pub(crate) fn child(&self) -> BranchId {
         if self.update { self.target } else { self.source }
     }
 
@@ -591,10 +591,10 @@ fn prep_latest_revision(prep: &Prepared) -> String {
 }
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<UndomergeParams>("undomerge")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<UndomergeParams>("undomerge")];
 
 /// The commands this module adds.
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("merge", "Merge", typed::<MergeParams>).noundo(),
         CommandSpec::new("undomerge", "Undo Merge", typed::<UndomergeParams>).noundo(),

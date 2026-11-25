@@ -36,7 +36,7 @@ fn calls(line: &str) -> bool {
 }
 
 /// The guard's problems, if any.
-pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut by_file: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     let mut paths = Vec::new();

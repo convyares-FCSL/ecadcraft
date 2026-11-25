@@ -15,21 +15,21 @@
 //! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
-pub mod bom;
+pub(crate) mod bom;
 pub mod cables;
 pub mod connectors;
 pub mod container;
 pub mod generate;
-pub mod history;
+pub(crate) mod history;
 pub mod measure;
 pub mod pages;
-pub mod plc;
+pub(crate) mod plc;
 pub mod ratings;
-pub mod release;
+pub(crate) mod release;
 pub mod report;
-pub mod reports;
+pub(crate) mod reports;
 pub mod rich;
-pub mod strips;
+pub(crate) mod strips;
 pub mod styles;
 pub mod symbols;
 pub mod text;

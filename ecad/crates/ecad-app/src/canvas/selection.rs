@@ -9,7 +9,7 @@ use ecad_engine::project::Mapped;
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 
 /// Most selected objects looked at.
-pub const MAX_LOOKED_AT: usize = 256;
+pub(crate) const MAX_LOOKED_AT: usize = 256;
 /// Most placements listed.
 pub(crate) const MAX_PLACEMENTS: usize = 1_000;
 

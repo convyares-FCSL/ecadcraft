@@ -84,7 +84,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 }
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
-pub fn bars(code: &str) -> Vec<ecad_model::palette::Color> {
+pub(crate) fn bars(code: &str) -> Vec<ecad_model::palette::Color> {
     match ecad_model::objects::wire::Colours::parse(code)
         .and_then(|c| ecad_electrical::cables::words::wire_colours(&c, &ecad_model::palette::sheet::PAPER))
     {
@@ -155,12 +155,12 @@ const PITCH: f32 = 34.0;
 const END_W: f32 = 300.0;
 
 /// The height the drawing takes for `n` cores.
-pub fn height(n: usize) -> f32 {
+pub(crate) fn height(n: usize) -> f32 {
     (n.max(1) as f32) * PITCH + 120.0
 }
 
 /// Draw `d` in the width available; `swapped` draws the field end at the left.
-pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
+pub(crate) fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     let s = ecad_widgets::SHELL;
     let (area, resp) = ui.allocate_exact_size(vec2(ui.available_width(), height(d.cores.len())), Sense::hover());
     let info = format!("{} drawn end to end, {} cores", d.tag, d.cores.len());

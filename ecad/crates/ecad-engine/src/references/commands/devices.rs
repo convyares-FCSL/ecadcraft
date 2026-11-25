@@ -14,7 +14,7 @@ use crate::commands::input::{Command, Typed};
 use crate::commands::on_any_page;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<RefgotoParams>("refgoto")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<RefgotoParams>("refgoto")];
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::typed::<RefgotoParams>).noundo()]

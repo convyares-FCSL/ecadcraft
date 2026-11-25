@@ -19,7 +19,7 @@ pub(crate) const GO_TO_END: &str = "Go to";
 pub(crate) const SET_GLAND: &str = "Set gland";
 
 /// The two buttons of a cable fix, when it has two.
-pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
+pub(crate) fn pair(f: Fix) -> Option<[&'static str; 2]> {
     match f {
         Fix::AssignCable(_) => Some([ASSIGN_IN_DRAWING, crate::checks::panel::REMOVE]),
         Fix::UseDrawing(..) => Some([USE_THE_DRAWING, GO_TO_END]),
@@ -28,7 +28,7 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
 }
 
 /// The button name of a cable fix with one button.
-pub fn single(f: Fix) -> &'static str {
+pub(crate) fn single(f: Fix) -> &'static str {
     match f {
         Fix::ShowCableField(_, cables::CableField::Gland(_)) => SET_GLAND,
         _ => crate::checks::panel::SHOW,

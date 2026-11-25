@@ -5,17 +5,17 @@
 //! Each command is a thin shim: its params struct reads the JSON, the rules in
 //! [`ecad_electrical::plc::commands`] decide, and the shim commits the ops and answers in JSON.
 
-pub mod channels;
-pub mod page;
+pub(crate) mod channels;
+pub(crate) mod page;
 
 use cadcraft_engine::CommandSpec;
 
 use crate::commands::input::{Typed, typed};
 
 /// The PLC commands with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<channels::PlcchannelsParams>("plcchannels"), Typed::of::<page::PlcpageParams>("plcpage")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<channels::PlcchannelsParams>("plcchannels"), Typed::of::<page::PlcpageParams>("plcpage")];
 
 /// The PLC commands that place drawing.
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("plcchannels", "Place Channels", typed::<channels::PlcchannelsParams>).noundo()]
 }

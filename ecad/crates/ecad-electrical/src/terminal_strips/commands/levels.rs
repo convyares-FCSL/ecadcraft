@@ -214,7 +214,7 @@ pub(crate) struct ToPosition {
 
 impl ToPosition {
     /// The echo after the commit.
-    pub fn message(&self) -> String {
+    pub(crate) fn message(&self) -> String {
         let mut message = format!("{}: the fuse terminal is now a fuse position.", self.label);
         if !self.lost.is_empty() {
             message.push_str(&format!(" Not kept: {}.", self.lost.join(", ")));

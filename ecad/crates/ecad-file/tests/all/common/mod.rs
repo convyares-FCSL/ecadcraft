@@ -7,12 +7,12 @@
 
 use ecad_model::*;
 
-pub const SEED: u64 = 0x5EED_0001;
-pub const PROJECT: ProjectId = ProjectId(0x0123_4567_89ab_cdef_0011_2233_4455_6677);
-pub const LIBRARY: LibraryId = LibraryId(0x00aa_00bb_00cc_00dd_00ee_00ff_0011_0022);
-pub const WRITER: &str = "ecad-file tests";
+pub(crate) const SEED: u64 = 0x5EED_0001;
+pub(crate) const PROJECT: ProjectId = ProjectId(0x0123_4567_89ab_cdef_0011_2233_4455_6677);
+pub(crate) const LIBRARY: LibraryId = LibraryId(0x00aa_00bb_00cc_00dd_00ee_00ff_0011_0022);
+pub(crate) const WRITER: &str = "ecad-file tests";
 
-pub struct Fixture {
+pub(crate) struct Fixture {
     pub ledger: Ledger,
     pub ids: IdAllocator,
     pub page: PageId,
@@ -26,11 +26,11 @@ pub struct Fixture {
     pub time: u64,
 }
 
-pub fn style(layer: LayerId) -> Style {
+pub(crate) fn style(layer: LayerId) -> Style {
     Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
 }
 
-pub fn coil(graphics_scale: f64) -> Definition {
+pub(crate) fn coil(graphics_scale: f64) -> Definition {
     Definition {
         bridges: Vec::new(),
         name: "Coil".into(),
@@ -48,20 +48,20 @@ pub fn coil(graphics_scale: f64) -> Definition {
 }
 
 /// A definition as embedded from library `LIBRARY`, version `seq`.
-pub fn from_library(mut d: Definition, def: DefinitionId, seq: u64) -> Definition {
+pub(crate) fn from_library(mut d: Definition, def: DefinitionId, seq: u64) -> Definition {
     let hash = ecad_file::definition_hash(&d).unwrap();
     d.origin = Some(Origin { library: LIBRARY, definition: def, library_seq: seq, content_hash: hash });
     d
 }
 
 impl Fixture {
-    pub fn commit(&mut self, label: &str, ops: Vec<Op>) {
+    pub(crate) fn commit(&mut self, label: &str, ops: Vec<Op>) {
         self.time += 1000;
         self.ledger.commit_at(Author::User, label, ops, Some(self.time)).unwrap();
     }
 
     /// Place an instance of `def` as component with two terminals; returns (component, terminals).
-    pub fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [ConnectionPointId; 2]) {
+    pub(crate) fn place(&mut self, def: DefinitionId, at: Pt, rotation: f64) -> (DeviceId, [ConnectionPointId; 2]) {
         let (c, t1, t2, item, rep): (DeviceId, ConnectionPointId, ConnectionPointId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
@@ -114,7 +114,7 @@ impl Fixture {
     }
 }
 
-pub fn fixture() -> Fixture {
+pub(crate) fn fixture() -> Fixture {
     let mut ids = IdAllocator::seeded(SEED ^ 0xA11C);
     let (page, layer, d1, d2): (PageId, LayerId, DefinitionId, DefinitionId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let mut f = Fixture {
@@ -430,12 +430,12 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
 
 /// Write `ledger`'s whole history as a new project file in memory and open it again from its
 /// bytes (the real format, no disk). The ledger is marked persisted.
-pub fn reopened(ledger: &mut Ledger) -> ecad_file::Opened {
+pub(crate) fn reopened(ledger: &mut Ledger) -> ecad_file::Opened {
     ecad_file::Project::open(ecad_file::Store::from_bytes(written(ledger)).unwrap(), SEED, WRITER).unwrap()
 }
 
 /// The bytes of a new project file in memory holding `ledger`'s whole history.
-pub fn written(ledger: &mut Ledger) -> Vec<u8> {
+pub(crate) fn written(ledger: &mut Ledger) -> Vec<u8> {
     let backend = ecad_store::MemoryBackend::new();
     let store = ecad_file::Store::with_backend(backend.clone()).unwrap();
     let (p, _) = ecad_file::Project::create(store, PROJECT, ledger, Some(1_760_000_000_000), WRITER, 16).unwrap();

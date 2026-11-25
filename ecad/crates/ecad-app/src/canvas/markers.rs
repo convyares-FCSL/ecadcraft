@@ -37,7 +37,7 @@ fn weight(xf: &Xf, mm: f32) -> f32 {
 }
 
 /// Paint the page's markers.
-pub fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_model::palette::Sheet, t: &App, page: &PageData) {
+pub(crate) fn paint(p: &egui::Painter, xf: &Xf, sheet: &ecad_model::palette::Sheet, t: &App, page: &PageData) {
     for m in &page.painted {
         match *m {
             Painted::Error(at) => error_disc(p, screen(xf, at), ecad_widgets::color(sheet.error)),

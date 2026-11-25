@@ -15,16 +15,17 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
 }
 
 /// How many other ends an arrow lists before `+n`.
-pub static PLACES_MAX: Entry = entry("continuation.places.max", "Other ends shown before +n", Kind::Number { min: 1.0, max: 10.0 });
+pub(crate) static PLACES_MAX: Entry = entry("continuation.places.max", "Other ends shown before +n", Kind::Number { min: 1.0, max: 10.0 });
 /// The gap between an arrow's tip and its reference text.
-pub static REFERENCE_GAP: Entry = entry("continuation.reference.gap", "Gap from arrow tip to reference", Kind::Length { min: 0.0, max: 10.0 });
+pub(crate) static REFERENCE_GAP: Entry = entry("continuation.reference.gap", "Gap from arrow tip to reference", Kind::Length { min: 0.0, max: 10.0 });
 /// The most space between neighbouring arrows under one caption.
-pub static CAPTION_RUN_GAP: Entry =
+pub(crate) static CAPTION_RUN_GAP: Entry =
     entry("continuation.caption.run_gap", "Most space between arrows under one caption", Kind::Length { min: 1.0, max: 200.0 });
 /// The gap between the farthest reference text and the caption bracket.
-pub static CAPTION_GAP: Entry = entry("continuation.caption.gap", "Gap from references to caption bracket", Kind::Length { min: 0.0, max: 20.0 });
+pub(crate) static CAPTION_GAP: Entry =
+    entry("continuation.caption.gap", "Gap from references to caption bracket", Kind::Length { min: 0.0, max: 20.0 });
 /// The length of the ticks at the bracket's ends.
-pub static CAPTION_TICK: Entry = entry("continuation.caption.tick", "Caption bracket end tick", Kind::Length { min: 0.0, max: 10.0 });
+pub(crate) static CAPTION_TICK: Entry = entry("continuation.caption.tick", "Caption bracket end tick", Kind::Length { min: 0.0, max: 10.0 });
 
 /// Every entry of this file, in the order `defaults` lists them.
-pub static ENTRIES: &[&Entry] = &[&PLACES_MAX, &REFERENCE_GAP, &CAPTION_RUN_GAP, &CAPTION_GAP, &CAPTION_TICK];
+pub(crate) static ENTRIES: &[&Entry] = &[&PLACES_MAX, &REFERENCE_GAP, &CAPTION_RUN_GAP, &CAPTION_GAP, &CAPTION_TICK];

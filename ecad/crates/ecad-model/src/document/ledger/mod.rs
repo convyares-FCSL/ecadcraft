@@ -11,7 +11,7 @@ mod read;
 mod stacks;
 #[cfg(test)]
 mod tests;
-pub mod types;
+pub(crate) mod types;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

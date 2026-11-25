@@ -17,10 +17,10 @@ use crate::commands::{err, on_project};
 use ecad_electrical::commands::input::Bounded;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
+pub(crate) const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
 
 /// The commands this module adds (registered in [`crate::lanes`]).
-pub fn specs() -> Vec<CommandSpec> {
+pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![CommandSpec::new("deletepage", "Delete Page", crate::commands::input::typed::<DeletepageParams>).noundo()]
 }
 

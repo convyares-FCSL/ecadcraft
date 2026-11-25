@@ -31,7 +31,7 @@ const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 const SP: &[Level] = &[Level::Standard, Level::Project];
 
 /// The stored word for "no separator".
-pub const NO_SEPARATOR: &str = "none";
+pub(crate) const NO_SEPARATOR: &str = "none";
 
 fn separator_ok(t: &str) -> bool {
     t.eq_ignore_ascii_case(NO_SEPARATOR) || (t.chars().count() <= 3 && !t.chars().any(|c| c.is_whitespace() || c.is_ascii_alphanumeric() || c == ','))
@@ -63,7 +63,7 @@ fn names3_ok(t: &str) -> bool {
     names_ok(t, 3)
 }
 
-pub static SEPARATOR: Entry = Entry {
+pub(crate) static SEPARATOR: Entry = Entry {
     key: "terminal_block.level.separator",
     label: "Level separator in terminal labels",
     group: GROUP,
@@ -82,7 +82,7 @@ fn prefix_ok(t: &str) -> bool {
 macro_rules! prefixes {
     ($($name:ident = $var:ident $key:literal, $symbol:literal;)*) => {
         $(
-            pub static $name: Entry = Entry {
+            pub(crate) static $name: Entry = Entry {
                 key: concat!("terminal_block.", $key, ".prefix"),
                 label: concat!("Tag prefix: ", $symbol),
                 group: "Tag prefixes",
@@ -99,11 +99,8 @@ macro_rules! prefixes {
             };
         )*
 
-        /// The prefix entries of this brief's starters.
-        pub static PREFIXES: &[&Entry] = &[$(&$name),*];
-
-        /// The prefix entry of this brief's starter `key`.
-        pub fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
+        /// The prefix entry of the terminal starter `key`.
+        pub(crate) fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
             match key {
                 $(crate::symbols::StarterKey::$var => Some(&$name),)*
                 _ => None,
@@ -138,7 +135,7 @@ prefixes! {
 macro_rules! levels {
     ($($name:ident = $code:literal, $parse:ident, $label:literal;)*) => {
         $(
-            pub static $name: Entry = Entry {
+            pub(crate) static $name: Entry = Entry {
                 key: concat!("terminal_block.", $code, ".levels"),
                 label: $label,
                 group: GROUP,
@@ -151,7 +148,7 @@ macro_rules! levels {
         )*
 
         /// The level-names entry of a multi-level type, by registry code.
-        pub fn levels_entry(code: &str) -> Option<&'static Entry> {
+        pub(crate) fn levels_entry(code: &str) -> Option<&'static Entry> {
             match code {
                 $($code => Some(&$name),)*
                 _ => None,
@@ -171,7 +168,7 @@ levels! {
 macro_rules! descriptions {
     ($($name:ident = $code:literal, $builtin:literal;)*) => {
         $(
-            pub static $name: Entry = Entry {
+            pub(crate) static $name: Entry = Entry {
                 key: concat!("terminal_block.", $code, ".description"),
                 label: concat!("BOM description: ", $builtin),
                 group: GROUP,
@@ -184,7 +181,7 @@ macro_rules! descriptions {
         )*
 
         /// The description entry of a type, by registry code.
-        pub fn description_entry(code: &str) -> Option<&'static Entry> {
+        pub(crate) fn description_entry(code: &str) -> Option<&'static Entry> {
             match code {
                 $($code => Some(&$name),)*
                 _ => None,
@@ -192,7 +189,7 @@ macro_rules! descriptions {
         }
 
         /// Every entry of this file, in the order `defaults` lists them.
-        pub static ENTRIES: &[&Entry] = &[
+        pub(crate) static ENTRIES: &[&Entry] = &[
             &SEPARATOR, &LEVELS_X2, &LEVELS_X2B, &LEVELS_X3, &LEVELS_LNPE, &LEVELS_SEN, $(&$name,)*
             &TERM2_1, &TERM2_2, &TERM2, &TERM2B_1, &TERM2B_2, &TERM2B, &TERM3_1, &TERM3_2, &TERM3_3, &TERM3,
             &TERMLNPE_1, &TERMLNPE_2, &TERMLNPE_3, &TERMLNPE, &TERMSENSOR_1, &TERMSENSOR_2, &TERMSENSOR_3, &TERMSENSOR,
@@ -215,7 +212,7 @@ descriptions! {
 
 /// Whether `key` is one of this file's keys a strip may hold (the separator, level names): what
 /// [`crate::terminal_strips`]'s update map watches on a strip and on the project.
-pub fn is_label_key(key: &str) -> bool {
+pub(crate) fn is_label_key(key: &str) -> bool {
     key == SEPARATOR.key || (ecad_model::naming::keys::in_area(key, ecad_model::naming::keys::Area::TerminalBlock) && key.ends_with(".levels"))
 }
 
@@ -224,7 +221,7 @@ pub fn is_label_key(key: &str) -> bool {
 ///
 /// # Errors
 /// A value the entry does not accept, in words.
-pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub(crate) fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     let e = crate::defaults::find(key).filter(|e| ecad_model::naming::keys::in_area(e.key, ecad_model::naming::keys::Area::TerminalBlock))?;
     Some(match value {
         None => Ok(None),

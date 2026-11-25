@@ -36,7 +36,6 @@ use serde_json::Value;
 mod clean;
 mod engine_guards;
 mod history_guards;
-mod pub_ratchet;
 mod starter_guards;
 mod types_guards;
 mod views_guards;
@@ -858,18 +857,6 @@ fn raw_control_places(rel: &str, text: &str) -> Vec<String> {
     places_matching(rel, text, RAW_CONTROL)
 }
 
-/// What is wrong with an entry of a ratchet allowlist that has `found` places against its
-/// `allowed` count, if anything: more is a violation (`fix` says what to do instead); fewer means
-/// lower the count, and none means remove the entry. `what` names the places, plural.
-fn ratchet_problem(path: &str, found: usize, allowed: usize, what: &str, fix: &str) -> Option<String> {
-    match found.cmp(&allowed) {
-        std::cmp::Ordering::Greater => Some(format!("{path}: {found} {what}, the allowlist allows {allowed}; {fix}")),
-        std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no {what} left; remove its allowlist entry")),
-        std::cmp::Ordering::Less => Some(format!("{path}: {found} {what}, fewer than the allowlist's {allowed}; lower the count")),
-        std::cmp::Ordering::Equal => None,
-    }
-}
-
 /// The lines of `text` (outside `//` comments) that contain one of `patterns`, as `rel:line: text`.
 fn places_matching(rel: &str, text: &str, patterns: &[&str]) -> Vec<String> {
     let code = strip_line_comments(text);
@@ -1077,7 +1064,6 @@ fn layers() -> Result<(), String> {
     v.extend(views_guards::violations(&meta)?);
     v.extend(engine_guards::violations(&meta)?);
     v.extend(starter_guards::violations(&meta)?);
-    v.extend(pub_ratchet::violations(&meta)?);
     v.extend(history_guards::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
@@ -1085,18 +1071,6 @@ fn layers() -> Result<(), String> {
     } else {
         Err(format!("layering violations:\n  {}", v.join("\n  ")))
     }
-}
-
-/// `cargo xtask pub-unreachable`: the `pub` items no other crate uses ([`pub_ratchet`]).
-fn pub_unreachable() -> Result<(), String> {
-    let meta = metadata()?;
-    for (krate, list) in pub_ratchet::unreachable(&meta)? {
-        println!("{krate}: {}", list.len());
-        for (file, line, name) in list {
-            println!("  {file}:{line}: {name}");
-        }
-    }
-    Ok(())
 }
 
 /// Paths quoted as `path` in the first column of the inventory tables.
@@ -1376,7 +1350,6 @@ fn main() -> ExitCode {
     let rest = args.get(1..).unwrap_or_default();
     let r = match args.first().map(String::as_str).unwrap_or_default() {
         "layers" => layers(),
-        "pub-unreachable" => pub_unreachable(),
         "patches" => patches(),
         "lint" => lint(),
         "ci" => ci(),
@@ -1752,15 +1725,6 @@ let c = ecad_widgets::color(SHELL.text);",
 fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
 ";
         assert_eq!(string_error_counts(text), (2, 1));
-    }
-
-    /// The ratchet message for each case.
-    #[test]
-    fn a_ratchet_count_only_falls() {
-        assert!(ratchet_problem("a.rs", 3, 3, "things", "fix").is_none());
-        assert!(ratchet_problem("a.rs", 4, 3, "things", "fix").is_some_and(|m| m.contains("allows 3")));
-        assert!(ratchet_problem("a.rs", 2, 3, "things", "fix").is_some_and(|m| m.contains("lower the count")));
-        assert!(ratchet_problem("a.rs", 0, 3, "things", "fix").is_some_and(|m| m.contains("remove")));
     }
 
     /// Direct OS access in Core is found where a name starts, outside comments and the

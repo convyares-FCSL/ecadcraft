@@ -26,8 +26,10 @@ pub mod last_write;
 pub mod undo_session;
 
 // Upstream's loopback control server, unchanged: the same bounds, token and
-// replies as CADCraft's own. `#[path]` is relative to this file's folder (`src/agent`).
+// replies as CADCraft's own, so its `pub` items stay as upstream wrote them.
+// `#[path]` is relative to this file's folder (`src/agent`).
 #[path = "../../../../../apps/cadcraft/src/control_server.rs"]
+#[allow(unreachable_pub)]
 mod control_server;
 
 use std::collections::{BTreeMap, VecDeque};

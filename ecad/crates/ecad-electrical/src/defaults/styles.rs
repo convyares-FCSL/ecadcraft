@@ -8,7 +8,7 @@ const GROUP: &str = "Styles";
 const SPO: &[Level] = &[Level::Standard, Level::Project, Level::Object];
 
 /// A conductor's wire category: S P O; the built-in `none` is no category.
-pub static WIRE_CATEGORY: Entry = Entry {
+pub(crate) static WIRE_CATEGORY: Entry = Entry {
     key: "wire.category",
     label: "Wire category",
     group: GROUP,
@@ -20,4 +20,4 @@ pub static WIRE_CATEGORY: Entry = Entry {
 };
 
 /// Every entry of this file, in the order `defaults` lists them.
-pub static ENTRIES: &[&Entry] = &[&WIRE_CATEGORY];
+pub(crate) static ENTRIES: &[&Entry] = &[&WIRE_CATEGORY];

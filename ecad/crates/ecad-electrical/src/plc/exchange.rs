@@ -27,7 +27,7 @@ use crate::plc::{CardData, iolist, kept::Plc, signals};
 /// The transaction label of an import.
 pub(crate) const IMPORT_LABEL: &str = "Import an I/O list";
 /// Longest `name` given with `text`.
-pub const MAX_NAME: usize = 255;
+pub(crate) const MAX_NAME: usize = 255;
 
 /// The normalised addresses of card `card`'s channels `idx`, with the rack's style and the card's
 /// word size read once per card (not once per channel).
@@ -65,7 +65,7 @@ pub(crate) fn data_type(t: crate::plc::rack::CardType) -> &'static str {
 
 /// What an export wrote and left out.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Export {
+pub(crate) struct Export {
     pub rows: Vec<TagRow>,
     pub no_tag: usize,
     pub no_address: usize,
@@ -158,7 +158,7 @@ pub(crate) fn read_tags(bytes: &[u8], format: Option<&'static dyn TagFormat>) ->
 
 /// What an import would set.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Fill {
+pub(crate) struct Fill {
     pub ops: Vec<Op>,
     pub tags: usize,
     pub descriptions: usize,
@@ -172,7 +172,7 @@ pub struct Fill {
 
 impl Fill {
     /// `9 tags and 9 descriptions set on -A03; 1 row at an address no card has (%I8.0).`
-    pub fn words(&self) -> String {
+    pub(crate) fn words(&self) -> String {
         let n = |k: usize, one: &str, many: &str| format!("{k} {}", if k == 1 { one } else { many });
         let mut s = if self.tags + self.descriptions == 0 {
             "Nothing to change".to_string()

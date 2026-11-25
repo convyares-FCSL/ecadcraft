@@ -18,7 +18,7 @@ use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_any_page, on_project};
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] =
+pub(crate) const TYPED: &[Typed] =
     &[Typed::of::<NewpageParams>("newpage"), Typed::of::<OpenpageParams>("openpage"), Typed::of::<EcadinspectParams>("ecadinspect")];
 
 /// Open `page` (or bring it to the front): its ID and document.

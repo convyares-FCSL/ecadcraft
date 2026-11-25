@@ -41,7 +41,7 @@ fn create(path: &Path, ledger: &Ledger) {
 }
 
 /// The marks as a build before brief 026 counted them (rule 1): no cable tags, no resets.
-pub fn rule_1(ops: &[Op], high: &mut HighWater) {
+pub(crate) fn rule_1(ops: &[Op], high: &mut HighWater) {
     let kept: Vec<Op> = ops
         .iter()
         .filter(|op| match op {

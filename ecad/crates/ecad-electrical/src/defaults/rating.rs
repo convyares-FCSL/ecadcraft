@@ -28,24 +28,24 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
 }
 
 /// The bases a subject may use.
-pub const BASES: &[&str] = &["datasheet", "table", "manual"];
+pub(crate) const BASES: &[&str] = &["datasheet", "table", "manual"];
 
 fn bundling_or_none(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case("none") || crate::devices::ratings::parse::bundling(s).is_some()
 }
 
-pub static WIRE_BASIS: Entry = entry("rating.wire_basis", "Panel wire basis", Kind::Choice(BASES));
-pub static CABLE_BASIS: Entry = entry("rating.cable_basis", "Field cable basis", Kind::Choice(BASES));
-pub static PANEL_TEMPERATURE: Entry = entry("rating.panel_temperature", "Panel temperature (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
-pub static AMBIENT: Entry = entry("rating.ambient", "Field ambient (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
+pub(crate) static WIRE_BASIS: Entry = entry("rating.wire_basis", "Panel wire basis", Kind::Choice(BASES));
+pub(crate) static CABLE_BASIS: Entry = entry("rating.cable_basis", "Field cable basis", Kind::Choice(BASES));
+pub(crate) static PANEL_TEMPERATURE: Entry = entry("rating.panel_temperature", "Panel temperature (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
+pub(crate) static AMBIENT: Entry = entry("rating.ambient", "Field ambient (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
 /// The project's rating table: none until the user enters or imports one.
-pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(&crate::styles::ratingtable::CATALOGUE));
+pub(crate) static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(&crate::styles::ratingtable::CATALOGUE));
 /// Not set: × 1.00 is used, with a warning.
-pub static BUNDLING: Entry = entry("rating.bundling", "Bundling", Kind::Parsed { max_chars: 32, parse: bundling_or_none });
-pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::devices::ratings::dataset::METHODS));
-pub static VOLTAGE: Entry = entry("rating.voltage", "Supply voltage (V)", Kind::Number { min: 1.0, max: 1000.0 });
-pub static SYSTEM: Entry = entry("rating.system", "Supply system", Kind::Choice(<SupplySystem as ecad_model::Word>::WORDS));
-pub static VD_LIMIT: Entry = entry("rating.vd_limit", "Volt-drop limit (%)", Kind::Number { min: 0.5, max: 20.0 });
+pub(crate) static BUNDLING: Entry = entry("rating.bundling", "Bundling", Kind::Parsed { max_chars: 32, parse: bundling_or_none });
+pub(crate) static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::devices::ratings::dataset::METHODS));
+pub(crate) static VOLTAGE: Entry = entry("rating.voltage", "Supply voltage (V)", Kind::Number { min: 1.0, max: 1000.0 });
+pub(crate) static SYSTEM: Entry = entry("rating.system", "Supply system", Kind::Choice(<SupplySystem as ecad_model::Word>::WORDS));
+pub(crate) static VD_LIMIT: Entry = entry("rating.vd_limit", "Volt-drop limit (%)", Kind::Number { min: 0.5, max: 20.0 });
 /// How far a motor's rated voltage may be from its supply's before Checks flags it.
 pub(crate) static SUPPLY_TOLERANCE: Entry = entry("rating.supply_tolerance", "Motor voltage tolerance (%)", Kind::Number { min: 0.0, max: 50.0 });
 
@@ -117,7 +117,7 @@ pub(crate) fn template_entry(group: DeviceGroup) -> Option<&'static Entry> {
 }
 
 /// Every entry of this file, in the order Standards ▸ Defaults lists them.
-pub static ENTRIES: &[&Entry] = &[
+pub(crate) static ENTRIES: &[&Entry] = &[
     &WIRE_BASIS,
     &CABLE_BASIS,
     &PANEL_TEMPERATURE,

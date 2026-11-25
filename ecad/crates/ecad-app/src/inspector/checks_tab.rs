@@ -62,7 +62,7 @@ fn sentence(r: &Row) -> String {
 
 /// One check as a card: its mark, its sentence (a click goes to it), its fix buttons (the first
 /// primary) and a go-to arrow.
-pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
+pub(crate) fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
     let width = ui.available_width();
     ui.add_space(space::M);
     let top = ui.cursor().top();
@@ -143,7 +143,9 @@ fn elsewhere_line(ui: &mut egui::Ui, r: &Row) -> bool {
 }
 
 /// The tab: the scope switch and counts, the cards, Elsewhere, and the footer.
-pub fn show(ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool, page: Option<PageId>, writable: bool, body: Rect) -> Vec<Action> {
+pub(crate) fn show(
+    ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool, page: Option<PageId>, writable: bool, body: Rect,
+) -> Vec<Action> {
     let mut out = Vec::new();
     if panel.building {
         ui.add_space(space::M);

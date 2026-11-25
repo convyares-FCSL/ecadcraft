@@ -38,7 +38,7 @@ pub struct Field<'a> {
 }
 
 /// Why a number field is invalid.
-pub const NOT_A_NUMBER: &str = "Not a number";
+pub(crate) const NOT_A_NUMBER: &str = "Not a number";
 
 impl<'a> Field<'a> {
     /// A field editing `text`; `label` is its accessible name.

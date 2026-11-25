@@ -15,7 +15,7 @@ const WORDS_FILE: &str = "crates/ecad-model/src/naming/words.rs";
 const BOOL_LITERALS: &[&str] = &["\"yes\"", "\"no\"", "\"true\"", "\"false\"", "\"on\"", "\"off\"", "\"y\"", "\"n\""];
 
 /// One guard: its name, what it finds, and the fix.
-pub struct Guard {
+pub(crate) struct Guard {
     pub name: &'static str,
     pub what: &'static str,
     pub fix: &'static str,
@@ -23,7 +23,7 @@ pub struct Guard {
 }
 
 /// How a guard finds its places in a file (comments and the trailing test module stripped).
-pub enum Scan {
+pub(crate) enum Scan {
     /// Whether one line, in file `rel`, is a place.
     Line(fn(rel: &str, line: &str) -> bool),
     /// The 0-based numbers of the lines that are places, from the whole file.
@@ -32,7 +32,7 @@ pub enum Scan {
 
 /// The guards; each is a ban.
 #[rustfmt::skip]
-pub const GUARDS: &[Guard] = &[
+pub(crate) const GUARDS: &[Guard] = &[
     Guard { name: "G2", what: "boolean words compared or matched", fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
     Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
     Guard { name: "G7", what: "angle conversions in Core or Engine outside units.rs", fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
@@ -119,7 +119,7 @@ const STORED_CRATE: &str = "crates/ecad-model/src/";
 
 /// The stored fields G13 leaves alone, as (file, field), and why. One entry, no count: a listed
 /// field that is no longer text fails until it is removed.
-pub const STORED_TEXT_FIELDS: (&[(&str, &str)], &str) = (
+pub(crate) const STORED_TEXT_FIELDS: (&[(&str, &str)], &str) = (
     &[
         ("crates/ecad-model/src/connectivity/wiring.rs", "name"),
         ("crates/ecad-model/src/connectivity/wiring.rs", "prefix"),
@@ -195,7 +195,7 @@ fn g13_all(rel: &str, code: &str) -> Vec<usize> {
 
 /// `text` up to its trailing `#[cfg(test)]` module, if it has one: the line `#[cfg(test)]`
 /// followed by a `mod` line.
-pub fn product_part(text: &str) -> &str {
+pub(crate) fn product_part(text: &str) -> &str {
     let mut offset = 0;
     let mut lines = text.split_inclusive('\n').peekable();
     while let Some(line) = lines.next() {
@@ -208,7 +208,7 @@ pub fn product_part(text: &str) -> &str {
 }
 
 /// The places of `guard` in file `rel` with contents `text`, as `rel:line: text`.
-pub fn places(guard: &Guard, rel: &str, text: &str) -> Vec<String> {
+pub(crate) fn places(guard: &Guard, rel: &str, text: &str) -> Vec<String> {
     let product = product_part(text);
     let code = super::strip_line_comments(product);
     let lines: Vec<usize> = match guard.scan {
@@ -220,7 +220,7 @@ pub fn places(guard: &Guard, rel: &str, text: &str) -> Vec<String> {
 
 /// Every guard's places over the product crates in `meta` (each must have none), and the entries of
 /// [`STORED_TEXT_FIELDS`] that are no longer stored text.
-pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut files: Vec<(String, String)> = Vec::new();
     for (_, class, dir, _) in super::classed_packages(meta)? {

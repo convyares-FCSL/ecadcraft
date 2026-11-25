@@ -44,7 +44,7 @@
 pub mod accessories;
 pub mod commands;
 pub mod cores;
-pub mod hover;
+pub(crate) mod hover;
 pub mod jumper_bars;
 pub mod pages;
 pub mod strip_model;

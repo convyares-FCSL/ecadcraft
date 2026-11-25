@@ -282,7 +282,7 @@ fn listed(table: &[(&str, &str)], found: Vec<(String, Vec<String>)>, what: &str,
 }
 
 /// The guard's problem, if any.
-pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
+pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut found = Vec::new();
     let mut fresh_found: Vec<(String, Vec<String>)> = Vec::new();

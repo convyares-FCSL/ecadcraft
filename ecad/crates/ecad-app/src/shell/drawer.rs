@@ -10,7 +10,7 @@ use crate::shell::Slots;
 use crate::shell::app::App;
 
 /// Draw the drawer, while a review or Compare is shown.
-pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
+pub(crate) fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
     let Some(rect) = slots.drawer else { return };
     let Some(title) = t.drawer_review_tab() else { return };
     let s = ecad_widgets::SHELL;

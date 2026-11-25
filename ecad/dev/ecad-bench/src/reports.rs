@@ -93,7 +93,7 @@ fn work(p: &ProjectHandle, s: &mut Session) -> usize {
 ///
 /// # Errors
 /// Opening, a refused command, or a missing page or device.
-pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredReports, String> {
+pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredReports, String> {
     let copy = scratch.join("reports.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
