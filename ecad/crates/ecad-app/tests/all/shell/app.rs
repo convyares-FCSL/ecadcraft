@@ -565,6 +565,36 @@ fn the_file_dialog_takes_typed_text_and_enter() {
     assert_eq!(t.status().unwrap().file.path, Some(d.path("typed.ecad")));
 }
 
+/// New and Open from the Project menu with a project open close it first, as Close does: an
+/// edited project is asked about, Discard closes it and the Open dialog (or a new project)
+/// follows; Cancel keeps the project and nothing follows. No notice sends the person elsewhere.
+#[test]
+fn new_and_open_close_the_open_project_first() {
+    use ecad_app::pages::project_panel::Action;
+    let mut t = new_app(None);
+    edit(&mut t);
+    t.panel_action(Action::OpenProject);
+    assert!(t.pending_close().is_some(), "unsaved changes are asked about first");
+    assert!(t.dialog().is_none() && t.notice().is_none());
+    // Cancel: the project stays and Open does not follow.
+    t.answer(Answer::Cancel);
+    t.after_logic();
+    assert!(t.project_open() && t.dialog().is_none() && t.notice().is_none());
+    // Discard: the project closes, then the Open dialog shows.
+    t.panel_action(Action::OpenProject);
+    t.answer(Answer::Discard);
+    t.after_logic();
+    assert!(!t.project_open());
+    assert!(matches!(t.dialog(), Some((DialogKind::Open, ..))), "{:?}", t.dialog());
+    t.cancel_dialog();
+    // New with an untouched project open: closed without a question, a new one follows.
+    t.panel_action(Action::NewProject);
+    assert!(t.project_open() && t.notice().is_none());
+    t.panel_action(Action::NewProject);
+    assert!(t.project_open() && t.pending_close().is_none() && t.notice().is_none(), "untouched: no question");
+    assert_eq!(t.status().unwrap().unsaved, 0);
+}
+
 /// A project always opens on Draw: after New or Open from another workspace, and at start
 /// whichever workspace was stored.
 #[test]

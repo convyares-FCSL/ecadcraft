@@ -222,6 +222,18 @@ pub struct Files {
     pub(crate) keep_open: Option<bool>,
     /// The home folder that `~` in typed paths stands for ([`crate::shell::host::Host::home`] by default).
     pub home: Option<PathBuf>,
+    /// What New or Open asked for while a project was open: done once the project has closed,
+    /// dropped when that close is cancelled.
+    pub(crate) after_close: Option<AfterClose>,
+}
+
+/// What follows the close that New or Open started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AfterClose {
+    /// Create a new project.
+    New,
+    /// Show the Open dialog.
+    Open,
 }
 
 /// The ECAD command field.
@@ -419,6 +431,7 @@ impl App {
                 keep_open: None,
                 confirming_close: false,
                 home: crate::shell::host::host().home.clone(),
+                after_close: None,
             },
             command: CommandField { text: String::new(), hint: None, focus: false, focus_drawing: false },
             hover: Hover { under: None, lines: None, delay: HOVER_DELAY },
@@ -508,6 +521,7 @@ impl App {
         self.drop_frame_selection();
         self.hold_close();
         self.sync_keep_open();
+        self.follow_close();
         if self.files.save_as_requested.swap(false, Ordering::Relaxed) {
             let owned = self.cad.session.state().is_ok_and(|st| self.cad.session.ext.owner_of(st.uid).is_some());
             if owned {

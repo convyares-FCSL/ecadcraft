@@ -9,8 +9,8 @@ All of these are in the **Project menu**: click the project name at the far left
 
 | Item | Does |
 | --- | --- |
-| **New project** | A new, unsaved project (when none is open) |
-| **Open project…** | Asks for a `.ecad` path (when none is open) |
+| **New project** | A new, unsaved project; an open one is closed first, as **Close project** does |
+| **Open project…** | Asks for a `.ecad` path; an open project is closed first |
 | **Save** (Ctrl+S) | Saves; asks for a file name the first time, or when the project is read-only |
 | **Save As…** | Saves under a new name; the old file keeps its last saved state |
 | **Close project** | Closes; with unsaved changes it asks first |

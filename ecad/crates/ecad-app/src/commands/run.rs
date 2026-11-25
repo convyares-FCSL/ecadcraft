@@ -351,18 +351,8 @@ impl App {
                 let _ = self.run_line(&format!("movepage {}", json!({"page": page.hex(), "index": index})));
             }
             A::Preview(page) => self.preview_page(page),
-            A::NewProject => {
-                if let Err(e) = self.new_project() {
-                    self.dialogs.notice = Some(e);
-                }
-            }
-            A::OpenProject => {
-                if self.project_open() {
-                    self.dialogs.notice = Some("Close this project first (Close, in the Project panel).".into());
-                } else {
-                    self.request_open();
-                }
-            }
+            A::NewProject => self.close_then(AfterClose::New),
+            A::OpenProject => self.close_then(AfterClose::Open),
             A::Save => {
                 let _ = self.save();
             }

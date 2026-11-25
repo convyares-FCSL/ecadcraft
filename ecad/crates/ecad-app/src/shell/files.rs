@@ -158,6 +158,49 @@ impl App {
         self.open_dialog(DialogKind::SaveAs, None);
     }
 
+    /// New or Open from the menus: an open project is closed first, as **Close** does (unsaved
+    /// changes are asked about), and `then` follows once it has closed; cancelling the close
+    /// keeps the project and drops `then`.
+    pub fn close_then(&mut self, then: AfterClose) {
+        if !self.project_open() {
+            self.files.after_close = None;
+            self.after_close(then);
+            return;
+        }
+        self.files.after_close = Some(then);
+        self.close_project();
+        self.follow_close();
+    }
+
+    /// Carry out [`App::close_then`]'s step once the project has closed, or drop it when the
+    /// close ended with the project still open (cancelled, or a save that failed and was left).
+    pub(crate) fn follow_close(&mut self) {
+        let Some(then) = self.files.after_close else { return };
+        if !self.project_open() {
+            self.files.after_close = None;
+            self.after_close(then);
+            return;
+        }
+        let asking = self.files.held.is_some()
+            || self.files.dialog.as_ref().is_some_and(|d| d.then_close.is_some())
+            || self.files.confirming_close
+            || self.cad.closing.is_some();
+        if !asking {
+            self.files.after_close = None;
+        }
+    }
+
+    fn after_close(&mut self, then: AfterClose) {
+        match then {
+            AfterClose::New => {
+                if let Err(e) = self.new_project() {
+                    self.dialogs.notice = Some(e);
+                }
+            }
+            AfterClose::Open => self.request_open(),
+        }
+    }
+
     /// Open the Open dialog.
     pub fn request_open(&mut self) {
         self.open_dialog(DialogKind::Open, None);
