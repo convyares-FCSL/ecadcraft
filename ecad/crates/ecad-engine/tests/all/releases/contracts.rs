@@ -326,6 +326,8 @@ fn a_failure_at_each_step_leaves_nothing_half_done() {
                 assert!(f.h.p(|p| p.unsaved()));
                 assert!(out.join("release.json").exists());
             }
+            // Only an existing folder's Add missing copies; `a_failure_while_landing_says_what_was_copied_or_moved` covers it.
+            Step::Copy => unreachable!("not in this list"),
             Step::Manifest | Step::Rename => {
                 let v = r.unwrap();
                 assert_eq!(f.h.head(), head + 1, "{step:?}: the issue stays");
@@ -631,4 +633,64 @@ fn a_release_writes_the_terminal_block_plan_and_cable_schedule() {
     assert_eq!(rows.len(), 1 + 4, "{schedule}");
     let spare = rows.iter().find(|r| r.contains(",spare,")).unwrap();
     assert!(spare.ends_with("spare,,,"), "a spare core: no wire, from or to: {spare}");
+}
+
+/// A landing that stops part way says what it already copied or moved, and where; "Nothing was
+/// written" only when nothing was.
+#[test]
+fn a_failure_while_landing_says_what_was_copied_or_moved() {
+    let mut f = fixture("landing");
+    let a = folder(&f, "A");
+    // Before anything lands (the manifest, or the rename into a new folder): nothing written.
+    for step in [Step::Manifest, Step::Rename] {
+        f.h.cfg(|p| p.faults.fail_release_at = Some(step));
+        let e = f.h.run("release", json!({"rev": "A"})).unwrap_err();
+        assert!(e.starts_with("Rev A's folder was not written: injected failure"), "{step:?}: {e}");
+        assert!(e.contains("Nothing was written."), "{step:?}: {e}");
+        assert!(!a.exists() && !release::partial_of(&a).exists(), "{step:?}");
+    }
+    f.h.run("release", json!({"rev": "A"})).unwrap();
+    // Replace, stopped after the old folder is moved aside: says where it went.
+    f.h.cfg(|p| p.faults.fail_release_at = Some(Step::Rename));
+    let e = f.h.run("release", json!({"rev": "A", "existing": "replace"})).unwrap_err();
+    let replaced = names(&f.dir.join("release").join("replaced"));
+    assert_eq!(replaced.len(), 1);
+    let to = f.dir.join("release").join("replaced").join(&replaced[0]);
+    assert!(e.starts_with("Rev A's folder was not finished: injected failure"), "{e}");
+    assert!(e.contains(&format!("The old folder {} was moved to {}.", a.display(), to.display())), "{e}");
+    assert!(!e.contains("Nothing was written"), "{e}");
+    assert!(!a.exists() && to.join("release.json").exists());
+    // Add missing, stopped after the copy: names the file, the folder and the manifest.
+    f.h.run("release", json!({"rev": "A"})).unwrap();
+    let lost = "D-1001 Rev A wires.csv";
+    std::fs::remove_file(a.join(lost)).unwrap();
+    let mut m = manifest(&a);
+    m["files"].as_array_mut().unwrap().retain(|x| x["name"] != lost);
+    std::fs::write(a.join("release.json"), serde_json::to_vec(&m).unwrap()).unwrap();
+    f.h.cfg(|p| p.faults.fail_release_at = Some(Step::Copy));
+    let e = f.h.run("release", json!({"rev": "A", "existing": "add-missing"})).unwrap_err();
+    assert!(e.starts_with("Rev A's folder was not finished: injected failure"), "{e}");
+    assert!(e.contains(&format!("The missing file was copied into {} ({lost}), and its release.json does not list it yet.", a.display())), "{e}");
+    assert!(!e.contains("Nothing was written"), "{e}");
+    assert!(a.join(lost).exists() && !manifest(&a)["files"].as_array().unwrap().iter().any(|x| x["name"] == lost));
+    // Add missing again finishes it.
+    f.h.run("release", json!({"rev": "A", "existing": "add-missing"})).unwrap();
+    assert!(manifest(&a)["files"].as_array().unwrap().iter().any(|x| x["name"] == lost));
+    // The pending revision, replacing a folder: the issue stays, and the message says where the
+    // old folder went as well as where the staged files are.
+    let b = folder(&f, "B");
+    std::fs::create_dir_all(&b).unwrap();
+    std::fs::write(b.join("old.txt"), "old").unwrap();
+    f.h.cfg(|p| p.faults.fail_release_at = Some(Step::Rename));
+    let v = f.h.run("release", json!({"existing": "replace"})).unwrap();
+    assert_eq!(v["finished"], false);
+    let m = v["message"].as_str().unwrap();
+    let moved: Vec<String> = names(&f.dir.join("release").join("replaced")).into_iter().filter(|n| n.starts_with("Rev B")).collect();
+    assert_eq!(moved.len(), 1, "{moved:?}");
+    let to = f.dir.join("release").join("replaced").join(&moved[0]);
+    assert!(m.contains("Rev B is issued, but its folder could not be finished (injected failure at Rename)."), "{m}");
+    assert!(m.contains(&format!("The old folder {} was moved to {}.", b.display(), to.display())), "{m}");
+    assert!(m.contains(&format!("The files are in {}", release::partial_of(&b).display())), "{m}");
+    assert!(to.join("old.txt").exists() && release::partial_of(&b).exists());
+    let _ = std::fs::remove_dir_all(&f.dir);
 }

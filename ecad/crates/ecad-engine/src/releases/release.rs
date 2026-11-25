@@ -17,7 +17,8 @@
 //!   on a branch and with an agent's writes off.
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
-//!   but this module's own staging folder.
+//!   but this module's own staging folder. A landing that stops part way says what it already
+//!   copied into the old folder or where it moved it; "Nothing was written" only when that is so.
 //! - **Slots** (`ecad_electrical::releases::release::LISTS`): the generated lists as a table; the terminal strips
 //!   fill `terminal-block-plan` and `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON
 //!   keys).
@@ -282,6 +283,10 @@ pub enum Step {
     Issue,
     Save,
     Manifest,
+    /// Adding the missing files to an existing folder: after they are copied, before that
+    /// folder's `release.json` lists them.
+    Copy,
+    /// Renaming the staging folder into place: after an old folder is moved aside.
     Rename,
 }
 
@@ -598,13 +603,41 @@ fn landing(folder: &Path, staged: &Staged, existing: Option<Existing>) -> Result
     }
 }
 
-/// Put the staged folder in place (step 7).
-fn land(staging: &Path, l: &Landing, staged: &Staged, manifest: &Value) -> Result<(), String> {
+/// A landing that stopped: why, and what it had already changed on disk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Stopped {
+    why: String,
+    /// What is on disk now that was not before, in a sentence; `None` when nothing is.
+    changed: Option<String>,
+}
+
+impl Stopped {
+    fn before_landing(why: String) -> Stopped {
+        Stopped { why, changed: None }
+    }
+}
+
+/// Put the staged folder in place (step 7). `fault` is asked at [`Step::Copy`] and
+/// [`Step::Rename`]. `Ok` holds a note when the folder is in place but something after it was
+/// not (the staging folder left behind).
+///
+/// # Errors
+/// The step that failed, with what was already copied or moved, and where.
+fn land(
+    staging: &Path, l: &Landing, staged: &Staged, manifest: &Value, fault: &mut dyn FnMut(Step) -> Result<(), String>,
+) -> Result<Option<String>, Stopped> {
     if let Some(old) = &l.add_missing {
         let missing: Vec<&Written> = staged.files.iter().filter(|w| !old.files.contains_key(&w.name)).collect();
+        let mut copied: Vec<&str> = Vec::new();
+        // What the copies so far left in the old folder, for a failure after the first.
+        let changed = |copied: &[&str]| (!copied.is_empty()).then(|| copied_words(copied, missing.len(), &l.folder));
         for w in &missing {
-            std::fs::copy(staging.join(&w.name), l.folder.join(&w.name)).map_err(|e| format!("{}: {e}", shown(&l.folder.join(&w.name))))?;
+            let to = l.folder.join(&w.name);
+            std::fs::copy(staging.join(&w.name), &to)
+                .map_err(|e| Stopped { why: format!("could not copy {}: {e}", shown(&to)), changed: changed(&copied) })?;
+            copied.push(&w.name);
         }
+        fault(Step::Copy).map_err(|why| Stopped { why, changed: changed(&copied) })?;
         let mut m = old.raw.clone();
         if let Some(files) = m.get_mut("files").and_then(Value::as_array_mut) {
             files.extend(missing.iter().map(|w| w.manifest()));
@@ -614,23 +647,45 @@ fn land(staging: &Path, l: &Landing, staged: &Staged, manifest: &Value) -> Resul
             ni.retain(|x| x.get("kind").and_then(Value::as_str).is_none_or(|k| !keep.contains(k)));
         }
         m["completed"] = manifest.get("written").cloned().unwrap_or(Value::Null);
-        let bytes = serde_json::to_vec_pretty(&m).map_err(|e| e.to_string())?;
-        std::fs::write(l.folder.join(MANIFEST), bytes).map_err(|e| format!("{}: {e}", shown(&l.folder.join(MANIFEST))))?;
-        std::fs::remove_dir_all(staging).map_err(|e| format!("{}: {e}", shown(staging)))?;
-        return Ok(());
+        let bytes = serde_json::to_vec_pretty(&m).map_err(|e| Stopped { why: e.to_string(), changed: changed(&copied) })?;
+        std::fs::write(l.folder.join(MANIFEST), bytes)
+            .map_err(|e| Stopped { why: format!("{}: {e}", shown(&l.folder.join(MANIFEST))), changed: changed(&copied) })?;
+        // The folder is complete; a staging folder left behind is a note, not a failure.
+        return Ok(std::fs::remove_dir_all(staging)
+            .err()
+            .map(|e| format!("The staging folder {} could not be removed ({e}); delete it by hand.", shown(staging))));
     }
+    let mut moved: Option<String> = None;
     if let Some((from, to)) = &l.move_old {
         if let Some(parent) = to.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", shown(parent)))?;
+            std::fs::create_dir_all(parent).map_err(|e| Stopped::before_landing(format!("{}: {e}", shown(parent))))?;
         }
-        std::fs::rename(from, to).map_err(|e| format!("could not move {} aside: {e}", shown(from)))?;
+        std::fs::rename(from, to).map_err(|e| Stopped::before_landing(format!("could not move {} aside: {e}", shown(from))))?;
+        moved = Some(format!("The old folder {} was moved to {}", shown(from), shown(to)));
     }
+    fault(Step::Rename).map_err(|why| Stopped { why, changed: moved.clone() })?;
     let _ = std::fs::remove_file(staging.join(STAGING_MARK));
     std::fs::rename(staging, &l.folder).map_err(|e| {
         // Still ours: a release of this revision again may clear it.
         let _ = std::fs::write(staging.join(STAGING_MARK), b"");
-        format!("could not rename {}: {e}", shown(staging))
-    })
+        Stopped { why: format!("could not rename {}: {e}", shown(staging)), changed: moved.clone() }
+    })?;
+    Ok(None)
+}
+
+/// `2 of the 3 missing files were copied into <folder> (a, b), and its release.json does not
+/// list them yet`.
+fn copied_words(copied: &[&str], missing: usize, folder: &Path) -> String {
+    let (k, names) = (copied.len(), copied.join(", "));
+    let at = shown(folder);
+    let what = match (k == missing, k == 1) {
+        (true, true) => format!("The missing file was copied into {at} ({names})"),
+        (true, false) => format!("The {k} missing files were copied into {at} ({names})"),
+        (false, true) => format!("1 of the {missing} missing files was copied into {at} ({names})"),
+        (false, false) => format!("{k} of the {missing} missing files were copied into {at} ({names})"),
+    };
+    let them = if k == 1 { "it" } else { "them" };
+    format!("{what}, and its {MANIFEST} does not list {them} yet")
 }
 
 /// Remove a staging folder after a failure, only when it is ours.
@@ -1158,13 +1213,18 @@ pub(crate) fn release_pending(
     let m = manifest(&doc, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&doc, &fan));
     let finished = injected(p, Step::Manifest)
         .and_then(|()| write_manifest(&staging, &m))
-        .and_then(|()| injected(p, Step::Rename))
-        .and_then(|()| land(&staging, &l, &st, &m));
+        .map_err(Stopped::before_landing)
+        .and_then(|()| land(&staging, &l, &st, &m, &mut |s| injected(p, s)));
     let landed = match finished {
-        Ok(()) => true,
+        Ok(note) => {
+            problems.extend(note);
+            true
+        }
         Err(e) => {
+            let changed = e.changed.map(|c| format!(" {c}.")).unwrap_or_default();
             problems.push(format!(
-                "Rev {rev} is issued, but its folder could not be finished ({e}). The files are in {}; release Rev {rev} again to write the folder.",
+                "Rev {rev} is issued, but its folder could not be finished ({}).{changed} The files are in {}; release Rev {rev} again to write the folder.",
+                e.why,
                 shown(&staging)
             ));
             false
@@ -1242,21 +1302,31 @@ pub(crate) fn release_issued(p: &mut Project, params: &Value, rev: &str, progres
     let m = manifest(&then, &row, &iss, &b, &st, &rows, &ecad_electrical::releases::release::fan_tags(&then, &fan));
     let finished = injected(p, Step::Manifest)
         .and_then(|()| write_manifest(&staging, &m))
-        .and_then(|()| injected(p, Step::Rename))
-        .and_then(|()| land(&staging, &l, &st, &m));
-    if let Err(e) = finished {
-        clear_staging(&staging);
-        return Err(format!(
-            "Rev {rev}'s folder was not written: {}. Nothing was written. Choose another folder, or try again.",
-            e.trim_end_matches('.')
-        ));
+        .map_err(Stopped::before_landing)
+        .and_then(|()| land(&staging, &l, &st, &m, &mut |s| injected(p, s)));
+    let note = match finished {
+        Ok(note) => note,
+        Err(e) => {
+            clear_staging(&staging);
+            let (what, changed) = match e.changed {
+                Some(c) => ("finished", c),
+                None => ("written", "Nothing was written".into()),
+            };
+            return Err(format!(
+                "Rev {rev}'s folder was not {what}: {}. {changed}. Choose another folder, or try again.",
+                e.why.trim_end_matches('.')
+            ));
+        }
+    };
+    let mut message = format!("{} (written again; nothing recorded).", done_words(&rev, &l.folder, &st, &rows).trim_end_matches('.'));
+    if let Some(n) = note {
+        message.push_str(&format!(" {n}"));
     }
-    let message = format!("{} (written again; nothing recorded)", done_words(&rev, &l.folder, &st, &rows).trim_end_matches('.'));
     let mut v = json!({
         "rev": rev, "folder": shown(&l.folder), "finished": true,
         "files": st.files.iter().map(|w| w.json(Some(&l.folder))).collect::<Vec<_>>(),
         "not_included": st.not_included.iter().map(|(k, why)| json!({"slot": k, "why": why})).collect::<Vec<_>>(),
-        "transactions": [], "saved": false, "message": format!("{message}.")});
+        "transactions": [], "saved": false, "message": message});
     if let Some(c) = &l.compare {
         v["compare"] = c.json();
     }
