@@ -84,4 +84,4 @@ pub struct Ledger {
     stack_read: u64,
 }
 
-pub use crate::dev::{set_verify_invariants, switch_on as verify_switch_on, verify_mode};
+pub use crate::dev::{set_verify_every, set_verify_invariants, switch_on as verify_switch_on, verify_mode};

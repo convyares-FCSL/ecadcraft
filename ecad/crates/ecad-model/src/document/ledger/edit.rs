@@ -82,6 +82,7 @@ impl Ledger {
             return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
         let seq = self.next_seq()?;
+        crate::dev::note_commit(seq);
         check_bookmarks(&ops, seq)?;
         let kind = TxKind::Edit;
         let stacks = &self.stacks;
@@ -116,6 +117,7 @@ impl Ledger {
             return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
         let seq = self.next_seq()?;
+        crate::dev::note_commit(seq);
         check_bookmarks(&ops, seq)?;
         // Not refused through undo/redo (their target is the stack top); kept so a bad kind can
         // never be recorded.

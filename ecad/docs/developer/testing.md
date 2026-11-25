@@ -34,6 +34,10 @@ Which crate a test belongs to:
 - **Verify mode is on in tests.** Every crate turns on `ecad-model`'s `verify-invariants` through its
   dev-dependencies, so after every transaction the full invariant check runs and must agree with the scoped
   one. App builds, debug or release, take the fast path; `ECAD_VERIFY_INVARIANTS=1` turns it on at run time.
+  A long test of thousands of commits calls `ecad_model::document::ledger::set_verify_every(50)` so only every
+  50th commit is checked in full (the full check costs time in proportion to the project, so checking every
+  commit makes such a test quadratic), and sets it back to 1 before its last checks. It holds for the test's
+  own thread only; the scoped check still runs on every commit.
 - **UI tests** run the app headless (`egui_kittest`). A test that writes screenshots writes them only when
   `$ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists.
 

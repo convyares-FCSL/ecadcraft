@@ -889,7 +889,8 @@ fn ac11_cover_notes_writes_are_bounded() {
 /// Each category is its own wire style with its own cross-section, so each is its own legend line;
 /// each wire lands on two connection points spread over the page, so it carries a wire and takes
 /// its category. The commands run straight through the session and the whole project is checked
-/// every 50th step and at the end: checking after every step would make the run quadratic.
+/// every 50th step and at the end, and verify mode checks every 50th commit in full: checking
+/// after every step would make the run quadratic.
 #[test]
 #[ignore = "slow: 400 categories and wires (tester 054, run by name)"]
 fn ac15_hundreds_of_categories_in_use_are_bounded() {
@@ -905,6 +906,7 @@ fn ac15_hundreds_of_categories_in_use_are_bounded() {
         })
         .collect();
     h.points_at(&ends);
+    ecad_model::document::ledger::set_verify_every(50);
     for i in 0..N {
         let style = h.s.execute("setstyle", &json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i)}})).unwrap();
         let (x, y) = at(i);
@@ -915,6 +917,7 @@ fn ac15_hundreds_of_categories_in_use_are_bounded() {
             h.check();
         }
     }
+    ecad_model::document::ledger::set_verify_every(1);
     h.check();
     let lines = ecad_electrical::pages::front::wire_lines(&h.doc()).len();
     // One line per category in use, up to the legend's bound of 24 lines.

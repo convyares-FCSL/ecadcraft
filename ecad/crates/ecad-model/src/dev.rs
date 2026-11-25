@@ -9,9 +9,15 @@
 //! debugger's **Verify replay**). App builds, debug or release, take the fast path. The file's
 //! Verify never uses it: it replays with [`crate::Check::Commit`].
 //!
+//! A long test may check every Nth transaction in full instead ([`set_verify_every`]): the
+//! full check and the views' comparison with a fresh build cost time in proportion to the
+//! project, so checking each of thousands of commits makes such a test quadratic. The scoped
+//! check still runs on every commit.
+//!
 //! This module is the only place in the crate where the `verify-invariants` feature is read
 //! (`cargo xtask layers` enforces it).
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::Document;
@@ -41,16 +47,40 @@ pub fn switch_on(value: Option<&std::ffi::OsStr>) -> bool {
 }
 
 /// Whether verify mode is on for this build or process (the `verify-invariants` feature, which
-/// every `cargo test` turns on, or `ECAD_VERIFY_INVARIANTS=1`): derived indexes kept outside the
-/// model (the reference index) compare themselves with a rebuild after every change.
+/// every `cargo test` turns on, or `ECAD_VERIFY_INVARIANTS=1`) and for the commit in progress on
+/// this thread ([`set_verify_every`]): derived indexes kept outside the model (the reference
+/// index) compare themselves with a rebuild after the change.
 pub fn verify_mode() -> bool {
     verifying(false)
+}
+
+thread_local! {
+    /// Check every how many-th commit in full on this thread (1: every commit).
+    static EVERY: Cell<u64> = const { Cell::new(1) };
+    /// Whether the commit in progress on this thread is one the full check skips.
+    static SKIPPED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Verify mode on this thread checks only every `n`th transaction in full (`n` below 1 reads as
+/// 1, every transaction, the default). Each test runs on its own thread, so a long test sets it
+/// without changing any other test; it sets it back to 1 before its last checks. A ledger put in
+/// verify mode of its own ([`Ledger::replay_verified`]) still checks every transaction.
+pub fn set_verify_every(n: u64) {
+    EVERY.with(|c| c.set(n.max(1)));
+    SKIPPED.with(|c| c.set(false));
+}
+
+/// A transaction numbered `seq` is being committed on this thread: whether verify mode checks
+/// it in full follows [`set_verify_every`], until the next one.
+pub(crate) fn note_commit(seq: u64) {
+    let every = EVERY.with(Cell::get);
+    SKIPPED.with(|c| c.set(seq % every != 0));
 }
 
 /// Whether to run the full check alongside the scoped one (`local`: this ledger is in verify
 /// mode).
 pub(crate) fn verifying(local: bool) -> bool {
-    local || cfg!(feature = "verify-invariants") || SWITCH.load(Ordering::Relaxed)
+    local || ((cfg!(feature = "verify-invariants") || SWITCH.load(Ordering::Relaxed)) && !SKIPPED.with(Cell::get))
 }
 
 impl Ledger {

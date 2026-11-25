@@ -283,3 +283,23 @@ fn with_applied_runs_the_full_check_in_verify_mode() {
     }
     assert_eq!(json(l.document()), doc);
 }
+
+/// With `set_verify_every(2)`, verify mode checks every other commit in full on this thread, and
+/// every commit again once set back to 1.
+#[test]
+fn verify_mode_can_check_every_nth_commit() {
+    let mut l = ledger();
+    crate::dev::set_verify_every(2);
+    let checked: Vec<bool> = (0..4u128)
+        .map(|i| {
+            l.commit(Author::User, "layer", vec![Op::AddLayer { id: LayerId(100 + i), layer: Layer { name: format!("L{i}") } }]).unwrap();
+            crate::dev::verifying(false)
+        })
+        .collect();
+    assert_eq!(checked.iter().filter(|c| **c).count(), 2, "{checked:?}");
+    assert_ne!(checked[0], checked[1], "{checked:?}");
+    crate::dev::set_verify_every(1);
+    l.commit(Author::User, "layer", vec![Op::AddLayer { id: LayerId(200), layer: Layer { name: "L".into() } }]).unwrap();
+    assert!(crate::dev::verifying(false), "every commit again");
+    assert!(crate::dev::verifying(true), "a ledger in verify mode of its own always checks");
+}
