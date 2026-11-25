@@ -1,6 +1,6 @@
 [package]
 name = "ecad-file"
-description = "The ECAD project file format: records, canonical form and hash chain, the redb container's tables, snapshots, opening, saving and Verify (proposal Part E, EEP-0005)"
+description = "The ECAD project file format: records, canonical form and hash chain, the redb container's tables, snapshots, opening, saving and Verify"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -8,7 +8,7 @@ use ecad_model::palette::marker::{self, Shape};
 use ecad_model::palette::sheet::{self, DARK, Meaning, PAPER, prints};
 use ecad_model::palette::wire::{self, WireColors};
 
-const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
+const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/reference/tokens.md"));
 
 /// The checked part of the doc: from `# Drawing style` to the next top-level heading.
 fn checked_part(doc: &str) -> &str {

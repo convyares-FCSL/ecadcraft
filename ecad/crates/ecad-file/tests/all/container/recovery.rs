@@ -710,7 +710,7 @@ fn bytes_changed_in_a_stored_row_or_chunk_are_never_loaded_silently() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
-/// EEP-0005 §5.8: damage found while loading opens the project read-only, at the last state that
+/// `docs/reference/file-format.md`, "Damage and Verify": damage found while loading opens the project read-only, at the last state that
 /// verifies, with a report. The row a snapshot stands on is the top of its undo stack, read on
 /// open; when its bytes are damaged the transactions before it and the snapshot itself are
 /// sound, yet the project must still open (read-only), not be refused.

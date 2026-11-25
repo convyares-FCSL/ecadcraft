@@ -27,7 +27,7 @@ schemars = "1.2"
 # Words of the strict enums (design 061 §R8, design 072 §9.1): `word()`, `parse()` and the word
 # list derived from one attribute per variant. Derive only.
 strum = { version = "0.28", features = ["derive"] }
-# Container v2 (brief 021, EEP-0005 §2.3): the redb version is pinned exactly; changing it is a
+# The container (docs/reference/file-format.md): the redb version is pinned exactly; changing it is a
 # deliberate change with its own review and tests, never a routine update.
 redb = "=4.5.0"
 # Zstandard (overseer, 2026-11-09): libzstd through `zstd`. Pinned; a change is a deliberate

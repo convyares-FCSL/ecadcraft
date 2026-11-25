@@ -28,7 +28,7 @@ pub enum ModelError {
     CorruptLog(String),
 }
 
-/// What a refusal is about, in the words a person reads: "No such {noun}." (`docs/glossary.md`).
+/// What a refusal is about, in the words a person reads: "No such {noun}." (`docs/reference/glossary.md`).
 ///
 /// # Semantics
 /// `Display` is the lower-case word as it stands inside a sentence ("connection point", never

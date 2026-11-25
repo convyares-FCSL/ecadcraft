@@ -9,7 +9,7 @@ use {
     ecad_widgets::tokens::space, ecad_widgets::tokens::ui_type, ecad_widgets::tokens::wheel,
 };
 
-const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
+const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/reference/tokens.md"));
 
 /// The checked part of the doc: from `# Tokens` to the next top-level heading.
 fn checked_part(doc: &str) -> &str {
