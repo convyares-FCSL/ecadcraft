@@ -644,18 +644,13 @@ impl App {
             return;
         };
         let changed = self.shell.view_of.as_ref() != Some(&(pid.clone(), page));
-        let pv = self.shell.views.projects.get(&pid);
         // Taken every frame: it asks for the page change it came with (or none).
         let restore = std::mem::take(&mut self.shell.restore_view);
         if changed {
             let opened = self.shell.view_of.as_ref().is_none_or(|(p, _)| *p != pid);
+            // The workspace is not restored: a project always opens on Draw.
             if opened {
-                let last_ws = pv.and_then(|v| v.last_workspace);
-                let entry = self.shell.views.open(&pid);
-                let _ = entry;
-                if let Some(w) = last_ws {
-                    self.shell.state.workspace = w;
-                }
+                self.shell.views.open(&pid);
             }
             // Only a plain page switch, or the project opened again, restores the stored view: a
             // go-to (a check, a device, a Terminals row's place, a reference) keeps the view it set.
@@ -674,13 +669,11 @@ impl App {
         let Ok(st) = self.cad.session.state() else { return };
         let v = st.view();
         let now = state::PageView { cx: v.center.x, cy: v.center.y, height: v.height };
-        let ws = self.shell.state.workspace;
         let entry = self.shell.views.projects.entry(pid).or_default();
         if now.usable() && entry.pages.get(&pg.hex()) != Some(&now) {
             entry.pages.insert(pg.hex(), now);
         }
         entry.last_page = Some(pg.hex());
-        entry.last_workspace = Some(ws);
     }
 
     /// The open project's stable ID, as the views key.

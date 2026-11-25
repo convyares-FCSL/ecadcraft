@@ -639,4 +639,37 @@ fn a_project_always_opens_on_draw() {
     let mut t = new_app(None);
     t.shell.load(Some(&stored), None);
     assert_eq!(t.shell_state().workspace, Workspace::Draw);
+    // A saved project opened again, from Draw and from Project, through the Open dialog's list and
+    // through a typed path, with frames run after it as the window does.
+    let d = TempDir::new("opens-on-draw");
+    let path = d.path("drawn.ecad");
+    let ctx = eframe::egui::Context::default();
+    let mut t = new_app(None);
+    t.files.list_projects = ecad_files;
+    edit(&mut t);
+    save_via_dialog(&mut t, &path);
+    for (from, by_list) in [(Workspace::Draw, true), (Workspace::Lists, true), (Workspace::Lists, false), (Workspace::Publish, false)] {
+        t.set_workspace(from);
+        one_frame(&mut t, &ctx);
+        t.panel_action(Action::OpenProject);
+        one_frame(&mut t, &ctx);
+        if by_list {
+            t.set_dialog_path(&format!("{}{}", d.0.display(), std::path::MAIN_SEPARATOR));
+            t.pick_project("drawn.ecad");
+        } else {
+            t.set_dialog_path(&path);
+            t.confirm_dialog();
+        }
+        assert!(t.dialog().is_none() && t.project_open(), "{from:?}: {:?}", t.dialog());
+        for _ in 0..3 {
+            one_frame(&mut t, &ctx);
+        }
+        assert_eq!(t.shell_state().workspace, Workspace::Draw, "opened from {from:?}, by list: {by_list}");
+    }
+    // Opened at start-up from a file.
+    ecad_engine::cables::views::isolate_for_tests();
+    let mut t = App::with_file(None, &path).unwrap();
+    t.shell.load(Some(&stored), None);
+    one_frame(&mut t, &ctx);
+    assert_eq!(t.shell_state().workspace, Workspace::Draw);
 }

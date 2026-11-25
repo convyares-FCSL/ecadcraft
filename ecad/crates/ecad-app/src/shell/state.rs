@@ -1,7 +1,7 @@
-//! What the shell remembers: the [`ShellState`] (workspace,
-//! panels, the developer switch) and, per project, each page's zoom and centre, the last page and
-//! the last workspace ([`Views`]). Both live in eframe's app storage, never in the `.ecad` file:
-//! a view is how one person looks at a project, not part of it.
+//! What the shell remembers: the [`ShellState`] (panels, the developer switch; its workspace is
+//! stored but a project always opens on Draw) and, per project, each page's zoom and centre and the
+//! last page ([`Views`]). Both live in eframe's app storage, never in the `.ecad` file: a view is
+//! how one person looks at a project, not part of it.
 //!
 //! An unreadable stored value falls back to the default and says so in one line; it never stops
 //! start-up. Hover, selection, open flyouts and scroll positions are not kept.
@@ -279,7 +279,6 @@ pub struct ProjectViews {
     /// By page ID (hex).
     pub pages: BTreeMap<String, PageView>,
     pub last_page: Option<String>,
-    pub last_workspace: Option<Workspace>,
     /// When it was last opened, as a counter (larger is more recent).
     pub opened: u64,
 }
