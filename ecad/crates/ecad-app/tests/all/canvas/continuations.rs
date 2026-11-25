@@ -66,12 +66,13 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
         let x = 100.0 + 5.0 * i as f64;
         exec(&mut h, "wire", json!({"points": [[x, 200.0], [x, 150.0]]}));
         let v = exec(&mut h, "place", json!({"symbol": "continuation", "at": [x, 150.0], "name": name}));
-        arrows.push(v["component"].as_str().unwrap().to_string());
+        arrows.push((v["aid"].as_str().unwrap().to_string(), v["item"].as_str().unwrap().to_string()));
     }
     let d = doc(&mut h);
     let on_first = ecad_engine::references::draw::devices::parts_on_page(&d, first);
     assert_eq!(on_first.len(), 3, "one other-end text per arrow");
-    exec(&mut h, "contcaption", json!({"continuations": arrows, "caption": "TO CONTROL SUPPLY"}));
+    let ids: Vec<&str> = arrows.iter().map(|(a, _)| a.as_str()).collect();
+    exec(&mut h, "contcaption", json!({"continuations": ids, "caption": "TO CONTROL SUPPLY"}));
     let d = doc(&mut h);
     assert_eq!(ecad_engine::references::draw::devices::parts_on_page(&d, first).iter().filter(|p| p.index == 1).count(), 1, "one bracket");
     let Some(out) = shots() else { return };
@@ -88,7 +89,14 @@ fn continuation_arrows_draw_their_other_ends_and_captions() {
     h.run_steps(2);
     // The L1 arrow deleted and placed again 45 mm to the right with the same caption: two
     // brackets, the caption under each.
-    exec(&mut h, "ecaddelete", json!({"component": arrows[2]}));
+    // An arrow is a drawing aid: it goes when its symbol is erased.
+    let item = ecad_model::ItemId::parse(&arrows[2].1).unwrap();
+    let handle = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| p.pages[&first].map.item(item)).unwrap().unwrap()
+    };
+    exec(&mut h, "erase", json!({"handles": [handle.hex()]}));
     exec(&mut h, "wire", json!({"points": [[155.0, 200.0], [155.0, 150.0]]}));
     exec(&mut h, "place", json!({"symbol": "continuation", "at": [155.0, 150.0], "name": "L1", "caption": "TO CONTROL SUPPLY"}));
     let d = doc(&mut h);
