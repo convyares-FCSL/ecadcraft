@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::diff;
 use crate::document::invariant::Touched;
-use crate::document::op::Op;
 use crate::naming::id::{ConnectionPointId, DeviceId, PageId};
 use crate::naming::tag::{self};
 use crate::{Document, End, Properties, Subject};
@@ -310,26 +309,6 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
         unavailable: ctx.unavailable,
         provisional_renumbered: ctx.provisional,
     }
-}
-
-/// The objects `ops` name.
-pub fn objects_of(ops: &[Op]) -> BTreeSet<Obj> {
-    let mut s = Scope::default();
-    s.add_ops(ops);
-    let t = &s.touched;
-    let mut out = BTreeSet::new();
-    out.extend(t.pages.iter().chain(&t.page_properties).map(|x| Obj::Page(*x)));
-    out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
-    out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
-    out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
-    out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
-    out.extend(t.items.iter().map(|x| Obj::Item(*x)));
-    out.extend(t.connection_points.iter().map(|x| Obj::ConnectionPoint(*x)));
-    out.extend(t.folders.iter().map(|x| Obj::Folder(*x)));
-    if s.project {
-        out.insert(Obj::Project);
-    }
-    out
 }
 
 /// A conflict kind's word in the merge preview's JSON.

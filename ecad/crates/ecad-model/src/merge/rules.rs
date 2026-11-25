@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::op::{ObjectRef, Op};
+use crate::document::op::Op;
 use crate::naming::id::{CableId, DeviceId, FolderId, PageId};
 use crate::naming::tag::{self, HighWater};
 use crate::objects::route::RouteEnd;
@@ -354,33 +354,6 @@ impl Holder {
     }
 }
 
-/// The objects `ops` name (for the merge's scope).
-pub(super) fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
-    let mut out = BTreeSet::new();
-    for op in ops {
-        match op {
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                out.insert(Obj::Device(*id));
-            }
-            Op::AddConnectionPoint { id, connection_point } | Op::RemoveConnectionPoint { id, connection_point } => {
-                out.insert(Obj::ConnectionPoint(*id));
-                out.insert(owner_obj(connection_point.owner));
-            }
-            Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
-                out.insert(Obj::Representation(*id));
-            }
-            Op::SetProperty { object: ObjectRef::Device(c), .. } => {
-                out.insert(Obj::Device(*c));
-            }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
-                out.insert(Obj::Cable(*id));
-            }
-            _ => {}
-        }
-    }
-    out
-}
-
 /// The highest provisional number of `prefix` in `m` (a scan: merges only).
 pub(super) fn top_provisional(m: &Document, prefix: &str) -> u64 {
     m.devices
@@ -533,7 +506,7 @@ pub(super) fn resolve_tags(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BT
                             let _ = op.apply(d);
                         }
                     }
-                    out.extend(objs_of(&ops));
+                    out.extend(objects_of(&ops));
                     out.insert(tgt.obj());
                 }
                 None
