@@ -4,8 +4,9 @@
 //! - Status: the save state and time; the revision, "Rev C D*" (opens History); the checks
 //!   counter (opens the inspector's Checks tab).
 //! - The page well, 880 px, centred: the page shown (number, "/ 09", title) at its centre between
-//!   `« ‹` and `› »`, a divider either side; the groups before and the open group's pages left of
-//!   it, the groups after (folded to a folder, a count and a ›) and + right of it. A page button's
+//!   `« ‹` and `› »`, a divider either side; the groups before and the pages before the one shown
+//!   left of it, the pages after it, the groups after (folded to a folder, a count and a ›) and +
+//!   right of it, so the two sides follow as you move through the book. A page button's
 //!   right-click opens the page wheel, as a page row in Book does.
 //! - The view: standard (its name; opens Settings ▸ Standards) · sheet size · sheet
 //!   colour, then Fit, zoom out, zoom %, zoom in.
@@ -374,8 +375,9 @@ const CENTRE_TEXT: f32 = 250.0;
 
 /// The page well in `well`: the page shown, `02 / 09 Motor control`, sits at
 /// the well's centre between `« ‹` and `› »`, with a divider either side. Left of it, in book
-/// order, the groups before the shown one (folded) and the shown group's own pages, packed towards
-/// the divider; right of it the groups after (folded, or opened with ›) and +.
+/// order, the groups before the shown one (folded) and the pages before the one shown, packed
+/// towards the divider; right of it the pages after it, the groups after (folded, or opened with
+/// ›) and +.
 fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
     let s = ecad_widgets::SHELL;
     ui.painter().rect(
@@ -441,26 +443,10 @@ fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
         }
     }
 
-    // The items either side: up to the shown group on the left, after it on the right.
-    let at = t.well_group_of_active();
-    let several = t.shell.well.groups.len() > 1;
-    let (mut left, mut right) = (Vec::new(), Vec::new());
-    for (gi, g) in t.shell.well.groups.iter().enumerate() {
-        let open = Some(gi) == at || t.shell.well.opened.contains(&g.folder) || !several;
-        let side = if at.is_some_and(|a| gi > a) { &mut right } else { &mut left };
-        if open {
-            if g.folder.is_some() || several {
-                side.push(Item::Folder(g.name.clone()));
-            }
-            side.extend(g.pages.iter().map(|(p, n)| Item::Page(*p, n.clone())));
-        } else {
-            side.push(Item::Folded(gi, g.name.clone(), g.pages.len()));
-        }
-    }
-    // Left: what fits, kept round the page shown, packed towards the divider.
+    let (left, right) = well_sides(&t.shell.well, t.well_group_of_active(), t.panel.active);
+    // Left: what fits nearest the page shown, packed towards the divider.
     let room_l = (left_div - space::S) - (well.left() + space::S);
-    let shown_at = left.iter().position(|i| matches!(i, Item::Page(p, _) if Some(*p) == t.panel.active)).unwrap_or(left.len().saturating_sub(1));
-    let (lo, hi, used) = window(&left, shown_at, room_l);
+    let (lo, hi, used) = window(&left, left.len(), room_l);
     let mut x = left_div - space::S - used;
     for i in left.get(lo..hi).unwrap_or_default() {
         draw_item(t, ui, i, x, y, &mut go, &mut wheel, &mut open_group);
@@ -504,6 +490,34 @@ fn page_well(t: &mut App, ui: &mut egui::Ui, well: Rect) {
         let after = t.panel.active;
         t.open_new_page_picker(at, above, after, None);
     }
+}
+
+/// The items either side of the page shown, in book order: the pages before it (and the groups
+/// before its group) on the left, the pages after it (and the groups after) on the right. The page
+/// shown is at the centre, so it is on neither side; with no page shown everything is on the left.
+fn well_sides(well: &Well, at: Option<usize>, active: Option<PageId>) -> (Vec<Item>, Vec<Item>) {
+    let several = well.groups.len() > 1;
+    let (mut left, mut right) = (Vec::new(), Vec::new());
+    for (gi, g) in well.groups.iter().enumerate() {
+        let open = Some(gi) == at || well.opened.contains(&g.folder) || !several;
+        let side = if at.is_some_and(|a| gi > a) { &mut right } else { &mut left };
+        if !open {
+            side.push(Item::Folded(gi, g.name.clone(), g.pages.len()));
+            continue;
+        }
+        if g.folder.is_some() || several {
+            side.push(Item::Folder(g.name.clone()));
+        }
+        let shown = g.pages.iter().position(|(p, _)| Some(*p) == active);
+        for (i, (p, n)) in g.pages.iter().enumerate() {
+            match shown {
+                Some(s) if i == s => {}
+                Some(s) if i > s => right.push(Item::Page(*p, n.clone())),
+                _ => left.push(Item::Page(*p, n.clone())),
+            }
+        }
+    }
+    (left, right)
 }
 
 /// An item's width in the well.

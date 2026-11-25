@@ -12,9 +12,10 @@ Words used here are in the [glossary](../reference/glossary.md).
   header switches). **Find a page** filters by number or title. Folders show their name, page count and
   a **+** for a new page in that folder; click a folder to fold it. The open page has a blue bar and a
   blue number. The panel can be pinned beside the drawing or float over it.
-- **The page well** in the bottom bar shows the open page between `« ‹` and `› »`, the pages of its
-  folder, the other folders folded, and **+** (**Add a page after this one**). Hovering a page button
-  shows a preview with its number, title and folder.
+- **The page well** in the bottom bar shows the open page between `« ‹` and `› »`, the pages before
+  it on the left and the pages after it on the right (its own folder's pages, the other folders
+  folded), and **+** (**Add a page after this one**). Hovering a page button shows a preview with
+  its number, title and folder.
 - Keys in the Book: Up and Down move, Enter opens, F2 renames, Space previews. Alt+Up and Alt+Down move a
   page; dragging a row moves it too.
 - A page row's wheel (right-click) has **Open**, **Rename**, **Preview**, **New page**, **New folder** and

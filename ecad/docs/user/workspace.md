@@ -75,8 +75,9 @@ With nothing selected, Device shows the page's properties and Layout its default
 - **Status** at the left: the save state and time, the revision (**Rev C D\***, opens History) and
   the checks counter (opens the Checks tab).
 - **The page well** in the centre: the page shown (number, "/ total", title) between `« ‹` and
-  `› »`, the open group's page buttons, the other groups folded, and **+** to add a page after
-  this one. Hover a page button for a preview; right-click it for the page's wheel.
+  `› »`, the page buttons before it on the left and after it on the right (the open group's pages,
+  the other groups folded), and **+** to add a page after this one. Hover a page button for a
+  preview; right-click it for the page's wheel.
 - **The view** at the right: the standard (opens Settings ▸ Standards), the sheet size, the sheet
   colour menu, **Fit**, zoom out, the zoom % and zoom in.
 

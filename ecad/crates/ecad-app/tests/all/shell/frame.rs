@@ -178,6 +178,35 @@ fn book_in_folders(h: &mut Harness<'static, App>) -> Vec<ecad_model::PageId> {
     order
 }
 
+/// The well's two sides follow the page shown: the pages before it on the left of ‹, the pages
+/// after it on the right of ›, and the page shown itself only at the centre.
+#[test]
+fn the_page_well_puts_earlier_pages_left_and_later_pages_right() {
+    let mut h = harness();
+    let order = book_in_folders(&mut h);
+    let side = |h: &mut Harness<'static, App>, n: &str| {
+        let prev = h.get_by_label(status_bar::PREV_PAGE).rect().left();
+        let next = h.get_by_label(status_bar::NEXT_GROUP).rect().right();
+        h.query_by_label(&format!("Page {n}")).map(|b| {
+            if b.rect().right() <= prev {
+                "left"
+            } else if b.rect().left() >= next {
+                "right"
+            } else {
+                "centre"
+            }
+        })
+    };
+    h.state_mut().show_page(order[1]).unwrap();
+    h.run_steps(4);
+    assert_eq!((side(&mut h, "1"), side(&mut h, "2"), side(&mut h, "3")), (Some("left"), None, Some("right")));
+    // Moving on one page moves page 2 to the left and leaves page 3 only at the centre.
+    h.get_by_label(status_bar::NEXT_PAGE).click();
+    h.run_steps(4);
+    assert_eq!(h.state().panel.active, Some(order[2]));
+    assert_eq!((side(&mut h, "1"), side(&mut h, "2"), side(&mut h, "3")), (Some("left"), Some("left"), None));
+}
+
 #[test]
 fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
     let mut h = harness();
@@ -186,8 +215,8 @@ fn the_page_well_opens_the_shown_pages_group_and_folds_the_others() {
     h.run_steps(4);
     let groups: Vec<(String, usize)> = h.state().shell.well.groups.iter().map(|g| (g.name.clone(), g.pages.len())).collect();
     assert_eq!(groups, [("Power".to_string(), 3), ("Control".to_string(), 2), ("Terminals".to_string(), 4)]);
-    // The shown page's group lists its pages; the others fold to a chip with their count.
-    assert!(h.query_by_label("Page 02").is_some() || h.query_by_label("Page 2").is_some());
+    // The shown page's group lists its other pages; the others fold to a chip with their count.
+    assert!(h.query_by_label("Page 1").is_some() && h.query_by_label("Page 3").is_some());
     assert!(h.query_by_label("Group Control").is_some() && h.query_by_label("Group Terminals").is_some());
     assert!(h.query_by_label("Group Power").is_none(), "the open group is not folded");
     // › on a folded group opens it as well; » goes to the next group's first page.
