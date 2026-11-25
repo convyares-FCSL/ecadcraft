@@ -161,9 +161,9 @@ fn a_new_page_first_opens_with_its_sheet_fitted() {
     assert!(2.5 * xf.scale < canvas::TAG_PX, "smaller than 040's readable zoom");
 }
 
-/// The demo page on paper and on the dark sheet, with a GNYE wire, a BU wire, an unknown code, a
-/// loose end that looks connected and the coil of `-K01` selected, for the owner's check (written
-/// only when `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; nothing is asserted).
+/// The demo page on paper and on the dark sheet, with a GNYE wire, a BU wire, a loose end that
+/// looks connected and the coil of `-K01` selected, for the owner's check (written only when
+/// `ECAD_TESTER_SHOTS` names a folder and a wgpu adapter exists; nothing is asserted).
 /// It registers the sheet font, as the app does at start, so run it on its own.
 #[test]
 fn screenshots_of_the_canvas() {
@@ -188,7 +188,9 @@ fn screenshots_of_the_canvas() {
     let first = crate::pages::project_panel::doc(&mut h).page_order()[0];
     h.state_mut().show_page(first).unwrap();
     h.run_steps(3);
-    for (y, code) in [(130.0, "GNYE"), (120.0, "BU"), (110.0, "PURPLISH")] {
+    // Each coloured line lands on a connection point at both ends, so it carries a wire.
+    crate::common::points_at(h.state_mut(), &[(120.0, 130.0), (200.0, 130.0), (120.0, 120.0), (200.0, 120.0)]);
+    for (y, code) in [(130.0, "GNYE"), (120.0, "BU")] {
         let w = exec(&mut h, "wire", json!({"points": [[120.0, y], [200.0, y]]}));
         let c = w["conductor"].as_str().unwrap().to_string();
         exec(&mut h, "setprop", json!({"conductor": c, "key": "colours", "value": code}));
