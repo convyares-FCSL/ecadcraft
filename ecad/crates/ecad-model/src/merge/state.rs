@@ -452,6 +452,15 @@ pub(super) fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
     }
 }
 
+/// The objects `ops` name, read through [`Scope::add_ops`]: the one reading of ops as objects,
+/// for the merge's scope, for what a Make them one join changes, and for which step of the target
+/// last changed each object.
+pub fn objects_of(ops: &[Op]) -> BTreeSet<Obj> {
+    let mut s = Scope::default();
+    s.add_ops(ops);
+    scope_objects(&s).into_iter().collect()
+}
+
 /// Every object of the scope, in a fixed order.
 pub(super) fn scope_objects(scope: &Scope) -> Vec<Obj> {
     let t = &scope.touched;

@@ -221,7 +221,7 @@ pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
                 scope.add_ops(&tx.ops);
                 ecad_model::naming::tag::note_ops(&mut high, &tx.ops);
                 if b == sides.target {
-                    for o in apply::objects_of(&tx.ops) {
+                    for o in state::objects_of(&tx.ops) {
                         target_last.insert(o, tx.seq);
                     }
                 }
