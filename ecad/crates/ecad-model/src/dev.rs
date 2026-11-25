@@ -74,7 +74,7 @@ pub fn set_verify_every(n: u64) {
 /// it in full follows [`set_verify_every`], until the next one.
 pub(crate) fn note_commit(seq: u64) {
     let every = EVERY.with(Cell::get);
-    SKIPPED.with(|c| c.set(seq % every != 0));
+    SKIPPED.with(|c| c.set(!seq.is_multiple_of(every)));
 }
 
 /// Whether to run the full check alongside the scoped one (`local`: this ledger is in verify
