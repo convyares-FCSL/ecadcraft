@@ -73,7 +73,7 @@ pub(crate) fn in_use(target: &Path) -> bool {
 /// Whether a cargo or rustc is running in or on `target`'s checkout (its working folder or
 /// command line names the folder holding `target`).
 #[cfg(not(windows))]
-pub fn in_use(target: &Path) -> bool {
+pub(crate) fn in_use(target: &Path) -> bool {
     let _ = cargo_locks;
     let Some(checkout) = target.parent() else { return false };
     let Ok(procs) = std::fs::read_dir("/proc") else { return false };
