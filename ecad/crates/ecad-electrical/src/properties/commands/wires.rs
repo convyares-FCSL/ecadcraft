@@ -28,21 +28,17 @@ pub(crate) fn no_such_key(key: &str) -> CmdError {
 
 /// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
-    PropRule { what: "wire number and potential (brief 022)", claims: |_, o, k| is_wire(o) && is_net_key(k), build: Build::Value(net_key) },
-    PropRule { what: "wire size and colours (072 D)", claims: |_, o, k| is_wire(o) && (k == SIZE || k == COLOURS), build: Build::Record(wire_value) },
+    PropRule { what: "wire number and potential", claims: |_, o, k| is_wire(o) && is_net_key(k), build: Build::Value(net_key) },
+    PropRule { what: "wire size and colours", claims: |_, o, k| is_wire(o) && (k == SIZE || k == COLOURS), build: Build::Record(wire_value) },
+    PropRule { what: "wire rating inputs", claims: |_, o, k| is_wire(o) && rating_key(k).is_some(), build: Build::Record(wire_rating) },
     PropRule {
-        what: "wire rating inputs (brief 057, 072 D)",
-        claims: |_, o, k| is_wire(o) && rating_key(k).is_some(),
-        build: Build::Record(wire_rating),
-    },
-    PropRule {
-        what: "wire type (072 §4.6)",
+        what: "wire type",
         claims: |_, o, k| is_wire(o) && k == ecad_model::connectivity::wiring::WIRE_CATEGORY,
         build: Build::Record(wire_type),
     },
-    PropRule { what: "wire display choices and registry values (072 §9.2)", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
+    PropRule { what: "wire display choices and registry values", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
     PropRule {
-        what: "cable values, cores and Not used (059, 072 D)",
+        what: "cable values, cores and Not used",
         claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k != TAG_KEY,
         build: Build::Record(cable_value),
     },

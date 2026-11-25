@@ -454,7 +454,7 @@ impl Picked {
                 Some(Mapped::Fan(k)) => {
                     subjects.insert(Subject::Cable(k));
                 }
-                // A link line names its strip.
+                // A jumper bar's line names its strip.
                 Some(Mapped::JumperBar(c, _)) => {
                     subjects.insert(Subject::Device(c));
                 }

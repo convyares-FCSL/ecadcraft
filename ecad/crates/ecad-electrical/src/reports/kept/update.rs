@@ -402,7 +402,7 @@ impl ReportModels {
     pub(super) fn set_device(&mut self, doc: &Document, c: DeviceId, cache: &mut BoxCache) {
         self.remove_device(c);
         self.remove_entries(Owner::Device(c));
-        // A link key on a device that is not a strip.
+        // A jumper bar key on a device that is not a strip.
         let misplaced = crate::terminal_strips::strip_of(doc, c).is_none()
             && doc
                 .devices()

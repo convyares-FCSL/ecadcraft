@@ -45,7 +45,7 @@ A device or terminal strip can carry more parts than its own: an auxiliary conta
 memory card, fuse inserts. Each is a **part line** with a part number, maker, description, article
 number, quantity, unit, kit and, for a fuse bank or a strip, `for` (the fuses or positions it
 serves, such as `1-2`: its quantity is per fuse). The Properties panel's **Parts** section shows
-them read only. Renumbering terminal blocks rewrites a part line's `for` as it rewrites links.
+them read only. Renumbering terminal blocks rewrites a part line's `for` as it rewrites jumper bars.
 
 Typed: `partline {"component":"<id>","add":{"part_number":"AB-1NO","maker":"Generic","description":"Aux block 1NO"}}`;
 `"set"` or `"remove"` with the line's number edits or removes one.

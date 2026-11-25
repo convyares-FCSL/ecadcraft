@@ -61,7 +61,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A T's dot: the lens of the line that ends there.
         Mapped::Tee(r) => ecad_electrical::wires::hover::wire_lines(doc, ecad_electrical::wires::routes::wire_of_route(doc, r), Some(r), page),
-        // A link line.
+        // A jumper bar's line.
         Mapped::JumperBar(c, n) => {
             vec![ecad_electrical::terminal_strips::jumper_bars::hover(doc, p.kept_reports().and_then(|o| o.strips.get(c)), c, n)]
         }

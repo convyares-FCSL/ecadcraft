@@ -1855,7 +1855,7 @@ fn the_typed_setprop_still_works() {
     assert_eq!(loc["location"], json!("+CP1"), "{loc}");
 }
 
-/// PROP_RULES (brief 070 item 3): for each row that decides a device's key, `setprop` on one
+/// PROP_RULES: for each row that decides a device's key, `setprop` on one
 /// device and on several walks the same row, so both give the same refusal.
 #[test]
 fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
@@ -1873,19 +1873,19 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     let long = "x".repeat(400);
     // (row, the two devices, key, a value its rule refuses)
     let rows: &[(&str, [&Value; 2], &str, &str)] = &[
-        ("device text fields (072 B)", [&coil, &coil2], "description", &long),
-        ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
-        ("contacts (brief 025, 072 B)", [&coil, &coil2], "contacts", "??"),
-        ("contact table (brief 025, 072 B)", [&coil, &coil2], "mirror", "maybe"),
-        ("strip offer (brief 028)", [&strip, &strip2], "terminal_blocks", "lots"),
-        ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
-        ("connector fields (072 B)", [&socket, &socket2], "pins", "99"),
-        ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal_block.level.separator", "abcd"),
-        ("level label (brief 036)", [&strip, &strip2], "block_label.1", &long),
-        ("PLC module fields (072 C)", [&card, &card2], "plc.addr.start", "x"),
-        ("rating (brief 034)", [&coil, &coil2], "rating.1", "10A"),
-        ("parts and items (brief 047)", [&coil, &coil2], "part.1.qty", "lots"),
-        ("strip accessories, or free text (brief 030)", [&strip, &strip2], "jumper_bar.1", "zz"),
+        ("device text fields", [&coil, &coil2], "description", &long),
+        ("wire, junction or continuation", [&coil, &coil2], "caption", "Up"),
+        ("contacts", [&coil, &coil2], "contacts", "??"),
+        ("contact table", [&coil, &coil2], "mirror", "maybe"),
+        ("strip offer", [&strip, &strip2], "terminal_blocks", "lots"),
+        ("PE row part", [&coil, &coil2], "part_number.pe", &long),
+        ("connector fields", [&socket, &socket2], "pins", "99"),
+        ("strip terminal defaults", [&strip, &strip2], "terminal_block.level.separator", "abcd"),
+        ("level label", [&strip, &strip2], "block_label.1", &long),
+        ("PLC module fields", [&card, &card2], "plc.addr.start", "x"),
+        ("rating", [&coil, &coil2], "rating.1", "10A"),
+        ("parts and items", [&coil, &coil2], "part.1.qty", "lots"),
+        ("strip accessories, or free text", [&strip, &strip2], "jumper_bar.1", "zz"),
     ];
     let doc = h.doc();
     for (what, [one, two], key, value) in rows {

@@ -693,7 +693,7 @@ impl Op {
                     None => crate::naming::keys::is_reserved(key),
                 };
                 if reserved {
-                    return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
+                    return Err(pre(format!("property {key} is a field of its object; that object's Modify op changes it")));
                 }
                 // A cable is written whole; only ModifyCable changes it.
                 if matches!(object, ObjectRef::Cable(_)) {

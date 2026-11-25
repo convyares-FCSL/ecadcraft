@@ -269,7 +269,7 @@ impl StripData {
     }
 
     /// The Bridge cell of a terminal row: `● n`, then one mark per jumper bar
-    /// lane: `●` on a linked position, `┆` past a skipped one.
+    /// lane: `●` on a position it joins, `┆` past a skipped one.
     pub fn bridge_cell(&self, i: usize) -> String {
         let mut text = self.rows.get(i).and_then(|r| r.bridge_group).map_or_else(String::new, |g| format!("\u{25cf} {g}"));
         let at = self.jumper_bars_at(i);

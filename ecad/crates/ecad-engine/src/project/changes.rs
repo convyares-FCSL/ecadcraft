@@ -340,7 +340,7 @@ impl Project {
         &mut self, pg: &mut Pages<'_>, command: &str, label: &str, ops: Vec<Op>, numbering: bool, kind: Option<ecad_model::TxKind>,
     ) -> Result<ecad_model::TxId, String> {
         if pg.command_running() {
-            return Err("finish or cancel the current command first (TX-05)".into());
+            return Err("finish or cancel the current command first".into());
         }
         // Any other edit is a Leave of the conflicts waiting.
         self.conflicts.clear();

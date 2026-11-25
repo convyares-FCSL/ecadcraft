@@ -28,8 +28,8 @@ pub enum Mapped {
     /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
     /// refused.
     DeviceReference(RepresentationId),
-    /// A segment of a strip's link line, by strip and link number:
-    /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
+    /// A segment of a jumper bar's line, by strip and jumper bar number:
+    /// computed, not an item. Selecting it selects the jumper bar; erasing it deletes the jumper bar; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
     JumperBar(DeviceId, u32),
     /// A ring of a T's dot, by the route that ends on another route: computed,
@@ -68,7 +68,7 @@ pub struct HandleMap {
     references: BTreeMap<(RepresentationId, u32), Handle>,
     /// The part each cross-reference handle is.
     device_reference_parts: HashMap<Handle, (RepresentationId, u32)>,
-    /// Link line segments: (strip, link, index) → handle.
+    /// Jumper bar line segments: (strip, jumper bar, index) → handle.
     jumper_bars: BTreeMap<(DeviceId, u32, u32), Handle>,
     /// A two-colour wire's dashes, (route representation, index) → handle, mapped to
     /// the conductor as its label is (derived: left out of an edit with other objects, refused
@@ -189,7 +189,7 @@ impl HandleMap {
     pub fn reference(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.references.get(&(rep, index)).copied()
     }
-    /// The handle of segment `index` of link `n` of `strip`.
+    /// The handle of segment `index` of jumper bar `n` of `strip`.
     pub fn jumper_bar(&self, strip: DeviceId, n: u32, index: u32) -> Option<Handle> {
         self.jumper_bars.get(&(strip, n, index)).copied()
     }

@@ -25,7 +25,7 @@ struct Picked {
     wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     references: BTreeSet<ecad_model::RepresentationId>,
-    /// Link lines picked: (strip, link).
+    /// Jumper bar lines picked: (strip, jumper bar).
     jumper_bars: BTreeSet<(DeviceId, u32)>,
     plain: usize,
 }
@@ -129,7 +129,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         return v;
     }
     let k = pick(p, page, selection);
-    // A link line alone selects its link.
+    // A jumper bar's line alone selects its jumper bar.
     if k.devices.is_empty()
         && k.aids.is_empty()
         && k.boxes.is_empty()

@@ -68,6 +68,9 @@ fn the_pages_old_keys_are_reserved() {
             let op = Op::SetProperty { object, key: key.into(), before: None, after: Some("x".into()) };
             let e = ledger.commit(Author::User, key, vec![op]).unwrap_err();
             assert!(matches!(e, ModelError::Precondition(_)), "{key}: {e:?}");
+            // The refusal says what to do, in plain words.
+            let why = e.to_string();
+            assert!(why.contains("is a field of its object") && !why.contains("design"), "{key}: {why}");
         }
     }
 }

@@ -37,9 +37,9 @@ fn separator_ok(t: &str) -> bool {
     t.eq_ignore_ascii_case(NO_SEPARATOR) || (t.chars().count() <= 3 && !t.chars().any(|c| c.is_whitespace() || c.is_ascii_alphanumeric() || c == ','))
 }
 
-/// Level names a link can never misread: exactly `n` names, each 1–6
+/// Level names a jumper bar can never misread: exactly `n` names, each 1–6
 /// characters with no `.`, `,` or space, all different (ignoring case), and a name made of digits
-/// only is its own level number (`1,2,3` on a three-level terminal; never `2,1,3`). So in a link
+/// only is its own level number (`1,2,3` on a three-level terminal; never `2,1,3`). So on a jumper bar
 /// `1.2` is always level 2, whichever names the type has.
 fn names_ok(t: &str, n: usize) -> bool {
     let parts: Vec<&str> = t.split(',').map(str::trim).collect();
@@ -234,7 +234,7 @@ pub(crate) fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Opt
             }
             None if e.key.ends_with(".levels") => Err(CmdError::refused(format!(
                 "`{key}` is the level names, comma-separated, one per level, each 1 to 6 characters without dots or spaces, all different; \
-a name of digits only must be its level's number (so 1.2 in a link is always level 2)."
+a name of digits only must be its level's number (so 1.2 on a jumper bar is always level 2)."
             ))),
             None => Err(CmdError::refused(format!("`{key}` is 1 to 64 characters, with no control characters."))),
         },
@@ -259,9 +259,10 @@ mod tests {
         assert!(setprop_value("terminal_block.lnpe.levels", Some("L,N")).is_some_and(|r| r.is_err()));
         assert!(setprop_value("terminal_block.lnpe.levels", Some(&"x".repeat(10_000))).is_some_and(|r| r.is_err()));
         assert_eq!(setprop_value("text.tag.height", Some("3")), None);
-        // Names a link could misread are refused.
+        // Names a jumper bar could misread are refused, in jumper bar words.
         for bad in ["2,1,3", "L,N,L", "L.1,N,PE", "L N,N,PE", "1,X,1"] {
-            assert!(setprop_value("terminal_block.lnpe.levels", Some(bad)).is_some_and(|r| r.is_err()), "{bad}");
+            let why = setprop_value("terminal_block.lnpe.levels", Some(bad)).and_then(|r| r.err()).map(|e| e.to_string()).unwrap_or_default();
+            assert!(why.contains("so 1.2 on a jumper bar is always level 2"), "{bad}: {why}");
         }
         assert_eq!(setprop_value("terminal_block.lnpe.levels", Some("1,N,3")), Some(Ok(Some("1,N,3".into()))));
     }

@@ -10,27 +10,27 @@ use crate::properties::commands::{Build, PropRule};
 /// These rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub(crate) static RULES: &[PropRule] = &[
     PropRule {
-        what: "user fields (072 B)",
+        what: "user fields",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k.starts_with(crate::devices::commands::device_links::USER_PREFIX),
         build: Build::Record(crate::devices::commands::device_links::user_value),
     },
     PropRule {
-        what: "device text fields (072 B)",
+        what: "device text fields",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && TextField::of_key(k).is_some(),
         build: Build::Record(text_value),
     },
     PropRule {
-        what: "connector fields (072 B)",
+        what: "connector fields",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && crate::connectors::is_field_key(k),
         build: Build::Record(connector_value),
     },
     PropRule {
-        what: "contacts (brief 025, 072 B)",
+        what: "contacts",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::references::devices::parse::CONTACTS_KEY,
         build: Build::Record(contacts_value),
     },
     PropRule {
-        what: "contact table (brief 025, 072 B)",
+        what: "contact table",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::references::devices::parse::MIRROR_KEY,
         build: Build::Record(table_value),
     },
@@ -43,7 +43,7 @@ pub(crate) static RULES: &[PropRule] = &[
         build: Build::Record(rating_field_value),
     },
     PropRule {
-        what: "device rating (072 B)",
+        what: "device rating",
         claims: |doc, o, k| match o {
             ObjectRef::Device(c) => {
                 k == ecad_model::objects::devices::RATING_KEY

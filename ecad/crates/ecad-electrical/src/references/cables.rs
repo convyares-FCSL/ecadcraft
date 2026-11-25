@@ -682,7 +682,7 @@ pub fn cables_touched_by(doc: &Document, effect: &ecad_model::document::effect::
         }
         Effect::Prop { object: ObjectRef::Standard, .. } => return Touch::All("a standard's registry value may be a sheet or grid"), // all
         Effect::Project { .. } => return Touch::All("the project record may carry the reference style or sheet"),                    // all
-        Effect::Aid { .. } => return Touch::All("a drawing aid may stand where a reference does (design 072 §6.2)"),                 // all
+        Effect::Aid { .. } => return Touch::All("a drawing aid may stand where a reference does"),                                   // all
         // A loose part is drawn on no page and no reference reads it.
         Effect::LoosePart { .. } => {}
     }

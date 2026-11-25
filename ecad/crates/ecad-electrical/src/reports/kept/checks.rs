@@ -152,7 +152,7 @@ impl ReportModels {
                     at: go.map(|(_, a)| a),
                     object: Object::Device(s.component),
                     which: format!(
-                        "{}: link {n} names {}, but {}:{pos} has {levels} level{}",
+                        "{}: jumper bar {n} names {}, but {}:{pos} has {levels} level{}",
                         s.tag,
                         items.join(", "),
                         s.tag,
@@ -186,7 +186,7 @@ impl ReportModels {
                 page: None,
                 at: None,
                 object: Object::Device(*c),
-                which: format!("{tag} has link keys but is not a terminal strip"),
+                which: format!("{tag} has jumper bar keys but is not a terminal strip"),
                 fix: Some(Fix::JumperBarOnNonStrip(*c)),
             });
         }

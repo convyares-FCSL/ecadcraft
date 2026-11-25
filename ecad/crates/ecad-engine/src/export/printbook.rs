@@ -168,7 +168,7 @@ pub fn build_pending(
 /// [`build_pending`] for a print in `colour` (`print.colour`): wires print in
 /// their colours (the paper sheet's), a two-colour wire with the second colour's dashes over the
 /// first, and everything else in ink, as the "Prints" column of the print table says (cable, provisional
-/// text and terminal links in ink). Without `colour` (mono) the wires are ink and their dashes
+/// text and jumper bars in ink). Without `colour` (mono) the wires are ink and their dashes
 /// are left out; the colour code is in the wire label.
 ///
 /// # Errors

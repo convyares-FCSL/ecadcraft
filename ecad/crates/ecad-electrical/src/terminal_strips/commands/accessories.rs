@@ -592,7 +592,7 @@ pub(crate) fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, 
     let message = match (&before_text, &text) {
         (Some(b), None) => format!("Removed jumper bar {tag} {b} (fewer than 2 positions)."),
         (Some(_), Some(_)) => format!("{tx_label}."),
-        (None, _) => format!("Linked {tag} {shown}."),
+        (None, _) => format!("Jumper bar {tag} {shown}."),
     };
     Ok(Jumper { strip: c, n, ops, label: tx_label, message, split: extra_text })
 }

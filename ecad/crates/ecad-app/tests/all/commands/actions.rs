@@ -253,7 +253,7 @@ fn a_kind_with_fewer_actions_leaves_its_slots_empty() {
 
 #[test]
 fn tool_groups_list_tools_window_actions_and_greyed_placeholders() {
-    // UI rev 3's strip order and flyouts (boards 1.09, 1.10).
+    // The tool strip's order and its flyouts.
     let names: Vec<Vec<&str>> = ToolGroup::ALL.iter().map(|g| g.tools().iter().map(|a| a.label).collect()).collect();
     assert_eq!(
         names,
@@ -269,6 +269,10 @@ fn tool_groups_list_tools_window_actions_and_greyed_placeholders() {
             vec!["Location box", "Function box", "Function and location box", "Device or PLC outline"],
         ]
     );
+    // Draw a jumper bar makes the part on the strip (`jumper`); Bridge draws a wire (`bridge`).
+    let command = |id: &str| actions::find(id).map(|a| a.command);
+    assert_eq!(command("terminal_block.jumper_bar"), Some("jumper"));
+    assert_eq!(command("wire.bridge"), Some("bridge"));
     // An item is a tool, a window action, or a placeholder that never runs (greyed in place).
     let cx = actions::Context { target: None, writable: true };
     for g in ToolGroup::ALL {

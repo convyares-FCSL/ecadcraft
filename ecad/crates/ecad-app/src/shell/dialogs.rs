@@ -206,7 +206,7 @@ impl App {
         } else if self.dialogs.name_box.is_some() {
             self.name_box_dialog(ctx);
         } else if let Some(msg) = self.dialogs.notice.clone() {
-            let shown = Dialog::new(egui::Id::unique("ecad_app_notice"), "ECAD desktop", "ecad.notice").small().show(
+            let shown = Dialog::new(egui::Id::unique("ecad_app_notice"), "ECADCraft", "ecad.notice").small().show(
                 ctx,
                 |ui| prim::body(ui, &msg, false),
                 |ui| action(ui, "OK", Kind::Primary, "OK", None).clicked(),

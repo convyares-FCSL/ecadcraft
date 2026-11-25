@@ -1,20 +1,20 @@
-//! Links: positions of one component joined electrically by a
-//! component property `jumper_bar.<n>`, never a conductor.
+//! Jumper bars: positions of one device joined electrically by a device property
+//! `jumper_bar.<n>`, never a wire.
 //!
 //! # Semantics
-//! - A **link key** is `jumper_bar.<n>` with `n` a whole number 1…[`MAX_JUMPER_BAR`] written without leading
-//!   zeros. `jumper_bar.<n>.part_number` and the like are not link keys.
-//! - Its value names **positions** by terminal label: ranges `a-b` (every label from `a` to `b` in
-//!   natural order, [`natural_key`]) and single labels, comma-separated (`1-4`, `7, 9, 11`).
-//! - [`crate::connectivity`] joins the terminals of the component whose labels a link names
-//!   (code, not format). ECAD's commands write link keys only on terminal strips; this crate does
-//!   not know what a strip is and reads them on any component.
+//! - A **jumper bar key** is `jumper_bar.<n>` with `n` a whole number 1…[`MAX_JUMPER_BAR`] written
+//!   without leading zeros. `jumper_bar.<n>.part_number` and the like are not jumper bar keys.
+//! - Its value names **positions** by terminal block label: ranges `a-b` (every label from `a` to `b`
+//!   in natural order, [`natural_key`]) and single labels, comma-separated (`1-4`, `7, 9, 11`).
+//! - [`crate::connectivity`] joins the connection points of the device whose labels a jumper bar
+//!   names (code, not format). ECAD's commands write jumper bar keys only on terminal strips; this
+//!   crate does not know what a strip is and reads them on any device.
 //! - Unreadable values join nothing; they are never an error here.
 //! - **Levels.** An endpoint whose text ends in `.` + digits (+ an optional
 //!   `i` or `o`) names a level of a position: `4.2` is position 4, level 2; `7.1o` the out point of
-//!   a two-point level. Without a level an endpoint means level 1 (roadmap question 5). A range whose
-//!   two ends have the same position is a **level range** (`1.1-1.3`, a cross-level link); any other
-//!   range is a **position range** whose ends name the same level (`1.2-8.2`). A terminal's level
+//!   a two-point level. Without a level an endpoint means level 1. A range whose two ends have the
+//!   same position is a **level range** (`1.1-1.3`, a cross-level jumper bar); any other range is a
+//!   **position range** whose ends name the same level (`1.2-8.2`). A connection point's level
 //!   comes from its key ([`level_of_key`]): `.n`, `.ni`, `.no`; any other key is level 1.
 //!
 //! This module reads text; it holds no I/O and does not depend on any CADCraft crate.
@@ -26,18 +26,18 @@ use crate::geometry::point::{LevelIo, PointKey};
 use crate::naming::id::{ConnectionPointId, DeviceId};
 use crate::{Document, Properties};
 
-/// What every link key starts with.
+/// What every jumper bar key starts with.
 pub const PREFIX: &str = "jumper_bar.";
-/// The highest link number.
+/// The highest jumper bar number.
 pub const MAX_JUMPER_BAR: u32 = 999;
-/// Most positions (items) one link names.
+/// Most positions (items) one jumper bar names.
 pub const MAX_ITEMS: usize = 999;
 /// Most characters of one position label.
 pub const MAX_LABEL_CHARS: usize = 16;
-/// Most characters of a link value read.
+/// Most characters of a jumper bar value read.
 pub const MAX_TEXT_CHARS: usize = 20_000;
 
-/// The highest level number a link or a level key may name.
+/// The highest level number a jumper bar or a level key may name.
 pub(crate) const MAX_LEVEL: u32 = 99;
 
 /// A terminal's level from its key: `.2` → (2, none), `.1i` → (1, `i`). Any key
@@ -113,18 +113,18 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
     natural_key(a).cmp(&natural_key(b))
 }
 
-/// The link number of `key` when it is a link key (`jumper_bar.3` → 3).
+/// The jumper bar number of `key` when it is a jumper bar key (`jumper_bar.3` → 3).
 pub fn jumper_bar_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
     crate::naming::words::uint_canonical(n, MAX_JUMPER_BAR).filter(|n| *n >= 1)
 }
 
-/// The link key of number `n`.
+/// The jumper bar key of number `n`.
 pub fn key(n: u32) -> String {
     format!("{PREFIX}{n}")
 }
 
-/// One item of a link's value.
+/// One item of a jumper bar's value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
     One(String),
@@ -132,14 +132,14 @@ pub enum Item {
     Range(String, String),
 }
 
-/// A link's positions as written.
+/// A jumper bar's positions as written.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Positions(pub Vec<Item>);
 
 fn refusal(text: &str) -> ParseError {
     let shown: String = text.chars().take(24).collect();
     let more = if text.chars().count() > 24 { "\u{2026}" } else { "" };
-    jumper_bar(format!("\"{shown}{more}\" is not a link. Write positions like 1-4 or 7, 9, 11."))
+    jumper_bar(format!("\"{shown}{more}\" is not a jumper bar. Write positions like 1-4 or 7, 9, 11."))
 }
 
 fn jumper_bar(why: impl Into<std::borrow::Cow<'static, str>>) -> ParseError {
@@ -161,19 +161,19 @@ fn level_refusal(end: &str) -> ParseError {
     jumper_bar(format!("\"{end}\" names no level. Levels are 1 to {MAX_LEVEL}: write 4.2 for position 4, level 2."))
 }
 
-/// Read a link's positions (spaces ignored).
+/// Read a jumper bar's positions (spaces ignored).
 ///
 /// # Errors
 /// Unreadable text, an empty item, a label longer than [`MAX_LABEL_CHARS`], more than
 /// [`MAX_ITEMS`] items, in words with the way forward.
 pub fn parse(text: &str) -> Result<Positions, ParseError> {
     if text.chars().count() > MAX_TEXT_CHARS {
-        return Err(jumper_bar(format!("A link names at most {MAX_ITEMS} positions.")));
+        return Err(jumper_bar(format!("A jumper bar names at most {MAX_ITEMS} positions.")));
     }
     let mut items = Vec::new();
     for part in text.split(',') {
         if items.len() >= MAX_ITEMS {
-            return Err(jumper_bar(format!("A link names at most {MAX_ITEMS} positions.")));
+            return Err(jumper_bar(format!("A jumper bar names at most {MAX_ITEMS} positions.")));
         }
         let part = part.trim();
         match part.split_once('-') {
@@ -206,12 +206,12 @@ pub fn parse(text: &str) -> Result<Positions, ParseError> {
     Ok(Positions(items))
 }
 
-/// One item of a link, read for matching.
+/// One item of a jumper bar, read for matching.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Span {
     /// Positions `a` to `b` (natural order; equal for one position) on one level and point.
     Positions { a: String, b: String, level: u32, point: Option<char> },
-    /// Levels `lo` to `hi` of one position: a cross-level link.
+    /// Levels `lo` to `hi` of one position: a cross-level jumper bar.
     Levels { position: String, lo: u32, hi: u32 },
 }
 
@@ -233,7 +233,7 @@ impl Item {
 }
 
 impl Positions {
-    /// Whether the link names the position labelled `l` (on any level).
+    /// Whether the jumper bar names the position labelled `l` (on any level).
     pub fn contains(&self, l: &str) -> bool {
         Matcher::of(self).matches(l)
     }
@@ -255,7 +255,7 @@ impl Positions {
         self.0.iter().filter_map(Item::span).collect()
     }
 
-    /// The one level every item names, when the link is on one level and crosses none (`1-4`: 1;
+    /// The one level every item names, when the jumper bar is on one level and crosses none (`1-4`: 1;
     /// `1.2-8.2`: 2; `1.1-1.3`: `None`).
     pub fn level(&self) -> Option<u32> {
         let mut out = None;
@@ -282,12 +282,12 @@ impl Positions {
         out
     }
 
-    /// Whether the link joins levels of one position (`1.1-1.3`).
+    /// Whether the jumper bar joins levels of one position (`1.1-1.3`).
     pub fn crosses_levels(&self) -> bool {
         self.spans().iter().any(|s| matches!(s, Span::Levels { .. }))
     }
 
-    /// Every label the link names out of `order` (labels in plan order), in that order.
+    /// Every label the jumper bar names out of `order` (labels in plan order), in that order.
     pub fn select<'a>(&self, order: &'a [String]) -> Vec<&'a String> {
         let keys: Vec<Vec<(u8, u128, String)>> = order.iter().map(|l| natural_key(l)).collect();
         self.select_keyed(order, &keys)
@@ -351,7 +351,7 @@ pub fn canonical(labels: &[&String], order: &[String]) -> String {
     out.join(", ")
 }
 
-/// The link keys of `props` with their readable positions, by number.
+/// The jumper bar keys of `props` with their readable positions, by number.
 pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
     props
         .range(PREFIX.to_string()..)
@@ -360,8 +360,8 @@ pub fn of(props: &Properties) -> Vec<(u32, Positions)> {
         .collect()
 }
 
-/// A link's positions ready for many lookups: single positions hashed, range ends keyed once
-/// (2: a lookup costs the link's ranges, never its whole text).
+/// A jumper bar's positions ready for many lookups: single positions hashed, range ends keyed once
+/// (2: a lookup costs the jumper bar's ranges, never its whole text).
 pub struct Matcher {
     /// Single positions: position → (level, point) items.
     ones: std::collections::HashMap<String, Vec<(u32, Option<char>)>>,
@@ -396,7 +396,7 @@ impl Matcher {
         m
     }
 
-    /// Whether the link names the position labelled `l` (on any level).
+    /// Whether the jumper bar names the position labelled `l` (on any level).
     pub fn matches(&self, l: &str) -> bool {
         if self.ones.contains_key(l) || self.levels.contains_key(l) {
             return true;
@@ -411,7 +411,7 @@ impl Matcher {
         self.ones.contains_key(l) || self.levels.contains_key(l) || self.ranges.iter().any(|(a, b, _, _)| a <= k && k <= b)
     }
 
-    /// Whether the link names the connection point at position `l`, level `level`, point `point`.
+    /// Whether the jumper bar names the connection point at position `l`, level `level`, point `point`.
     pub fn matches_level(&self, l: &str, level: u32, point: Option<char>) -> bool {
         if self.ones.get(l).is_some_and(|v| v.iter().any(|(n, p)| *n == level && point_ok(*p, point))) {
             return true;
@@ -435,7 +435,7 @@ impl Matcher {
 }
 
 /// Labels in plan order: natural order ([`natural_key`]), each once. The one ordering of a strip's
-/// positions, used by ECAD's strips, accessories and links.
+/// positions, used by ECAD's strips, accessories and jumper bars.
 pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut v: Vec<(NaturalKey, String)> = labels.into_iter().map(|l| (natural_key(&l), l)).collect();
     v.sort();
@@ -443,9 +443,9 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
     v.into_iter().map(|(_, l)| l).collect()
 }
 
-/// The terminals of `component` joined to `t` by its links (not `t` itself), level by level.
+/// The terminals of `component` joined to `t` by its jumper bars (not `t` itself), level by level.
 /// One pass over the
-/// component's terminals per link that names `t`.
+/// component's terminals per jumper bar that names `t`.
 pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
     let Some(term) = doc.connection_points.get(&t) else { return Vec::new() };
     let Some(comp) = term.device().and_then(|d| doc.devices.get(&d)) else { return Vec::new() };
@@ -464,7 +464,7 @@ pub fn linked(doc: &Document, t: ConnectionPointId) -> Vec<ConnectionPointId> {
     out.into_iter().collect()
 }
 
-/// The terminals of `component` a link value names (unreadable: none).
+/// The terminals of `component` a jumper bar value names (unreadable: none).
 pub(crate) fn connection_points_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<ConnectionPointId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);

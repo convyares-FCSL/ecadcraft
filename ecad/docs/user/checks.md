@@ -134,12 +134,12 @@ What the rating checks calculate is in [circuits.md](circuits.md).
 | Terminal drawn twice | `terminal-block-twice` | Error |
 | Terminal level drawn twice | `level-twice` | Error |
 | Position mixes terminal types | `position-mixed` | Warning |
-| Link names a level the position lacks | `level-missing` | Warning |
+| Jumper bar names a level the position lacks | `level-missing` | Warning |
 | Accessory at a position the strip lacks | `accessory-orphan` | Warning |
 | Strip accessories without a part number | `no-accessory-part` | Note, count |
-| Link crosses a partition | `jumper-bar-across-partition` | Warning |
-| Link names positions the strip lacks | `jumper-bar-orphan` | Warning |
-| Link on a device that is not a strip | `jumper-bar-on-non-strip` | Warning |
+| Jumper bar crosses a partition | `jumper-bar-across-partition` | Warning |
+| Jumper bar names positions the strip lacks | `jumper-bar-orphan` | Warning |
+| Jumper bar on a device that is not a strip | `jumper-bar-on-non-strip` | Warning |
 | Fuse terminals that are devices of their own | `fuse-device` | Note |
 | Fuse positions without a rating | `no-fuse-rating` | Note |
 

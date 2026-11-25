@@ -1037,7 +1037,7 @@ pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usiz
         Row::ro("jumper_bar.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
     ];
     Section {
-        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
+        title: format!("ECAD \u{b7} JUMPER BAR {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
         kind: SectionKind::JumperBar,
         target: Some(Target::Devices(vec![c])),
         rows,

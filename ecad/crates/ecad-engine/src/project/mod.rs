@@ -235,7 +235,7 @@ pub(crate) fn device_reference_entity(
     e
 }
 
-/// One link line segment as a dashed hairline on the links layer.
+/// One segment of a jumper bar's line, dashed on the jumper bar layer.
 pub(crate) fn jumper_bar_entity(part: &ecad_electrical::terminal_strips::jumper_bars::JumperBarPart, handle: Handle) -> Entity {
     Entity {
         handle,
@@ -529,7 +529,7 @@ pub(crate) fn project_page_kept(
         ents.push(device_reference_entity(&draw, &part, h));
         map.insert_device_reference(part.rep, part.index, h);
     }
-    // Link lines: derived on every draw, never stored.
+    // Jumper bar lines: derived on every draw, never stored.
     let mut seen: BTreeMap<(DeviceId, u32), u32> = BTreeMap::new();
     for part in ecad_electrical::terminal_strips::jumper_bars::parts_on_page(doc, page) {
         let i = seen.entry((part.strip, part.n)).or_default();

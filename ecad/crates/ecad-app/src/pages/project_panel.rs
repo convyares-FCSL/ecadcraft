@@ -2,7 +2,7 @@
 //! the far left, one click to make a page the active page, and the page actions (new, rename,
 //! reorder, preview) through the existing page commands. Since the app's top banner was removed
 //! its header also holds the project's status, file actions and the
-//! experiment note.
+//! folder note.
 //!
 //! The panel only reads: it keeps a copy of the rows ([`ecad_engine::PageRow`]) and rebuilds it
 //! when the project's change count moves (one integer compared per frame; a rebuild reads
@@ -309,7 +309,7 @@ pub struct Header {
     /// Read-only and unconfirmed-save warnings.
     pub warnings: Vec<String>,
     pub read_only: bool,
-    /// The experiment note, as one small line.
+    /// The folder note ([`crate::shell::app::NOTE`]), as one small line.
     pub note: &'static str,
     /// Snapshots can be exported (`--snapshots`).
     pub snapshots: bool,

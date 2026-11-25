@@ -362,9 +362,10 @@ fn the_maker_records_answers_typed_at_the_command_line() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Review of #94, finding 4: one group lights for a tool two groups list (Bridge).
+/// Draw a jumper bar runs `jumper` (a part on the strip) and lights Terminal; Bridge runs `bridge` (a
+/// wire) and lights Wire.
 #[test]
-fn one_group_lights_for_a_tool_in_two_groups() {
+fn draw_a_jumper_bar_runs_jumper_and_bridge_runs_bridge() {
     use ecad_app::commands::actions::ToolGroup;
     let gi = |g: ToolGroup| ecad_app::shell::tool_strip::GROUPS.iter().position(|x| x.group == g);
     let dir = temp("lit");
@@ -372,10 +373,11 @@ fn one_group_lights_for_a_tool_in_two_groups() {
     demo(&mut h, &dir);
     h.state_mut().start_tool(ecad_app::commands::actions::find("terminal_block.jumper_bar").unwrap());
     h.run_steps(2);
+    assert_eq!(running(&h).as_deref(), Some("jumper"));
     assert_eq!(h.state().lit_group(), gi(ToolGroup::TerminalBlock));
     h.state_mut().cad.session.cancel();
     h.run_steps(2);
-    // Chosen from Wire's flyout, Bridge becomes Wire's last-used tool: Wire lights, not Terminal.
+    // Chosen from Wire's flyout, Bridge becomes Wire's last-used tool: Wire lights.
     open_flyout(&mut h, "Wire (W)");
     h.get_by_label("Bridge").click();
     h.run_steps(2);

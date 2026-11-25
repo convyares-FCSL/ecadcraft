@@ -1,4 +1,4 @@
-//! The app harness without a window: Save, Save As and Open through the app's own file
+//! The app without a window: Save, Save As and Open through the app's own file
 //! dialog, the Save/Discard/Cancel close dialog (one page, two pages, quitting), read-only
 //! projects, snapshot export, and frames laid out headless. What these tests cannot show is how it
 //! looks and feels on a display.
@@ -14,6 +14,14 @@ fn new_app(snapshots: Option<PathBuf>) -> App {
     let mut t = App::new(snapshots).unwrap();
     crate::common::save_as_services(&mut t);
     t
+}
+
+/// The window title and the Project panel's note name the product once, as ECADCraft.
+#[test]
+fn the_title_and_note_say_ecadcraft() {
+    assert_eq!(ecad_app::shell::app::TITLE, "ECADCraft");
+    let note = ecad_app::shell::app::NOTE;
+    assert!(note.starts_with("ECADCraft") && !note.to_lowercase().contains("experiment"), "{note}");
 }
 
 /// A fresh folder under the system temp folder, removed when dropped.
