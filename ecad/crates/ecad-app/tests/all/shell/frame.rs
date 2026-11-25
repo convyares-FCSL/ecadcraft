@@ -293,3 +293,35 @@ fn screenshots_of_board_1_01() {
     let _ = crate::canvas::mouse_acceptance::shot(&h, &deltas, &out.join("uiv3-1.01-r2-right.png"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Opening a saved project from inside the running app, by clicks, from Project: the project
+/// menu's Open, then the file in the Open dialog's list. The project opens on Draw.
+#[test]
+fn opening_a_project_by_clicks_from_project_lands_on_draw() {
+    use crate::pages::project_panel::{click, project_menu};
+    let dir = std::env::temp_dir().join(format!("ecad-app-click-open-{}", ecad_store::disk::unique()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("clicked.ecad");
+    let mut h = harness();
+    h.state_mut().files.list_projects = |folder| {
+        let mut v: Vec<String> = std::fs::read_dir(folder)
+            .map(|r| r.filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.ends_with(".ecad")).collect())
+            .unwrap_or_default();
+        v.sort();
+        v
+    };
+    h.state_mut().save_as(&path.to_string_lossy()).unwrap();
+    h.run_steps(3);
+    click(&mut h, Workspace::Lists.label());
+    h.run_steps(3);
+    assert_eq!(h.state().shell_state().workspace, Workspace::Lists);
+    project_menu(&mut h, top_bar::OPEN);
+    h.run_steps(3);
+    h.state_mut().set_dialog_path(&format!("{}{}", dir.display(), std::path::MAIN_SEPARATOR));
+    h.run_steps(3);
+    click(&mut h, "ecad.file.pick.clicked.ecad");
+    h.run_steps(5);
+    assert!(h.state().dialog().is_none() && h.state().project_open());
+    assert_eq!(h.state().shell_state().workspace, Workspace::Draw);
+    let _ = std::fs::remove_dir_all(&dir);
+}
