@@ -453,6 +453,26 @@ fn two_page_device(seed: u64) -> (H, PageId, PageId, DeviceId) {
     (h, p1, p2, k)
 }
 
+/// The long probe's failing step (seed 0x240002, step 179): a device drawn on two pages with no
+/// main symbol goes to its first symbol in page order, so moving the second page first moves its
+/// go-to there.
+#[test]
+fn moving_a_page_moves_the_go_to_of_the_devices_drawn_on_it() {
+    let mut h = H::new(0x24_7108);
+    let p1 = h.first_page();
+    let k: DeviceId = id(&h.run("place", json!({"symbol": "no", "at": [100.0, 100.0]})).unwrap(), "component");
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.activate(p2);
+    h.run("place", json!({"symbol": "no", "at": [100.0, 100.0], "device": k.hex()})).unwrap();
+    let goto_page = |h: &mut H| h.cfg(|p| p.reports().device(k).and_then(|d| d.goto).map(|(_, page, _)| page));
+    assert_eq!(goto_page(&mut h), Some(p1), "first in page order");
+    h.run("movepage", json!({"page": p2.hex(), "index": 1})).unwrap();
+    verify(&mut h, "page 2 moved first");
+    assert_eq!(goto_page(&mut h), Some(p2), "page 2 is first now");
+    h.run("u", Value::Null).unwrap();
+    verify(&mut h, "undo");
+}
+
 /// The long probe's failing steps (seed 0x240002, steps 20 to 22): a property, a contact joined on
 /// another page, then page 1's location, with page 2 shown: page 2 reads `+CP1-K01`.
 #[test]

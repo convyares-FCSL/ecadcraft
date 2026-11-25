@@ -696,10 +696,18 @@ impl Scope {
                     self.route_pages.insert(*id);
                 }
             }
-            // Added, removed, or both (a move).
-            Effect::Page { id, .. } => {
+            // Added, removed, or both (a move). A move also changes the go-to of the devices
+            // drawn on the page (a device's first symbol in page order); the other pages keep
+            // their order against each other.
+            Effect::Page { id, index_before, index_after, .. } => {
                 self.pages.insert(*id);
                 self.route_pages.insert(*id);
+                if index_before.is_some() && index_after.is_some() {
+                    self.devices.extend(doc.representations_on(*id).filter_map(|(_, r)| match r.subject {
+                        Subject::Device(c) => Some(c),
+                        _ => None,
+                    }));
+                }
             }
             Effect::Definition { .. } | Effect::Layer { .. } | Effect::Version { .. } | Effect::Folder { .. } => {}
         }
