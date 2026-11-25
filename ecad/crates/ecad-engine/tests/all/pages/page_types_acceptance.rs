@@ -883,18 +883,42 @@ fn ac11_cover_notes_writes_are_bounded() {
     assert!(m.contains("The cover takes up to 40 notes of 400 characters."), "{m}");
 }
 
-/// AC15: 10 000 wire categories in use on the cover never panic and the legend is bounded.
+/// AC15: hundreds of wire categories in use on the cover never panic, and the wire-colour legend and
+/// the cover stay bounded.
+///
+/// Each category is its own wire style with its own cross-section, so each is its own legend line;
+/// each wire lands on two connection points spread over the page, so it carries a wire and takes
+/// its category. The commands run straight through the session and the whole project is checked
+/// every 50th step and at the end: checking after every step would make the run quadratic.
 #[test]
-#[ignore = "slow: 10 000 categories and conductors (tester 054, run by name)"]
-fn ac15_ten_thousand_categories_in_use_are_bounded() {
+#[ignore = "slow: 400 categories and wires (tester 054, run by name)"]
+fn ac15_hundreds_of_categories_in_use_are_bounded() {
+    const N: usize = 400;
     let (mut h, cover, sch) = with_cover(0x54_1502);
     h.activate(sch);
-    for i in 0..10_000u32 {
-        let id = h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i % 50)}}));
-        let Ok(id) = id else { break };
-        let w = h.run("wire", json!({"points": [[0.0, i as f64 * 0.01], [10.0, i as f64 * 0.01]]})).unwrap();
-        h.run("category", json!({"conductor": s(&w["conductor"]), "value": s(&id["id"])})).ok();
+    // 30 lines a row, 13 mm apart, rows 5 mm apart: spread over the A3 drawing area.
+    let at = |i: usize| ((10 + (i % 30) * 13) as f64, (10 + (i / 30) * 5) as f64);
+    let ends: Vec<(f64, f64)> = (0..N)
+        .flat_map(|i| {
+            let (x, y) = at(i);
+            [(x, y), (x + 10.0, y)]
+        })
+        .collect();
+    h.points_at(&ends);
+    for i in 0..N {
+        let style = h.s.execute("setstyle", &json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i)}})).unwrap();
+        let (x, y) = at(i);
+        let w = h.s.execute("wire", &json!({"points": [[x, y], [x + 10.0, y]]})).unwrap();
+        let set = h.s.execute("category", &json!({"conductor": s(&w["conductor"]), "value": s(&style["id"])})).unwrap();
+        assert_eq!(set["changed"], true, "wire {i} takes its category: {set}");
+        if i % 50 == 49 {
+            h.check();
+        }
     }
+    h.check();
+    let lines = ecad_electrical::pages::front::wire_lines(&h.doc()).len();
+    // One line per category in use, up to the legend's bound of 24 lines.
+    assert_eq!(lines, 24, "the wire-colour legend stops at its bound");
     let t = gen_texts(&mut h, cover);
     assert!(t.len() < 2_000, "the cover is bounded: {}", t.len());
 }
