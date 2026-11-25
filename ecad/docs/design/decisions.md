@@ -267,6 +267,6 @@ As in [`layout.md`](layout.md), and:
   it touches so they describe the code as it now is. No "docs later".
 - **No history in source.** Comments in `src/` and in a crate's built-in data (`defaults/*.toml`) say what the
   code or value is and why, in domain words. No brief, design, lane, review-finding, question or requirement
-  numbers, no section marks, no owner/overseer/reviewer/tester rulings, no dates. History lives in git and in
-  `ecad/docs/archive`; only READMEs may link to documents in `ecad/docs`. `cargo xtask layers` enforces this.
+  numbers, no section marks, no record of who ruled, no dates. History lives in git and in
+  `ecad/docs/archive`; the current docs follow the same rule; only READMEs may link to documents in `ecad/docs`. `cargo xtask layers` enforces this.
 - Test module docs say what they test, not which brief or role they came from.

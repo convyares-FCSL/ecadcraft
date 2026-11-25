@@ -29,8 +29,8 @@ is in [`../developer/commands.md`](../developer/commands.md).
    the MCP schema, undo and the agent gate. An engine command file exists only for a session command.
 5. **Shared plumbing stays flat** and small.
 6. **lib.rs lists the areas**, one line each.
-7. **Tests follow the folders**: `tests/all/<feature>/…` in each crate; no `lanes/`, `tester_NNN`,
-   `*_tester` or brief numbers. Rule tests (a `&Document` in, a result out) live in
+7. **Tests follow the folders**: `tests/all/<feature>/…` in each crate; no `lanes/` folders, no files
+   named after a brief or an agent role, no brief numbers. Rule tests (a `&Document` in, a result out) live in
    `ecad-electrical/tests/all/<feature>/`; the engine keeps session, drawing and click tests.
 8. **Narrow `pub`**: `pub(crate)` unless another crate uses it, modules included: a `pub mod` is one
    another crate (its integration tests and doc examples count) names. The compiler enforces it:

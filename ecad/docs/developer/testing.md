@@ -42,7 +42,7 @@ Which crate a test belongs to:
 
 A test that takes more than about 2 s is marked `#[ignore = "slow: <why>"]`. Everyday runs (`cargo test`,
 `cargo xtask test-changed`) skip it. The slow set runs only at the QA gate (`cargo xtask ci`, or CI's full
-suite), or when the owner asks for it after large changes. Workers and testers never run `--include-ignored`.
+suite), or when the owner asks for it after large changes. Agents never run `--include-ignored`.
 
 A test too slow at `opt-level = 0` is marked slow, not optimised: ECAD's own crates build unoptimised for dev and
 test so a change recompiles quickly ([`build.md`](build.md#profiles)).

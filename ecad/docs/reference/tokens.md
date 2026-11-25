@@ -94,12 +94,12 @@ px at 100 % UI scale (`ecad_widgets::tokens::space`, `ecad_widgets::tokens::size
 | `size.row_list` | `28 px` | List row |
 | `size.row_table` | `30 px` | Table row |
 | `size.row_group` | `32 px` | Group row |
-| `size.top_bar` | `40 px` | Top bar (UI rev 3) |
+| `size.top_bar` | `40 px` | Top bar |
 | `size.panel_header` | `36 px` | Panel header |
 | `size.agent_banner` | `32 px` | Agent banner |
-| `size.status_bar` | `32 px` | Bottom bar: status, page well, view (UI rev 3) |
+| `size.status_bar` | `32 px` | Bottom bar: status, page well, view |
 | `size.tool_button` | `44 px` | Tool button height |
-| `size.tool_button_w` | `54 px` | Tool button width: an icon over a label (UI rev 3) |
+| `size.tool_button_w` | `54 px` | Tool button width: an icon over a label |
 | `size.tool_strip` | `56 px` | Tool strip width; the inspector's collapsed rail |
 | `size.tool_icon` | `18 px` | Icon in a tool button |
 | `size.tool_label` | `10 px` | Label under a tool button's icon |
@@ -192,56 +192,56 @@ Tool icons echo the schematic.
 | `icon.chevron_right` | Chevron right | A chevron |
 | `icon.chevron_up` | Chevron up | A chevron |
 | `icon.chevron_down` | Chevron down | A chevron |
-| `icon.delete` | Delete | A bin with a lid (041: an action) |
-| `icon.go_to` | Go to | An arrow leaving a box (041: an action) |
-| `icon.show_row` | Show row | Rows, the middle one marked (041: an action) |
-| `icon.edit` | Edit | A pencil (041: an action) |
-| `icon.properties` | Properties | A list in a box (041: an action) |
-| `icon.rotate` | Rotate | An open circle with an arrow head (041: an action) |
-| `icon.mirror` | Mirror | Two triangles about a dashed axis (041: an action) |
-| `icon.duplicate` | Duplicate | Two overlapping boxes (041: an action) |
-| `icon.connect` | Connect | A lead into a ring (041: an action) |
-| `icon.disconnect` | Disconnect | A lead apart from a ring (041: an action) |
-| `icon.number` | Number | A hash (041: an action) |
-| `icon.move` | Move | A cross with four arrow heads (041: an action) |
-| `icon.paste` | Paste | A sheet on a board with a clip (041: an action) |
-| `icon.new_page` | New page | A sheet with a plus (041: an action) |
-| `icon.line` | Line | A diagonal with end points (041: an action) |
-| `icon.polyline` | Polyline | A bent line (041: an action) |
-| `icon.rectangle` | Rectangle | A rectangle (041: an action) |
-| `icon.circle` | Circle | A circle (041: an action) |
-| `icon.arc` | Arc | A half circle with its centre (041: an action) |
-| `icon.terminal_block` | Terminal | A block with a screw ring between two leads (041: an action) |
-| `icon.junction` | Junction | A dot where a line meets a line (041: an action) |
-| `icon.cloud` | Revision cloud | Scallops round a box (041: an action) |
-| `icon.eye` | Show or hide | An eye (041: an action) |
-| `icon.connector` | Connector | A socket's cup over a plug's pin, each on its lead (044: Place ▸ Connector) |
-| `icon.new_symbol` | New symbol | A symbol box on two leads, a plus at its top right (048: Library ▸ New symbol) |
-| `icon.connection_point` | Connection point | A hollow ring at a lead's end (048: the builder's C tool) |
-| `icon.text_slot` | Text slot | A dashed box with an anchor dot (048: the builder's S tool) |
-| `icon.origin` | Origin | A cross with a ring at its centre (048: the builder's O tool) |
-| `icon.book` | Book | An open book (UI rev 3: the Book panel) |
-| `icon.plc` | PLC | A card with a grid of six channels (UI rev 3: the PLC group) |
-| `icon.snap` | Snap | A cross hair on a dot (UI rev 3: the Snap toggle) |
-| `icon.grid` | Grid | A hash of four lines (UI rev 3: the Grid toggle) |
-| `icon.ortho` | Ortho | A right angle with a square corner mark (UI rev 3: the Ortho toggle) |
-| `icon.moon` | Dark theme | A crescent (UI rev 3: the light/dark switch) |
-| `icon.sun` | Light theme | A ring with eight rays (UI rev 3: the light/dark switch) |
-| `icon.help` | Help | A question mark in a ring (UI rev 3: the top bar) |
-| `icon.folder` | Page group | A folder with a tab (UI rev 3: a page group in the well) |
-| `icon.chevrons_left` | Previous group | Two chevrons (UI rev 3: the page well) |
-| `icon.chevrons_right` | Next group | Two chevrons (UI rev 3: the page well) |
-| `icon.fit` | Fit | Four corner marks (UI rev 3: the view group) |
-| `icon.minus` | Zoom out | A dash (UI rev 3: the view group) |
-| `icon.plus` | Zoom in | A plus (UI rev 3: the view group) |
-| `icon.pencil` | Draw tools | A pencil (UI rev 3: the Draw group) |
-| `icon.pin` | Device tools | A body on a lead (UI rev 3: the Device group) |
-| `icon.terminal_block_pin` | Terminal tools | A lead through a ring with a slash (UI rev 3: the Terminal group) |
-| `icon.wire_bend` | Wire tools | A wire bending up from one end ring to another (UI rev 3: the Wire group) |
-| `icon.cable_bundle` | Cable tools | Three leads tied by two strokes (UI rev 3: the Cable group) |
-| `icon.location_box` | Location tools | A dashed box with a marked corner (UI rev 3: the Location group) |
-| `icon.device_grid` | Devices panel | Three squares and a plus (UI rev 3: the Devices panel) |
-| `icon.share` | Share | An arrow rising out of a tray (UI rev 3: the top bar) |
+| `icon.delete` | Delete | A bin with a lid (an action) |
+| `icon.go_to` | Go to | An arrow leaving a box (an action) |
+| `icon.show_row` | Show row | Rows, the middle one marked (an action) |
+| `icon.edit` | Edit | A pencil (an action) |
+| `icon.properties` | Properties | A list in a box (an action) |
+| `icon.rotate` | Rotate | An open circle with an arrow head (an action) |
+| `icon.mirror` | Mirror | Two triangles about a dashed axis (an action) |
+| `icon.duplicate` | Duplicate | Two overlapping boxes (an action) |
+| `icon.connect` | Connect | A lead into a ring (an action) |
+| `icon.disconnect` | Disconnect | A lead apart from a ring (an action) |
+| `icon.number` | Number | A hash (an action) |
+| `icon.move` | Move | A cross with four arrow heads (an action) |
+| `icon.paste` | Paste | A sheet on a board with a clip (an action) |
+| `icon.new_page` | New page | A sheet with a plus (an action) |
+| `icon.line` | Line | A diagonal with end points (an action) |
+| `icon.polyline` | Polyline | A bent line (an action) |
+| `icon.rectangle` | Rectangle | A rectangle (an action) |
+| `icon.circle` | Circle | A circle (an action) |
+| `icon.arc` | Arc | A half circle with its centre (an action) |
+| `icon.terminal_block` | Terminal | A block with a screw ring between two leads (an action) |
+| `icon.junction` | Junction | A dot where a line meets a line (an action) |
+| `icon.cloud` | Revision cloud | Scallops round a box (an action) |
+| `icon.eye` | Show or hide | An eye (an action) |
+| `icon.connector` | Connector | A socket's cup over a plug's pin, each on its lead (Place ▸ Connector) |
+| `icon.new_symbol` | New symbol | A symbol box on two leads, a plus at its top right (Library ▸ New symbol) |
+| `icon.connection_point` | Connection point | A hollow ring at a lead's end (the builder's C tool) |
+| `icon.text_slot` | Text slot | A dashed box with an anchor dot (the builder's S tool) |
+| `icon.origin` | Origin | A cross with a ring at its centre (the builder's O tool) |
+| `icon.book` | Book | An open book (the Book panel) |
+| `icon.plc` | PLC | A card with a grid of six channels (the PLC group) |
+| `icon.snap` | Snap | A cross hair on a dot (the Snap toggle) |
+| `icon.grid` | Grid | A hash of four lines (the Grid toggle) |
+| `icon.ortho` | Ortho | A right angle with a square corner mark (the Ortho toggle) |
+| `icon.moon` | Dark theme | A crescent (the light/dark switch) |
+| `icon.sun` | Light theme | A ring with eight rays (the light/dark switch) |
+| `icon.help` | Help | A question mark in a ring (the top bar) |
+| `icon.folder` | Page group | A folder with a tab (a page group in the well) |
+| `icon.chevrons_left` | Previous group | Two chevrons (the page well) |
+| `icon.chevrons_right` | Next group | Two chevrons (the page well) |
+| `icon.fit` | Fit | Four corner marks (the view group) |
+| `icon.minus` | Zoom out | A dash (the view group) |
+| `icon.plus` | Zoom in | A plus (the view group) |
+| `icon.pencil` | Draw tools | A pencil (the Draw group) |
+| `icon.pin` | Device tools | A body on a lead (the Device group) |
+| `icon.terminal_block_pin` | Terminal tools | A lead through a ring with a slash (the Terminal group) |
+| `icon.wire_bend` | Wire tools | A wire bending up from one end ring to another (the Wire group) |
+| `icon.cable_bundle` | Cable tools | Three leads tied by two strokes (the Cable group) |
+| `icon.location_box` | Location tools | A dashed box with a marked corner (the Location group) |
+| `icon.device_grid` | Devices panel | Three squares and a plus (the Devices panel) |
+| `icon.share` | Share | An arrow rising out of a tray (the top bar) |
 
 # Drawing style
 

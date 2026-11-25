@@ -4,8 +4,11 @@
 //!
 //! This guard reads the comment text (`//`, `///`, `//!`, and a `//` comment after code) of every `.rs` file under
 //! the `src/` of each workspace member, and the `#` comments of the built-in data under its `defaults/` (`.toml`),
-//! and reports each line [`citation`] recognises. A hard zero: rewrite the
-//! comment to say what is true now; there is no allowlist.
+//! and reports each line [`citation`] recognises. The current docs are held to the same rule: every line of the
+//! Markdown under `docs/` outside `archive/` (the history, kept as written) and `briefs/` (open work orders, which
+//! name their own numbers), fenced code blocks left out. A hard zero: rewrite the comment or the doc to say what is
+//! true now; there is no allowlist. A brief in `docs/briefs/` whose `Status:` line says it is finished (done,
+//! delivered, finished, merged) is refused too: a finished brief belongs in `docs/archive/briefs/`.
 //!
 //! Textual and hand-written like the other guards (xtask has no regex crate). Domain text that looks similar is
 //! not a citation: a jumper bar lane (`lane 0`), a jumper bar tag (`JB-10`), a PLC address (`%Q2.2`), a number
@@ -59,7 +62,7 @@ pub(crate) fn citation(text: &str) -> Option<&'static str> {
     for (i, c) in text.char_indices() {
         in_code ^= c == '`';
         let rest = &text[i..];
-        if c == '(' && (starts_ci(&rest[1..], "owner") && ends_at(rest, 6)) {
+        if c == '(' && !in_code && (starts_ci(&rest[1..], "owner") && ends_at(rest, 6)) {
             return Some("an owner ruling");
         }
         if c == '(' && rest.as_bytes().get(1) == Some(&b'#') {
@@ -188,6 +191,63 @@ fn toml_files(dir: &std::path::Path) -> Vec<PathBuf> {
     entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect()
 }
 
+/// The citing lines of the Markdown `text`, fenced code blocks left out: (line number, kind).
+fn doc_places(text: &str) -> Vec<(usize, &'static str)> {
+    let mut fenced = false;
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        if let Some(kind) = (!fenced).then(|| citation(line)).flatten() {
+            out.push((i + 1, kind));
+        }
+    }
+    out
+}
+
+/// The current docs: the `.md` files under `dir`, leaving out the history (`archive/`) and open briefs (`briefs/`).
+fn current_docs(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            if !p.file_name().is_some_and(|n| n == "archive" || n == "briefs") {
+                current_docs(&p, out);
+            }
+        } else if p.extension().is_some_and(|x| x == "md") {
+            out.push(p);
+        }
+    }
+}
+
+/// The words of a `Status:` line that say a brief is finished.
+const FINISHED: &[&str] = &["done", "delivered", "finished", "merged"];
+
+/// Whether the Markdown `text` has a `Status:` line (bold or not) whose value starts with a word of [`FINISHED`].
+fn marked_finished(text: &str) -> bool {
+    text.lines().any(|line| {
+        let t = line.trim_start_matches(|c: char| c == '>' || c == '*' || c == '-' || c.is_whitespace());
+        let Some(value) = t.get(..7).filter(|h| h.eq_ignore_ascii_case("status:")).and(t.get(7..)) else { return false };
+        let value = value.trim_start_matches(|c: char| c == '*' || c.is_whitespace());
+        FINISHED.iter().any(|w| starts_ci(value, w) && ends_at(value, w.len()))
+    })
+}
+
+/// The `.md` files directly in `docs/briefs/` that say they are finished.
+fn finished_briefs(dir: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "md"))
+        .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| marked_finished(&t)))
+        .collect();
+    out.sort();
+    out
+}
+
 /// The guard's problems, if any.
 pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
@@ -208,6 +268,22 @@ pub(crate) fn violations(meta: &Value) -> Result<Vec<String>, String> {
                     .map(|(l, kind)| format!("{rel}:{l}: a comment cites history ({kind}); say what the code does now, in domain words")),
             );
         }
+    }
+    let mut docs = Vec::new();
+    current_docs(&root.join("docs"), &mut docs);
+    docs.sort();
+    for f in docs {
+        let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
+        let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+        out.extend(
+            doc_places(&text)
+                .into_iter()
+                .map(|(l, kind)| format!("{rel}:{l}: a current doc cites history ({kind}); say what is true now, or move it to docs/archive/")),
+        );
+    }
+    for f in finished_briefs(&root.join("docs").join("briefs")) {
+        let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+        out.push(format!("{rel}: the brief says it is finished; move it to docs/archive/briefs/ with its banner and index row"));
     }
     Ok(out)
 }
@@ -259,6 +335,7 @@ mod tests {
             "// the review drawer lists drafts",
             "// a design rule for the frame",
             "// file 2 of 3",
+            "/// Marked `// ECAD-SEAM(owner):` in code.",
             "let s = \"brief 012 // design 065\";",
         ];
         for line in clean {
@@ -271,5 +348,36 @@ mod tests {
         assert_eq!(places("fn a() {}\n// Brief 038: x\nlet s = \"§\";\n", "//"), vec![(2, "a brief or design number")]);
         let toml = "# Brief 047: the BOM.\n\"a.b\" = 2.5   # owner, 2026-11-15\nname = \"#1 §\"\n";
         assert_eq!(places(toml, "#"), vec![(1, "a brief or design number"), (2, "a date")]);
+        let md = "# Cables\n\nAs brief 059 planned.\n```json\n{\"date\": 2026-11-12}\n```\nA cable groups wires.\n";
+        assert_eq!(doc_places(md), vec![(3, "a brief or design number")]);
+    }
+
+    /// A brief whose status says it is finished is found; an open one is not.
+    #[test]
+    fn a_finished_brief_is_found() {
+        for done in ["Status: Done", "**Status:** delivered (PR 9)", "> Status: Finished", "- status: merged into dev"] {
+            assert!(marked_finished(&format!("# Brief 080\n\n{done}\n")), "{done}");
+        }
+        for open in ["Status: Approved", "**Status:** Draft", "Status: donee", "The status: done later", "Status:"] {
+            assert!(!marked_finished(&format!("# Brief 080\n\n{open}\n")), "{open}");
+        }
+    }
+
+    /// The history and the open briefs are left out; every other `.md` under `docs/` is read.
+    #[test]
+    fn current_docs_leave_out_the_archive_and_briefs() {
+        let base = std::env::temp_dir().join(format!("xtask-docs-{}", std::process::id()));
+        for d in ["user", "archive/briefs", "briefs"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+        }
+        for f in ["README.md", "user/wires.md", "archive/README.md", "archive/briefs/001-x.md", "briefs/080-y.md", "user/note.txt"] {
+            std::fs::write(base.join(f), "x").unwrap();
+        }
+        let mut found = Vec::new();
+        current_docs(&base, &mut found);
+        let mut names: Vec<String> = found.iter().map(|p| p.strip_prefix(&base).unwrap().to_string_lossy().replace('\\', "/")).collect();
+        names.sort();
+        assert_eq!(names, ["README.md", "user/wires.md"]);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

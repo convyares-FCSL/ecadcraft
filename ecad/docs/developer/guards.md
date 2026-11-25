@@ -84,14 +84,19 @@ empty.
 
 ## No history in comments
 
-`history_guards.rs`. It prevents comments that say where code came from instead of what it does. It reads every
-comment in every `src/` of the workspace, and the `#` comments of the built-in data under each crate's
-`defaults/` (`.toml`), and refuses a section mark, an owner ruling, an issue or pull request number, brief,
-design, lane or finding numbers, the old requirement ids, and dates. Such a citation goes stale with the next
-change, and a reader cannot open most of them: history lives in git and in `ecad/docs`. A hard zero with no
-allowlist; rewrite the comment to say what is true now. Domain text that looks similar is not refused: a jumper
-bar lane, a jumper bar tag (`JB-10`), a PLC address (`%Q2.2`), a number with a thousands space, a timestamp, a
-date in a backticked example.
+`history_guards.rs`. It prevents comments and docs that say where something came from instead of what it does.
+It reads every comment in every `src/` of the workspace, the `#` comments of the built-in data under each
+crate's `defaults/` (`.toml`), and every line of the current docs (the Markdown under `ecad/docs` outside
+`archive/` and `briefs/`, fenced code blocks left out). It refuses a section mark, who decided something and
+when, an issue or pull request number, brief, design, lane or finding numbers, the old requirement ids, and
+dates. Such a citation goes stale with the next change, and a reader cannot open most of them: history lives in
+git and in `ecad/docs/archive`. A hard zero with no allowlist; rewrite the line to say what is true now. Domain
+text that looks similar is not refused: a jumper bar lane, a jumper bar tag (`JB-10`), a PLC address
+(`%Q2.2`), a number with a thousands space, a timestamp, a date in a backticked example.
+
+It also refuses a brief in `ecad/docs/briefs/` whose `Status:` line says it is finished (done, delivered,
+finished or merged): a finished brief belongs in `ecad/docs/archive/briefs/`, with its banner and its row in
+the archive index.
 
 ## Engine rule functions
 
