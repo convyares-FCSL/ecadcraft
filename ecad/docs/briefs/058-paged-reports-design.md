@@ -1,5 +1,3 @@
-Historical record (2026-11-14). Not built; the design for brief 058, kept for 0.2.6. See [user/reports.md](../../user/reports.md) for reports today.
-
 # Design 058: Paged reports
 
 Brief: `docs/briefs/058-paged-reports.md`. Builds on 024 (generated pages, report models, update

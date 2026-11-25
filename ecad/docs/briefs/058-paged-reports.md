@@ -1,11 +1,10 @@
-Historical record (2026-11-14). Not built; a draft for paged reports, kept for 0.2.6. See [user/reports.md](../../user/reports.md) for reports today.
-
 # Brief 058: Paged reports
 
-Status: Draft, never built (designer, 2026-11-14; owner questions in design §15, format decisions for the
+Status: Draft, not started; planned for 0.2.6 (designer, 2026-11-14; written against the pre-0.2.3 tree,
+so re-check paths and the design against the current code before building; owner questions in design §15, format decisions for the
 overseer in design §11)
-Branch: `feature/paged-reports` (deleted 2026-11-25; never merged)
-Designer: **yes** (`docs/archive/designs/058-paged-reports.md`) · Size: L (two parts, design §14)
+Branch: to be cut from `dev` when the work starts
+Designer: **yes** (`docs/briefs/058-paged-reports-design.md`) · Size: L (two parts, design §14)
 Roadmap: the BOM column target of 0.2.1 ("the BOM column change … drop under their targets"),
 which 053 could not close on the large tier. Release slot: the overseer's call (design §15 Q9).
 
