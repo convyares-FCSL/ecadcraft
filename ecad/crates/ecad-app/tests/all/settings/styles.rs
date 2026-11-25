@@ -140,8 +140,8 @@ fn look_check_screenshots() {
     let mut h = harness_with(Some(deltas.clone()));
     h.state_mut().set_cad_chrome(false);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
-    for (y, pot) in [(150, "L1"), (140, "N"), (130, "PE"), (120, "24V"), (110, "0V")] {
-        ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[160,{y}]],"potential":"{pot}"}}"#));
+    for (y, pot) in [(150.0, "L1"), (140.0, "N"), (130.0, "PE"), (120.0, "24V"), (110.0, "0V")] {
+        landed_wire(&mut h, y, pot);
     }
     ok(&mut h, r#"standard {"new":"House"}"#);
     ok(&mut h, r#"setstyle {"catalogue":"text","id":"tag","fields":{"colour":"RD"}}"#);
@@ -174,28 +174,7 @@ fn look_check_screenshots() {
     h.run_steps(3);
 
     // The 24 V wire selected: the inspector's Category row says where its category comes from.
-    let handle = {
-        let t = h.state_mut();
-        let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| {
-            let doc = p.ledger.document();
-            let page = doc.page_order()[0];
-            let w = doc
-                .wires()
-                .keys()
-                .find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V")))
-                .copied()
-                .unwrap();
-            let (item, _) = ecad_model::connectivity::derive::route_on_page(doc, w, page).unwrap();
-            p.pages[&page].map.item(item).unwrap()
-        })
-        .unwrap()
-    };
-    h.state_mut().cad.session.set_selection(vec![handle]);
-    h.run_steps(4);
-    let rows = &h.state().settings.inspector.rows;
-    let cat = rows.iter().find(|r| r.key == "wire.category").expect("a Category row");
-    assert!(cat.value.contains("24 V DC") && cat.value.contains("from potential"), "{}", cat.value);
+    assert_category_from_potential(&mut h, "24V", "24 V DC");
     save(&h, "050-inspector-category.png");
 
     // One page printed mono and in colour.
@@ -209,4 +188,65 @@ fn look_check_screenshots() {
             }
         }
     }
+}
+
+/// A wire at height `y` with potential `pot`, its line landed on a terminal block at each end (a
+/// line with a free end carries no wire); the blocks' points are read from the drawing.
+fn landed_wire(h: &mut H, y: f64, pot: &str) {
+    let mut ends = Vec::new();
+    for x in [40.0, 160.0] {
+        let v = h.state_mut().cad.session.execute("place", &serde_json::json!({"symbol": "terminal_block", "at": [x, y]})).unwrap();
+        let rep = ecad_model::RepresentationId::parse(v["representation"].as_str().unwrap()).unwrap();
+        let d = doc(h);
+        let page = d.page_order()[0];
+        let at = ecad_model::connectivity::derive::connection_point_positions(&d, page).into_iter().filter(|(_, r, _)| *r == rep).map(|(_, _, p)| p);
+        // The left block's rightmost point and the right block's leftmost.
+        let pick = at.reduce(|a, b| if (b.x > a.x) == (x < 100.0) { b } else { a }).unwrap();
+        ends.push(pick);
+    }
+    let (a, b) = (ends[0], ends[1]);
+    let mid = (a.x + b.x) / 2.0;
+    let points =
+        if a.y == b.y { serde_json::json!([[a.x, a.y], [b.x, b.y]]) } else { serde_json::json!([[a.x, a.y], [mid, a.y], [mid, b.y], [b.x, b.y]]) };
+    h.state_mut().cad.session.execute("wire", &serde_json::json!({"points": points, "potential": pot})).unwrap();
+    h.run_steps(1);
+}
+
+/// Select the line of the wire labelled `label` on the first page: the inspector's Category row
+/// names `category` and says it comes from the potential.
+fn assert_category_from_potential(h: &mut H, label: &str, category: &str) {
+    let handle = {
+        let t = h.state_mut();
+        let p = t.project().unwrap().clone();
+        p.read(&mut t.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let page = doc.page_order()[0];
+            let w = doc
+                .wires()
+                .keys()
+                .find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with(label)))
+                .copied()
+                .unwrap();
+            let (item, _) = ecad_model::connectivity::derive::route_on_page(doc, w, page).unwrap();
+            p.pages[&page].map.item(item).unwrap()
+        })
+        .unwrap()
+    };
+    h.state_mut().cad.session.set_selection(vec![handle]);
+    h.run_steps(4);
+    let rows = &h.state().settings.inspector.rows;
+    let cat = rows
+        .iter()
+        .find(|r| r.key == "wire.category")
+        .unwrap_or_else(|| panic!("a Category row in {:?}", rows.iter().map(|r| &r.key).collect::<Vec<_>>()));
+    assert!(cat.value.contains(category) && cat.value.contains("from potential"), "{}", cat.value);
+}
+
+/// A selected line shows the wire it carries in the inspector (its category, and where that
+/// comes from).
+#[test]
+fn a_selected_line_shows_its_wire_in_the_inspector() {
+    let mut h = harness_with(None);
+    landed_wire(&mut h, 120.0, "24V");
+    assert_category_from_potential(&mut h, "24V", "24 V DC");
 }

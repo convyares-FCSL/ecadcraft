@@ -848,7 +848,8 @@ fn sync(t: &mut App) {
 }
 
 /// What the selection on `page` is, for the inspector: nothing selected is the page; one symbol
-/// (or its tag text) is that symbol; one wire is that wire; anything else shows no defaults.
+/// (or its tag text) is that symbol; one wire (its line or its label) is that wire; anything else
+/// shows no defaults.
 fn what_of(p: &ecad_engine::Project, page: PageId, selection: &[ecad_engine::cad::Handle]) -> Option<What> {
     if selection.is_empty() {
         return Some(What::Page(page));
@@ -862,7 +863,9 @@ fn what_of(p: &ecad_engine::Project, page: PageId, selection: &[ecad_engine::cad
                 Some((rid, r)) => match r.subject {
                     Subject::Device(c) => What::Symbol(c, rid),
                     Subject::Wire(w) => What::Wire(w),
-                    Subject::Cable(_) | Subject::Route(_) | Subject::Aid(_) => return None,
+                    // A drawn line shows the wire it carries; a loose line carries none.
+                    Subject::Route(x) => What::Wire(ecad_electrical::wires::routes::wire_of_route(doc, x)?),
+                    Subject::Cable(_) | Subject::Aid(_) => return None,
                 },
                 None => return None,
             },
