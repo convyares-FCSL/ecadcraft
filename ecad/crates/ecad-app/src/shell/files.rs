@@ -57,6 +57,9 @@ impl App {
         self.debugger.reset();
         self.seen.events = self.event_count();
         self.cad.ui.start_tab = false;
+        // A project always opens on Draw.
+        self.shell.state.workspace = crate::shell::Workspace::Draw;
+        self.shell.settings_open = false;
         // Thick and thin cable lines only show with lineweights on, unless the
         // user has chosen Show/Hide Lineweight since the app started.
         let shown = &mut self.cad.session.settings.lwdisplay;

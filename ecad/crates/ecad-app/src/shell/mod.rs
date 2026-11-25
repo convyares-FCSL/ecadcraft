@@ -230,12 +230,14 @@ impl Shell {
     }
 
     /// Take the stored shell state and views (eframe storage); an unreadable value starts with
-    /// the default and leaves one line for the command history.
+    /// the default and leaves one line for the command history. The project always opens on
+    /// Draw, whichever workspace was shown when the app last closed.
     pub fn load(&mut self, shell: Option<&str>, views: Option<&str>) {
         let (state, a) = ShellState::from_stored(shell);
         let (views, b) = Views::from_stored(views);
         let cad_ui = self.state.cad_chrome;
         self.state = state;
+        self.state.workspace = Workspace::Draw;
         self.state.cad_chrome |= cad_ui;
         self.views = views;
         self.notes.extend(a.into_iter().chain(b));

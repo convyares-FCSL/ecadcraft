@@ -564,3 +564,19 @@ fn the_file_dialog_takes_typed_text_and_enter() {
     assert!(t.dialog().is_none(), "Enter saves: {:?}", t.dialog());
     assert_eq!(t.status().unwrap().file.path, Some(d.path("typed.ecad")));
 }
+
+/// A project always opens on Draw: after New or Open from another workspace, and at start
+/// whichever workspace was stored.
+#[test]
+fn a_project_always_opens_on_draw() {
+    use ecad_app::pages::project_panel::Action;
+    use ecad_app::shell::state::{ShellState, Workspace};
+    let mut t = new_app(None);
+    t.set_workspace(Workspace::Publish);
+    t.panel_action(Action::NewProject);
+    assert_eq!(t.shell_state().workspace, Workspace::Draw);
+    let stored = ShellState { workspace: Workspace::Lists, ..ShellState::default() }.to_stored();
+    let mut t = new_app(None);
+    t.shell.load(Some(&stored), None);
+    assert_eq!(t.shell_state().workspace, Workspace::Draw);
+}

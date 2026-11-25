@@ -111,9 +111,9 @@ Settings is a place you visit, opened from the project menu. It is described in
 
 ## What is remembered
 
-The workspace, panels, pins, the inspector and each page's zoom are kept per project in the
-program's own settings on this computer, not in the `.ecad` file. A setting that cannot be read
-starts with the default.
+The panels, pins, the inspector and each page's zoom are kept per project in the program's own
+settings on this computer, not in the `.ecad` file. A setting that cannot be read starts with the
+default. A project always opens on **Draw**, whichever workspace was shown last.
 
 ## Limits
 
