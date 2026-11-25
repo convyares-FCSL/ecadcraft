@@ -1,3 +1,5 @@
+Historical record (2026-11-12). Not current; see [design/ui.md](../../design/ui.md).
+
 # Roadmap review, November 2026: from v0.1 to v1 and beyond
 
 Status: **Proposal; §5 decided as recommended** (owner, 2026-11-12). Sizes use the

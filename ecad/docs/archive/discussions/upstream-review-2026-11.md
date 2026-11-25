@@ -1,3 +1,5 @@
+Historical record (2026-11-09). Not current; see [the archive index](../README.md).
+
 # Upstream CADCraft review, 2026-11-09
 
 Read-only review of `storytold/cadcraft` since the commit ECAD incorporates. Nothing in

@@ -1,3 +1,5 @@
+Historical record (2026-11-13). Not current; see [design/ui.md](../../design/ui.md).
+
 # ECADCraft UI design spec
 
 Nov 12, 2026 · @Carl von AYRES

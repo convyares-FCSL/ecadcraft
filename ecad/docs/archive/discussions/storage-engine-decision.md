@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [design/decisions.md](../../design/decisions.md).
+
 # Storage engine for `.ecad` v2: earlier arguments against the findings
 
 Status: **Decided: redb** (owner, 2026-11-08). The earlier recommendation of our own container is

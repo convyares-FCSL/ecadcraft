@@ -1,3 +1,5 @@
+Historical record (2026-11-07). Not current; see [the archive index](../README.md).
+
 # Discussion: how the `.ecad` file grows (log, snapshots, parts)
 
 Status: **For discussion** with the architect (Claude, ECAD Project). Nothing here is decided.

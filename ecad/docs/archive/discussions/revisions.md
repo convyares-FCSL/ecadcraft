@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [design/history.md](../../design/history.md).
+
 # Discussion: revisions, snapshots and compaction
 
 Status: **Agreed direction** (owner, 2026-11-08). The specifications follow it:

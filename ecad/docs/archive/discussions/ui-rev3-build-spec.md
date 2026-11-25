@@ -1,3 +1,5 @@
+Historical record (2026-11-14). Not current; see [design/ui.md](../../design/ui.md).
+
 # ECADCraft UI rev 3: build spec
 
 Transcribed from the owner's rev 3 handoff (Part 1, pages 1–8; 13 November 2026), so later

@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [design/decisions.md](../../design/decisions.md).
+
 # Discussion: ECAD projects in git
 
 Status: **Superseded in part** (owner, 2026-11-08). Git is an **optional integration or

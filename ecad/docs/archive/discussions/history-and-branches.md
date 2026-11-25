@@ -1,3 +1,5 @@
+Historical record (2026-11-08). Not current; see [design/history.md](../../design/history.md).
+
 # Discussion: history, versions and branches
 
 Status: **Agreed direction** (owner, 2026-11-08). Storage-neutral: how it is stored is

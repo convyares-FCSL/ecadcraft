@@ -1,3 +1,5 @@
+Historical record (2026-11-13). Not current; see [design/ui.md](../../design/ui.md).
+
 # UI spec: owner answers (Carl, 2026-11-13)
 
 Answers to `ui-design-spec.md` §8 and the overseer's plan questions. Decided; do not re-ask.
