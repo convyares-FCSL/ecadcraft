@@ -4,9 +4,6 @@
 //! hold get a ring (`ecad.check-warning` for one with another value). Esc at any step writes
 //! nothing; the commit is the `locationbox` / `functionbox` JSON form, one transaction.
 
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
@@ -19,19 +16,6 @@ use crate::pointer::preview::{ATTACHED_ACI, preview_entity};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use ecad_electrical::commands::input::OUT_OF_RANGE;
 
-/// The drawing mode kept for the session (rectangle unless Polyline was chosen).
-static POLYLINE: AtomicBool = AtomicBool::new(false);
-/// The last location used, the next prompt's default.
-static LAST: Mutex<Option<String>> = Mutex::new(None);
-/// The last function used.
-static LAST_FUNCTION: Mutex<Option<String>> = Mutex::new(None);
-
-fn last(a: Aspect) -> &'static Mutex<Option<String>> {
-    match a {
-        Aspect::Function => &LAST_FUNCTION,
-        Aspect::Location => &LAST,
-    }
-}
 /// `ecad.check-warning`.
 const WARNING_ACI: u8 = 2;
 
@@ -56,9 +40,11 @@ fn start(s: &Session, aspect: Aspect) -> R<Box<dyn Interactive>> {
         Ok(ecad_electrical::locations::designations::shown(doc, aspect, stored.as_deref()))
     })
     .unwrap_or(None);
+    // The project's defaults: the value last given and the drawing mode last chosen.
+    let (kept, polyline) = read(s, |p, _| Ok((p.defaults.last_box_value(aspect).clone(), p.defaults.box_polyline))).unwrap_or((None, false));
     let fallback = ecad_electrical::locations::designations::example(aspect).to_string();
-    let default = last(aspect).lock().ok().and_then(|g| g.clone()).or(page_default).unwrap_or(fallback);
-    Ok(Box::new(Safe(LocationBox { aspect, default, location: None, mode: Mode::Start, points: Vec::new(), anchors: Vec::new() })))
+    let default = kept.or(page_default).unwrap_or(fallback);
+    Ok(Box::new(Safe(LocationBox { aspect, default, location: None, mode: Mode::Start, polyline, points: Vec::new(), anchors: Vec::new() })))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +61,8 @@ struct LocationBox {
     default: String,
     location: Option<String>,
     mode: Mode,
+    /// The drawing mode a first point starts (the project's default, changed by a keyword).
+    polyline: bool,
     points: Vec<Pt>,
     /// The device symbols on the page: anchor and own location.
     anchors: Vec<(Pt, Option<String>)>,
@@ -132,11 +120,12 @@ impl LocationBox {
 
     fn finish(&mut self, s: &mut Session, params: serde_json::Value) -> R<Step> {
         match commit(s, self.command().0, &params) {
-            Ok(r) => {
-                if let Ok(mut g) = last(self.aspect).lock() {
-                    *g = self.location.clone();
-                }
-                let _ = r;
+            Ok(_) => {
+                let (aspect, value) = (self.aspect, self.location.clone());
+                let _ = crate::commands::on_any_page(s, |p, _| {
+                    *p.defaults.last_box_value_mut(aspect) = value;
+                    Ok(())
+                });
                 Ok(Step::Done)
             }
             Err(e) => {
@@ -148,6 +137,15 @@ impl LocationBox {
                 Ok(Step::Continue)
             }
         }
+    }
+
+    /// Draw closed polylines (`true`) or rectangles from now on, here and in the project's defaults.
+    fn keep_mode(&mut self, s: &mut Session, polyline: bool) {
+        self.polyline = polyline;
+        let _ = crate::commands::on_any_page(s, |p, _| {
+            p.defaults.box_polyline = polyline;
+            Ok(())
+        });
     }
 
     fn close(&mut self, s: &mut Session) -> R<Step> {
@@ -181,12 +179,12 @@ impl LocationBox {
             Input::Cancel => Ok(Step::Cancel),
             Input::Keyword(k) | Input::Text(k) => match (self.mode, k.trim().to_ascii_lowercase().as_str()) {
                 (Mode::Start | Mode::Rectangle, "p" | "polyline") if self.points.is_empty() => {
-                    POLYLINE.store(true, Ordering::Relaxed);
+                    self.keep_mode(s, true);
                     self.mode = Mode::Polyline;
                     Ok(Step::Continue)
                 }
                 (Mode::Start | Mode::Polyline, "r" | "rectangle") if self.points.is_empty() => {
-                    POLYLINE.store(false, Ordering::Relaxed);
+                    self.keep_mode(s, false);
                     self.mode = Mode::Rectangle;
                     Ok(Step::Continue)
                 }
@@ -216,7 +214,7 @@ impl LocationBox {
                 let at = pt(p);
                 match self.mode {
                     Mode::Start => {
-                        self.mode = if POLYLINE.load(Ordering::Relaxed) { Mode::Polyline } else { Mode::Rectangle };
+                        self.mode = if self.polyline { Mode::Polyline } else { Mode::Rectangle };
                         self.points.push(at);
                         Ok(Step::Continue)
                     }
@@ -277,7 +275,7 @@ impl Interactive for LocationBox {
         }
         match (self.mode, self.points.len()) {
             (Mode::Start, _) => {
-                let mode = if POLYLINE.load(Ordering::Relaxed) { "Polyline" } else { "Rectangle" };
+                let mode = if self.polyline { "Polyline" } else { "Rectangle" };
                 Prompt::new(format!("First corner or [Polyline/Rectangle/Select] <{mode}>"), Accept::POINT).kw(&["Polyline", "Rectangle", "Select"])
             }
             (Mode::Rectangle, 0) => Prompt::new("First corner or [Polyline/Select]", Accept::POINT).kw(&["Polyline", "Select"]),

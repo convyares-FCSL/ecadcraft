@@ -64,3 +64,31 @@ fn setlocation_on_a_box_names_it_as_a_box() {
     }
     assert_eq!(h.head(), head, "nothing written");
 }
+
+/// The Location Box tool's defaults (the location last given, the drawing mode last chosen) are
+/// each project's own: a box drawn in one project changes neither in another project in the same
+/// process (a window beside an agent session).
+#[test]
+fn the_box_tools_defaults_are_each_projects_own() {
+    use cadcraft_engine::Input;
+    let prompt = |h: &H| h.s.current_prompt().map(|p| p.display()).unwrap_or_default();
+    let (mut a, mut b) = (H::new(0x72f_c210), H::new(0x72f_c211));
+    let boxes = a.doc().aids().len();
+    a.s.start("locationbox").unwrap();
+    for typed in ["+CP9", "p", "60,60", "140,60", "140,140", "c"] {
+        a.s.cmdline(typed).unwrap();
+    }
+    assert_eq!(a.doc().aids().len(), boxes + 1, "the box is drawn");
+    // The same project offers them next time.
+    a.s.start("locationbox").unwrap();
+    assert!(prompt(&a).contains("<+CP9>"), "{}", prompt(&a));
+    a.s.input(Input::Enter).unwrap();
+    assert!(prompt(&a).contains("<Polyline>"), "{}", prompt(&a));
+    a.s.input(Input::Cancel).unwrap();
+    // The other project keeps its own.
+    b.s.start("locationbox").unwrap();
+    assert!(!prompt(&b).contains("+CP9"), "{}", prompt(&b));
+    b.s.input(Input::Enter).unwrap();
+    assert!(prompt(&b).contains("<Rectangle>"), "{}", prompt(&b));
+    b.s.input(Input::Cancel).unwrap();
+}
