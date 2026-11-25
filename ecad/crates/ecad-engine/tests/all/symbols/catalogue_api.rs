@@ -145,31 +145,21 @@ fn prefixes_are_registered_defaults() {
     for bad in ["", "1", "K\u{0}", "TOOLONGPREFIXX", "\u{1F642}"] {
         assert!(ecad_model::naming::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");
     }
-    // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
-    // device rating: exactly these keys are excepted (with the motor voltage tolerance of the supply
-    // check), the rating-line templates (which fields the drawing shows, not a value) and the BOM's
-    // rating columns (which fields it lists, not a value); the 034
-    // ruling holds for everything else.
-    const BRIEF_057: [&str; 11] = [
-        "rating.wire_basis",
-        "rating.cable_basis",
-        "rating.panel_temperature",
-        "rating.ambient",
-        "rating.table",
-        "rating.bundling",
-        "rating.method",
-        "rating.voltage",
-        "rating.system",
-        "rating.vd_limit",
-        "rating.supply_tolerance",
-    ];
-    assert!(
-        ecad_drawing_style::REGISTRY.entries().all(|x| !x.key.contains("rating")
-            || BRIEF_057.contains(&x.key)
-            || x.key.starts_with("rating.template.")
-            || x.key == "bom.column.rating"),
-        "ratings have no registry default (ruling)"
-    );
+    // A device's rating has no registry default: no entry's key names a device group and one of that
+    // group's rating field words (`motor.current`, `rating.motor.voltage`). The settings of the rating
+    // checks (`rating.ambient`, `rating.supply_tolerance`) name no group; the rating-line templates
+    // (`rating.template.motor`) and the BOM's rating columns name no field word: they say which fields
+    // show, not a value.
+    let groups = <ecad_model::objects::devices::DeviceGroup as Word>::ALL;
+    let is_rating_value = |key: &str| {
+        let words: Vec<&str> = key.split('.').collect();
+        groups.iter().any(|g| words.contains(&g.word()) && g.rating_fields().iter().any(|f| words.contains(&f.word)))
+    };
+    for (key, want) in [("motor.current", true), ("rating.motor.voltage", true), ("rating.template.motor", false), ("print.colour", false)] {
+        assert_eq!(is_rating_value(key), want, "{key}");
+    }
+    let rating_values: Vec<&str> = ecad_drawing_style::REGISTRY.entries().map(|x| x.key).filter(|k| is_rating_value(k)).collect();
+    assert!(rating_values.is_empty(), "ratings have no registry default: {rating_values:?}");
 }
 
 /// §2.3: the change-over rule itself: s = 1 + the highest sequence digit; refused after 9.
