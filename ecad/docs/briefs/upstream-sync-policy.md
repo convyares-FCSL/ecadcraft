@@ -1,13 +1,12 @@
-Historical record (2026-10-15). Not current; see [roadmap.md](../../roadmap.md).
-
-> **Deferred, not adopted.** This is the proposal of PR #5 ("Docs: upstream sync policy proposal
-> (no deletions)"), copied verbatim from commit `fc3eab6` (PR head `8a6d10f`, branch
-> `docs/upstream-sync-policy`). The owner approved its direction on 2026-10-12, deferred its
-> implementation, and closed PR #5 as deferred on 2026-10-15 without merging it. Nothing it
-> describes (`ecad/upstream-policy.toml`, `cargo xtask sync-upstream`, `cargo xtask policy`,
-> exclusions) exists yet. See [`../deferred-work.md`](../deferred-work.md).
-
 # Upstream sync policy (proposal)
+
+Status: Draft, not approved; taken up with the upstream sync of [0.2.4](release-0.2.4.md) (item 1)
+
+> **Before resuming:** nothing it describes (`ecad/upstream-policy.toml`, `cargo xtask sync-upstream`,
+> `cargo xtask policy`, exclusions) exists yet. Today `ecad/UPSTREAM.md`, `ecad/UPSTREAM-PATCHES.md` and
+> `cargo xtask patches` do part of its job, and the sync runs weekly. Re-check the proposed exclusion and
+> keep lists against the current tree, then get approval to implement it. Branch
+> `docs/upstream-sync-policy` keeps the proposal's original commits.
 
 > **Status:** proposal for review. Nothing has been deleted, moved or configured. **Written:**
 > 2026-10-12 against `dev` at `baee1b8`, which incorporates CADCraft `00c7613`.

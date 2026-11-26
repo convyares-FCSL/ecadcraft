@@ -157,7 +157,7 @@ ecad-engine/src/
   history/         history, branches, versions, points, merging, the event log
   translate/       translate, oops
   agent/           agent access, the bridge, the write gate, policy, tools
-  export/          formats: PDF, Print Book (printbook.rs); later DXF
+  export/          formats: PDF, Print Book (printbook.rs)
   dev/             debugger, verify, snapshot, objects, checks, test_support (feature-gated)
 
   devices/         draw, interact, session commands: place, convertcomponent, addconnectionpoint

@@ -168,9 +168,7 @@ Measured on a release build at 1920 × 1080 on the medium bench project:
 - scrolling a 10 000-row table within 3 ms per frame for the table body;
 - no repaints while nothing changes.
 
-## Where the interface is going
+## Parts not built
 
-The target layout also has Network, Power and Tests tabs in the Project workspace, a panel layout page type
-with its own tool strip, and the Library's Snippets and Parts tabs filled in; where these are not built yet
-the shell shows them disabled with the reason, or not at all. The order and the releases are in
-[`../roadmap.md`](../roadmap.md).
+Where a part of the shell is not built yet, it is shown disabled with the reason, or not at all. What is
+planned for the interface is in the [roadmap](../roadmap.md).

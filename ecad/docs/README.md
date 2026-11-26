@@ -1,10 +1,27 @@
 # ECAD docs
 
-Every current doc, one line each. They describe ECAD as it is now. The history (briefs, design specs, quick
+Every current doc, one line each. They describe ECAD as it is now; open work is in [briefs](briefs/README.md). The history (briefs, design specs, quick
 starts, discussions, reviews and plans, as written) is in the [archive](archive/README.md). Where a new doc
 goes is in "Where docs go" in [`../CLAUDE.md`](../CLAUDE.md).
 
-- [roadmap.md](roadmap.md): the plan, release by release, and the deferred work.
+- [roadmap.md](roadmap.md): the plan, release by release, the format freeze, and the deferred work.
+
+## Open briefs
+
+Work not started or in progress lives in [`briefs/`](briefs/README.md), outside the current docs: a brief per
+release and a draft brief for each piece of deferred work. When the work is done, its facts move into the
+docs below and the brief moves to the archive.
+
+- Releases: [0.2.4 tidy-up](briefs/release-0.2.4.md), [0.2.5 features](briefs/release-0.2.5.md),
+  [0.2.6 UI improvement](briefs/release-0.2.6.md), [0.2.7 the format release](briefs/release-0.2.7.md).
+- Briefs and drafts: paged reports (with its design), [upstream sync policy](briefs/upstream-sync-policy.md),
+  [compact binary encoding](briefs/eep-0003-binary-encoding.md),
+  [versioned built-in defaults](briefs/versioned-defaults.md),
+  [forward compatibility of stored words](briefs/forward-compatibility.md),
+  [potentials editor](briefs/potentials-editor.md), [small code follow-ups](briefs/code-follow-ups.md),
+  [DXF export](briefs/dxf-export.md), [ratings from parts](briefs/ratings-from-parts.md),
+  [company standard file](briefs/company-standard-file.md), [checkpoints](briefs/checkpoints.md). The
+  [index](briefs/README.md) gives each one's release and status.
 
 ## User guides
 
