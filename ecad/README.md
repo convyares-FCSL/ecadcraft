@@ -36,7 +36,7 @@ cargo xtask test-changed       # fast tests of the crates you changed and have n
 cargo xtask layers             # the layer rules, the crate READMEs and the comment rules
 cargo xtask ci                 # everything, slow tests included (the QA gate)
 cargo xtask bench              # the load benchmark (release build)
-cargo xtask clean-builds --root C:\dev\ecad-features   # delete build folders
+cargo xtask clean-builds --root <features folder>   # delete build folders
 ```
 
 How and when each check runs is in [`CLAUDE.md`](CLAUDE.md).

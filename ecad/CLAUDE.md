@@ -51,8 +51,10 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     keep out of each other's way:
     - **User guides:** each feature has its own guide in `docs/user/`; a new feature adds its own
       guide and one line in `docs/README.md`.
-    - **Tests:** tests live in `tests/all/<feature>/` of each crate they test (the feature
-      folder of the code they cover), one module per file. Still one test executable per crate.
+    - **Tests:** tests live in `tests/all/` of each crate they test, one module per file. In a
+      crate built by feature they go in `tests/all/<feature>/` (the feature folder of the code they
+      cover); `ecad-mcp`'s contract tests are by area, `tests/all/<area>_contracts.rs`. Still one
+      test executable per crate.
     - **Commands:** a generic command is one `Entry` line in the `GENERIC` list of
       `ecad-engine/src/commands/mod.rs`; a module of session commands adds its `specs` to
       `commands::specs` and its `TYPED` to `typed_commands`. Its `mod` line in `lib.rs` stays where
@@ -76,7 +78,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     **push** (not each commit): `cargo clippy --workspace --all-targets --all-features -- -D
     warnings`, which compiles every target, tests included. Never the whole workspace's tests.
     Documentation-only commits need no cargo at all.
-  - **Test layout (brief 017).** Each crate has one integration test executable,
+  - **Test layout.** Each crate has one integration test executable,
     `tests/all/main.rs`, whose modules are the former `tests/<name>.rs` files (shared helpers in
     `tests/all/common`), so tests are named `<name>::<test>` and `cargo test -p <crate> <name>`
     runs one file. A new test file is a new module there (under `tests/all/<feature>/`), never a
@@ -90,7 +92,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     reasons, and do nothing unless the test that starts them set `ECAD_TEST_CHILD`, so an
     `--include-ignored` run is always safe. A new one follows the same pattern.
   - **Tester:** only where a mistake is expensive: a `.ecad` format or op change, movement and
-    `translate.rs`, the store and locking, or anything the owner asks for. It runs its own
+    `translate/`, the store and locking, or anything the owner asks for. It runs its own
     acceptance tests and the fast tests of the crates the change touched: no slow set, and no
     whole-workspace run, also when shared crates changed. A re-test runs only what failed.
   - **Reviewer:** once per feature, on the PR into `dev`, and on any brief the tester would cover.
@@ -113,17 +115,17 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   it is done building. A tester's worktree under `_tmp` builds into its own `target` and is deleted
   with it. The old shared `C:/dev/ecad-target` mixed a stale `ecad-model` into builds from two
   worktrees (2026-11-08); it is no longer used.
-  **Cleaning (owner, 2026-11-12):** `cargo xtask clean-builds --root C:\dev\ecad-features` deletes
+  **Cleaning (owner, 2026-11-12):** `cargo xtask clean-builds --root <features folder>` deletes
   `ecad/target` and `target` in every feature folder and in `_tmp`, skipping any folder a cargo or
   rustc is using, removes worktrees whose branch is merged into `origin/dev` (never one with
   uncommitted changes), and prints the space freed; `--dry-run` only says what it would do. Task
   Scheduler runs it daily at 03:00 on the owner's machine, so a build folder may be gone in the
   morning: the next build makes it again.
 - **Folders (owner decision, 2026-11-08).** Nothing new goes directly in `C:\dev`:
-  - `C:\dev\ecadcraft` is the main checkout, on `dev`. The overseer works here.
-  - `C:\dev\ecad-features\<feature>` is the one worktree of a feature branch
+  - `ecadcraft` is the main checkout, on `dev`. The overseer works here.
+  - `ecad-features/<feature>` (the features folder) is the one worktree of a feature branch
     (`feature/<feature>`). It is removed when the feature is merged into `dev`.
-  - `C:\dev\ecad-features\_tmp\<agent>-<what>` is for anything temporary: a tester's worktree, a
+  - `ecad-features/_tmp/<agent>-<what>` is for anything temporary: a tester's worktree, a
     kept benchmark project, a private build folder, logs. Whoever makes it deletes it when done;
     anything left in `_tmp` may be deleted at any time.
   - `C:\dev\ecad-projects` (the owner's projects) stays.
@@ -262,7 +264,7 @@ At a milestone, the owner asks for the QA gate: first the phase-end tidy-up PR i
 "Branches and testing"), then a PR from `dev` into `main`, full suite, screenshots, the full
 bench, and the owner's trial.
 
-**Agent access is built in (owner decisions, 2026-11-07, brief 011, and 2026-11-23).** Generic
+**Agent access is built in.** Generic
 commands (the engine's `GENERIC` list, each with its `Access`) are covered by one table,
 `ecad/apps/ecad-mcp/tests/all/generic_commands_contracts.rs`: each command that may edit has a row
 of parameters that change a small project; with writes off they are refused in the gate's words
@@ -280,5 +282,5 @@ change outside `ecad/` that the brief does not approve; any change to a fixed pr
 (`docs/developer/architecture.md`) or a recorded decision; pushing to `dev` or `main`; anything the tester lists as "needs
 owner check" on native Windows. Marking a PR ready is the owner's own step.
 
-The architect (Carl, with Claude chat in the ECAD Project) writes and approves briefs. The overseer
+The architect (the owner) writes and approves briefs. The overseer
 may draft briefs, marked `Status: Draft`, but does not start them.
