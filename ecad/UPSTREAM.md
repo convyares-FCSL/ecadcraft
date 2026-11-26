@@ -6,8 +6,8 @@ ECAD product version (`0.3.0-dev`, `ecad/Cargo.toml`) and from the document form
 `ecad_file::schema::CONTAINER_VERSION`). See
 `ecad/docs/developer/architecture.md`.
 
-Repository: `https://github.com/storytold/cadcraft` (release tag `v0.19.0`)
-Commit: `227e3c385b20129cf525775e3d9cbe78b722b3bb` (CADCraft 0.19.0, "Release 0.19.0", 2026-11-09)
+Repository: `https://github.com/storytold/cadcraft` (branch `main`, untagged)
+Commit: `414e54428222627ad173b595d17954788183c684` (CADCraft main on the 0.21.0 line, "Merge pull request #2760", 2026-11-26)
 
 Each upstream sync PR (`upstream-sync/<date>`) updates the `Commit:` line, and
 `cargo xtask patches` (run from `ecad/`) checks every file changed since this commit outside
