@@ -11,4 +11,5 @@ Commit: `227e3c385b20129cf525775e3d9cbe78b722b3bb` (CADCraft 0.19.0, "Release 0.
 
 Each upstream sync PR (`upstream-sync/<date>`) updates the `Commit:` line, and
 `cargo xtask patches` (run from `ecad/`) checks every file changed since this commit outside
-`ecad/` against [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md).
+`ecad/` against [`UPSTREAM-PATCHES.md`](UPSTREAM-PATCHES.md). That file also names the upstream files
+ECAD compiles unchanged by `#[path]` (upstream's control server), which the sync checks too.

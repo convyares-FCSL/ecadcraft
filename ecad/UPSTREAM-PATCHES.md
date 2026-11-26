@@ -16,6 +16,18 @@ These are ours. On upstream merges, conflicts are resolved by keeping ours.
 | `.github/dependabot.yml` | Only GitHub Actions pins, weekly, into `dev`; upstream's daily root Cargo updates removed (root dependencies arrive with the upstream sync) |
 | `ATTRIBUTION.md` | Shared with upstream: ECAD's rows (brief 037) for the embedded IBM Plex Sans and Barlow Semi Condensed faces under `ecad/assets/fonts/` (owner answer Q1, 2026-11-13: ECAD keeps these fonts in its own repository); on upstream merges keep upstream's rows and ours |
 
+## Upstream files ECAD compiles unchanged
+
+ECAD builds these upstream files into its own crates by `#[path]`, without changing them. They are
+not patches, so `cargo xtask patches` does not list them, but each upstream sync checks what
+upstream changed in them, as it does for the patched files below.
+
+- `apps/cadcraft/src/control_server.rs`: CADCraft's loopback control server (port, token, request
+  bounds and replies). `ecad-app` compiles it as `agent::control_server`
+  (`ecad/crates/ecad-app/src/agent/mod.rs`) and starts it from the agent bridge when the control
+  channel is turned on. A change to its `start` signature, its request or reply shapes, or its
+  bounds changes ECAD's control channel (`ecad/docs/agents/`).
+
 ## Upstream fixes taken ahead of the next sync
 
 Already merged upstream; each entry goes away at the next upstream sync, which brings the same change.
