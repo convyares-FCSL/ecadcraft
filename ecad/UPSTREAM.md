@@ -1,9 +1,9 @@
 # Incorporated CADCraft
 
 The CADCraft (upstream) commit this repository incorporates. It is tracked separately from the
-ECAD product version (`0.3.0-dev`, `ecad/Cargo.toml`) and from document format versions
-(`ecad_model::SCHEMA_VERSION`, and the container and record versions in `ecad-file`, such as
-`ecad_file::CONTAINER_VERSION`). See
+ECAD product version (`0.3.0-dev`, `ecad/Cargo.toml`) and from the document format versions in
+`ecad-file` (the record version `ecad_file::SCHEMA_VERSION` and the container version
+`ecad_file::schema::CONTAINER_VERSION`). See
 `ecad/docs/developer/architecture.md`.
 
 Repository: `https://github.com/storytold/cadcraft` (release tag `v0.19.0`)
