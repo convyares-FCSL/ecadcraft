@@ -1,6 +1,6 @@
 //! The canvas: ECAD's painter layer over the page that CADCraft draws through
 //! its drawing seam. It sets CADCraft's drawing-area preferences from the
-//! tokens (the paper or dark sheet, the selection colour, no ViewCube, UCS icon or grid), then
+//! tokens (the paper or dark sheet, the selection colour, no ViewCube or grid; a page has no UCS icon), then
 //! paints what CADCraft's marks cannot: the sheet's surround and shadow, the 5 mm dot grid, the
 //! error and warning markers, the provisional underline, the dashed outlines of a device's other
 //! placements on the page, and the companion leader line. Wire colours are drawing content (they
@@ -161,7 +161,8 @@ pub fn paint(t: &mut App, ui: &mut egui::Ui, page_rect: Option<Rect>) {
 }
 
 /// The sheet's colours, the selection colour and CADCraft's view switches, every frame (cheap
-/// assignments). The ViewCube, UCS icon and grid return with the developer switch.
+/// assignments). The ViewCube and grid return with the developer switch; a page keeps its UCS icon
+/// off (UCSICON 0 in its drawing).
 fn apply_preferences(t: &mut App) {
     let sheet = t.shell.state.sheet;
     let tokens = sheet.tokens();
@@ -178,7 +179,6 @@ fn apply_preferences(t: &mut App) {
     }
     let chrome = t.shell.state.cad_chrome;
     t.cad.ui.show_viewcube = chrome;
-    t.cad.ui.show_ucs_icon = chrome;
     if !chrome {
         t.cad.session.settings.gridmode = false;
     }

@@ -266,6 +266,8 @@ pub(crate) fn base_drawing() -> Drawing {
     ));
     d.header.set("SNAPUNIT", grid.clone());
     d.header.set("GRIDUNIT", grid);
+    // An ECAD page has no user coordinate system to show: no UCS icon (UCSICON off).
+    d.header.set("UCSICON", cadcraft_engine::doc::HVal::Int(0));
     d
 }
 

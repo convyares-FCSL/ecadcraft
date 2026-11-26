@@ -71,7 +71,7 @@ impl TestOwner {
 impl DocumentOwner for TestOwner {
     fn refuse_start(&self, _s: &Session, _uid: u64, start: Start<'_>) -> Option<String> {
         assert!(!self.panic_in_start, "injected start failure");
-        let refused = matches!(start, Start::Command("circle") | Start::Lisp);
+        let refused = matches!(start, Start::Command("circle" | "pastetable") | Start::Lisp);
         (self.refuse_starts && refused).then(|| "not started by the test owner".into())
     }
     fn commit(&mut self, s: &mut Session, c: &Commit<'_>) -> Verdict {
@@ -481,6 +481,29 @@ fn the_owner_refuses_commands_and_lisp_before_they_start() {
     s.lisp_eval("(command \"circle\" \"0,0\" \"5\")", false, true, Vec::new()).unwrap();
     assert_eq!(s.doc().unwrap().space(&Space::Model).unwrap().iter().count(), 1);
     assert_eq!(s.state().unwrap().undo.len(), 1);
+}
+
+#[test]
+fn a_table_pasted_from_the_clipboard_asks_the_owner_before_it_starts() {
+    let (mut s, owner, log, _uid) = owned_session();
+    owner.lock().unwrap().refuse_starts = true;
+    let before = s.state().unwrap().doc.clone();
+    let r = s.start_paste_table(
+        "a	b
+1	2", None,
+    );
+    assert!(r.unwrap_err().to_string().contains("not started by the test owner"));
+    assert!(s.running.is_none());
+    assert!(Arc::ptr_eq(&before, &s.state().unwrap().doc), "the drawing is untouched");
+    assert!(log.lock().unwrap().commits.is_empty(), "nothing reached the commit gate");
+    // Allowed, it starts through the same path and waits for its insertion point.
+    owner.lock().unwrap().refuse_starts = false;
+    s.start_paste_table(
+        "a	b
+1	2", None,
+    )
+    .unwrap();
+    assert!(s.running.is_some());
 }
 
 #[test]

@@ -1,7 +1,8 @@
 //! ECAD-SEAM(owner): embedded drawing view. `Embedding::default()` draws CADCraft's whole window
 //! as before; an embedder can turn off the chrome (only the drawing, in the rect it gives), idle
 //! typing (letters typed while no command runs start nothing, values typed at a prompt still
-//! reach it) and the idle canvas menus (a right-click is reported instead of opening a menu).
+//! reach it) and the idle canvas menus (a right-click is reported instead of opening a menu or
+//! acting as Enter).
 
 use cadcraft_engine::Session;
 use cadcraft_ui_egui::{CadApp, Embedding, Services};
@@ -146,4 +147,25 @@ fn the_viewport_label_is_drawn_only_with_cadcrafts_chrome() {
     let mut off = harness(embedded());
     off.run_steps(1);
     assert!(!painted_text(&off, "2D Wireframe"), "an embedder without chrome labels its own view");
+}
+
+#[test]
+fn without_canvas_menus_a_quick_idle_right_click_is_not_enter() {
+    // ECAD-SEAM(owner): embedded drawing view. Between commands a quick right-click is Enter in
+    // CADCraft (it repeats the last command); without canvas menus it stays the embedder's.
+    let at = DRAWING.center() + vec2(40.0, 30.0);
+    let after_a_line = |embedding: Embedding| {
+        let mut h = harness(embedding);
+        h.state_mut().cmdline("LINE 0,0 10,0");
+        h.state_mut().session.cancel();
+        h.run_steps(2);
+        assert!(h.state().session.running.is_none());
+        right_click(&mut h, at);
+        h
+    };
+    let mut off = after_a_line(embedded());
+    assert!(off.state().session.running.is_none(), "LINE is not repeated");
+    assert_eq!(off.state_mut().take_secondary_click(), Some(at), "the click is the embedder's");
+    let mut on = after_a_line(Embedding { canvas_menus: true, ..embedded() });
+    assert_eq!(on.state_mut().take_secondary_click(), None, "with canvas menus the click is CADCraft's");
 }

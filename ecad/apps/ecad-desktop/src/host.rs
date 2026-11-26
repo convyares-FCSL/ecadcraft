@@ -81,6 +81,10 @@ pub fn services(requested: Arc<AtomicBool>) -> Services {
         })),
         // No APPLOAD file dialog either: CADCraft asks for the file name at its command line.
         pick_lisp: None,
+        // The save request above answers at once, so no dialog is left open across frames.
+        start_pick: None,
         no_file_system: false,
+        // The desktop's own exit (saving the project, releasing the lock) runs in its `on_exit`.
+        at_exit: None,
     }
 }

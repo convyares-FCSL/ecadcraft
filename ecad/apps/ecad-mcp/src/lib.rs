@@ -308,11 +308,19 @@ fn install() -> Result<(), String> {
     Ok(())
 }
 
+/// A headless session with no drawing open and no folder limits: the agent gate decides which
+/// files a command may name.
+fn headless() -> Headless {
+    let mut h = Headless::default();
+    h.session = Session::empty();
+    h
+}
+
 /// Open the project file at `path` headless; also what opening found, in words.
 fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, String), String> {
     install()?;
     let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
-    let mut headless = Headless { session: Session::empty() };
+    let mut headless = headless();
     // Writes off: the file is opened for reading only, so it is never changed, not even by the
     // database's own bookkeeping (a project file is a redb database).
     let seed = ecad_engine::session_seed();
@@ -336,7 +344,7 @@ fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     {
         return Err(format!("the folder {} does not exist; create it first. Nothing was written.", dir.display()));
     }
-    let mut headless = Headless { session: Session::empty() };
+    let mut headless = headless();
     let name = std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
     let project = Project::create_with(&mut headless.session, &name, ecad_engine::session_seed(), Persistence::File)?;
     headless.session.execute("saveas", &json!({ "path": path })).map_err(|e| e.to_string())?;
@@ -346,7 +354,7 @@ fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
 /// A new project in memory, headless.
 fn memory_local(name: &str, seed: u64) -> Result<(Headless, ProjectHandle), String> {
     install()?;
-    let mut headless = Headless { session: Session::empty() };
+    let mut headless = headless();
     let project = Project::create_with(&mut headless.session, name, seed, Persistence::File)?;
     Ok((headless, project))
 }
