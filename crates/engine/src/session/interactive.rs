@@ -62,9 +62,15 @@ impl Session {
         if let Some(why) = cmd::blocks::bedit::refused_in_editor(self, id) {
             return Err(EngineError::Disabled(id.into(), why));
         }
+        // ECAD-SEAM(owner): an owned document's owner may refuse the command before it starts.
+        if let Some(why) = ext::refused(self, ext::Start::Command(id)) {
+            return Err(EngineError::Disabled(id.into(), why));
+        }
         self.last_command = Some(id.to_string());
         self.echo(format!("Command: {}", id.to_ascii_uppercase()));
         let guarded = guard::Guarded::wrap(machine);
+        // ECAD-SEAM(owner): a new top-level command starts with nothing recorded.
+        self.ext.begin_command();
         let st = self.state()?;
         let (before, selection_before) = (st.doc.clone(), st.selection.clone());
         self.running = Some(Running { id: id.to_string(), machine: guarded, before, selection_before });

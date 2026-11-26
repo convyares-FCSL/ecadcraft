@@ -302,7 +302,8 @@ pub struct Embedding {
     /// idle typing is left to the embedder.
     pub idle_typing: bool,
     /// Right-click on the drawing while no command runs opens CADCraft's shortcut, grip or snap
-    /// menu. Off: the click is reported through [`CadApp::take_secondary_click`] and no menu opens.
+    /// menu, or (a quick click) acts as Enter and repeats the last command. Off: the click is
+    /// reported through [`CadApp::take_secondary_click`]; no menu opens and nothing repeats.
     /// Right-click while a command runs is unchanged.
     pub canvas_menus: bool,
     /// CADCraft applies its egui visuals and spacing and installs its interface fonts. Off: the

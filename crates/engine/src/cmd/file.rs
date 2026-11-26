@@ -501,6 +501,7 @@ fn run_closeall(s: &mut Session, _p: &Value) -> Result<Value> {
     for uid in s.docs.iter().map(|d| d.uid).collect::<Vec<_>>() {
         if let Err(e) = crate::ext::closing(s, uid) {
             s.active = s.active.min(s.docs.len().saturating_sub(1));
+            s.lisp_forget_closed();
             return Err(e);
         }
         s.docs.retain(|d| d.uid != uid);
