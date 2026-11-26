@@ -1,6 +1,7 @@
 # ECADCraft roadmap
 
-The plan, release by release, and the work that has been put off with what is needed to pick it up again.
+The plan, release by release, and the work that has been put off. Open work, each release's plan and each
+piece of deferred work, is a brief in [briefs/](briefs/README.md).
 Near releases are firm; later ones are headlines and will change as we learn. Background:
 [road to v0.1](archive/plans/roadmap-v0.1.md) and the
 [roadmap review](archive/discussions/roadmap-review-2026-11.md).
@@ -40,12 +41,15 @@ Tagged `ecad-v0.2.0` on `main`. That build still reports `0.1.0-dev`; versions f
   and the Draw, Project, Library and Publish workspaces.
 - **Measured:** recreating a real 43-page drawing pack went from 12 to 34 recognisable pages.
 
-## Next: v0.3.0, the rev 4 UI
+## Next: v0.3.0, the functional core
 
-Rev 4 keeps the shell and adds the engineering a small or medium team needs. Datasheet values (ratings,
-dissipation, sizes) are typed on a device's part set until the parts catalogue arrives in 0.4.0.
+The ladder to 0.3.0: 0.2.4 tidy-up → 0.2.5 features → 0.2.6 UI improvement → 0.2.7 the format release →
+0.3.0, the functional core done well: good structure, a good build checked against the reference drawing
+pack, and the solid foundation the `.ecadlib` libraries build on. Datasheet values (ratings, dissipation,
+sizes) are typed on a device's part set until the parts catalogue arrives in 0.4.0. Each release from 0.2.4
+has a release brief in [briefs/](briefs/README.md).
 
-### 0.2.1: foundations
+### 0.2.1: foundations (on `dev`)
 
 - **Device-first model.** The device is the master: location, function, part number and every other
   device-level value are stored on it. Every symbol is an equal representation, typed by its definition
@@ -55,7 +59,7 @@ dissipation, sizes) are typed on a device's part set until the parts catalogue a
 - **Performance.** The BOM column change, strip build and PLC rack drop under their targets.
 - **CI.** The full suite runs in parallel (nextest and sharded slow tests).
 
-### 0.2.2: pages, title blocks, PLC signals, ratings
+### 0.2.2: pages, title blocks, PLC signals, ratings (on `dev`)
 
 - **Page types and Settings ▸ Pages and sheets.** Each type brings its sheet, frame, title block and zones.
   Pages number from 1; a folder can carry a start number, with a Renumber pages button.
@@ -67,7 +71,7 @@ dissipation, sizes) are typed on a device's part set until the parts catalogue a
 - **Shared UI components**, a style guide and a guard against hand-rolled controls.
 - **Cable manager:** build cables in Project ▸ Cables, then assign them in the drawing.
 
-### 0.2.3: tidy-up and improvements
+### 0.2.3: tidy-up and improvements (on `dev`)
 
 - **Error handling:** typed error enums per library crate (`thiserror`), `anyhow` with context at the
   program edges; no `Result<_, String>` in the libraries.
@@ -81,7 +85,56 @@ dissipation, sizes) are typed on a device's part set until the parts catalogue a
 - **Docs:** user guides by feature, developer and agent guides, one decision log, the history archived.
 - Every change adds a guard (a ban at zero, an exhaustive match, a contract test) so it cannot regress.
 
-### 0.2.4: layout, power, tests, network, paged reports
+### 0.2.4: bring upstream across, tidy up
+
+Upstream CADCraft sync, typed commands end to end, the bugs and debt the 0.2.3 end gate and the engineering
+reviews found, and the guard follow-ups. Brief: [release-0.2.4.md](briefs/release-0.2.4.md).
+
+### 0.2.5: features
+
+New features on the tidied framework: a recovery journal for unsaved work, an ECAD-domain agent tool set,
+languages for the UI string table; the rest of the list is to come. Brief:
+[release-0.2.5.md](briefs/release-0.2.5.md).
+
+### 0.2.6: UI improvement
+
+Reports as a mode of their own, paged reports, report tables, a home screen, opening off the UI thread, BOM
+rating columns. Brief: [release-0.2.6.md](briefs/release-0.2.6.md).
+
+### 0.2.7: the format release
+
+The codec decision, migration, snapshots apart from the model, versioned built-in defaults, field-level ops
+and the written freeze statement. Brief: [release-0.2.7.md](briefs/release-0.2.7.md).
+
+### 0.3.0: release
+
+- The functional core checked as a whole, the QA gate, and a re-run of the drawing-pack test against the
+  reference pack.
+- **The format freezes** (below).
+- **A new README** with screenshots of the app and diagrams.
+
+## Format freeze at 0.3.0
+
+From 0.3.0 the `.ecad` format is frozen: a release can open every file an earlier frozen release wrote. Until
+then older files need not open. The freeze is entered only when every item of
+[the format release](briefs/release-0.2.7.md) is done:
+
+- the codec decided and settled (`json/1` with its Zstandard setting, or `bin/1`);
+- migration: an upcast layer, and a golden corpus of every released version that opens and verifies;
+- snapshot chunks apart from the live model types, or declared a rebuildable cache with its own number;
+- the invariant check of a loaded snapshot run in release builds, always or in the background;
+- [versioned built-in defaults](briefs/versioned-defaults.md), and unparsable stored values shown as Checks
+  rows;
+- field-level modify ops as the stored form of typed fields; branches and merge frozen deliberately or marked
+  experimental;
+- [forward compatibility of stored words](briefs/forward-compatibility.md) decided;
+- the salvage test: a file with damaged redb pages opens read-only at what verifies, or is refused, and never
+  crashes;
+- one written statement of what "frozen" covers: records and ops, chunks, meta and the `.ecadlib` seams.
+
+## Not yet placed in a release
+
+Features planned before the tidy-up releases, waiting for their place in the feature list:
 
 - **Panel layout page:** plate and door, rails, trunking with fill %, cut-outs, dimensions, and devices
   placed from the schematic at real size. No routing, no 3D.
@@ -90,17 +143,8 @@ dissipation, sizes) are typed on a device's part set until the parts catalogue a
 - **Tests and FAT:** tests generated from the PLC list, retest when something changes after a pass, and a
   printable FAT sheet.
 - **Network:** ports, cables, VLANs and zones, with a generated topology drawing.
-- **Paged reports:** every report is a run of real pages, each updated on its own.
-- **Title blocks built from elements:** frames and title blocks as two libraries; blocks made from
-  revision, field, notice and logo elements.
-- The 0.2.4 items under [Deferred](#deferred) below.
-
-Network and Tests may move to 0.3.1 if the week runs short.
-
-### 0.3.0: release
-
-- The rev 4 boards checked side by side, the QA gate, and a re-run of the drawing-pack test.
-- **A new README** with screenshots of the app and diagrams.
+- **Title blocks built from elements:** frames and title blocks as two libraries; blocks made from revision,
+  field, notice and logo elements.
 
 ## Later (headlines)
 
@@ -133,154 +177,29 @@ Network and Tests may move to 0.3.1 if the week runs short.
 - PLC exchange formats beyond CSV (for example TIA Portal and TwinCAT tag tables).
 - Manufacturer part data and device templates.
 
-### v0.6.0: the project file pipeline
-
-- A simpler, leaner `.ecad` pipeline.
-- Groundwork for the v1 format freeze.
-
 Out of scope on purpose: hazardous areas, functional-safety calculations, 3D and automatic wire routing.
 
 ## Deferred
 
-Work that has been put off, with what is needed to pick it up again. Nothing listed here is built. Add an
-entry when work is deferred; remove it when the work is approved and started. The list as it stood before
-0.2.3's docs restructure is in the [archive](archive/plans/deferred-work.md).
+Work that has been put off, one line each; each has a draft brief in [briefs/](briefs/README.md) with what is
+needed to pick it up again. Nothing listed here is built. Add a line and a draft brief when work is deferred;
+remove the line when the work is approved and started. The list as it stood before 0.2.3's docs restructure
+is in the [archive](archive/plans/deferred-work.md).
 
-### 0.2.4: docs and names found in the 0.2.3 close-out
-
-- **A command reference made from the schemas, and a `help <command>` command.** Today there is no `help`
-  command; the reference an agent reads comes from MCP `list_commands` and the control channel's
-  `engine.commands`, both built from each command's parameters struct (see
-  [agents/commands.md](agents/commands.md)). Generate a reference page from the same schemas and add a
-  `help` command that shows one command's entry.
-- **Two constants named `SCHEMA_VERSION`.** `ecad_file::SCHEMA_VERSION` (4) is the file's record version,
-  checked on open and pinned by the golden test ([reference/file-format.md](reference/file-format.md));
-  `ecad_model::SCHEMA_VERSION` (1) is a different number in the model crate. Rename or remove the model's
-  so one name means one thing.
-- **Where the UI fonts live.** The interface and sheet fonts (IBM Plex Sans, Barlow Semi Condensed) are in
-  `ecad/assets/fonts/`; the house rule says font files live in `storytold/craft-fonts`. Decide which
-  stands, and move the fonts or record the exception in [design/decisions.md](design/decisions.md).
-
-### Guard follow-ups: 0.2.4
-
-The guards review of the 0.2.3 close-out kept only bans at zero and area entries with a reason; these are
-the counts it dropped, each to be finished in 0.2.4.
-
-- **Raw egui controls:** 13 app panels made before the components still use `egui::TextEdit` or `ComboBox`
-  (`RAW_CONTROL_FILES` in xtask). Convert them to `ecad_widgets::control`; an entry goes when its file has
-  none left, and at none the list is deleted.
-- **Literal sizes:** about 260 lines in 39 app files write a space, a stroke width or a size as a number
-  (`add_space(4.0)`, `Stroke::new(1.0, ..)`, `vec2(12.0, ..)`). After a token pass that gives each a token,
-  the literal-size ban returns as a hard zero.
-- **Stored text fields:** 11 fields in ecad-model's stored structs are still `String` (potential `name` and
-  `prefix`, `unclassified_prefix`, `label_rule`; a definition's and two drawing names, `linetype`; two device
-  labels; the ledger's `label`). Type them as `Text<N>` or a typed value (a format change: bump
-  `SCHEMA_VERSION`); then the G13 entry is removed and G13 is a hard zero.
-- **Typed errors in the engine and the app:** the engine still has about 145 `Result<_, String>` lines and
-  35 `Err(format!(..))`, the app about 57 and 6. Move them to the crate's error type; then the text-error
-  ban covers both crates like the others.
-
-### A potentials editor in the app: 0.2.4
-
-- **What:** a view of the potentials table (name, prefix, numbered, supply) in project settings. Today the
-  table is set only with `wiresettings`; no settings sheet shows potentials, so the supply cannot simply be
-  a column of an existing view.
-- **Also look at:** the project defaults `rating.voltage` and `rating.system` (the volt-drop calculation's
-  supply) overlap with the supply typed on a potential; decide whether the volt-drop calculation reads the
-  circuit's potential instead.
-
-### Rating fields: 0.2.4
-
-- **A generic rating reader:** today each group's reader maps the words of a typed rating to its fields by
-  hand; a test makes sure every nameplate field of a group's list is read. In 0.2.4 the reader takes each
-  value to a field by the field's type, so a new field needs no reader code.
-- **List fields by `setprop`:** a power supply's `voltages`, a switching device's `control` and a fuse
-  bank's `outputs` are read only on the Device tab and set through the whole rating text (or `rating.<n>`
-  per fuse). In 0.2.4 they get list-typed values of their own.
-- **One BOM value only when all agree:** a BOM row's article number, and its rating columns, show the most
-  common value of the row's devices. In 0.2.4 a row shows a value only when all its devices agree, and flags
-  the devices that differ.
-
-### Report sheets as pages of their own: an open question
-
-- **Question:** should each sheet of a report page (BOM, terminal strip pages, cable schedule, I/O list) be
-  a page in the book of its own, rather than a derived view of one stored page? Recorded only as a question,
-  not as the plan: the engine would then write pages nobody made, against "derived, never stored".
-- **Today:** a report page is one stored page; its sheets are derived. The page window shows and draws one
-  sheet at a time (the Pages tree lists them under the page), and Print Book prints them all. On the large
-  project that brought a BOM column toggle from 95 ms to 16 ms and a strip edit with a 252-sheet graphic
-  strip page shown from 436 ms to 6 ms, so keeping parts per sheet between edits was not needed.
-
-### Versioned built-in defaults: at the v1 format freeze
-
-- **What:** while ECAD is pre-alpha there is one built-in defaults set, edited freely, and every project
-  reads the current built-ins (a changed built-in moves every project that did not choose its own value).
-  At the v1 format freeze that must stop:
-  - numbered built-in sets that never change once released; a project names its set in its settings,
-    recorded in the "New project" transaction;
-  - a lock file of released values and a test that fails when one changes;
-  - a `usedefaults` command and a Standards line "Built-in defaults: set *n* (newest: *m*)", to move a
-    project to newer built-ins, with a **Keep how it looks** option;
-  - a build that does not know a project's set refuses to open it.
-- **Open questions then:** does a set freeze when it reaches `dev` or at a release? Is **Keep how it looks**
-  on by default? See [design/defaults.md](design/defaults.md).
-
-### Forward compatibility of stored words: at the v1 format freeze
-
-- **What:** pre-v1, ECAD does not read files from newer builds or other tools. A word this build doesn't
-  know (a style catalogue, a role, a device kind, a settings word) is a read error: the project opens
-  read-only, the message names the word, the setting and where it is, and the file is never changed. Enums
-  are strict; there is no "keep the unknown word" variant.
-- **Revisit at the v1 format freeze:** whether a v1 build keeps and writes back words from a newer build
-  (and how a person sees them), and the **explicit import step** for files from other tools, which is where
-  foreign words are mapped or refused.
-
-### Ratings from parts: with the parts library
-
-- **A part sets a device's rating:** when a part number's library entry carries a rating, it fills the
-  device's typed rating fields; a value typed on the device is an override, and a Checks row reports an
-  override that differs from the part. Not built until a parts library with ratings exists: no stub and no
-  override handling now. Until then the typed rating fields are stored plainly.
-- **Catalogue-part ratings:** terminal block types (largest and smallest cross-section, rated current,
-  rated voltage, pitch, connection screw/spring/push-in) and PLC channel groups (a digital output's output
-  current, an analog channel's resolution in bits). These are ratings of a catalogue part, not of the
-  device: one set per strip or per module would store wrong data for a strip or module that mixes them. The
-  other fields of terminal strips' neighbours, PLC stations and modules (supply, backplane current supplied
-  and drawn, power, power loss) are built.
-
-### Company standard file and more defaults as data: with libraries
-
-- **Company standard file:** loading a house standard from a TOML file into the project's standard, as one
-  undoable edit with the differences shown first. Waits for libraries, where a standard also comes from a
-  `.ecadlib`; it reuses the defaults loader.
-- **More defaults as data**, each its own piece of work: the house title block's columns and rows, cover
-  page sizes, the terminal strip drawing look, drawing line weights (with plot styles).
-
-### Libraries and checkpoints
-
-- Libraries (`.ecadlib`) and their UI are planned for v0.4.0 (above). Checkpoints (faster opening of long
-  histories) are on hold until libraries and the core domain features are settled. On the benchmark's large
-  tier, about 13 s to open 170,000 transactions is acceptable for now.
-- "Save a Copy As" with a new project ID.
-
-### Upstream sync policy
-
-- **What:** how ECAD owns the root entry points, drops CADCraft clutter (its AutoCAD-parity planning
-  documents, README screenshots, packaging, release and packaging-lint workflows) and stays mergeable with
-  CADCraft: one policy file in three path categories (ECAD-owned, excluded upstream, upstream-maintained),
-  an explicit `cargo xtask sync-upstream` run only on `upstream-sync/<date>` branches (no `merge=ours`, no
-  merge drivers), and a CI check (`cargo xtask policy`). The proposal is in the
-  [archive](archive/plans/upstream-sync-policy.md); branch `docs/upstream-sync-policy` keeps its commits.
-- **Today** `ecad/UPSTREAM.md`, `ecad/UPSTREAM-PATCHES.md` and `cargo xtask patches` do part of its job.
-- **Before resuming:** re-check the proposed exclusion and keep lists against the current tree, then get approval to
-  implement it.
-
-### Small code follow-ups
-
-- Delete `apply_ops` and the `test-ops` feature of ecad-engine (`access.rs`). It was added so tests could
-  build cable reference ends before `cablereference` existed; tests in nine files still apply ops through
-  it. Make each of those cases with a command first.
-- Consider moving the definition content hash (`definition_hash`, canonical JSON, today in
-  `ecad-file/src/record.rs`) into ecad-model, so the electrical rules don't depend on the file format.
-- Pass the branch seed in explicitly: `create_branch` (`ecad-file/src/project/branches.rs`) takes its
-  entropy from `ecad_store::random_u128` inside it.
+- **A potentials editor in the app**, not placed: [potentials-editor.md](briefs/potentials-editor.md).
+- **Paged reports**, 0.2.6, with the open question of report sheets as pages of their own: the paged-reports
+  brief and design in [briefs/](briefs/README.md).
+- **Versioned built-in defaults**, 0.2.7, before the format freeze:
+  [versioned-defaults.md](briefs/versioned-defaults.md).
+- **Forward compatibility of stored words**, 0.2.7, before the format freeze:
+  [forward-compatibility.md](briefs/forward-compatibility.md).
+- **A compact binary encoding**, the seed of 0.2.7's codec decision:
+  [eep-0003-binary-encoding.md](briefs/eep-0003-binary-encoding.md).
+- **Upstream sync policy**, with the 0.2.4 sync: [upstream-sync-policy.md](briefs/upstream-sync-policy.md).
+- **Ratings from parts**, with the parts catalogue: [ratings-from-parts.md](briefs/ratings-from-parts.md).
+- **Company standard file and more defaults as data**, with libraries:
+  [company-standard-file.md](briefs/company-standard-file.md).
+- **Libraries** are planned for v0.4.0 (above). **Checkpoints and "Save a Copy As"** are on hold until
+  libraries and the core domain features are settled: [checkpoints.md](briefs/checkpoints.md).
+- **DXF export**, not placed: [dxf-export.md](briefs/dxf-export.md).
+- **Small code follow-ups**, not placed: [code-follow-ups.md](briefs/code-follow-ups.md).

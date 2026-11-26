@@ -26,7 +26,6 @@ before them are here too.
 | 003 | 2026-10-31 | [Trial on Windows, doc corrections](briefs/003-windows-trial-and-docs.md) | Home-folder and path fixes for Windows; doc corrections D1-D14 | facts now in [user/projects.md](../user/projects.md) |
 | 004 | 2026-10-31 | [Cable by slash gesture](briefs/004-cable-slash.md) | Slash across wires creates one cable of exactly the crossed conductors | facts now in [user/cables.md](../user/cables.md) |
 | 005 | 2026-10-31 | [Traditional / fan cable view](briefs/005-cable-views.md) | One switch between traditional and fan view, presentation only | facts now in [user/cables.md](../user/cables.md) |
-| 006 | 2026-10-31 | [Libraries (.ecadlib) contract](briefs/006-ecadlib-contract-draft.md) | Proposal revision for persistence stage 3 (.ecadlib), docs only | superseded, never built; see [roadmap.md](../roadmap.md) |
 | 007 | 2026-10-31 | [Upstream sync to CADCraft 0.15](briefs/007-upstream-sync-0.15.md) | Sync from CADCraft 0.6.2 to 0.15.1, seams X1-X8 kept | facts now in [developer/architecture.md](../developer/architecture.md) |
 | 008 | 2026-11-01 | [ECAD tools by mouse](briefs/008-mouse-tools.md) | Interactive prompt forms for the JSON-only ECAD commands | facts now in [design/interaction.md](../design/interaction.md), [developer/commands.md](../developer/commands.md) |
 | 009 | 2026-11-07 | [Cable look and core designation](briefs/009-cable-look-and-cores.md) | Cable label box, thick spine, curved bends, core numbers/colours | facts now in [user/cables.md](../user/cables.md), [design/cables.md](../design/cables.md) |
@@ -82,7 +81,7 @@ before them are here too.
 | 055 | 2026-11-14 | [Title block editor (incl. 055c)](briefs/055-title-blocks.md) | Library ▸ Title blocks editor, built-in house border, DXF logos; second part 055c | facts now in [user/pages.md](../user/pages.md) |
 | 056 | 2026-11-14 | [PLC signal list and sync](briefs/056-plc-signals.md) | Tag, safe state, drives; tag table export/import | facts now in [user/plc.md](../user/plc.md) |
 | 057 | 2026-11-14 | [Wire and cable rating checks](briefs/057-ratings.md) | Ib ≤ In ≤ Iz, panel derating, user rating tables, volt drop | facts now in [user/circuits.md](../user/circuits.md), [design/decisions.md](../design/decisions.md) |
-| 058 | | Not used | no brief file; no trace beyond a mention | |
+| 058 | 2026-11-14 | Paged reports | Open, not archived: the brief and its design are in [docs/briefs/](../briefs/README.md) | |
 | 059 | 2026-11-15 | [Cable manager](briefs/059-cable-manager.md) | Build cables in Project ▸ Cables, assign in the drawing | facts now in [user/cables.md](../user/cables.md) |
 | 060 | 2026-11-15 | [Tidy-up guards and check-kinds table](briefs/060-tidy-guards.md) | 0.2.3 wave 1: guards (R0) and check kinds table (R7) | facts now in [developer/guards.md](../developer/guards.md), [user/checks.md](../user/checks.md) |
 | 061 | | Crate choices | no brief file; review only: [061](reviews/061-crate-choices.md) | |
@@ -272,15 +271,14 @@ Reviews, assessments and reports.
 
 ## Plans
 
-Proposals, roadmaps, the decision log by date and the format specifications as written.
+Proposals, roadmaps, the decision log by date and the format specifications as written. Proposals still open (the upstream sync policy, the binary encoding) are draft briefs in
+[docs/briefs/](../briefs/README.md).
 
 | No. | Date | Title | What it was | Facts now in |
 | --- | --- | --- | --- | --- |
 |  | 2026-10-12 | [Decision log (by date)](plans/decision-log-2026.md) | One row per ruling since 2026-10-12; the rows still in force are in the topic log | facts now in [design/decisions.md](../design/decisions.md), [design/history.md](../design/history.md) |
 |  | 2026-10-12 | [ECAD document architecture and integration proposal](plans/document-architecture-proposal.md) | Rev 4.1: principles, document model, file and library contracts, transactions, integration, persistence | facts now in [developer/architecture.md](../developer/architecture.md), [reference/file-format.md](../reference/file-format.md) |
-|  | 2026-10-15 | [Deferred work](plans/deferred-work.md) | The deferred list as it stood before the 0.2.3 docs restructure | facts now in [roadmap.md](../roadmap.md) |
-|  | 2026-10-15 | [Upstream sync policy (proposal)](plans/upstream-sync-policy.md) | Path categories and sync tasks for upstream merges; never built | facts now in [roadmap.md](../roadmap.md) |
-|  | 2026-11-08 | [EEP-0003: compact binary encoding](plans/eep-0003-binary-encoding.md) | A planned bin/1 row codec; never built | history only |
+|  | 2026-10-15 | [Deferred work](plans/deferred-work.md) | The deferred list as it stood before the 0.2.3 docs restructure | facts now in [roadmap.md](../roadmap.md) and [briefs/](../briefs/README.md) |
 |  | 2026-11-08 | [EEP-0004: container evolution](plans/eep-0004-container-evolution.md) | Index, snapshot chunks and checkpoints on format v1; superseded by EEP-0005 | facts now in [reference/file-format.md](../reference/file-format.md) |
 |  | 2026-11-08 | [EEP-0005: .ecad container v2](plans/eep-0005-container-v2.md) | The redb container: tables, branches, versions, chunks, open and save, integrity | facts now in [reference/file-format.md](../reference/file-format.md) |
 |  | 2026-11-08 | [Specifications (index)](plans/eep-index.md) | Index of EEP-0002 to EEP-0005 | facts now in [reference/file-format.md](../reference/file-format.md) |

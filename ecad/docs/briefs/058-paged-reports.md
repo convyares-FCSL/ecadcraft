@@ -39,6 +39,20 @@ own block.
 - The report models (`outputs.rs`) are kept and updated per transaction from their update map.
   The BOM's rows are grouped from scratch on each draw (`bom_with`, about 11 ms on large).
 
+## Open question: report sheets as pages of their own
+
+To settle before building, against the current tree:
+
+- **Question:** should each sheet of a report page (BOM, terminal strip pages, cable schedule, I/O list) be
+  a page in the book of its own, rather than a derived view of one stored page? The engine would then write
+  pages nobody made, against "derived, never stored".
+- **Since this brief was written (0.2.3):** a report page is one stored page and its sheets are derived. The
+  page window shows and draws one sheet at a time (the Pages tree lists them under the page), and Print Book
+  prints them all. On the large project that brought a BOM column toggle from 95 ms to 16 ms and a strip
+  edit with a 252-sheet graphic strip page shown from 436 ms to 6 ms, so keeping parts per sheet between
+  edits was not needed. The performance case in "Why" is met; what remains is whether each sheet should be
+  a page in the book (its own number, title block and Book row).
+
 ## Scope
 
 **058a: paged reports, the frame of it, and the BOM**
