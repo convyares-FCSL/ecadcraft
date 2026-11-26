@@ -295,12 +295,12 @@ fn undo_in_a_plain_drawing_and_on_an_ecad_page_stay_apart() {
     assert_eq!(h.doc(), doc);
 }
 
-/// A transparent `'zoom` or `'pan` typed while Wire or Place prompts belongs to that command: the
-/// command goes on, commits one transaction, the engine pushes no undo step, and the view change
-/// records nothing (X2 after the merged `finish`).
+/// A transparent `'zoom`, `'pan` (realtime, left with Enter) or `'-pan` (two points) typed while Wire
+/// or Place prompts belongs to that command: the command goes on, commits one transaction, the engine
+/// pushes no undo step, and the view change records nothing.
 #[test]
 fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
-    for (tool, transparent) in [("wire", "'zoom"), ("wire", "'pan"), ("place", "'zoom"), ("wire", "'redraw")] {
+    for (tool, transparent) in [("wire", "'zoom"), ("wire", "'pan"), ("wire", "'-pan"), ("place", "'zoom"), ("wire", "'redraw")] {
         let (mut h, _, _) = fixture(2360);
         let head = h.head();
         let lines = h.doc().routes().len();
@@ -311,10 +311,12 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         }
         let r = h.s.cmdline(transparent);
         assert!(r.is_ok(), "{tool} {transparent}: {r:?}");
-        // Answer the transparent command's prompt: extents for ZOOM, a displacement for PAN.
+        // Answer the transparent command's prompt: extents for ZOOM, Enter to leave realtime PAN,
+        // two points for -PAN.
         match transparent {
             "'zoom" => h.s.cmdline("e").unwrap(),
-            "'pan" => {
+            "'pan" => h.s.input(Input::Enter).unwrap(),
+            "'-pan" => {
                 let _ = h.s.cmdline("0,0");
                 let _ = h.s.cmdline("10,10");
             }

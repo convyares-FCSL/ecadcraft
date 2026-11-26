@@ -55,7 +55,8 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
         let t = h.state();
         assert_eq!(t.cad.options.model_background, Some(paper), "#F6F4EF");
         assert_eq!(t.cad.options.selection_color, Some(ecad_widgets::color(ecad_model::palette::sheet::PAPER.selection)));
-        assert!(!t.cad.ui.show_viewcube && !t.cad.ui.show_ucs_icon, "no ViewCube, no UCS icon");
+        assert!(!t.cad.ui.show_viewcube, "no ViewCube");
+        assert_eq!(t.cad.session.ucsicon_bits() & 1, 0, "no UCS icon: the page has UCSICON off");
         assert!(!t.cad.session.settings.gridmode, "CADCraft's grid off: ECAD paints the dots");
     }
     assert!(!painted_text(&h, "2D Wireframe"), "no viewport label");
@@ -71,10 +72,10 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
     let stored = h.state().shell_state().to_stored();
     assert_eq!(ShellState::from_stored(Some(&stored)).0.sheet, Sheet::Dark, "kept with the shell state");
     assert_eq!(ShellState::from_stored(Some("{}")).0.sheet, Sheet::Paper, "paper by default");
-    // The developer switch brings CADCraft's own view furniture back.
+    // The developer switch brings CADCraft's ViewCube back.
     h.state_mut().set_cad_chrome(true);
     h.run_steps(3);
-    assert!(h.state().cad.ui.show_viewcube && h.state().cad.ui.show_ucs_icon);
+    assert!(h.state().cad.ui.show_viewcube);
 }
 
 /// The coil `-K01` and two contacts on page 1, a third contact on page 2; back on page 1.
