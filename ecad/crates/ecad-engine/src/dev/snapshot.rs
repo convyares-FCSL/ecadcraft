@@ -171,7 +171,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
     Ok(json!({
         "format": SNAPSHOT_FORMAT,
         "product_version": env!("CARGO_PKG_VERSION"),
-        "schema_version": ecad_model::SCHEMA_VERSION,
+        "schema_version": ecad_file::SCHEMA_VERSION,
         "upstream": live.and_then(|l| l.upstream.clone()),
         "persistence": live.and_then(|l| l.persistence.clone()),
         "project": name,

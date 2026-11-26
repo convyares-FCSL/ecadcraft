@@ -33,8 +33,6 @@ far:
 | 3 | A terminal strip level's own label is the property `block_label.<p>.<n>`. |
 | 4 | Device data: a potential's supply, a motor's rated voltage and the new rating fields. |
 
-`ecad_model::SCHEMA_VERSION` is a different constant (the model's own) and is not written to the file.
-
 There are no upcasts and no converters: a build reads the record version it writes, and opens other versions
 read-only.
 

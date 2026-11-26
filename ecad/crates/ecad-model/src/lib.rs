@@ -67,7 +67,3 @@ pub use crate::objects::route::{Route, RouteEnd};
 pub use crate::objects::styles::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use crate::objects::user::{DeviceLink, LinkKind, UserFieldDef, UserFieldKind, UserValue};
 pub use crate::objects::wire::{End, Wire};
-
-/// Version of the op and document schema. Independent of the product version:
-/// it changes only when the meaning or shape of recorded ops changes.
-pub const SCHEMA_VERSION: u32 = 1;

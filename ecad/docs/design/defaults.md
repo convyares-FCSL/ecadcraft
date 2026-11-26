@@ -94,9 +94,3 @@ drawing crates outside the places that define styles and their data. Exempt by l
 definitions (their glyph text is line art in symbol units), screen-only overlays (pixels),
 user-imported title block items (their sizes are the user's data) and the style modules
 themselves. `cargo xtask layers` enforces this at zero (`dev/xtask/src/drawn_text.rs`).
-
-## Not built yet
-
-Loading a company standard from a file on disk waits for libraries. Numbered, frozen built-in sets
-(so a built-in change no longer moves saved projects) wait for the v1 format freeze; see
-[../roadmap.md](../roadmap.md).

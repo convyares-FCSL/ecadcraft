@@ -1,6 +1,7 @@
-Historical record (2026-11-08). Not current; see [the archive index](../README.md).
-
 # EEP-0003: The `.ecad` format, version 2: compact binary encoding
+
+Status: Draft, not approved; the seed of the codec decision in [the format release](release-0.2.7.md). Written
+against the format before 0.2.3: re-check every name and number against [reference/file-format.md](../reference/file-format.md).
 
 | Field | Value |
 | --- | --- |
@@ -15,7 +16,7 @@ Historical record (2026-11-08). Not current; see [the archive index](../README.m
 | Composes with | EEP-0004 (index, snapshot chunks, checkpoints) |
 
 > **Container superseded in part (2026-11-08).** The container for version 2 is
-> [EEP-0005](eep-0005.md): a redb database (owner decision). EEP-0005 stores rows as E2 records
+> [EEP-0005](../archive/plans/eep-0005-container-v2.md): a redb database (owner decision). EEP-0005 stores rows as E2 records
 > (`json/1`) for now; this EEP's value and op encoding (§4–§10) is the candidate later codec
 > (`bin/1`) for its transactions and chunks; its frames, magic, blocks, seals and
 > tail rules (§3, §7.1, §11) are **not** used, and stay as a record of the own-container option.
