@@ -332,6 +332,22 @@ fn main() -> ExitCode {
             }
         };
     }
+    // `--stacked`: `wire` on a page of free wires 0.01 mm apart against one of wires 5 mm apart.
+    if let [flag] = args.as_slice()
+        && flag == "--stacked"
+    {
+        let r = ecad_bench::per_edit::stacked(5.0).and_then(|normal| Ok((normal, ecad_bench::per_edit::stacked(0.01)?)));
+        return match r {
+            Ok((normal, stacked)) => {
+                println!("wire: {normal:.2} ms with wires 5 mm apart, {stacked:.2} ms with wires 0.01 mm apart ({:.1}×)", stacked / normal);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     // `--per-edit <file|new> <counts>`: setstyle, wire and category per edit as landed wires accumulate
     // (counts comma-separated, as 100,200,400).
     if let [flag, file, counts] = args.as_slice()

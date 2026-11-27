@@ -184,3 +184,33 @@ pub fn refusal_snapshot(path: &Path, runs: usize, scratch: &Path) -> Result<Refu
     remove(&copy);
     r
 }
+
+/// Free wires on the page before [`stacked`] times more.
+pub const STACK: usize = 40;
+
+/// The mean `wire` cost, in ms, of drawing [`WINDOW`] more free horizontal wires on a page that already has
+/// [`STACK`] of them, each `spacing` mm below the one before: 0.01 mm stacks their ends on top of each other
+/// (the near-ends check finds every one of them), 5 mm spreads them as a normal page does. A new project.
+///
+/// # Errors
+/// A command refused.
+pub fn stacked(spacing: f64) -> Result<f64, String> {
+    ecad_engine::install();
+    let mut s = Session::empty();
+    let project = ecad_engine::Project::create_with(&mut s, "stacked", SEED, ecad_engine::Persistence::File)?;
+    let last = project.read(&mut s, |p, _| p.ledger.document().page_order().last().copied())?.ok_or("the project has no page")?;
+    let v = run(&mut s, "newpage", &json!({"type": "schematic", "after": last.hex()}))?;
+    let page = PageId::parse(&id_of(&v, "page")?).ok_or("newpage gave no page id")?;
+    project.open_page(&mut s, page)?;
+    let mut times = Vec::new();
+    for k in 0..STACK + WINDOW {
+        let y = 50.0 + k as f64 * spacing;
+        let (t, _) = timed(&mut s, "wire", &json!({"points": [[40.0, y], [200.0, y]]}))?;
+        if k >= STACK {
+            times.push(t);
+        }
+    }
+    drop(project);
+    drop(s);
+    Ok(times.iter().sum::<f64>() / times.len().max(1) as f64)
+}
