@@ -5,8 +5,9 @@
 //! and file parameters; [`run`] does the whole path: read the parameters, read the files it declares, lock
 //! the project, give the command its [`Cx`] and its declared state, commit its edit as one
 //! transaction under its id ([`Project::apply_edit`]: history, undo, views), echo its message and
-//! answer. The files it returns are written before its edit is committed, so a file that cannot be
-//! written leaves the project as it was. Any refusal puts back the ids, tag numbers and designation
+//! answer. The files it returns are written after its edit is committed, so a refusal leaves no file behind; a
+//! file that cannot be written then is said in the answer (`not_written`), and refuses the command only when
+//! nothing else happened (no edit, no other file). Any refusal puts back the ids, tag numbers and designation
 //! uses the command took, and once the edit is committed the answer no longer refuses. The agent gate reads the same declaration
 //! ([`Typed::access`], [`Typed::files`]).
 //!
@@ -154,21 +155,23 @@ impl Before {
     }
 }
 
-/// Run `p` on the project, write the files it returns to the paths `params` gives, commit its edit,
+/// Run `p` on the project, commit its edit, write the files it returns to the paths `params` gives,
 /// and answer with the lines to echo.
 ///
 /// # Semantics
-/// A refusal (the command's own, `no_edit` when given and the command edits, a file that cannot be
-/// written, or a transaction the ledger refuses) commits nothing and leaves the project's indexes
-/// as they were ([`Before`]). The declared state is given as a copy, kept only once the edit is
-/// committed. Once the edit is committed the answer cannot fail: an answer read from the committed
-/// document that cannot be made says so in its fields (`committed`, `problem`) instead.
+/// A refusal (the command's own, `no_edit` when given and the command edits, a file parameter the
+/// command does not declare, a transaction the ledger refuses, or its only file that cannot be written when
+/// it has no edit) commits nothing, writes no file and leaves the project's indexes as they were
+/// ([`Before`]). The declared state is given as a copy, kept only once the edit is committed. Once the
+/// edit is committed (or a file written) the answer cannot fail: an answer read from the committed
+/// document that cannot be made says so in its fields (`committed`, `problem`), and so does a file that
+/// could not be written (`committed`, `not_written`: each path with its problem, and the message).
 fn commit<P: Generic>(
     proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P, no_edit: Option<&'static str>,
 ) -> Result<(Value, Vec<String>), CmdError> {
     let before = Before::of(proj);
     let ran = run_and_write::<P>(proj, pg, page, params, read, p, no_edit);
-    let (label, Outcome { answer, echo, .. }, held) = match ran {
+    let (label, Outcome { answer, echo, .. }, held, unwritten) = match ran {
         Ok(r) => r,
         Err(e) => {
             before.restore(proj);
@@ -186,12 +189,42 @@ fn commit<P: Generic>(
         Answer::Now(v) => v,
         Answer::Committed(f) => f(proj.ledger.document(), &mut proj.derived).unwrap_or_else(|e| committed_with_problem(label.as_deref(), &e)),
     };
-    let echo = match echo {
+    let (v, also) = if unwritten.is_empty() { (v, None) } else { with_unwritten(v, label.as_deref(), &unwritten) };
+    let mut echo = match echo {
         Echo::Nothing => Vec::new(),
         Echo::Lines(l) => l,
         Echo::Message => v.get("message").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
     };
+    if let Some(line) = also
+        && !echo.contains(&line)
+    {
+        echo.push(line);
+    }
     Ok((v, echo))
+}
+
+/// A file the command returned that could not be written after its edit was committed: the path and why.
+type Unwritten = (String, String);
+
+/// The answer `v` of a command whose edit is committed (or some file written) but which could not write every
+/// file: it says which were not written and why (`not_written`), whether the edit is in the history
+/// (`committed`), and a message saying both; with that message, for the echo.
+fn with_unwritten(v: Value, label: Option<&str>, unwritten: &[Unwritten]) -> (Value, Option<String>) {
+    let mut v = if v.is_object() { v } else { serde_json::json!({ "answer": v }) };
+    let files = unwritten.iter().map(|(path, problem)| format!("{path} ({problem})")).collect::<Vec<_>>().join(", ");
+    let message = match label {
+        Some(l) => format!("{l} was done, but a file could not be written: {files}"),
+        None => format!("Not every file could be written: {files}"),
+    };
+    if let Some(o) = v.as_object_mut() {
+        o.insert("committed".into(), Value::Bool(label.is_some()));
+        o.insert(
+            "not_written".into(),
+            Value::Array(unwritten.iter().map(|(path, problem)| serde_json::json!({ "path": path, "problem": problem })).collect()),
+        );
+        o.insert("message".into(), Value::String(message.clone()));
+    }
+    (v, Some(message))
 }
 
 /// The answer of a command whose edit is committed but whose answer, read from the committed
@@ -205,12 +238,13 @@ fn committed_with_problem(label: Option<&str>, e: &CmdError) -> Value {
     })
 }
 
-/// What [`run_and_write`] gives once the edit (if any) is committed: the edit's label, the
-/// command's outcome with its edit and files taken, and its declared state.
-type Ran = (Option<String>, Outcome, Held);
+/// What [`run_and_write`] gives once the edit (if any) is committed and the files written: the edit's label,
+/// the command's outcome with its edit and files taken, its declared state, and the files that could not be
+/// written.
+type Ran = (Option<String>, Outcome, Held, Vec<Unwritten>);
 
-/// Every step of [`commit`] that may refuse: run `p`, refuse an edit when `no_edit` is given, write
-/// its files, commit its edit.
+/// Every step of [`commit`] that may refuse: run `p`, refuse an edit when `no_edit` is given, check its file
+/// parameters, commit its edit; then write its files, which refuses only when nothing else happened.
 fn run_and_write<P: Generic>(
     proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P, no_edit: Option<&'static str>,
 ) -> Result<Ran, CmdError> {
@@ -256,11 +290,12 @@ fn run_and_write<P: Generic>(
     {
         return Err(CmdError::refused(why));
     }
+    // Every file parameter is checked before anything happens; the files are written only after the commit.
+    let mut files = Vec::new();
     for (key, bytes) in std::mem::take(&mut out.writes) {
         let target = P::IO.writes.contains(&key).then(|| given(params, key)).flatten();
         let target = target.ok_or_else(|| CmdError::refused(format!("`{key}` is not a file this command writes")))?;
-        cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(target), &bytes)
-            .map_err(|e| CmdError::refused(format!("Could not write {target}: {e}")))?;
+        files.push((target.to_string(), bytes));
     }
     let label = match edit {
         Some(e) => {
@@ -269,7 +304,22 @@ fn run_and_write<P: Generic>(
         }
         None => None,
     };
-    Ok((label, out, held))
+    let mut written = false;
+    let mut unwritten = Vec::new();
+    for (target, bytes) in files {
+        match cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(&target), &bytes) {
+            Ok(()) => written = true,
+            Err(e) => unwritten.push((target, e.to_string())),
+        }
+    }
+    // Nothing happened (no edit, no file written): the command is refused.
+    if label.is_none()
+        && !written
+        && let Some((target, e)) = unwritten.first()
+    {
+        return Err(CmdError::refused(format!("Could not write {target}: {e}")));
+    }
+    Ok((label, out, held, unwritten))
 }
 
 #[cfg(test)]
@@ -298,28 +348,119 @@ mod tests {
         }
     }
 
-    /// A file that cannot be written refuses the command, and its edit is not committed.
+    /// A folder for one test's files, with a path whose folder is a file (so it cannot be written); removed when
+    /// dropped.
+    struct Files(std::path::PathBuf);
+
+    impl Files {
+        fn new(name: &str) -> Files {
+            let dir = std::env::temp_dir().join(format!("ecad-generic-{name}-{}", ecad_store::disk::unique()));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("a-file"), b"").unwrap();
+            Files(dir)
+        }
+        fn path(&self, name: &str) -> std::path::PathBuf {
+            self.0.join(name)
+        }
+        /// A path that cannot be written: its folder is a file.
+        fn blocked(&self) -> std::path::PathBuf {
+            self.0.join("a-file").join("out.csv")
+        }
+    }
+
+    impl Drop for Files {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The files are written after the commit: a file that cannot be written then is said in the answer
+    /// (`committed`, `not_written`), and the edit stays in the history.
     #[test]
-    fn a_file_that_cannot_be_written_commits_nothing() {
+    fn a_file_that_cannot_be_written_after_the_commit_is_said_in_the_answer() {
         crate::install();
         let mut s = Session::empty();
         let handle = Project::create(&mut s, "P", 1).unwrap();
         let head = handle.read(&mut s, |p, _| p.ledger.head()).unwrap();
-        // Its folder is a file, so the folder cannot be made and the file cannot be written.
-        let dir = std::env::temp_dir().join(format!("ecad-editandwrite-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let blocker = dir.join("a-file");
-        std::fs::write(&blocker, b"").unwrap();
-        let target = blocker.join("out.csv");
-        let r = run::<EditAndWrite>(&mut s, &serde_json::json!({"path": target.to_string_lossy()}));
-        let _ = std::fs::remove_dir_all(&dir);
+        let files = Files::new("editandwrite");
+        let target = files.blocked();
+        let v = run::<EditAndWrite>(&mut s, &serde_json::json!({"path": target.to_string_lossy()})).unwrap();
+        assert_eq!(v["committed"], true, "{v}");
+        assert_eq!(v["not_written"][0]["path"], target.to_string_lossy().as_ref(), "{v}");
+        assert!(v["message"].as_str().is_some_and(|m| m.contains("was done, but a file could not be written")), "{v}");
+        assert_eq!(handle.read(&mut s, |p, _| p.ledger.head()).unwrap(), head + 1);
+    }
+
+    /// A command that writes two files (`first`, `second`) and edits the project unless `edit` is false.
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    struct TwoFiles {
+        edit: bool,
+    }
+
+    impl Generic for TwoFiles {
+        const ID: &'static str = "twofiles";
+        const TITLE: &'static str = "Two files";
+        const PAGES: Runs = Runs::Any;
+        const IO: Io = Io { reads: &[], writes: &["first", "second"] };
+
+        fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+            let mut out = if self.edit {
+                let before = cx.doc.project().clone();
+                let mut after = before.clone();
+                after.info.title = Some(ecad_model::document::project::InfoText::new("Edited").map_err(|e| CmdError::refused(e.to_string()))?);
+                Outcome::edit("Two files", vec![ecad_model::document::op::Op::ModifyProject { before, after }], serde_json::json!({}))
+            } else {
+                Outcome::answer(serde_json::json!({}))
+            };
+            out.writes.push(("first", b"1".to_vec()));
+            out.writes.push(("second", b"2".to_vec()));
+            Ok(out)
+        }
+    }
+
+    /// The second of two files fails after the commit: the answer says the edit is in the history, the first
+    /// file was written, and the second was not, with why.
+    #[test]
+    fn a_second_file_that_cannot_be_written_is_reported_truthfully() {
+        let (mut s, h, _) = fresh();
+        let head = h.read(&mut s, |p, _| p.ledger.head()).unwrap();
+        let files = Files::new("twofiles");
+        let (first, second) = (files.path("first.csv"), files.blocked());
+        let params = serde_json::json!({"edit": true, "first": first.to_string_lossy(), "second": second.to_string_lossy()});
+        let v = run::<TwoFiles>(&mut s, &params).unwrap();
+        assert_eq!(v["committed"], true, "{v}");
+        let not_written = v["not_written"].as_array().unwrap();
+        assert_eq!(not_written.len(), 1, "{v}");
+        assert_eq!(not_written[0]["path"], second.to_string_lossy().as_ref(), "{v}");
+        assert!(!not_written[0]["problem"].as_str().unwrap_or_default().is_empty(), "{v}");
+        assert_eq!(std::fs::read(&first).unwrap(), b"1", "the first file is written");
+        assert_eq!(h.read(&mut s, |p, _| p.ledger.head()).unwrap(), head + 1, "the edit is in the history");
+
+        // Without an edit, the same: the first file was written, so the answer says what was not.
+        std::fs::remove_file(&first).unwrap();
+        let params = serde_json::json!({"edit": false, "first": first.to_string_lossy(), "second": second.to_string_lossy()});
+        let v = run::<TwoFiles>(&mut s, &params).unwrap();
+        assert_eq!(
+            (v["committed"].clone(), v["not_written"][0]["path"].clone()),
+            (Value::Bool(false), Value::from(second.to_string_lossy().as_ref()))
+        );
+        assert!(first.exists());
+    }
+
+    /// A command with no edit whose only file cannot be written is refused: nothing happened.
+    #[test]
+    fn a_command_whose_files_all_fail_and_that_has_no_edit_is_refused() {
+        let (mut s, h, state) = fresh();
+        let files = Files::new("nofile");
+        let params = serde_json::json!({"edit": false, "first": files.blocked().to_string_lossy(), "second": files.blocked().to_string_lossy()});
+        let r = run::<TwoFiles>(&mut s, &params);
         assert!(r.is_err_and(|e| e.to_string().contains("Could not write")));
-        assert_eq!(handle.read(&mut s, |p, _| p.ledger.head()).unwrap(), head);
+        assert_eq!(session_state(&h, &mut s), state);
     }
 
     /// A command that takes an id, tag numbers and the designation uses, builds the report models,
-    /// then edits the project: through a file it writes (`write`), with a stale `before` the
-    /// ledger refuses (`stale`), or with an answer that cannot be read (`answer`).
+    /// then edits the project: with a file it writes (`write`), with a stale `before` the ledger refuses and a
+    /// file (`stale`), or with an answer that cannot be read (`answer`).
     #[derive(serde::Deserialize, schemars::JsonSchema)]
     struct TakeThenEdit {
         how: String,
@@ -342,7 +483,11 @@ mod tests {
             after.info.title = Some(ecad_model::document::project::InfoText::new("Edited").map_err(|e| CmdError::refused(e.to_string()))?);
             let op = |before| vec![ecad_model::document::op::Op::ModifyProject { before, after: after.clone() }];
             Ok(match self.how.as_str() {
-                "stale" => Outcome::edit("Take then edit", op(after.clone()), Value::Null),
+                "stale" => {
+                    let mut out = Outcome::edit("Take then edit", op(after.clone()), Value::Null);
+                    out.writes.push(("path", b"x".to_vec()));
+                    out
+                }
                 "answer" => Outcome::edit_then_try("Take then edit", op(before), |_| Err(CmdError::refused("the answer cannot be read"))),
                 _ => {
                     let mut out = Outcome::edit("Take then edit", op(before), Value::Null);
@@ -393,28 +538,15 @@ mod tests {
         assert_eq!(views_differ(&h, &mut s), Vec::<String>::new());
     }
 
-    /// A file that cannot be written gives back what the command took.
+    /// A transaction the ledger refuses gives back what the command took, and writes no file.
     #[test]
-    fn a_failed_write_keeps_the_session_as_replay() {
+    fn a_refused_transaction_keeps_the_session_as_replay_and_writes_no_file() {
         let (mut s, h, state) = fresh();
-        let dir = std::env::temp_dir().join(format!("ecad-takethenedit-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let blocker = dir.join("a-file");
-        std::fs::write(&blocker, b"").unwrap();
-        let target = blocker.join("out.csv");
-        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "write", "path": target.to_string_lossy()}));
-        let _ = std::fs::remove_dir_all(&dir);
-        assert!(r.is_err_and(|e| e.to_string().contains("Could not write")));
-        assert_eq!(session_state(&h, &mut s), state);
-        assert_eq!(views_differ(&h, &mut s), Vec::<String>::new());
-    }
-
-    /// A transaction the ledger refuses gives back what the command took.
-    #[test]
-    fn a_refused_transaction_keeps_the_session_as_replay() {
-        let (mut s, h, state) = fresh();
-        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "stale"}));
+        let files = Files::new("stale");
+        let target = files.path("out.csv");
+        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "stale", "path": target.to_string_lossy()}));
         assert!(r.is_err_and(|e| e.to_string().contains("differ from the recorded value")));
+        assert!(!target.exists(), "a refusal leaves no file behind");
         assert_eq!(session_state(&h, &mut s), state);
         assert_eq!(views_differ(&h, &mut s), Vec::<String>::new());
     }

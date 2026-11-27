@@ -59,10 +59,12 @@ pub trait Generic: DeserializeOwned + schemars::JsonSchema {
 - **`Outcome`** is the edit to commit (a label and ops, or none), the answer (known now, or read from the
   document once the edit is committed), the files to write, and what to echo on the command line.
 - **The run.** `generic::run` parses the parameters, calls `check`, reads the declared files, takes the project
-  with `try_lock` (a busy project is refused, never waited for), checks the page, calls `run`, writes the
-  returned files, commits the edit under the command's id through `Project::apply_edit` (history, undo, views),
-  then echoes and answers. A file that cannot be written commits nothing. An answer read after the commit may
-  refuse; the edit stays committed.
+  with `try_lock` (a busy project is refused, never waited for), checks the page, calls `run`, commits the edit
+  under the command's id through `Project::apply_edit` (history, undo, views), writes the returned files, then
+  echoes and answers. A refusal writes no file. A file that cannot be written after the commit is said in the
+  answer (`committed`, `not_written` with each path and its problem, and the message); it refuses the command only
+  when nothing else happened (no edit and no other file written). An answer read after the commit that cannot be
+  made says so in its fields (`committed`, `problem`); the edit stays committed.
 - **Files.** Core touches no disk: a command declares its files as data (`Io { reads, writes }`, a read being
   `Read::Bytes(max)` or `Read::Standard`, another project's standard opened read-only) and the engine alone
   opens them.
