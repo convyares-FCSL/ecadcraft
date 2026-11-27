@@ -49,7 +49,10 @@ fn options_are_parsed_as_documented() {
     assert_eq!(names(parse(&args(&["--tier", "large,small,small"])).unwrap()), ["large", "small"]);
     let o = parse(&args(&["--keep", "C:\\some dir\\kept", "--compare", "x.json"])).unwrap();
     assert_eq!(o.keep.unwrap().to_str(), Some("C:\\some dir\\kept"));
-    for bad in [&["--tier", "huge"][..], &["--tier"], &["--keep"], &["--frobnicate"], &["--tier", ","]] {
+    let o = parse(&args(&["--projects", "kept"])).unwrap();
+    assert_eq!(o.projects.unwrap().to_str(), Some("kept"));
+    assert!(parse(&args(&["--keep", "a", "--projects", "b"])).is_err(), "--keep and --projects together refused");
+    for bad in [&["--tier", "huge"][..], &["--tier"], &["--keep"], &["--projects"], &["--frobnicate"], &["--tier", ","]] {
         assert!(parse(&args(bad)).is_err(), "{bad:?} refused");
     }
 }
@@ -58,6 +61,7 @@ fn row(variant: &str, open_ms: f64) -> Row {
     Row {
         tier: "small".into(),
         variant: variant.into(),
+        workload: None,
         v2: None,
         compression: None,
         history: None,
@@ -115,6 +119,23 @@ fn compare_prints_the_change_per_row_and_refuses_a_foreign_file() {
     assert!(text.contains("10.0 → 15.0 (+50%)"), "{text}");
     assert!(text.contains("(not in the earlier run)"), "{text}");
     assert!(compare(&[row("lean", 1.0)], &serde_json::json!({"hello": 1})).is_err());
+}
+
+/// `--compare` says whether both runs measured the same project file, and what differs when not.
+#[test]
+fn compare_says_whether_both_runs_measured_the_same_project() {
+    let with = |sha: &str, bytes: u64| {
+        let mut r = row("lean", 10.0);
+        r.workload = Some(ecad_bench::report::Workload { sha256: sha.into(), bytes });
+        r
+    };
+    let earlier = json(&[with("aa", 100)], 5, "abc1234", "2026-11-07T00:00:00Z", None);
+    let same = compare(&[with("aa", 100)], &earlier).unwrap();
+    assert!(same.contains("small lean: the same project file"), "{same}");
+    let other = compare(&[with("bb", 120)], &earlier).unwrap();
+    assert!(other.contains("small lean: DIFFERENT projects: 120 bytes, was 100"), "{other}");
+    let unknown = compare(&[with("aa", 100)], &json(&[row("lean", 10.0)], 5, "abc1234", "2026-11-07T00:00:00Z", None)).unwrap();
+    assert!(unknown.contains("the projects may differ"), "{unknown}");
 }
 
 /// The report compares the version 2 container with its targets only, never with the version 1
