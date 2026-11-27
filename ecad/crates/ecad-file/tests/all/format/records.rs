@@ -302,3 +302,52 @@ fn a_checkpoint_record_is_refused_in_plain_words() {
         ecad_file::record::DecodeError::RecordType("this file holds a checkpoint record, which this version of ECAD does not read".into())
     );
 }
+
+/// The golden fixture holds a device of every group and of every power-supply, protection and switching kind, so a
+/// new group or kind (a change to what the file stores) moves the pinned hashes. Each kind is numbered by a match
+/// with no wildcard: a new kind does not compile until it is numbered here, and is then missing from the fixture
+/// until a device of it is added.
+#[test]
+fn the_fixture_holds_every_device_group_and_kind() {
+    use ecad_model::objects::devices::*;
+    use std::collections::BTreeSet;
+    fn supply(p: &PowerSupply) -> usize {
+        match p {
+            PowerSupply::Psu(_) => 0,
+            PowerSupply::Transformer(_) => 1,
+        }
+    }
+    fn protection(k: ProtectionKind) -> usize {
+        match k {
+            ProtectionKind::Fuse => 0,
+            ProtectionKind::FuseTerminalBlock => 1,
+            ProtectionKind::Mcb => 2,
+            ProtectionKind::Rcd => 3,
+            ProtectionKind::Rcbo => 4,
+            ProtectionKind::FuseBank => 5,
+        }
+    }
+    fn operator(o: &Operator) -> usize {
+        match o {
+            Operator::Coil(_) => 0,
+            Operator::SolidState(_) => 1,
+            Operator::Manual => 2,
+        }
+    }
+    let f = fixture();
+    let types: Vec<&DeviceType> = f.ledger.document().devices().values().map(|d| &d.device_type).collect();
+    let groups: BTreeSet<DeviceGroup> = types.iter().map(|t| t.group()).collect();
+    assert_eq!(groups, <DeviceGroup as Word>::ALL.iter().copied().collect(), "every device group");
+    let (mut supplies, mut protections, mut operators) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+    for t in &types {
+        match t {
+            DeviceType::PowerSupply(p) => supplies.insert(supply(p)),
+            DeviceType::Protection(p) => protections.insert(protection(p.kind())),
+            DeviceType::Switching(s) => operators.insert(operator(&s.operator)),
+            _ => false,
+        };
+    }
+    assert_eq!(supplies, (0..2).collect(), "every power-supply kind");
+    assert_eq!(protections, (0..6).collect(), "every protection kind");
+    assert_eq!(operators, (0..3).collect(), "every switching kind");
+}

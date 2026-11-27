@@ -135,7 +135,8 @@ fn record_and_definition_hashes_are_pinned() {
         // 0.2.3 D4: a potential's supply (L1 and 24V in the fixture); a motor's rated voltage and frequency;
         // a fuse bank's ways (always stored).
         // 0.2.3 S3: a connection point's protective earth.
-        ("head", "bba0dba2c97e0691f06395ccafcc06eb33220013604c1727625b2e26a8b7401d"),
+        // The fixture holds every switching kind (solid-state and manual too): a fixture change, the same format.
+        ("head", "dad7722f651b3f897bb05a0a85089d468ffb85ef0b3c167391fe1be701b09299"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");
@@ -151,14 +152,15 @@ fn record_and_definition_hashes_are_pinned() {
 /// bump. Versions before 4 pinned the records only.
 // Version 2 covers S4 and S6 (nothing was released between them); version 3 also covers the
 // fixture's device types (#108), added before it was released; version 4 covers all of D4's device
-// data (one bump for the whole step).
+// data (one bump for the whole step). Its hashes moved when the fixture grew to every switching kind: a fixture
+// change, the same format.
 const SCHEMA_PINS: &[Pin] = &[
     Pin { version: 2, records: "f88ba5855208482324e6b53cdaab1b811118b4a4758760c253e4cd2f5434e274", snapshot: None },
     Pin { version: 3, records: "96de20a9092caebb7a4ea458b36ead83e5abfe081d3d68d482946a444f52735b", snapshot: None },
     Pin {
         version: 4,
-        records: "bba0dba2c97e0691f06395ccafcc06eb33220013604c1727625b2e26a8b7401d",
-        snapshot: Some("34a3584aef3e558715012eb141212311ed9163961e3374906202ef90ca5f3f42"),
+        records: "dad7722f651b3f897bb05a0a85089d468ffb85ef0b3c167391fe1be701b09299",
+        snapshot: Some("da9567ebdac3b81ef4b68f2b6a431f8af77cc394936d9d54d6b53879096dec71"),
     },
 ];
 

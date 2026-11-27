@@ -1,7 +1,7 @@
-# Damaged copies of tests/golden/project.ecad that make redb 4.5.0 panic while ECAD opens them, one per panic site.
-# Each line: a name, the redb source line that panics, then patches to the golden file's bytes. A patch is
+# Damaged copies of tests/damaged/base.ecad (a golden project, kept as it is) that make redb 4.5.0 panic while ECAD opens them, one per panic site.
+# Each line: a name, the redb source line that panics, then patches to the base file's bytes. A patch is
 # `<offset>=<hex bytes>` (those bytes written at that offset) or `<offset>+<length>=00` (that many zero bytes).
-# They come from a seeded mutation run over the golden file (flipped bits, random blocks, zeroed 4 KiB).
+# They come from a seeded mutation run over the base file (flipped bits, random blocks, zeroed 4 KiB).
 m2325 src/types.rs:108 61975+3589=00
 m1578 src/types.rs:109 61691=f46727b41e34bee2eb6bdf3afd9f3ba6d1d3c998fe55aa3eb95f085e
 m1653 src/types.rs:803 18223=fd 57477=f2

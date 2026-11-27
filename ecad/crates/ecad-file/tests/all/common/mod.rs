@@ -230,7 +230,8 @@ pub(crate) fn fixture() -> Fixture {
     f
 }
 
-/// One device of every device type (and of every protection and supply kind), each field set.
+/// One device of every device type (and of every power-supply, protection and switching kind), each field set;
+/// `the_fixture_holds_every_device_group_and_kind` checks it holds them all.
 /// A device's type is the model's own `DeviceType`, stored as it is (no mirror in the records):
 /// these literals list every field with no `..`, so a field added to a device type does not
 /// compile until it is named here, and the pinned head hash then shows the format changed.
@@ -353,6 +354,32 @@ fn device_types(f: &mut Fixture) -> Vec<Op> {
                 insulation_voltage: None,
                 contacts: contacts(),
                 contact_table: Some(ContactTable::At { dx: 12.5, dy: -4.0 }),
+            }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Switching(Switching {
+                operator: Operator::SolidState(Control { voltage: v(24.0, Current::Dc), power: None }),
+                ac3_current: None,
+                ac3_power: None,
+                operational_voltage: Some(Volts(230.0)),
+                thermal_current: Some(Amps(25.0)),
+                insulation_voltage: None,
+                contacts: contacts(),
+                contact_table: None,
+            }),
+        ),
+        (
+            f.ids.fresh(),
+            DeviceType::Switching(Switching {
+                operator: Operator::Manual,
+                ac3_current: Some(Amps(32.0)),
+                ac3_power: None,
+                operational_voltage: Some(Volts(400.0)),
+                thermal_current: None,
+                insulation_voltage: Some(Volts(690.0)),
+                contacts: contacts(),
+                contact_table: Some(ContactTable::Off),
             }),
         ),
         (
