@@ -296,9 +296,17 @@ impl Project {
     /// verifies, with a report; so does a `meta.active` that does not read (on `main`).
     ///
     /// # Errors
-    /// [`OpenError`] when the container facts or the branch row are unusable.
+    /// [`OpenError`] when the container facts or the branch row are unusable, or when a damaged page stopped the
+    /// storage engine ([`crate::StoreError::Halted`]).
     pub fn open(store: Store, seed: u64, writer: &str) -> Result<Opened, OpenError> {
         let store = Arc::new(store);
+        // A damaged page that stopped the storage engine refuses the file, in the engine's words, whatever
+        // check was reading when it happened: nothing more can be read to open it at an earlier state.
+        Self::open_store(&store, seed, writer).map_err(|e| store.halted().map_or(e, OpenError::Store))
+    }
+
+    fn open_store(store: &Arc<Store>, seed: u64, writer: &str) -> Result<Opened, OpenError> {
+        let store = store.clone();
         let r = store.reader()?;
         let facts = read_facts(&r)?;
         let (main, main_rec) = main_branch(&r, facts.project)?;

@@ -10,6 +10,8 @@
 //!   folder flush). It is also where `ecad-file` reaches the disk and the clock for everything else, because
 //!   only this crate touches the OS: whole and partial reads, file lengths, path comparison, the lock holder
 //!   record.
+//! - [`guard`]: [`Halt`], which catches a panic inside redb (a damaged page can cause one), turns it into an
+//!   error and halts the handle, so nothing more is read through it.
 //! - [`random_u128`]: the operating system's randomness, for new IDs.
 //! - [`backend`]: [`MemoryBackend`], a redb storage backend in memory, shared by its clones, with an injectable
 //!   write failure (tests keep a real project file without a disk).
@@ -23,9 +25,11 @@
 pub(crate) mod backend;
 pub mod db;
 pub mod disk;
+pub mod guard;
 pub mod power;
 pub use backend::MemoryBackend;
 pub use disk::{FileIdentity, LockAttempt, WriterLock};
+pub use guard::{Halt, Halted};
 
 /// A random 128-bit value from the operating system's randomness (through the standard library's
 /// hasher keys) and the clock: the entropy for new IDs such as `ecad-file`'s branch IDs, here because

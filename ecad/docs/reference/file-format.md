@@ -478,6 +478,16 @@ chunk) opens the project **read-only at the last state that verifies**, with a r
 is kept as it is. **Save As** rescues what verifies: the copy leaves out rows after the verified head and points
 the cache at the snapshot that loaded.
 
+**Damage below the records** (a damaged redb page) can make redb panic on an ordinary read; redb does not promise
+to survive damaged input. Every call into redb runs under a guard (`ecad_store::guard`) that catches the panic,
+reports it as `StoreError::Halted` ("the file is damaged and cannot be read: the storage engine stopped at a damaged
+page (redb: …, at …)") and halts that handle: nothing more is read or written through it. While opening, this
+**refuses the file**: nothing more can be read to open it at an earlier state. Opened read-only, the file is kept
+exactly as it is; a writable open may let redb update its own header, as it does for every file. After open (an
+earlier state, undo past the snapshot, a branch switch, Verify), the read fails with that error and the session goes
+on: what is shown stays, edits work in memory, and nothing more is read from or written to that file, so Save fails
+and Save As cannot copy it either.
+
 **Verify** checks a whole file, on request only (never as part of open):
 
 1. **Chain:** every row of every branch decoded and checked against the one before, each head against its last
@@ -498,6 +508,11 @@ the cache at the snapshot that loaded.
   `ECAD_CRASH_ROUNDS` sets the number of rounds.
 - **Hostile input:** limits and damage at rest (stored values corrupted in the file image) open read-only or are
   refused, never crash.
+- **Damaged pages** (`ecad-file/tests/all/container/damaged_pages.rs`): a corpus of damaged copies of the golden
+  file, one per redb panic site seen (`ecad-file/tests/damaged/redb-panics.txt`, kept as byte patches), is refused
+  in words; a panic in a read after open leaves the session going. In the slow set, seeded damage (flipped bits,
+  random blocks, zeroed 4 KiB, truncation) to the golden file is opened, read back and verified without a panic
+  escaping; `ECAD_DAMAGE_ROUNDS` sets the rounds.
 
 ## Not in the format
 

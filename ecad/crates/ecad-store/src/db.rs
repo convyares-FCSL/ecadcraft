@@ -1,12 +1,16 @@
 //! [`Database`]: a redb database as generic storage, the handle a file format builds on.
 //!
 //! - **Open**: a new file with create-new semantics, an existing file for writing or read-only,
-//!   any storage backend (memory, or a fault-injecting one in tests), or a copy of a database's
+//!   any storage backend (memory, or a fault-injecting one in tests; writable or read-only), or a copy of a database's
 //!   bytes held in memory.
 //! - **Transactions**: a consistent read view, and one write transaction with quick-repair on.
 //! - **The handle**: after an I/O error redb refuses every further use of a handle; the next read
 //!   or write reopens the database once, recovering to its last commit. Nothing acknowledged is
 //!   lost: a commit that failed was never acknowledged.
+//! - **Damage**: every call into redb runs under the handle's [`Halt`]. A damaged page that makes redb panic
+//!   returns [`DbError::Halted`] instead, and halts the handle: every later call returns the same error, and
+//!   closing it cannot crash either. The views it hands out carry the same [`Halt`] ([`Database::halt`]) for the
+//!   reads made through them.
 //!
 //! Excluded: what the tables hold and which exist (the file format, `ecad-file`, opens them), and
 //! every rule about what may be written.
@@ -14,6 +18,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
+use crate::guard::{Halt, Halted};
 use redb::{Builder, ConcurrencyMode, ReadOnlyDatabase, ReadTransaction, ReadableDatabase, StorageBackend, WriteTransaction};
 
 /// Why the database could not be opened, read or written.
@@ -35,6 +40,16 @@ pub enum DbError {
     /// The database was opened read-only.
     #[error("the file was opened read-only")]
     ReadOnly,
+    /// The engine panicked on a damaged part of the file, now or earlier through this handle; the handle is
+    /// halted.
+    #[error("{0}")]
+    Halted(String),
+}
+
+impl From<Halted> for DbError {
+    fn from(h: Halted) -> Self {
+        DbError::Halted(h.0)
+    }
 }
 
 /// An engine failure, in words.
@@ -95,6 +110,17 @@ pub struct Database {
     reopen: Reopen,
     /// redb repaired the file while opening it (it was not closed cleanly).
     repaired: bool,
+    /// Halted once a call into redb panicked.
+    halt: Halt,
+}
+
+impl Drop for Database {
+    /// Closing a database can write (redb records its allocator state); a halted handle or a damaged file must not
+    /// crash there either.
+    fn drop(&mut self) {
+        let db = self.db.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.halt.drop_guarded(db);
+    }
 }
 
 impl std::fmt::Debug for Database {
@@ -104,8 +130,13 @@ impl std::fmt::Debug for Database {
 }
 
 impl Database {
-    fn new(db: Db, reopen: Reopen, repaired: bool) -> Self {
-        Self { db: RwLock::new(Some(db)), reopen, repaired }
+    fn new(db: Db, reopen: Reopen, repaired: bool, halt: Halt) -> Self {
+        Self { db: RwLock::new(Some(db)), reopen, repaired, halt }
+    }
+
+    /// The handle's halt flag: reads through the views it hands out run under it ([`Halt::run`]).
+    pub fn halt(&self) -> &Halt {
+        &self.halt
     }
 
     /// Create a new, empty database at `path`, with create-new semantics: an existing file is
@@ -116,12 +147,16 @@ impl Database {
     pub fn create(path: &std::path::Path) -> Result<Self, DbError> {
         let file = crate::disk::create_new(path)
             .map_err(|e| if e.kind() == std::io::ErrorKind::AlreadyExists { DbError::Exists(path.display().to_string()) } else { engine(e) })?;
-        let made = (|| {
-            let flag = Arc::new(AtomicBool::new(false));
-            let backend = redb::backends::FileBackend::new(file).map_err(engine)?;
-            let db = builder(&flag).create_with_backend(backend).map_err(open_err)?;
-            Ok(Self::new(Db::Writable(db), Self::reopen_path(path, true), false))
-        })();
+        let halt = Halt::new();
+        let made = halt
+            .run(|| {
+                let flag = Arc::new(AtomicBool::new(false));
+                let backend = redb::backends::FileBackend::new(file).map_err(engine)?;
+                builder(&flag).create_with_backend(backend).map_err(open_err)
+            })
+            .map_err(DbError::from)
+            .and_then(|r| r)
+            .map(|db| Self::new(Db::Writable(db), Self::reopen_path(path, true), false, halt));
         if made.is_err() {
             let _ = crate::disk::remove_file(path);
         }
@@ -145,9 +180,16 @@ impl Database {
     /// The file could not be opened, is not a redb database, or [`DbError::Busy`].
     pub fn open(path: &std::path::Path, writable: bool) -> Result<Self, DbError> {
         let flag = Arc::new(AtomicBool::new(false));
-        let b = builder(&flag);
-        let db = if writable { Db::Writable(b.open(path).map_err(open_err)?) } else { Db::ReadOnly(open_read_only(&b, path).map_err(open_err)?) };
-        Ok(Self::new(db, Self::reopen_path(path, writable), flag.load(Ordering::SeqCst)))
+        let halt = Halt::new();
+        let db = halt.run(|| {
+            let b = builder(&flag);
+            Ok::<Db, DbError>(if writable {
+                Db::Writable(b.open(path).map_err(open_err)?)
+            } else {
+                Db::ReadOnly(open_read_only(&b, path).map_err(open_err)?)
+            })
+        })??;
+        Ok(Self::new(db, Self::reopen_path(path, writable), flag.load(Ordering::SeqCst), halt))
     }
 
     /// Open (or create, when empty) a database over `backend`: memory, or a fault-injecting
@@ -157,12 +199,26 @@ impl Database {
     /// The bytes are not a redb database, or the engine failed.
     pub fn with_backend<B: StorageBackend + Clone>(backend: B) -> Result<Self, DbError> {
         let flag = Arc::new(AtomicBool::new(false));
-        let db = builder(&flag).create_with_backend(backend.clone()).map_err(open_err)?;
+        let halt = Halt::new();
+        let db = halt.run(|| builder(&flag).create_with_backend(backend.clone()).map_err(open_err))??;
         let reopen: Reopen = Box::new(move || {
             let b = builder(&Arc::new(AtomicBool::new(false)));
             Ok(Db::Writable(b.create_with_backend(backend.clone()).map_err(open_err)?))
         });
-        Ok(Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst)))
+        Ok(Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst), halt))
+    }
+
+    /// Open the database over `backend` read-only: redb neither repairs nor writes it, and reads pages only when
+    /// asked (a fault-injecting backend in tests). It is never reopened.
+    ///
+    /// # Errors
+    /// The bytes are not a redb database, or need a repair.
+    pub fn with_backend_read_only<B: StorageBackend>(backend: B) -> Result<Self, DbError> {
+        let flag = Arc::new(AtomicBool::new(false));
+        let halt = Halt::new();
+        let db = halt.run(|| builder(&flag).open_read_only_with_backend(backend).map_err(open_err))??;
+        let reopen: Reopen = Box::new(|| Err(DbError::Engine("a read-only database over a backend is not reopened".into())));
+        Ok(Self::new(Db::ReadOnly(db), reopen, flag.load(Ordering::SeqCst), halt))
     }
 
     /// Open a database from its bytes, held in memory by redb's own in-memory backend. The bytes
@@ -182,14 +238,19 @@ impl Database {
         let mut b = redb::Database::builder();
         let seen = flag.clone();
         b.set_repair_callback(move |_| seen.store(true, Ordering::SeqCst));
-        let db = b.create_with_backend(backend).map_err(open_err)?;
+        let halt = Halt::new();
+        let db = halt.run(|| b.create_with_backend(backend).map_err(open_err))??;
         let reopen: Reopen = Box::new(|| Err(DbError::Engine("a database held in memory cannot be reopened".into())));
-        Ok(Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst)))
+        Ok(Self::new(Db::Writable(db), reopen, flag.load(Ordering::SeqCst), halt))
     }
 
-    /// Run `f` on the database; after redb's "an earlier I/O error", reopen it once, recovering to
-    /// its last commit, and run `f` again.
+    /// Run `f` on the database under the handle's [`Halt`]; after redb's "an earlier I/O error", reopen it once,
+    /// recovering to its last commit, and run `f` again.
     fn with_db<T>(&self, f: impl Fn(&Db) -> Result<T, DbError>) -> Result<T, DbError> {
+        self.halt.run(|| self.with_db_unguarded(f))?
+    }
+
+    fn with_db_unguarded<T>(&self, f: impl Fn(&Db) -> Result<T, DbError>) -> Result<T, DbError> {
         let first = {
             let g = self.db.read().map_err(|_| poisoned())?;
             match g.as_ref() {
@@ -202,7 +263,7 @@ impl Database {
                 {
                     let mut g = self.db.write().map_err(|_| poisoned())?;
                     // The failed handle goes first: the file allows one writer.
-                    drop(g.take());
+                    self.halt.drop_guarded(g.take());
                     *g = Some((self.reopen)()?);
                 }
                 let g = self.db.read().map_err(|_| poisoned())?;
@@ -257,9 +318,10 @@ impl Database {
     /// # Errors
     /// [`DbError::ReadOnly`], or the engine failed.
     pub fn compact(&mut self) -> Result<bool, DbError> {
+        let halt = self.halt.clone();
         let g = self.db.get_mut().map_err(|_| poisoned())?;
         let Some(Db::Writable(db)) = g.as_mut() else { return Err(DbError::ReadOnly) };
-        db.compact().map_err(engine)
+        halt.run(|| db.compact().map_err(engine))?
     }
 
     /// redb's own integrity check (reads every page; repairs the allocator state).
@@ -267,8 +329,9 @@ impl Database {
     /// # Errors
     /// [`DbError::ReadOnly`], or the engine failed.
     pub fn check_integrity(&mut self) -> Result<bool, DbError> {
+        let halt = self.halt.clone();
         let g = self.db.get_mut().map_err(|_| poisoned())?;
         let Some(Db::Writable(db)) = g.as_mut() else { return Err(DbError::ReadOnly) };
-        db.check_integrity().map_err(engine)
+        halt.run(|| db.check_integrity().map_err(engine))?
     }
 }

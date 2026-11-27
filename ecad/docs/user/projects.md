@@ -66,6 +66,13 @@ A project opens read-only, with the reason, when:
 On a read-only project edits still work in memory. Save asks for another file name, so Save As
 keeps your work in a new file and leaves the original untouched.
 
+A project does not open at all, and the file is kept as it is, when:
+
+- the file is damaged below the project's records (for example a lost disk sector), so that it "cannot be read".
+  If this happens after a project opened (going back to an earlier state, undo past what was loaded, switching
+  branch, Verify), ECAD says so and keeps running with what is on screen, but that file can no longer be read or
+  saved: keep a backup copy of your projects.
+
 ## Older and newer files
 
 The `.ecad` format is a development format: before version 1.0 ECAD does not convert files from
