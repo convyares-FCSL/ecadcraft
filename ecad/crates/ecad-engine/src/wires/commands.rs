@@ -102,7 +102,7 @@ impl Command for WireParams {
                 quiet: &quiet,
                 max_points: MAX_WIRE_POINTS,
             };
-            let mut plan = rules::wire(&p.ledger, &mut p.ids, input, category.as_deref())?;
+            let mut plan = rules::wire(&mut p.ledger, &mut p.ids, input, category.as_deref())?;
             p.apply_edit(pg, "wire", "Wire", std::mem::take(&mut plan.ops))?;
             let doc = p.ledger.document();
             let wire = plan.wire.filter(|w| doc.wires().contains_key(w)).or_else(|| ecad_electrical::wires::routes::wire_of_route(doc, plan.route));

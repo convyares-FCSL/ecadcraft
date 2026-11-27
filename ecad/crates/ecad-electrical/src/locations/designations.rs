@@ -573,14 +573,100 @@ impl Counts {
 
 /// The use index: entry key → the objects storing it. Kept from the ledger's
 /// ops; rebuilt from the document when it has not been built or the ledger was replaced.
+///
+/// # Semantics
+/// Between [`Uses::mark`] and [`Uses::release`] every change is journalled, so [`Uses::rollback`] puts the
+/// index back exactly as it was at the mark, in time proportional to the changes (a rebuild keeps the
+/// index it replaced once). A command that is refused gives back what it changed this way.
 #[derive(Debug, Clone, Default)]
 pub struct Uses {
     /// The log length read so far; `None` until built.
     seen: Option<usize>,
     by_key: BTreeMap<(Aspect, String), Users>,
+    /// The changes since [`Uses::mark`], in order; `None` when no mark is set.
+    journal: Option<Journal>,
+}
+
+/// The changes made to a [`Uses`] since its mark: `seen` as it was, and each change in order.
+#[derive(Debug, Clone)]
+struct Journal {
+    seen: Option<usize>,
+    changes: Vec<Change>,
+}
+
+/// One change to a [`Uses`] index: a reference or box added to or taken from a key, or the whole map
+/// replaced (a rebuild).
+#[derive(Debug, Clone)]
+enum Change {
+    Reference { slot: (Aspect, String), reference: (ObjectRef, String), added: bool },
+    Box { slot: (Aspect, String), aid: AidId, added: bool },
+    Rebuilt(BTreeMap<(Aspect, String), Users>),
 }
 
 impl Uses {
+    /// Start journalling: [`Uses::rollback`] puts the index back as it is now. A mark already set is
+    /// replaced.
+    pub fn mark(&mut self) {
+        self.journal = Some(Journal { seen: self.seen, changes: Vec::new() });
+    }
+
+    /// Keep the changes since the mark and stop journalling.
+    pub fn release(&mut self) {
+        self.journal = None;
+    }
+
+    /// Undo every change since the mark, last first, and stop journalling. Without a mark, nothing.
+    pub fn rollback(&mut self) {
+        let Some(j) = self.journal.take() else { return };
+        for c in j.changes.into_iter().rev() {
+            match c {
+                Change::Reference { slot, reference, added } => {
+                    if added {
+                        self.take_reference(&slot, &reference);
+                    } else {
+                        self.by_key.entry(slot).or_default().references.insert(reference);
+                    }
+                }
+                Change::Box { slot, aid, added } => {
+                    if added {
+                        self.take_box(&slot, aid);
+                    } else {
+                        self.by_key.entry(slot).or_default().boxes.insert(aid);
+                    }
+                }
+                Change::Rebuilt(by_key) => self.by_key = by_key,
+            }
+        }
+        self.seen = j.seen;
+    }
+
+    /// Journal `c` when a mark is set.
+    fn log(&mut self, c: impl FnOnce() -> Change) {
+        if let Some(j) = &mut self.journal {
+            j.changes.push(c());
+        }
+    }
+
+    /// Take `reference` from `slot`, and the slot once nothing uses it; whether it was there.
+    fn take_reference(&mut self, slot: &(Aspect, String), reference: &(ObjectRef, String)) -> bool {
+        let Some(u) = self.by_key.get_mut(slot) else { return false };
+        let taken = u.references.remove(reference);
+        if u.is_empty() {
+            self.by_key.remove(slot);
+        }
+        taken
+    }
+
+    /// Take box `aid` from `slot`, and the slot once nothing uses it; whether it was there.
+    fn take_box(&mut self, slot: &(Aspect, String), aid: AidId) -> bool {
+        let Some(u) = self.by_key.get_mut(slot) else { return false };
+        let taken = u.boxes.remove(&aid);
+        if u.is_empty() {
+            self.by_key.remove(slot);
+        }
+        taken
+    }
+
     /// The index of `doc`, built in one pass over components, pages and the project.
     pub fn of(doc: &Document) -> Uses {
         let mut u = Uses::default();
@@ -597,9 +683,12 @@ impl Uses {
         u
     }
 
-    /// Forget the index (a branch switch or reload): the next [`Uses::catch_up`] rebuilds it.
+    /// Forget the index (a branch switch or reload): the next [`Uses::catch_up`] rebuilds it. A mark is
+    /// kept, so a rollback brings the index back.
     pub fn reset(&mut self) {
-        *self = Uses::default();
+        let by_key = std::mem::take(&mut self.by_key);
+        self.log(|| Change::Rebuilt(by_key));
+        self.seen = None;
     }
 
     /// Bring the index up to `ledger`'s head: the ops of the transactions not read yet, or a
@@ -612,7 +701,11 @@ impl Uses {
                     self.apply(&tx.ops);
                 }
             }
-            _ => *self = Uses::of(ledger.document()),
+            _ => {
+                let rebuilt = Uses::of(ledger.document()).by_key;
+                let before = std::mem::replace(&mut self.by_key, rebuilt);
+                self.log(|| Change::Rebuilt(before));
+            }
         }
         self.seen = Some(log.len());
     }
@@ -690,26 +783,23 @@ impl Uses {
         for a in Aspect::ALL {
             let Some(k) = box_key(b, a) else { continue };
             let slot = (a, k);
-            if add {
-                self.by_key.entry(slot).or_default().boxes.insert(id);
-            } else if let Some(u) = self.by_key.get_mut(&slot) {
-                u.boxes.remove(&id);
-                if u.is_empty() {
-                    self.by_key.remove(&slot);
-                }
+            let changed = if add { self.by_key.entry(slot.clone()).or_default().boxes.insert(id) } else { self.take_box(&slot, id) };
+            if changed {
+                self.log(|| Change::Box { slot, aid: id, added: add });
             }
         }
     }
 
     fn note(&mut self, a: Aspect, key: &str, o: ObjectRef, prop: &str, add: bool) {
         let slot = (a, key.to_string());
-        if add {
-            self.by_key.entry(slot).or_default().references.insert((o, prop.to_string()));
-        } else if let Some(u) = self.by_key.get_mut(&slot) {
-            u.references.remove(&(o, prop.to_string()));
-            if u.is_empty() {
-                self.by_key.remove(&slot);
-            }
+        let reference = (o, prop.to_string());
+        let changed = if add {
+            self.by_key.entry(slot.clone()).or_default().references.insert(reference.clone())
+        } else {
+            self.take_reference(&slot, &reference)
+        };
+        if changed {
+            self.log(|| Change::Reference { slot, reference, added: add });
         }
     }
 

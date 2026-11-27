@@ -293,7 +293,7 @@ const USAGE: &str = "usage: cargo xtask <layers|patches|lint|doc|ci|bench|demo|t
   demo [<path.ecad>] [--force]
         write the demo project (default C:\\dev\\ecad-projects\\demo.ecad, ~/ecad-projects/demo.ecad
         elsewhere) from ecad/examples/demo/commands.jsonl; an existing file needs --force
-  bench [--tier small|medium|large|all] [--keep <folder>] [--compare <earlier.json>]
+  bench [--tier small|medium|large|all] [--keep <folder>] [--projects <folder>] [--compare <earlier.json>]
         project load benchmark (release build), run on demand only; not part of ci";
 
 /// The demo project (`ecad-demo`, built from `ecad/examples/demo/commands.jsonl` through the MCP

@@ -12,6 +12,8 @@ use crate::measure::Measured;
 pub struct Row {
     pub tier: String,
     pub variant: String,
+    /// The project measured, as its file was before anything opened it.
+    pub workload: Option<Workload>,
     pub measured: Measured,
     /// The same project in container version 2.
     pub v2: Option<crate::container::Measured>,
@@ -31,6 +33,27 @@ pub struct Row {
     pub wires: Option<crate::wires_nets::MeasuredWires>,
     /// PLC racks and cards on that file.
     pub plc: Option<crate::plc::MeasuredPlc>,
+}
+
+/// Which project a row measured: the SHA-256 of its file's bytes before anything opened it, and its size.
+/// Two rows with the same hash measured the same project; `--projects` makes two builds measure the same
+/// files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Workload {
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+impl Workload {
+    /// The workload of the project file at `path`.
+    ///
+    /// # Errors
+    /// The file cannot be read.
+    pub fn of(path: &Path) -> Result<Workload, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let sha256 = ecad_file::schema::asset_hash(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+        Ok(Workload { sha256, bytes: bytes.len() as u64 })
+    }
 }
 
 /// The measured columns: JSON key, table heading.
@@ -575,6 +598,10 @@ pub fn json(rows: &[Row], runs: usize, commit: &str, when: &str, print: Option<&
                 "gridchange_ms": m.gridchange_ms,
                 "revopen_ms": m.revopen_ms,
             });
+            // Which project was measured, outside the macro (its recursion limit).
+            row["workload"] = json!(r.workload.as_ref().map(|w| json!({
+                "sha256": w.sha256, "bytes": w.bytes, "check_rows": r.release.as_ref().map(|o| o.rows),
+            })));
             // The numbering rows, outside the macro (its recursion limit).
             let n = &m.numbering;
             for (k, v) in [
@@ -692,6 +719,7 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
         "history",
         COLUMNS.iter().map(|(_, h)| format!("{h:>22}")).collect::<String>()
     );
+    let mut notes = Vec::new();
     for r in rows {
         let before =
             old.iter().find(|o| what(o, "tier").as_deref() == Some(r.tier.as_str()) && what(o, "variant").as_deref() == Some(r.variant.as_str()));
@@ -700,6 +728,7 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
             out.push_str("(not in the earlier run)\n");
             continue;
         };
+        notes.push(format!("{} {}: {}", r.tier, r.variant, same_workload(r, before)));
         for ((key, _), now) in COLUMNS.iter().zip(values(r)) {
             let cell = match (before.get(*key).and_then(Value::as_f64), now) {
                 (Some(was), Some(now)) if was > 0.0 => {
@@ -714,7 +743,29 @@ pub fn compare(rows: &[Row], earlier: &Value) -> Result<String, String> {
         }
         out.push('\n');
     }
+    out.push_str("\nWorkload (a change compares two different projects unless both measured the same file; use --projects):\n");
+    for n in notes {
+        out.push_str(&format!("  {n}\n"));
+    }
     Ok(out)
+}
+
+/// Whether row `r` measured the same project as the earlier row `before`: the same file, or what differs (its
+/// bytes and the pre-release check's rows, a sign the project is not the same).
+pub fn same_workload(r: &Row, before: &Value) -> String {
+    let was = before.get("workload");
+    let field = |k: &str| was.and_then(|w| w.get(k));
+    let (Some(now), Some(was_sha)) = (&r.workload, field("sha256").and_then(Value::as_str)) else {
+        return "unknown (the earlier run recorded no workload): the projects may differ".into();
+    };
+    if now.sha256 == was_sha {
+        return "the same project file".into();
+    }
+    let mut out = format!("DIFFERENT projects: {} bytes, was {}", now.bytes, field("bytes").and_then(Value::as_u64).unwrap_or_default());
+    if let (Some(rows_now), Some(rows_was)) = (r.release.as_ref().map(|o| o.rows), field("check_rows").and_then(Value::as_u64)) {
+        out.push_str(&format!("; {rows_now} check rows, was {rows_was}"));
+    }
+    out
 }
 
 /// The strip accessory rows, apart so the report's `json!` stays within its recursion

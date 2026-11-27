@@ -132,6 +132,7 @@ cargo xtask bench --tier medium
 cargo xtask bench --tier large --runs 1   # long; once, when a change is finished
 cargo xtask bench --tier small --keep <folder>                     # keep the projects to open in the app
 cargo xtask bench --tier small --compare target/bench/<earlier>.json
+cargo xtask bench --tier medium --projects <folder> --compare target/bench/<earlier>.json   # the same files
 ```
 
 | Tier | Pages | Devices | Wires | Cables |
@@ -147,6 +148,12 @@ cargo xtask bench --tier small --compare target/bench/<earlier>.json
   an existing file is never overwritten. `--compare` prints the change per row against an earlier file.
 - `--keep <folder>` keeps the generated projects so you can open them in the app; it refuses to replace a
   project open in another session.
+- **Comparing two builds.** Each build's generator makes its own project, so two builds may measure different
+  projects (a generator or format change). To compare like with like, write the projects once with
+  `--keep <folder>`, then run each build with `--projects <folder>`: it measures copies of those files instead
+  of generating (the given files are never opened). Each row records its project's workload (the SHA-256 and
+  size of the file before anything opened it, and the pre-release check's rows), and `--compare` says per row
+  whether both runs measured the same project file or what differs.
 - It sets no pass or fail limits; it fails only if a project does not open cleanly. Results depend on the
   machine, so compare runs from the same machine.
 

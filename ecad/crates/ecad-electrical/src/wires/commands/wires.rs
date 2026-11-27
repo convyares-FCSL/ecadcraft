@@ -702,24 +702,25 @@ pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points
 ///
 /// # Semantics
 /// With a category, the commit's wire rewrite (`ecad_model::connectivity::wire_order::rewrite`) is run here on
-/// the preview and its ops are part of the plan, so the category can be set on the wires it makes;
-/// the commit's own rewrite then finds nothing left to do.
+/// the document as the drawn route leaves it and its ops are part of the plan, so the category can be set on
+/// the wires it makes; the commit's own rewrite then finds nothing left to do. The wires are read once with
+/// [`Ledger::with_applied_and_rewrite`], on the live document, which is left as it was: nothing is copied.
 ///
 /// # Errors
-/// The route does not work (too many points…); no such category; the model refused the preview.
+/// The route does not work (too many points…); no such category; the model refused the ops.
 pub fn wire(
-    ledger: &Ledger, ids: &mut IdAllocator, input: wires::joining::WireInput<'_>, category: Option<&str>,
+    ledger: &mut Ledger, ids: &mut IdAllocator, input: wires::joining::WireInput<'_>, category: Option<&str>,
 ) -> Result<wires::joining::WirePlan, CmdError> {
     let doc = ledger.document();
     let mut plan = wires::joining::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
         let id = crate::styles::find(doc, &crate::styles::wire::CATALOGUE, c)?;
-        let drawn = ledger.preview(&plan.ops)?;
-        let rewritten = ecad_model::connectivity::wire_order::rewrite(&drawn, &plan.ops);
-        let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };
+        let route = plan.route;
+        let (rewritten, more) = ledger.with_applied_and_rewrite(&plan.ops, |after, rewritten| {
+            let carried = wires::routes::wires_of_route(after, route);
+            category_ops(after, &carried, Some(&id)).map(|(more, _)| (rewritten.to_vec(), more))
+        })??;
         plan.ops.extend(rewritten);
-        let carried = wires::routes::wires_of_route(&after, plan.route);
-        let (more, _) = category_ops(&after, &carried, Some(&id))?;
         plan.ops.extend(more);
     }
     Ok(plan)

@@ -23,6 +23,7 @@ pub mod generate;
 pub(crate) mod history;
 pub mod measure;
 pub mod pages;
+pub mod per_edit;
 pub(crate) mod plc;
 pub mod ratings;
 pub(crate) mod release;
@@ -43,17 +44,21 @@ pub use generate::{Generated, PRINT_TIER, TIERS, Tier, Variant, generate, tier};
 
 /// What `cargo xtask bench` accepts.
 pub const USAGE: &str = "usage: cargo xtask bench [--tier small|medium|large|print|all|<list>] [--keep <folder>] \
-                         [--compare <earlier.json>] [--runs N]\n  --tier     tiers to measure, comma-separated \
-                         (default small,medium,print; print is the 25-page project Print Book and release are \
-                         timed on)\n  --keep     write the generated projects to <folder> and keep \
-                         them\n  --compare  print the change per row against an earlier results file\n  --runs     \
-                         runs per measurement, the median is reported (default 5)";
+                         [--projects <folder>] [--compare <earlier.json>] [--runs N]\n  --tier     tiers to \
+                         measure, comma-separated (default small,medium,print; print is the 25-page project Print \
+                         Book and release are timed on)\n  --keep     write the generated projects to <folder> and \
+                         keep them\n  --projects measure the projects an earlier --keep wrote to <folder> instead \
+                         of generating them, so two builds measure the same files\n  --compare  print the change \
+                         per row against an earlier results file, and whether both measured the same project\n  \
+                         --runs     runs per measurement, the median is reported (default 5)";
 
 /// Parsed options.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     pub tiers: Vec<Tier>,
     pub keep: Option<PathBuf>,
+    /// Measure the projects in this folder (as `--keep` writes them) instead of generating them.
+    pub projects: Option<PathBuf>,
     pub compare: Option<PathBuf>,
     pub runs: usize,
     /// Measure Print Book and release on the 25-page project ([`PRINT_TIER`]).
@@ -65,7 +70,7 @@ pub struct Options {
 /// # Errors
 /// An unknown option or tier, a missing or bad value.
 pub fn parse(args: &[String]) -> Result<Options, String> {
-    let mut o = Options { tiers: Vec::new(), keep: None, compare: None, runs: measure::RUNS, print: false };
+    let mut o = Options { tiers: Vec::new(), keep: None, projects: None, compare: None, runs: measure::RUNS, print: false };
     let mut tiers = "small,medium,print".to_string();
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -73,6 +78,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
         match a.as_str() {
             "--tier" | "--tiers" => tiers = value()?,
             "--keep" => o.keep = Some(PathBuf::from(value()?)),
+            "--projects" => o.projects = Some(PathBuf::from(value()?)),
             "--compare" => o.compare = Some(PathBuf::from(value()?)),
             "--runs" => {
                 let v = value()?;
@@ -102,6 +108,9 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             o.tiers.push(t);
         }
     }
+    if o.keep.is_some() && o.projects.is_some() {
+        return Err(format!("--keep writes generated projects and --projects measures given ones: use one\n{USAGE}"));
+    }
     if o.tiers.is_empty() && !o.print {
         return Err(format!("no tier given\n{USAGE}"));
     }
@@ -113,15 +122,47 @@ pub fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Generate one tier, lean and churned, check that both histories end in the same document, write
-/// both files to `folder`, then measure each.
+/// The file one tier and variant is written to, in `folder`.
+pub fn project_file(folder: &Path, tier: Tier, variant: Variant) -> PathBuf {
+    folder.join(format!("{}-{}.ecad", tier.name, variant.name()))
+}
+
+/// Copy the project an earlier `--keep` wrote to `from` to `to`, to measure the copy.
+fn copy_given(from: &Path, tier: Tier, variant: Variant, to: &Path) -> Result<(), String> {
+    let source = project_file(from, tier, variant);
+    if !source.is_file() {
+        return Err(format!("{}: no such project; write it first with --keep", source.display()));
+    }
+    eprintln!("{} {}: copying {} to measure it…", tier.name, variant.name(), source.display());
+    std::fs::copy(&source, to).map(|_| ()).map_err(|e| format!("copying {} to {}: {e}", source.display(), to.display()))
+}
+
+/// A copy of `file` in `scratch` to measure, replacing an earlier one.
+fn measured_copy(file: &Path, scratch: &Path) -> Result<PathBuf, String> {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let copy = scratch.join(format!("measured-{name}"));
+    measure::remove(&copy);
+    std::fs::copy(file, &copy).map_err(|e| format!("copying {} to {}: {e}", file.display(), copy.display()))?;
+    Ok(copy)
+}
+
+/// Measure one tier, lean and churned. With `given`, the projects an earlier `--keep` wrote there are copied
+/// into `folder` and the copies measured, so two builds measure the same files; otherwise both are generated,
+/// checked to end in the same document, and written to `folder`. Each row records its project's
+/// [`report::Workload`], taken before anything opens the file.
 ///
 /// # Errors
-/// Generation fails, the two histories end differently (before anything is measured), a target
-/// file is open in another session, or a measurement fails.
-pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Result<Vec<report::Row>, String> {
+/// A given project is missing; generation fails, the two histories end differently (before anything is
+/// measured), a target file is open in another session, or a measurement fails.
+pub fn run_tier(tier: Tier, folder: &Path, given: Option<&Path>, scratch: &Path, runs: usize) -> Result<Vec<report::Row>, String> {
     let mut paths = Vec::new();
-    {
+    if let Some(from) = given {
+        for variant in [Variant::Lean, Variant::Churned] {
+            let path = project_file(folder, tier, variant);
+            copy_given(from, tier, variant, &path)?;
+            paths.push((variant, path));
+        }
+    } else {
         eprintln!("{}: generating the lean and churned projects…", tier.name);
         let lean = generate(tier, Variant::Lean)?;
         let churned = generate(tier, Variant::Churned)?;
@@ -131,7 +172,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         for g in [&lean, &churned] {
             // Written straight in the version 2 format the app opens; an earlier file there (a
             // stale one from an older build included) is replaced, never converted.
-            let path = folder.join(format!("{}-{}.ecad", tier.name, g.variant.name()));
+            let path = project_file(folder, tier, g.variant);
             measure::claim(&path)?;
             eprintln!("{} {}: writing {}…", tier.name, g.variant.name(), path.display());
             container::write(g, &path)?;
@@ -139,14 +180,18 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         }
     }
     let mut rows = Vec::new();
-    for (variant, path) in paths {
+    for (variant, kept) in paths {
+        let workload = report::Workload::of(&kept)?;
+        // Some measurements open the file writable, which changes its bytes: they measure a copy, so a kept
+        // project stays as it was written and two builds given it measure the same file.
+        let path = measured_copy(&kept, scratch)?;
         eprintln!("{} {}: measuring {} ({runs} runs of each)…", tier.name, variant.name(), path.display());
         let measured = measure::measure(&path, runs, scratch);
-        // The opens leave an empty lock file beside a kept project: remove it once released.
+        // The opens leave an empty lock file beside the measured copy: remove it once released.
         measure::release_lock_file(&path);
         let (measured, _) = measured?;
         eprintln!("{} {}: measuring version 2…", tier.name, variant.name());
-        let v2_path = path;
+        let v2_path = path.clone();
         let v2m = container::measure(&v2_path, runs, scratch);
         measure::release_lock_file(&v2_path);
         let compression = container::compression(&v2_path)?;
@@ -173,6 +218,7 @@ pub fn run_tier(tier: Tier, folder: &Path, scratch: &Path, runs: usize) -> Resul
         rows.push(report::Row {
             tier: tier.name.into(),
             variant: variant.name().into(),
+            workload: Some(workload),
             measured,
             v2: Some(v2m?),
             compression: Some(compression),
@@ -211,18 +257,24 @@ pub fn measure_part(part: &str, path: &Path) -> Result<String, String> {
     r
 }
 
-/// Generate the 25-page project (lean), write it, and time Print Book and release on it.
+/// Generate the 25-page project (lean) and write it, or with `given` copy the one an earlier `--keep` wrote
+/// there, and time Print Book and release on it.
 ///
 /// # Errors
-/// Generation, writing or a measurement failed.
-pub fn measure_print(folder: &Path, scratch: &Path, runs: usize) -> Result<release::MeasuredPrint, String> {
-    eprintln!("{}: generating the 25-page project…", PRINT_TIER.name);
-    let g = generate(PRINT_TIER, Variant::Lean)?;
-    let v2_path = folder.join(format!("{}-{}.ecad", PRINT_TIER.name, Variant::Lean.name()));
-    measure::claim(&v2_path)?;
-    container::write(&g, &v2_path)?;
+/// A given project is missing; generation, writing or a measurement failed.
+pub fn measure_print(folder: &Path, given: Option<&Path>, scratch: &Path, runs: usize) -> Result<release::MeasuredPrint, String> {
+    let v2_path = project_file(folder, PRINT_TIER, Variant::Lean);
+    if let Some(from) = given {
+        copy_given(from, PRINT_TIER, Variant::Lean, &v2_path)?;
+    } else {
+        eprintln!("{}: generating the 25-page project…", PRINT_TIER.name);
+        let g = generate(PRINT_TIER, Variant::Lean)?;
+        measure::claim(&v2_path)?;
+        container::write(&g, &v2_path)?;
+    }
     eprintln!("{}: measuring Print Book and release ({runs} runs)…", PRINT_TIER.name);
-    let m = release::measure_print(&v2_path, runs, scratch);
+    let measured = measured_copy(&v2_path, scratch)?;
+    let m = release::measure_print(&measured, runs, scratch);
     measure::release_lock_file(&v2_path);
     m
 }
@@ -247,6 +299,7 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
     };
     let root = ecad_root();
     let scratch = measure::scratch_dir("work")?;
+    // Given projects are copied into the scratch folder and the copies measured: the files given are never opened.
     let folder = match &o.keep {
         Some(k) => {
             std::fs::create_dir_all(k).map_err(|e| format!("{}: {e}", k.display()))?;
@@ -257,9 +310,9 @@ pub fn main_with(args: &[String]) -> Result<(), String> {
     let result = (|| {
         let mut rows = Vec::new();
         for t in &o.tiers {
-            rows.extend(run_tier(*t, &folder, &scratch, o.runs)?);
+            rows.extend(run_tier(*t, &folder, o.projects.as_deref(), &scratch, o.runs)?);
         }
-        let print = if o.print { Some(measure_print(&folder, &scratch, o.runs)?) } else { None };
+        let print = if o.print { Some(measure_print(&folder, o.projects.as_deref(), &scratch, o.runs)?) } else { None };
         Ok::<_, String>((rows, print))
     })();
     let _ = std::fs::remove_dir_all(&scratch);

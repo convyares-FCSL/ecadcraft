@@ -9,6 +9,10 @@ deriving, the first page and saving one change. It is a developer tool and is ne
 ## Contents
 - `generate`: builds a project of a given tier (`small`, `medium`, `large`; `PRINT_TIER` for print tests).
 - `pages`, `cables`, `strips`, `ratings`, `bom`, `reports`, `wires_nets`, `symbols`, `styles`, `text`, `title_blocks`, `plc`, `connectors`, `history`, `release`, `views`, `container`: one module per area, each building or timing that area.
+- `per_edit`: the per-edit cost of `setstyle`, `wire` and `category` as landed wires accumulate, 40 to a page
+  (`--per-edit <file|new> 100,200,400`), what every generic command copies to put back on a refusal
+  (`--refusal <file>`), and `wire` on a page of free wires 0.01 mm apart against one 5 mm apart (`--stacked`). Run them on a project written with `--write <tier> lean <file>`, in release
+  (`cargo run --release -p ecad-bench -- …`), verify off unless `ECAD_VERIFY_INVARIANTS=1`.
 - `measure`, `report`: the timings, the printed table and the JSON written under `ecad/target/bench/`.
 - `src/main.rs`: the command that `cargo xtask bench` runs.
 

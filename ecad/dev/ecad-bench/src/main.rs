@@ -306,6 +306,75 @@ fn main() -> ExitCode {
             }
         };
     }
+    // `--refusal <file>`: what every generic command copies before it runs, to put back on a refusal.
+    if let [flag, file] = args.as_slice()
+        && flag == "--refusal"
+    {
+        let r = ecad_bench::measure::scratch_dir("refusal").and_then(|scratch| {
+            let r = ecad_bench::per_edit::refusal_snapshot(std::path::Path::new(file), ecad_bench::measure::RUNS, &scratch);
+            let _ = std::fs::remove_dir_all(&scratch);
+            r
+        });
+        return match r {
+            Ok(r) => {
+                println!(
+                    "{} devices: ids {:.1} µs, tag high-water {:.1} µs, designation uses copy {:.1} µs (journalled instead)",
+                    r.devices,
+                    r.ids_ms * 1000.0,
+                    r.tag_high_ms * 1000.0,
+                    r.designation_uses_ms * 1000.0
+                );
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // `--stacked`: `wire` on a page of free wires 0.01 mm apart against one of wires 5 mm apart.
+    if let [flag] = args.as_slice()
+        && flag == "--stacked"
+    {
+        let r = ecad_bench::per_edit::stacked(5.0).and_then(|normal| Ok((normal, ecad_bench::per_edit::stacked(0.01)?)));
+        return match r {
+            Ok((normal, stacked)) => {
+                println!("wire: {normal:.2} ms with wires 5 mm apart, {stacked:.2} ms with wires 0.01 mm apart ({:.1}×)", stacked / normal);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // `--per-edit <file|new> <counts>`: setstyle, wire and category per edit as landed wires accumulate
+    // (counts comma-separated, as 100,200,400).
+    if let [flag, file, counts] = args.as_slice()
+        && flag == "--per-edit"
+    {
+        let r =
+            counts.split(',').map(|c| c.trim().parse::<usize>().map_err(|e| format!("{c}: {e}"))).collect::<Result<Vec<_>, _>>().and_then(|counts| {
+                let scratch = ecad_bench::measure::scratch_dir("per-edit")?;
+                let path = (file != "new").then(|| std::path::Path::new(file));
+                let r = ecad_bench::per_edit::measure(path, &counts, &scratch);
+                let _ = std::fs::remove_dir_all(&scratch);
+                r
+            });
+        return match r {
+            Ok(rows) => {
+                println!("{:>6} {:>12} {:>9} {:>12}", "wires", "setstyle ms", "wire ms", "category ms");
+                for r in rows {
+                    println!("{:>6} {:>12.2} {:>9.2} {:>12.2}", r.wires, r.setstyle_ms, r.wire_ms, r.category_ms);
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match ecad_bench::main_with(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
