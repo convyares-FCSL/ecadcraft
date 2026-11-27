@@ -265,11 +265,11 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
     let wanted = params.definition;
     on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let coil = crate::commands::builtin_coil();
+        let coil = crate::commands::builtin_coil()?;
         let mut ops = Vec::new();
         let (def_id, def) = match wanted {
             Some(d) => (d, doc.definitions().get(&d).cloned().ok_or(CmdError::refused("no such definition"))?),
-            None => match doc.definitions().iter().find(|(_, d)| d.name == coil.name) {
+            None => match doc.definitions().iter().find(|(_, d)| crate::commands::is_builtin_coil(d, &coil)) {
                 Some((id, d)) => (*id, d.clone()),
                 None => {
                     let id: DefinitionId = p.ids.fresh();
