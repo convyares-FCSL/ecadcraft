@@ -3,6 +3,7 @@
 
 const POLY: u32 = 0x82F6_3B78; // reflected 0x1EDC6F41
 
+#[allow(clippy::indexing_slicing, reason = "runs at compile time only, where an index past the end fails the build")]
 const fn table() -> [u32; 256] {
     let mut t = [0u32; 256];
     let mut i = 0;

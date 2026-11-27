@@ -115,8 +115,10 @@ fn tokens(text: &str) -> Option<Vec<Tok>> {
     }
     // `400/24 V`: the number before the `/` takes the voltage's unit after it.
     for i in 0..out.len().saturating_sub(2) {
-        if let [Tok::Bare(x), Tok::Slash, Tok::Volts(_)] = out[i..i + 3] {
-            out[i] = Tok::Volts(x);
+        if let Some([first, Tok::Slash, Tok::Volts(_)]) = out.get_mut(i..i + 3)
+            && let Tok::Bare(x) = *first
+        {
+            *first = Tok::Volts(x);
         }
     }
     Some(out)

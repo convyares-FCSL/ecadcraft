@@ -311,7 +311,9 @@ A crash loses a person's work, so this outranks feature work.
   feature returns an error or says it is not available yet.
 - **Input is hostile.** Files, command parameters and MCP or control-channel requests are checked: `get()`
   rather than indexing, checked arithmetic, no casts of NaN, and caps on sizes and counts (for example
-  `MAX_COORD` for coordinates and bounded lists in command parameters, refused in words).
+  `MAX_COORD` for coordinates and bounded lists in command parameters, refused in words). Where every
+  byte is hostile, the lint enforces it: `ecad-file` and `ecad-electrical`'s `devices/ratings/` deny
+  `clippy::indexing_slicing`.
 - **Containment is tested.** The engine's `fault-injection` feature puts deliberate panics inside ECAD commands
   and project callbacks, so tests prove they are contained; it is never on in a normal build.
 

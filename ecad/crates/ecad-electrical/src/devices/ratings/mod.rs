@@ -22,6 +22,8 @@
 //!
 //! This module excludes the checks on a rating (the Checks rows read only the typed fields).
 #![deny(clippy::wildcard_enum_match_arm)]
+// Rating text is typed or imported: no indexing or slicing that can panic.
+#![deny(clippy::indexing_slicing)]
 
 use ecad_model::Device;
 

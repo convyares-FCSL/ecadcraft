@@ -356,7 +356,7 @@ pub fn layout(g: &Graph) -> Layout {
         let (lane, overflow) = if Some(*id) == main {
             (0, false)
         } else {
-            match (1..MAX_LANES).find(|l| busy[*l].iter().all(|(t, b)| bottom < t || top > b)) {
+            match (1..MAX_LANES).find(|l| busy.get(*l).is_some_and(|s| s.iter().all(|(t, b)| bottom < t || top > b))) {
                 Some(l) => (l, false),
                 None => (MAX_LANES - 1, true),
             }

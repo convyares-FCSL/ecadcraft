@@ -461,7 +461,7 @@ pub(crate) fn asset_value(media: &str, bytes: &[u8]) -> Result<Vec<u8>, FileErro
 /// # Errors
 /// A malformed value, or a media type over 255 bytes.
 pub fn split_asset_value(v: &[u8]) -> Result<(String, &[u8]), FileError> {
-    let len = v.get(..2).map(|b| usize::from(u16::from_be_bytes([b[0], b[1]]))).ok_or(FileError::AssetRowShort)?;
+    let len = v.first_chunk::<2>().map(|b| usize::from(u16::from_be_bytes(*b))).ok_or(FileError::AssetRowShort)?;
     // Read limit: a media type is at most 255 bytes.
     if len > 255 {
         return Err(FileError::AssetMediaLong);

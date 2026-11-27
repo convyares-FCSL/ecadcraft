@@ -169,7 +169,8 @@ every file changed outside `ecad/` since the CADCraft commit in `ecad/UPSTREAM.m
 - **No `unsafe`:** `unsafe_code = "forbid"`.
 - **Never crash.** Every production crate root denies `clippy::unwrap_used`, `expect_used`, `panic`,
   `unimplemented`, `todo` and `unreachable`; `ecad/clippy.toml` allows them in tests only. Clippy runs with
-  `-D warnings`, so a warning fails too.
+  `-D warnings`, so a warning fails too. `ecad-file` and `ecad-electrical`'s `devices/ratings/` also deny
+  `clippy::indexing_slicing` (file bytes and rating text are hostile).
 - Every crate manifest has `[lints] workspace = true`.
 
 ## Tests that guard the docs and the data
