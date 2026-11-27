@@ -128,8 +128,10 @@ fn file_stem(path: &str) -> String {
     std::path::Path::new(path).file_stem().map_or_else(|| path.to_string(), |s| s.to_string_lossy().into_owned())
 }
 
-/// Milliseconds since the epoch (`None` for a clock set before it).
-pub(crate) fn now_ms() -> Option<u64> {
+/// Milliseconds since the epoch (`None` for a clock set before it): the wall clock the engine
+/// stamps branches and revisions with, and the app's default host reads until the program
+/// installs its own.
+pub fn now_ms() -> Option<u64> {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }
 

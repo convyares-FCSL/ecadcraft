@@ -154,7 +154,8 @@ together. Layers are a recorded decision, so the owner agrees first.
 | `ecad-xtask` | Dev | The workspace's own commands (`cargo xtask …`) |
 
 `ecad-app` holds no rules, no disk access, no OS access and no parsing of domain values: those belong to Core
-and the engine. Each crate's README is its short card (purpose, contents, what it must not depend on, key
+and the engine. The OS check holds it to Core's list, except the monotonic clock for UI timing; the host
+program supplies the wall clock, folders and file manager. Each crate's README is its short card (purpose, contents, what it must not depend on, key
 types, how to test) and its `//!` doc is the detailed reference.
 
 ## The CADCraft boundary

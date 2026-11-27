@@ -8,7 +8,7 @@ patch guard, the full CI run, the benchmark and the scoped test run. It is a dev
 never shipped.
 
 ## Contents
-- `layers`: the crate-map rules, one module per family: `src/layers.rs` (layers, no OS in Core, `anyhow`,
+- `layers`: the crate-map rules, one module per family: `src/layers.rs` (layers, no OS in Core or the app, `anyhow`,
   `tokio` and `rayon`, dev tools apart), `src/ui_style.rs` (UI components and tokens), `src/drawn_text.rs`,
   `src/errors.rs` (typed errors), `src/readme.rs` (a README per crate whose Contents names real files), and
   the `src/*_guards.rs` modules (typed model, views, engine rules, starters, no history in the comments of

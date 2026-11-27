@@ -65,8 +65,8 @@ pub mod wires;
 pub use crate::access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use crate::file::{SaveAsError, SaveAsRefused, ensure_default_folder, home, normalize, normalize_resolved, save_project_as, without_extension};
 pub use crate::project::{
-    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_with,
-    session_seed, tree_rows, writer,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, now_ms, project_page,
+    project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

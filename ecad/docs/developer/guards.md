@@ -31,9 +31,11 @@ with them. [`architecture.md`](architecture.md#the-layers) gives the rules in fu
 - **The engine reached around `ecad-engine`.** App and Programs sources may not name `cadcraft_engine`, because
   `cadcraft-ui-egui` and `cadcraft-mcp` could hand engine types through; they use `ecad_engine::cad`.
   `ecad-electrical`'s sources may not name any `cadcraft_` path.
-- **OS access in Core.** Core crates other than `ecad-store` may not reach the file system, environment,
+- **OS access in Core and the app.** Core crates other than `ecad-store` may not reach the file system, environment,
   processes, network, clock or OS randomness (`CORE_OS`), or depend on a crate that finds the user's folders
-  (`CORE_OS_CRATES`). A hard zero: Core stays pure data and rules, testable and portable.
+  (`CORE_OS_CRATES`). A hard zero: Core stays pure data and rules, testable and portable. `ecad-app` is held to
+  the same list, except the monotonic clock for UI timing (`APP_OS_OK`, `Instant::now`): the wall clock, disk
+  and the rest come from the host program (`shell::host::Host`).
 - **The wrong crates.** `anyhow` outside Programs, `xtask` and `ecad-bench` (a library returns its own error
   type); `tokio` anywhere (no async runtime beside CADCraft's event loop); `rayon` outside `RAYON_OK`, or as
   anything but a plain dependency.

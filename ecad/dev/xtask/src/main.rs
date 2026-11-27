@@ -185,7 +185,7 @@ fn layers() -> Result<(), String> {
     v.extend(source_violations(&meta)?);
     v.extend(path_violations(&meta)?);
     v.extend(dependency_rule_violations(&meta)?);
-    v.extend(core_os_violations(&meta)?);
+    v.extend(os_violations(&meta)?);
     v.extend(readme_violations(&meta)?);
     v.extend(string_error_violations(&meta)?);
     v.extend(drawn_text_violations(&meta)?);
@@ -654,7 +654,7 @@ mod tests {
         assert_eq!(source_violations(&meta).unwrap(), Vec::<String>::new());
         assert_eq!(path_violations(&meta).unwrap(), Vec::<String>::new());
         assert_eq!(dependency_rule_violations(&meta).unwrap(), Vec::<String>::new());
-        assert_eq!(core_os_violations(&meta).unwrap(), Vec::<String>::new());
+        assert_eq!(os_violations(&meta).unwrap(), Vec::<String>::new());
         assert_eq!(readme_violations(&meta).unwrap(), Vec::<String>::new());
     }
 
@@ -856,10 +856,10 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         assert_eq!(string_error_counts(text), (2, 1));
     }
 
-    /// Direct OS access in Core is found where a name starts, outside comments and the
-    /// test module.
+    /// Direct OS access in Core and the app is found where a name starts, outside comments and the
+    /// test module; the app may read the monotonic clock.
     #[test]
-    fn core_os_access_is_found_outside_comments_and_tests() {
+    fn os_access_is_found_outside_comments_and_tests() {
         let rows: &[(&str, usize)] = &[
             ("let b = std::fs::read(p)?;", 1),
             ("use std::fs;\nlet b = fs::read(p)?;", 2),
@@ -874,7 +874,17 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("let a = 1;\n#[cfg(test)]\nmod tests {\n    fn t() { std::fs::read(\"x\"); }\n}", 0),
         ];
         for (text, n) in rows {
-            assert_eq!(core_os_places("crates/ecad-model/src/x.rs", text).len(), *n, "{text}");
+            assert_eq!(os_places(Class::Core, "crates/ecad-model/src/x.rs", text).len(), *n, "{text}");
+        }
+        let app: &[(&str, usize)] = &[
+            ("let t = Instant::now();", 0),
+            ("let t = std::time::Instant::now();", 0),
+            ("let t = std::time::SystemTime::now();", 1),
+            ("let b = std::fs::read(p)?;", 1),
+            ("let t = chrono::Local::now();", 1),
+        ];
+        for (text, n) in app {
+            assert_eq!(os_places(Class::App, "crates/ecad-app/src/x.rs", text).len(), *n, "{text}");
         }
     }
 
@@ -938,21 +948,22 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// A Core crate other than ecad-store may not depend on a crate that finds
-    /// the user's folders; ecad-store and tests may.
+    /// A Core crate other than ecad-store, and the app, may not depend on a crate that finds
+    /// the user's folders; ecad-store, the Programs and tests may.
     #[test]
-    fn core_crates_do_not_find_the_users_folders() {
+    fn core_crates_and_the_app_do_not_find_the_users_folders() {
         let rows: &[(&str, &str, Value, usize)] = &[
             ("ecad-model", "dirs", Value::Null, 1),
             ("ecad-electrical", "directories", Value::Null, 1),
             ("ecad-file", "dirs", "dev".into(), 0),
             ("ecad-store", "dirs", Value::Null, 0),
-            ("ecad-app", "dirs", Value::Null, 0),
+            ("ecad-app", "dirs", Value::Null, 1),
+            ("ecad-desktop", "dirs", Value::Null, 0),
             ("ecad-model", "serde", Value::Null, 0),
         ];
         for (krate, dep, kind, n) in rows {
             let meta = serde_json::json!({"workspace_root": "", "packages": [{"name": krate, "dependencies": [{"name": dep, "kind": kind}]}]});
-            assert_eq!(core_os_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
+            assert_eq!(os_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
         }
     }
 
