@@ -15,7 +15,6 @@
 //! # Bounds
 //! At most [`MAX_BYTES`] of text and [`MAX_ROWS`] rows (checked before any row is read), fields of
 //! at most [`MAX_FIELD`] characters, no indexing.
-#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use crate::CmdError;
 use std::collections::BTreeMap;
@@ -361,7 +360,7 @@ impl Dataset {
             .iter()
             .filter_map(|(k, v)| match k {
                 RowKey::Ambient { insulation: i, temp } if *i == insulation && *temp >= want => Some((*temp, *v)),
-                _ => None,
+                RowKey::Ambient { .. } | RowKey::Capacity { .. } | RowKey::Grouping { .. } | RowKey::Resistance { .. } => None,
             })
             .min_by_key(|(t, _)| *t)
             .map(|(t, v)| (v, t as f64 / 100.0))
@@ -377,7 +376,7 @@ impl Dataset {
             .iter()
             .filter_map(|(k, v)| match k {
                 RowKey::Grouping { method: m, circuits } if *m == method && *circuits >= n => Some((*circuits, *v)),
-                _ => None,
+                RowKey::Grouping { .. } | RowKey::Capacity { .. } | RowKey::Ambient { .. } | RowKey::Resistance { .. } => None,
             })
             .min_by_key(|(c, _)| *c)
             .map(|(c, v)| (v, c))
@@ -394,7 +393,7 @@ impl Dataset {
             .keys()
             .filter_map(|k| match k {
                 RowKey::Resistance { class: c, size } if *c == class => Some(*size as f64 / 100.0),
-                _ => None,
+                RowKey::Resistance { .. } | RowKey::Capacity { .. } | RowKey::Ambient { .. } | RowKey::Grouping { .. } => None,
             })
             .collect()
     }
@@ -407,7 +406,7 @@ impl Dataset {
                 RowKey::Capacity { method: m, insulation: i, loaded: l, size } if *m == method && *i == insulation && *l == loaded => {
                     Some((*size as f64 / 100.0, *v))
                 }
-                _ => None,
+                RowKey::Capacity { .. } | RowKey::Ambient { .. } | RowKey::Grouping { .. } | RowKey::Resistance { .. } => None,
             })
             .collect()
     }
