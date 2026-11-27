@@ -113,7 +113,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   checkout's own folder makes them safe, and they are faster). A worker and the owner trying the same feature
   share that feature folder's build, so they never build it at the same time: the worker says when
   it is done building. A tester's worktree under `_tmp` builds into its own `target` and is deleted
-  with it. The old shared `C:/dev/ecad-target` mixed a stale `ecad-model` into builds from two
+  with it. The old shared target folder mixed a stale `ecad-model` into builds from two
   worktrees (2026-11-08); it is no longer used.
   **Cleaning (owner, 2026-11-12):** `cargo xtask clean-builds --root <features folder>` deletes
   `ecad/target` and `target` in every feature folder and in `_tmp`, skipping any folder a cargo or
@@ -121,14 +121,14 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
   uncommitted changes), and prints the space freed; `--dry-run` only says what it would do. Task
   Scheduler runs it daily at 03:00 on the owner's machine, so a build folder may be gone in the
   morning: the next build makes it again.
-- **Folders (owner decision, 2026-11-08).** Nothing new goes directly in `C:\dev`:
+- **Folders (owner decision, 2026-11-08).** Nothing new goes directly in the parent folder of the checkouts:
   - `ecadcraft` is the main checkout, on `dev`. The overseer works here.
   - `ecad-features/<feature>` (the features folder) is the one worktree of a feature branch
     (`feature/<feature>`). It is removed when the feature is merged into `dev`.
   - `ecad-features/_tmp/<agent>-<what>` is for anything temporary: a tester's worktree, a
     kept benchmark project, a private build folder, logs. Whoever makes it deletes it when done;
     anything left in `_tmp` may be deleted at any time.
-  - `C:\dev\ecad-projects` (the owner's projects) stays.
+  - The owner's projects folder (`ecad-projects`) stays.
 
 ```sh
 # worker (from ecad/ in its feature folder), CARGO_TARGET_DIR unset
@@ -224,7 +224,7 @@ it is finished (done, delivered, finished, merged) fails `cargo xtask layers`.
 
 ## Working home and platforms (owner decision, 2026-10-31)
 
-- Claude Code runs from `ecad/` in the Windows clone `C:\dev\ecadcraft`, branch `dev`. The parent
+- Claude Code runs from `ecad/` in the Windows clone (the main checkout, `ecadcraft`), branch `dev`. The parent
   CADCraft folder is readable through `.claude/settings.json`. The root `CLAUDE.md` and `AGENTS.md`
   are upstream CADCraft's: where they conflict with this file (for example "push to `main`"), this
   file wins for all ECAD work.
