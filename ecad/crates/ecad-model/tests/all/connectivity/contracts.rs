@@ -204,6 +204,65 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     p.check();
 }
 
+/// `derive::nets` joins conductor ends only; [`Connectivity`] also joins definition bridges, jumper
+/// bars and continuations of one name (on any page). Each simpler net lies inside one kept net, and
+/// on a project with one of each join the kept nets are the simpler ones with exactly those joins.
+#[test]
+fn derived_nets_join_wire_ends_only_and_the_kept_nets_add_bridges_links_and_continuations() {
+    use ecad_model::connectivity::derive;
+    let mut p = P::new();
+    // Plain wires: the same nets either way.
+    let (_, k) = p.device(3);
+    let plain = [p.wire(k[0], k[1]), p.loose(k[1]), p.loose(k[2])];
+    // A jumper bar between strip points 1 and 2.
+    let (strip, t) = p.device(2);
+    let jumped = [p.loose(t[0]), p.loose(t[1])];
+    p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: "jumper_bar.1".into(), before: None, after: Some("1-2".into()) }]);
+    // A definition bridge between points 1 and 2.
+    let def: DefinitionId = p.ids.fresh();
+    let definition = Definition {
+        name: "bridged".into(),
+        origin: None,
+        graphics: vec![],
+        connection_points: ["1", "2"]
+            .iter()
+            .map(|k| ConnectionPointDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+            .collect(),
+        bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]],
+        ..Default::default()
+    };
+    p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
+    let (_, b) = p.device_with(2, Device { definition: Some(def), ..Device::default() });
+    let bridged = [p.loose(b[0]), p.loose(b[1])];
+    // A continuation pair: joined by name, whichever pages they are drawn on.
+    let (_, c1) = p.continuation("L1");
+    let (_, c2) = p.continuation("L1");
+    let continued = [p.loose(c1), p.loose(c2)];
+    p.check();
+
+    let doc = p.doc();
+    let conn = doc.connectivity();
+    let simple = derive::nets(doc);
+    let kept: Vec<_> = conn.nets().map(|(_, n)| n).filter(|n| !n.wires.is_empty()).collect();
+    for n in &simple {
+        let inside: Vec<_> = kept
+            .iter()
+            .filter(|k| n.wires.iter().all(|w| k.wires.contains(w)) && n.connection_points.iter().all(|t| k.connection_points.contains(t)))
+            .collect();
+        assert_eq!(inside.len(), 1, "a derived net lies inside one kept net: {n:?}");
+    }
+    let joined = |ws: &[WireId]| {
+        let simple_one = simple.iter().filter(|n| ws.iter().any(|w| n.wires.contains(w))).count();
+        (simple_one, ws.windows(2).all(|w| p.same_net(w[0], w[1])))
+    };
+    assert_eq!(joined(&plain[..2]), (1, true), "wire ends join either way");
+    assert!(!p.same_net(plain[0], plain[2]));
+    for (what, ws) in [("jumper bar", jumped), ("bridge", bridged), ("continuation pair", continued)] {
+        assert_eq!(joined(&ws), (2, true), "{what}: two derived nets, one kept net");
+    }
+    assert_eq!(kept.len(), simple.len() - 3, "the kept nets are the derived ones with the three joins");
+}
+
 /// A cable core is an ordinary conductor: a cable continued on another page keeps one net per
 /// core, and the wire on the same terminal is in it (design 022 §2).
 #[test]

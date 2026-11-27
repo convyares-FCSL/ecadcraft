@@ -62,7 +62,7 @@ answering (closed?)…" until it is back.
 | `execute` | with `--write` | runs one ECAD command with JSON parameters, through the gate |
 | `list_commands` | no | every command with its parameters (see [commands.md](commands.md)) |
 | `inspect_drawing`, `query_entities`, `find_text`, `render` | no | CADCraft's drawing reads; `render` returns the image and refuses a `path` |
-| `ecad_project` | no | name, file, whether writes are on, head and unsaved changes, pages, devices with their connection points, wires with their ends and cable, cables with their members, nets; each list paged by `limit` (default 500) |
+| `ecad_project` | no | name, file, whether writes are on, head and unsaved changes, pages, devices with their connection points, wires with their ends and cable, cables with their members, and nets as the app, wire numbers and checks see them (joined by wire ends, definition bridges, jumper bars and continuations of one name; each with its connection points, wires, continuation names and wire numbers); each list paged by `limit` (default 500) |
 | `ecad_history` | no | the transactions in order: seq, id, label, kind, author (`user` or `agent <name>`), time, op count; paged by `offset` and `limit` (default the last 100) |
 | `ecad_inspect` | no | `ecadinspect`'s read-only JSON snapshot of the project, live or at transaction `seq` |
 | `save` | with `--write` | saves the project to its own file; a `path` is refused |

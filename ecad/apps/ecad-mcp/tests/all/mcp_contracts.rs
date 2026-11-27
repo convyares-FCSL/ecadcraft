@@ -1143,6 +1143,10 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     // Reads.
     let nets = c.exec("nets", json!({}));
     assert_eq!(nets["nets"].as_array().unwrap().len(), 2, "{nets}");
+    // `ecad_project` serves the same nets (the continuation pair is one net there too).
+    let project = c.ok("ecad_project", json!({}));
+    assert_eq!(project["nets"]["count"], json!(2), "{project}");
+    assert!(project["nets"]["items"].as_array().unwrap().iter().any(|n| n["continuations"].as_array().is_some_and(|a| !a.is_empty())), "{project}");
     let checks = c.exec("checks", json!({}));
     // F5: the 0V continuation has its partner now, so no lonely-continuation row; the list answers.
     let rows = checks["checks"].as_array().unwrap();

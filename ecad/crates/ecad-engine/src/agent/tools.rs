@@ -1,7 +1,7 @@
 //! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
 
+use ecad_model::Author;
 use serde_json::{Map, Value, json};
-use {ecad_model::Author, ecad_model::connectivity::derive};
 
 use crate::ProjectHandle;
 use crate::cad::Session;
@@ -82,7 +82,7 @@ pub fn definitions(writes: bool, live: bool) -> Vec<Value> {
         "Save the project to its .ecad file. Refused now: writes are off (start the server with --write)."
     };
     let mut v = vec![
-        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`connection_points`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
+        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`connection_points`), conductors with their ends and cable, cables with their members in order, and nets as the app, wire numbers and checks see them (joined by conductor ends, definition bridges, jumper bars and continuations of one name; each with its connection points, conductors, continuation names and wire numbers). Each list has `count` and at most `limit` entries (default 500).",
             "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_history", "description": "The project's transactions in order: seq, id, label, kind (edit, undo of #n, redo of #n), author (`user` or `agent <name>`), time and op count. Page with offset and limit (default: the last 100).",
             "inputSchema": {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 0}}}}),
@@ -231,12 +231,18 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 .collect();
             json!({"id": id.hex(), "tag": c.tag_shown(), "tag_state": c.tag.state().map(ecad_model::naming::words::Word::word), "description": c.description(), "properties": c.properties, "members": members})
         });
-        let nets = derive::nets(doc);
+        // The nets the app, wire numbers and checks use: every net with at least one conductor,
+        // ordered by its lowest conductor ID (as the `nets` command lists them).
+        let conn = doc.connectivity();
+        let mut nets: Vec<_> = conn.nets().map(|(_, n)| n).filter(|n| !n.wires.is_empty()).collect();
+        nets.sort_by_key(|n| n.first_conductor());
         let net_count = nets.len();
         let nets = nets.into_iter().map(|n| {
             json!({
                 "connection_points": n.connection_points.iter().map(|t| t.hex()).collect::<Vec<_>>(),
                 "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+                "continuations": n.names,
+                "numbers": n.numbers.keys().collect::<Vec<_>>(),
             })
         });
         let status = p.file_status();
