@@ -236,3 +236,34 @@ fn two_heads_are_listed() {
     assert_eq!(two.len(), 1, "{rows:?}");
     assert!(two[0].which.starts_with("-K01 has two coils ("), "{}", two[0].which);
 }
+
+/// A rollback puts the designation use index back exactly as it was at the mark, after uses were added,
+/// taken, taken and added again, and the index rebuilt.
+#[test]
+fn a_rollback_puts_the_designation_uses_back_as_they_were_at_the_mark() {
+    use ecad_electrical::locations::designations::Uses;
+    use ecad_model::{ObjectRef, Op};
+    let set = |a: Aspect, before: Option<&str>, after: Option<&str>| Op::SetProperty {
+        object: ObjectRef::Project,
+        key: a.property().to_string(),
+        before: before.map(str::to_string),
+        after: after.map(str::to_string),
+    };
+    let mut u = Uses::default();
+    u.apply(&[set(Aspect::Location, None, Some("1")), set(Aspect::Function, None, Some("2"))]);
+    let at_mark = format!("{u:?}");
+    u.mark();
+    u.apply(&[
+        set(Aspect::Location, Some("1"), Some("3")),
+        set(Aspect::Function, Some("2"), None),
+        set(Aspect::Function, None, Some("2")),
+        set(Aspect::Location, Some("3"), Some("4")),
+    ]);
+    u.reset();
+    u.apply(&[set(Aspect::Location, None, Some("5"))]);
+    assert_ne!(format!("{u:?}"), at_mark);
+    u.rollback();
+    assert_eq!(format!("{u:?}"), at_mark);
+    u.rollback();
+    assert_eq!(format!("{u:?}"), at_mark, "a second rollback without a mark changes nothing");
+}

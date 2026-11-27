@@ -318,7 +318,7 @@ fn main() -> ExitCode {
         return match r {
             Ok(r) => {
                 println!(
-                    "{} devices: ids {:.1} µs, tag high-water {:.1} µs, designation uses {:.1} µs (per generic command)",
+                    "{} devices: ids {:.1} µs, tag high-water {:.1} µs, designation uses copy {:.1} µs (journalled instead)",
                     r.devices,
                     r.ids_ms * 1000.0,
                     r.tag_high_ms * 1000.0,

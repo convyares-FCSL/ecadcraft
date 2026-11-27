@@ -125,8 +125,9 @@ pub fn measure(path: Option<&Path>, counts: &[usize], scratch: &Path) -> Result<
 pub const DESIGNATION_GROUP: usize = 200;
 
 /// What [`refusal_snapshot`] measured: the median time to copy what a generic command keeps to put back on a
-/// refusal (the id allocator, the tag high-water marks and the designation-uses index), on a project of
-/// `devices` devices.
+/// refusal (the id allocator and the tag high-water marks, copied before every generic command), and what a
+/// copy of the designation-uses index would cost (it is not copied: it journals its changes and undoes them),
+/// on a project of `devices` devices.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RefusalSnapshot {
     pub devices: usize,
@@ -135,8 +136,9 @@ pub struct RefusalSnapshot {
     pub designation_uses_ms: f64,
 }
 
-/// Time copying the refusal snapshot of the project at `path` (opened on a copy), median of `runs`: each copy
-/// is what every generic command pays before it runs. The devices are first given a location and a function,
+/// Time copying the refusal snapshot of the project at `path` (opened on a copy), median of `runs`: the ids and
+/// high-water copies are what every generic command pays before it runs; the designation-uses copy is the cost
+/// its journal saves. The devices are first given a location and a function,
 /// [`DESIGNATION_GROUP`] to each, as a real project has them (the generated projects have none).
 ///
 /// # Errors

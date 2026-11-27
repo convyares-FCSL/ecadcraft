@@ -134,24 +134,33 @@ fn read_file(path: &str, what: Reads) -> Result<Got, Unread> {
 /// The indexes a command is given to change while it runs (new ids, the tag high-water marks with
 /// the provisional numbers given out, the designation use index), as they were before it ran.
 /// Put back when the command is refused, so a refused command leaves the session as replaying
-/// its history would. The derived views need no copy: a command reaches them only to build a
-/// view of the committed document on first show, which is what a fresh build gives, and the
-/// commit's Before phase changes nothing.
+/// its history would. The ids and the high-water marks are small and copied; the designation use
+/// index grows with the project, so it journals its changes from a mark instead and undoes them
+/// ([`ecad_electrical::locations::designations::Uses::rollback`]). The derived views need no copy: a
+/// command reaches them only to build a view of the committed document on first show, which is what a
+/// fresh build gives, and the commit's Before phase changes nothing.
 struct Before {
     ids: ecad_model::IdAllocator,
     tag_high: ecad_electrical::devices::tags::TagHigh,
-    designation_uses: ecad_electrical::locations::designations::Uses,
 }
 
 impl Before {
-    fn of(proj: &Project) -> Before {
-        Before { ids: proj.ids.clone(), tag_high: proj.indexes.tag_high.clone(), designation_uses: proj.indexes.designation_uses.clone() }
+    /// Copy the small indexes and set the designation use index's mark.
+    fn of(proj: &mut Project) -> Before {
+        proj.indexes.designation_uses.mark();
+        Before { ids: proj.ids.clone(), tag_high: proj.indexes.tag_high.clone() }
     }
 
+    /// The command was refused: put every index back.
     fn restore(self, proj: &mut Project) {
         proj.ids = self.ids;
         proj.indexes.tag_high = self.tag_high;
-        proj.indexes.designation_uses = self.designation_uses;
+        proj.indexes.designation_uses.rollback();
+    }
+
+    /// The command ran: keep what it changed.
+    fn keep(self, proj: &mut Project) {
+        proj.indexes.designation_uses.release();
     }
 }
 
@@ -172,7 +181,10 @@ fn commit<P: Generic>(
     let before = Before::of(proj);
     let ran = run_and_write::<P>(proj, pg, page, params, read, p, no_edit);
     let (label, Outcome { answer, echo, .. }, held, unwritten) = match ran {
-        Ok(r) => r,
+        Ok(r) => {
+            before.keep(proj);
+            r
+        }
         Err(e) => {
             before.restore(proj);
             return Err(e);
@@ -536,6 +548,34 @@ mod tests {
         assert!(r.is_err_and(|e| e.to_string().contains(UNAVAILABLE)));
         assert_eq!(session_state(&h, &mut s), state);
         assert_eq!(views_differ(&h, &mut s), Vec::<String>::new());
+    }
+
+    /// A refused command that brought the designation uses up to date (a device moved from one location to
+    /// another: a use taken and a use added) leaves them exactly as they were, and the next command reads the
+    /// same uses as a fresh build.
+    #[test]
+    fn a_refused_command_leaves_the_designation_uses_as_they_were() {
+        use ecad_electrical::locations::designations::{Aspect, Uses};
+        let (mut s, h, _) = fresh();
+        let placed = s.execute("place", &serde_json::json!({"symbol": "coil", "at": [40.0, 40.0]})).unwrap();
+        let device = placed["component"].as_str().unwrap().to_string();
+        for code in ["+CP1", "+CP2"] {
+            s.execute("setlocation", &serde_json::json!({"component": device, "aspect": "location", "value": code})).unwrap();
+        }
+        let state = session_state(&h, &mut s);
+        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "stale"}));
+        assert!(r.is_err());
+        assert_eq!(session_state(&h, &mut s), state);
+        let (kept, fresh_build) = h
+            .configure(&mut s, |p| {
+                p.indexes.designation_uses.catch_up(&p.ledger);
+                let keys =
+                    |u: &Uses| u.keys(Aspect::Location).map(|k| (k.to_string(), format!("{:?}", u.users(Aspect::Location, k)))).collect::<Vec<_>>();
+                (keys(&p.indexes.designation_uses), keys(&Uses::of(p.ledger.document())))
+            })
+            .unwrap();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert_eq!(kept, fresh_build);
     }
 
     /// A transaction the ledger refuses gives back what the command took, and writes no file.
