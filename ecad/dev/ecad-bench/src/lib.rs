@@ -23,6 +23,7 @@ pub mod generate;
 pub(crate) mod history;
 pub mod measure;
 pub mod pages;
+pub mod per_edit;
 pub(crate) mod plc;
 pub mod ratings;
 pub(crate) mod release;
