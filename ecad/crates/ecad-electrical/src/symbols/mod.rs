@@ -22,6 +22,7 @@
 
 pub mod anchors;
 pub mod builder;
+pub mod builtin;
 pub mod catalogue;
 pub(crate) mod cells;
 pub mod commands;
