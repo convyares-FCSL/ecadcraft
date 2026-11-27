@@ -15,6 +15,7 @@ never shipped.
   `src/` or `defaults/*.toml`).
 - `patches`: files changed outside `ecad/` must be listed in `UPSTREAM-PATCHES.md`.
 - `lint`, `ci`: fmt, clippy, tests (slow set included), layers, patches (the QA gate's run).
+- `doc`: the API docs, private items included, with every rustdoc warning an error (not in `lint` or `ci`).
 - `test-changed`: fast tests of the crates not pushed yet (`--with-dependents` adds their dependents).
 - `bench`, `demo`: the load benchmark and the demo session.
 - `clean-builds` (`src/clean.rs`): deletes build folders and merged worktrees.

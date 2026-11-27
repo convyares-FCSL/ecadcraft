@@ -150,7 +150,7 @@ pub fn plan_issue(p: &Project, before: &[Op]) -> Result<IssuePlan, CmdError> {
     plan_issue_of(p, before, &revision_fields([None, None, None, None, None, None], None, None))
 }
 
-/// Issues the pending revision: it needs Rev, Description and Drawn, and names the history point "Rev <rev>".
+/// Issues the pending revision: it needs Rev, Description and Drawn, and names the history point `Rev <rev>`.
 /// With provisional tags or wire numbers present, `provisional` says whether to finalise them first or issue them
 /// as they are.
 #[derive(Deserialize, JsonSchema)]

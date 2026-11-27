@@ -7,7 +7,7 @@
 //!   read on demand through [`StoreHistory`] (undo past the snapshot, `state_at`).
 //! - **Save** writes the pending transactions, the snapshots of any versions they name and of an
 //!   automatic snapshot every `cache.every` transactions, the branch head and `meta` in one redb
-//!   write transaction. Chunks are built incrementally from the last snapshot ([`chunks::Dirty`]).
+//!   write transaction. Chunks are built incrementally from the last snapshot ([`crate::chunks::Dirty`]).
 //!   Nothing stored is read back to check it; its cost follows what is written.
 
 mod branches;

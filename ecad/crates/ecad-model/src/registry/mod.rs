@@ -153,7 +153,7 @@ pub enum Source {
     /// The symbol's key on its component (`text.<rep>.<rest>`).
     Symbol,
     /// A project symbol's own value in its definition: the built-in of a
-    /// `symbol.<key>.*` entry of a symbol made in the project ([`symbols::resolve_for`]).
+    /// `symbol.<key>.*` entry of a symbol made in the project (ecad-electrical's `defaults::symbols::resolve_for`).
     Definition,
 }
 

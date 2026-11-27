@@ -3,7 +3,7 @@
 //! (Draw Bridge). The reads `stripplan` and `cablecores` are generic
 //! ([`ecad_electrical::terminal_strips::commands::reads`]).
 //!
-//! Every write is one transaction, committed through [`Project::apply_edit`]; the reads record
+//! Every write is one transaction, committed through [`crate::Project::apply_edit`]; the reads record
 //! nothing.
 //!
 //! Each command is a thin shim: its params struct reads the JSON, the rules in

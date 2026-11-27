@@ -6,8 +6,8 @@
 //! - The page goes after `after` (a page number as shown), else after the last page on which a card
 //!   of the same rack (or the rack) is drawn, else after the last schematic page, else at the end.
 //! - Its title is `plc.page.title` with the card's words filled in.
-//! - Cells start [`LEFT_MM`] from the left of the drawing area at 60 % of its height (outputs at
-//!   180°, at 40 %); a row wider than the drawing area wraps into further rows [`ROW_PITCH_MM`]
+//! - Cells start `LEFT_MM` (ecad-electrical's PLC commands) from the left of the drawing area at 60 % of its height (outputs at
+//!   180°, at 40 %); a row wider than the drawing area wraps into further rows `ROW_PITCH_MM`
 //!   apart.
 //!
 //! The rules are [`ecad_electrical::plc::commands`]; this shim numbers the page (from the kept outputs)

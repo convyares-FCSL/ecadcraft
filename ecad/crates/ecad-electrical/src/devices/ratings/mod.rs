@@ -16,7 +16,7 @@
 //!   with the typed fields left empty, so nothing typed is lost.
 //! - What was read is shown back from the fields (the group's `Display`),
 //!   and reading that text again gives the same fields.
-//! - The rating line on the drawing ([`line`]) shows the fields the group's template names
+//! - The rating line on the drawing ([`fn@line`]) shows the fields the group's template names
 //!   (`rating.template.<group>`, by default the plate and design fields), in its order; answers
 //!   and the stored text keep every field.
 //!

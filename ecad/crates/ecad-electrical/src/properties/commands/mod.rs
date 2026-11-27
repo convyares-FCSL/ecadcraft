@@ -291,7 +291,8 @@ pub(crate) fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
 ///
 /// # Errors
 /// The rule's refusal; a key decided by an `Aspect` or `Fixed` row is refused (those build their
-/// change in [`plan_state`] and [`crate::locations::commands::locations::plan_set`]).
+/// change in [`crate::locations::commands::locations::plan_box_set`] and
+/// [`crate::locations::commands::locations::plan_set`]).
 pub fn value(
     doc: &Document, registry: &ecad_model::registry::data::Registry, object: ObjectRef, key: &str, value: Option<&str>,
 ) -> Result<Option<String>, CmdError> {

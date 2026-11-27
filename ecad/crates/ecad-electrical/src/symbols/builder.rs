@@ -75,7 +75,7 @@ pub(crate) enum VParam {
 /// A text slot of a symbol.
 #[derive(Deserialize, JsonSchema)]
 pub struct SlotParam {
-    /// The device text it places: tag, description, rating, rating.<label>, part_number, maker,
+    /// The device text it places: tag, description, rating, `rating.<label>`, part_number, maker,
     /// article_number, function or location.
     #[serde(default)]
     text: Option<String>,

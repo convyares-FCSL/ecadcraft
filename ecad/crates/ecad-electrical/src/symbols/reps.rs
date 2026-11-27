@@ -10,7 +10,7 @@
 //!   [`siblings`], [`views`]. Each is O(the device's representations).
 //! - Ties go by **drawing order**, the one numbering uses: book position, zone column and row,
 //!   then top-left (greatest y, then least x), then ID, which is stable under random IDs
-//!   ([`in_book_order`]). The book is built only when the candidates lie on more
+//!   ([`in_book_order_in`]). The book is built only when the candidates lie on more
 //!   than one page.
 //!
 //! Excludes: locations (`crate::locations`), the reference rule's poles and texts
@@ -71,8 +71,8 @@ pub fn numbering_rank(doc: &Document, r: &Representation) -> u8 {
 
 // ---------------------------------------------------------------- order
 
-/// As [`in_book_order`], reading the book and grids through `places`, shared across a pass (a
-/// Checks build) so the book is built at most once.
+/// The representations in drawing order, reading the book and grids through `places`, shared
+/// across a pass (a Checks build) so the book is built at most once.
 pub(crate) fn in_book_order_in(places: &mut Places<'_>, reps: Vec<(RepresentationId, &Representation)>) -> Vec<RepresentationId> {
     if reps.len() < 2 {
         return reps.into_iter().map(|(id, _)| id).collect();

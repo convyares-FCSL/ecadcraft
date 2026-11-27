@@ -10,11 +10,11 @@
 //! - [`ProjectHandle`] (the `access` module): the only way to reach a project from outside, under its lock.
 //! - [`cad`]: the CADCraft types and functions the app and the programs may name.
 //! - [`commands`]: the command registry and the shared helpers of session commands.
-//! - [`pointer`]: what is under the cursor, the running tool's intent, the marks drawn over pages, the hover
+//! - [`mod@pointer`]: what is under the cursor, the running tool's intent, the marks drawn over pages, the hover
 //!   text, and what the click-based forms of the commands share (each form is in its feature's `interact` module).
 //! - [`convert`] and each feature's `draw` module: building CADCraft entities, text styles and fonts from
 //!   what the rules decide.
-//! - [`file`]: the project's `.ecad` file on disk, the home folder and path rules.
+//! - [`mod@file`]: the project's `.ecad` file on disk, the home folder and path rules.
 //! - [`history`]: the History tab: versions, points, restore, branches and merging.
 //! - [`agent`]: what an agent may run, its caps, its author name and its read tools.
 //! - [`background`], [`warm`]: work off the UI thread, and the first builds of the kept views.

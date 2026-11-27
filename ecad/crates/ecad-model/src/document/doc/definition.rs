@@ -335,7 +335,7 @@ pub struct Definition {
     #[serde(default, skip_serializing_if = "DeviceType::is_general")]
     pub device_type: DeviceType,
     /// A placed copy's part in its device: copied into the
-    /// representation's [`Role::Part`] when the symbol is placed. Left out of the file for
+    /// representation's [`Role::Part`](crate::objects::role::Role::Part) when the symbol is placed. Left out of the file for
     /// [`PartRole::Other`].
     #[serde(default, skip_serializing_if = "PartRole::is_other")]
     pub part_role: PartRole,

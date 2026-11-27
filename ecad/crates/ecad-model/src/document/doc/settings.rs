@@ -84,7 +84,7 @@ pub struct ProjectSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cable_prefix: Option<crate::naming::prefix::TagPrefix>,
     /// How wires are numbered and what each potential defaults to. Left out of
-    /// the file while it holds [`WiringSettings::default`].
+    /// the file while it holds [`WiringSettings::default`](crate::connectivity::wiring::WiringSettings::default).
     pub wiring: crate::connectivity::wiring::WiringSettings,
     /// The project's sheet: size and grid of every page's frame unless a page sets its own,
     /// when the project chose one (`None` follows the

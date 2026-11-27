@@ -12,7 +12,7 @@
 //!   `ecad-store` reach no OS (file system, environment, processes, network, clock). The crate
 //!   rules: `anyhow` only in Programs, xtask and ecad-bench, `tokio` nowhere, `rayon` only where
 //!   the work is. Every workspace member has a README with the standard sections. Each family of
-//!   rules is a module: [`layers`], [`ui_style`], [`drawn_text`], [`errors`], [`readme`] and the
+//!   rules is a module: [`mod@layers`], [`ui_style`], [`drawn_text`], [`errors`], [`readme`] and the
 //!   `*_guards` modules; this file holds the shared source helpers and the commands.
 //! - `patches`: every file changed outside `ecad/` since the incorporated CADCraft commit
 //!   (`ecad/UPSTREAM.md`) must be listed in `ecad/UPSTREAM-PATCHES.md`.
@@ -253,6 +253,19 @@ fn lint() -> Result<(), String> {
     patches()
 }
 
+/// The workspace's API docs with every rustdoc warning an error: private items included, as most
+/// items are `pub(crate)`, so a link to one resolves and is not a warning. Not part of [`lint`] or
+/// [`ci`].
+fn doc() -> Result<(), String> {
+    run(Command::new(env!("CARGO"))
+        .args(["doc", "--workspace", "--no-deps", "--document-private-items"])
+        .env("RUSTDOCFLAGS", DOC_FLAGS)
+        .current_dir(ecad_root()))
+}
+
+/// The rustdoc flags of [`doc`]: warnings fail, links from public docs to private items do not.
+const DOC_FLAGS: &str = "-D warnings -A rustdoc::private_intra_doc_links";
+
 fn ci() -> Result<(), String> {
     lint()?;
     // All features: the fault-injection containment tests run in CI, never in normal builds.
@@ -260,7 +273,7 @@ fn ci() -> Result<(), String> {
     run(Command::new(env!("CARGO")).args(["test", "--workspace", "--all-features", "--", "--include-ignored"]).current_dir(ecad_root()))
 }
 
-const USAGE: &str = "usage: cargo xtask <layers|patches|lint|ci|bench|demo|test-changed|clean-builds>
+const USAGE: &str = "usage: cargo xtask <layers|patches|lint|doc|ci|bench|demo|test-changed|clean-builds>
   test-changed [--base <ref>] [--with-dependents] [--dry-run] [-- <test arguments>]
         fast tests of the crates changed since <ref> (default: the branch's upstream, so what
         was not pushed yet; for a branch never pushed, since its merge base with origin/dev;
@@ -270,6 +283,9 @@ const USAGE: &str = "usage: cargo xtask <layers|patches|lint|ci|bench|demo|test-
   lint
         every check of ci except the tests: fmt, clippy (all features and default), layers,
         patches
+  doc
+        the API docs (private items included) with every rustdoc warning an error; not part
+        of lint or ci
   clean-builds --root <folder> [--dry-run]
         delete ecad/target and target in each folder under <folder> and under <folder>/_tmp,
         skipping folders a cargo or rustc is using; remove git worktrees whose branch is merged
@@ -481,6 +497,7 @@ fn main() -> ExitCode {
         "layers" => layers(),
         "patches" => patches(),
         "lint" => lint(),
+        "doc" => doc(),
         "ci" => ci(),
         "bench" => bench(rest),
         "demo" => demo(rest),

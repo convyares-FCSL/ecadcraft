@@ -197,7 +197,7 @@ pub struct BomParams {
     /// Location (default) or part.
     #[serde(default)]
     group: Option<Group>,
-    /// Optional columns for this call: "article" and "rating.<word>" (a rating field word:
+    /// Optional columns for this call: "article" and `rating.<word>` (a rating field word:
     /// "rating.current").
     #[serde(default)]
     columns: Option<Vec<String>>,

@@ -2,11 +2,11 @@
 //! folder.
 //!
 //! # Semantics
-//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::releases::release::grouped)): the kept Checks of the state to be
+//! - **Pre-release check** ([`check_rows`], [`ecad_electrical::releases::release::grouped`]): the kept Checks of the state to be
 //!   issued (the project's own kept list and report models: opening it never rescans the
 //!   project), grouped for a release by [`GROUPS`](ecad_electrical::releases::release::GROUPS) (a view: kinds keep their severities). A kind
 //!   not in the table lands in **Other**.
-//! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
+//! - **Release of the pending revision** ([`release_pending`]), in this order so a failure leaves
 //!   nothing half-done: refusals (each with its way out); Finalise numbering (behind
 //!   [`numbering_seam`]); every output built from the state **as issued** (`ledger.preview` of the
 //!   issue's ops) and written to `<folder>.partial`; the issue transaction with the recorded folder in
@@ -86,7 +86,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
 // ---------------------------------------------------------------- numbering seam
 
 /// The one place a release calls the numbering: the provisional items, the
-/// refusal without a choice, and [`numbering_seam::before_issue`] (Finalise numbering as its own
+/// refusal without a choice, and [`numbering_seam::plan`] (Finalise numbering as its own
 /// transaction before the issue, or issue them as they are).
 pub(crate) mod numbering_seam {
     use ecad_electrical::CmdError;
@@ -185,7 +185,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 // ---------------------------------------------------------------- names and places
 
 /// The file stem: the drawing number, else the project file's name, else the project's name;
-/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::releases::release::MAX_STEM) characters.
+/// `\ / : * ? " < > |` and control characters become `-`; at most `MAX_STEM` (ecad-electrical's release rules) characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
     let raw = ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::frames::DRAWING_NUMBER)

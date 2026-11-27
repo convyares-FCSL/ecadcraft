@@ -3,28 +3,28 @@
 //! # Semantics
 //! - A **reference** is a text that shows another drawn item's place. A **source** shows a
 //!   **target**'s place; both are representations. Sources and targets of one kind belong to one
-//!   **group** ([`Group`]): a cable's reference ends, or one device's symbols. A short rule table
-//!   ([`RefIndex`]'s edges) decides which members of a group point at which:
+//!   **group** ([`classify::Group`]): a cable's reference ends, or one device's symbols. A short rule table
+//!   ([`index::RefIndex`]'s edges) decides which members of a group point at which:
 //!   every cable reference end at every other end of its cable; every **child** (a symbol with
 //!   contact poles) of a device at its **head** (its exclusive symbol: coil, MCB, motor…) and the
 //!   head at every child. A device without a head has no references.
-//! - Everything here is derived from the document and never stored: the index ([`RefIndex`]), the
-//!   text under a contact (its head's place, [`contact_text`]) and the **contact mirror table**
+//! - Everything here is derived from the document and never stored: the index ([`index::RefIndex`]), the
+//!   text under a contact (its head's place, [`table::contact_text`]) and the **contact mirror table**
 //!   under a head (`table`): one row per pole, NO or NC, power or auxiliary, its labels and its
 //!   place, with the poles the part offers that nobody drew (**spare**) and those drawn beyond the
 //!   offer (**over**).
 //! - What a part offers is its typed contacts ([`crate::devices::traits::Contacts`]; typed
-//!   through `setprop`'s [`CONTACTS_KEY`] in the grammar of [`parse_set`]); where its table goes is
-//!   a switching device's `contact_table` (typed through [`MIRROR_KEY`], [`parse_mirror`]), else
+//!   through `setprop`'s [`parse::CONTACTS_KEY`] in the grammar of [`parse::parse_set`]); where its table goes is
+//!   a switching device's `contact_table` (typed through [`parse::MIRROR_KEY`], [`parse::parse_mirror`]), else
 //!   the project's `contact_mirror`, else `auto`.
 //! - Cable references keep their own derivation ([`crate::references::cables`]); this module only scopes
-//!   them per commit ([`Watch`]), so every cable text is exactly as before.
+//!   them per commit ([`watch::Watch`]), so every cable text is exactly as before.
 //!
 //! # Update map
-//! [`RefIndex`] is built whole on open, reload and branch switch, and kept per commit, undo, redo
-//! and merge from the ops ([`RefIndex::groups_named`], [`RefIndex::refresh`]): only the groups an
+//! [`index::RefIndex`] is built whole on open, reload and branch switch, and kept per commit, undo, redo
+//! and merge from the ops ([`index::RefIndex::groups_named`], [`index::RefIndex::refresh`]): only the groups an
 //! op names are made again (O(group)). The texts and tables to redraw are worked out by
-//! [`Watch`], which derives the touched devices' texts before and after a commit:
+//! [`watch::Watch`], which derives the touched devices' texts before and after a commit:
 //!
 //! | Op | Devices whose texts are compared |
 //! | --- | --- |

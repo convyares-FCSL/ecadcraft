@@ -7,7 +7,7 @@
 //!
 //! Fields: `source` (what the user says the values come from) and [`ROWS`] (the CSV, read by
 //! [`crate::devices::ratings::dataset`]). The rows field may hold up to
-//! [`crate::devices::ratings::dataset::MAX_BYTES`] ([`crate::styles::field_cap`]); it is read here, raw, not through
+//! [`crate::devices::ratings::dataset::MAX_BYTES`]; it is read here, raw, not through
 //! [`ecad_model::registry::styles::field`] (it holds line breaks, which a text field refuses).
 
 use ecad_model::objects::styles::StyleLayer;

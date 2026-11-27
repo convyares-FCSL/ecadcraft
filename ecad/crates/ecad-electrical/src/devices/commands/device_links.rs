@@ -237,7 +237,7 @@ pub(crate) enum FieldKindParam {
 }
 
 /// Adds a project user field, or with `remove: true` removes one and clears its values. A device's value is set
-/// with `setprop` key "user.<name>".
+/// with `setprop` key `user.<name>`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UserFieldParams {

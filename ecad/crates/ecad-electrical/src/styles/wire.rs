@@ -232,7 +232,7 @@ fn reach(doc: &Document, op: &ecad_model::Op, id: &StyleRef) -> ecad_model::regi
 #[cfg(test)]
 const DATA_FILE: &str = "wire_types.toml";
 
-/// The data's first problem ([`DATA_FILE`]'s field, value or syntax).
+/// The data's first problem (`wire_types.toml`'s field, value or syntax).
 pub(crate) fn read_data(text: &str) -> Result<Data, toml::de::Error> {
     toml::from_str(text)
 }

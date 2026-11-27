@@ -27,7 +27,7 @@
 //!   When at most one search is still running, every finished search is a part that fell off: it
 //!   becomes a new net, and the net keeps its identity for the rest. So a cut costs about twice the
 //!   smaller part when the net splits and the net's size when it does not; never the project.
-//! - Every op not listed in [`Connectivity::on_op`]'s map changes nothing here.
+//! - Every op not listed in the update map of [`Connectivity`] changes nothing here.
 //! - Per net, the counted wire numbers, fixed numbers and potentials of its conductors are kept
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
 //!   and the highest sequence used per number prefix ([`Connectivity::next_in`]).
