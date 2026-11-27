@@ -105,8 +105,9 @@ impl ProjectHandle {
     }
 
     /// Commit `ops` as one transaction labelled `label`, exactly as an ECAD command's JSON form
-    /// does (validation, undo, refresh of the open pages). For objects no command makes yet: tests
-    /// build cable reference ends with it.
+    /// does (validation, undo, refresh of the open pages). For tests only (the `test-ops` feature):
+    /// they commit ops no command makes with it, such as a cable's reference end on a second page
+    /// or a hostile edit the ledger must refuse.
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`], a refused transaction, or a read-only project.

@@ -11,7 +11,6 @@
 //!   terminal and wire IDs are kept; a wired point that moves takes its wire end with it.
 //! - Not here: the builder's drawing, drafts and the review drawer; "update available" in
 //!   Properties and Devices; the page's selection and every JSON form.
-#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use ecad_model::PointKey;
 use ecad_model::geometry::units::Radians;
@@ -620,14 +619,12 @@ fn superseded(doc: &Document, lineage: DefinitionId, keep: DefinitionId, ops: &[
     let mut leaving: BTreeMap<DefinitionId, usize> = BTreeMap::new();
     let mut comps_leaving: BTreeMap<DefinitionId, usize> = BTreeMap::new();
     for op in ops {
-        match op {
-            Op::ModifyItem { before: Item { kind: ItemKind::Symbol(a), .. }, after: Item { kind: ItemKind::Symbol(b), .. }, .. }
-                if a.definition != b.definition =>
-            {
-                *leaving.entry(a.definition).or_default() += 1;
-            }
-            Op::SetDeviceDefinition { before: Some(d), .. } => *comps_leaving.entry(*d).or_default() += 1,
-            _ => {}
+        if let Op::ModifyItem { before: Item { kind: ItemKind::Symbol(a), .. }, after: Item { kind: ItemKind::Symbol(b), .. }, .. } = op
+            && a.definition != b.definition
+        {
+            *leaving.entry(a.definition).or_default() += 1;
+        } else if let Op::SetDeviceDefinition { before: Some(d), .. } = op {
+            *comps_leaving.entry(*d).or_default() += 1;
         }
     }
     symbols::project::versions_of(doc, lineage)

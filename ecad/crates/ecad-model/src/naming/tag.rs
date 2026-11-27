@@ -601,7 +601,7 @@ pub const PROVISIONAL_HERE: &str = "A provisional tag (-K?3) can only be set on 
 /// A typed tag as written, provisional spelling included (read by [`enter`]).
 ///
 /// # Semantics
-/// Trimmed and in upper case. In the usual form ([`parse`]) it is written by [`format`] with the
+/// Trimmed and in upper case. In the usual form ([`parse`]) it is written by [`fn@format`] with the
 /// project's padding (`k5` → `-K05` with padding 2). Anything else is kept as typed, with `-`
 /// added when it starts with a letter.
 ///

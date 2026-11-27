@@ -7,7 +7,7 @@
 //! - [`marker`]: the shape and screen size of each canvas marker.
 //! - [`wire`]: default wire category colours and the two-colour dash.
 //! - [`sheet_font`]: the embedded sheet font.
-//! - [`line`]: line weights on the page, in mm.
+//! - [`mod@line`]: line weights on the page, in mm.
 //!
 //! This module excludes any drawing, any toolkit type and the screen's own look (shell colours, spacing,
 //! UI type and icons are `ecad-widgets`' tokens). It is plain `const` data and the font bytes.

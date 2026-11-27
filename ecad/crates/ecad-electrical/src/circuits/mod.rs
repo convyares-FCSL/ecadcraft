@@ -9,14 +9,14 @@
 //!   `rating.*`, `load` or `protected_by`, or a readable size when the project has chosen a rating
 //!   table. Anything else makes no rows, so a project that does not rate wires is not nagged.
 //! - Iz comes from one of three bases ([`Basis`]): the datasheet (category or cable type), the
-//!   project's **rating table** (user-supplied, [`dataset`]; ECAD ships no values) or a typed value.
+//!   project's **rating table** (user-supplied, [`crate::devices::ratings::dataset`]; ECAD ships no values) or a typed value.
 //!   Factors are rounded to 2 dp before multiplying; comparisons use the unrounded product.
 //! - In comes from the protective device ([`trace`]), Ib from a [`load::LoadSource`].
 //!
 //! # Update map
-//! [`Kept`] holds every subject's result and three indexes: `protects` (device → subjects),
+//! [`kept::Kept`] holds every subject's result and three indexes: `protects` (device → subjects),
 //! `path` (net → subjects, from the trace) and `users` (wire category / cable type → subjects).
-//! [`Kept::update`] re-evaluates only what an op reaches ([`Touch`]):
+//! [`kept::Kept::update`] re-evaluates only what an op reaches ([`kept::Touch`]):
 //!
 //! | Op | Re-checked |
 //! | --- | --- |
@@ -32,7 +32,7 @@
 //! The calculations are split by side: [`circuit`] works out a subject's Iz,
 //! factors and volt drop (`Circuit`), [`protection`] the device that protects it
 //! (`Protects`); this module keeps the shared words, the update map and the Checks rows. The
-//! project keeps [`Kept`] in a view of its own ([`view::RatingView`]), which the Checks list reads.
+//! project keeps [`kept::Kept`] in a view of its own ([`view::RatingView`]), which the Checks list reads.
 //!
 //! This module reads the document; it changes nothing.
 

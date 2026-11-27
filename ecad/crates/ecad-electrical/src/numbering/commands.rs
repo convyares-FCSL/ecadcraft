@@ -609,7 +609,7 @@ pub struct ScopePick {
 pub enum ScopeParam {
     /// "all", "selection" or "provisional".
     Word(String),
-    /// {prefix}, {folder: id} or {pages: [id]}.
+    /// `{prefix}`, `{folder: id}` or `{pages: [id]}`.
     Pick(ScopePick),
 }
 
@@ -625,7 +625,7 @@ pub struct RenumberParams {
     /// Terminal blocks with scope "selection": the strips (or terminal blocks of them), as hex ids.
     #[serde(default, deserialize_with = "nullable")]
     strips: Option<Option<Vec<String>>>,
-    /// "all", "selection", "provisional", {prefix}, {folder: id} or {pages: [id]}.
+    /// "all", "selection", "provisional", `{prefix}`, `{folder: id}` or `{pages: [id]}`.
     #[serde(default)]
     scope: Option<ScopeParam>,
     /// With scope "selection": the devices, cables or wires, as hex ids.

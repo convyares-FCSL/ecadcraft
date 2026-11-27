@@ -74,9 +74,9 @@ fn a_template_change_redraws_the_rating_line_in_place() {
     let before = drawn(&mut h, page, "7.5 kW, 400 V, 15.2 A, 50 Hz, DOL");
     assert_eq!(before.len(), 1, "the motor's line is drawn once");
     let rebuilt = h.p(|p| p.events.count(EventKind::ProjectionRebuilt));
-    let passes = ecad_electrical::devices::texts::text_passes(page);
+    let passes = ecad_electrical::dev::text_passes(page);
     h.s.execute("setdefault", &json!({"key": "rating.template.motor", "level": "project", "value": "current, power"})).unwrap();
-    assert!(ecad_electrical::devices::texts::text_passes(page) > passes, "the page's texts were worked out again");
+    assert!(ecad_electrical::dev::text_passes(page) > passes, "the page's texts were worked out again");
     assert_eq!(drawn(&mut h, page, "15.2 A, 7.5 kW"), before, "the same text, rewritten");
     assert!(drawn(&mut h, page, "7.5 kW, 400 V, 15.2 A, 50 Hz, DOL").is_empty());
     assert_eq!(drawn(&mut h, page, &lamp_line).len(), 1, "another group's line stays");

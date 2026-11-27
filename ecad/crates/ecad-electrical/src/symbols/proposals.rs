@@ -15,7 +15,6 @@
 //!
 //! Excludes: the prompt itself (the command line and the prompt strip, the engine's click-based forms). This
 //! module reads and plans ops only.
-#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use std::collections::BTreeSet;
 
@@ -310,10 +309,12 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
     let mut reps: BTreeSet<ecad_model::RepresentationId> = BTreeSet::new();
     let mut box_pages: BTreeSet<PageId> = BTreeSet::new();
     for op in ops {
-        let ids = match op {
-            Op::ModifyItem { id, .. } => vec![*id],
-            Op::ModifyRepresentation { after, .. } => after.items.clone(),
-            _ => continue,
+        let ids = if let Op::ModifyItem { id, .. } = op {
+            vec![*id]
+        } else if let Op::ModifyRepresentation { after, .. } = op {
+            after.items.clone()
+        } else {
+            continue;
         };
         for id in ids {
             let Some((rid, r)) = doc.representation_of_item(id) else { continue };
@@ -324,7 +325,11 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
                 ecad_model::Subject::Device(c) if locations::is_device(doc, c) => {
                     reps.insert(rid);
                 }
-                _ => {}
+                ecad_model::Subject::Aid(_)
+                | ecad_model::Subject::Device(_)
+                | ecad_model::Subject::Wire(_)
+                | ecad_model::Subject::Cable(_)
+                | ecad_model::Subject::Route(_) => {}
             }
         }
     }

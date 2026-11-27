@@ -526,7 +526,7 @@ fn set_body(b: &mut ecad_model::objects::styles::StyleBody, key: &str, value: Op
 #[cfg(test)]
 const SCHEMES_FILE: &str = "core_schemes.toml";
 
-/// The data's first problem ([`SCHEMES_FILE`]'s key, value or syntax).
+/// The data's first problem (`core_schemes.toml`'s key, value or syntax).
 pub(crate) fn read_schemes(text: &str) -> Result<BTreeMap<CoreScheme, SchemeData>, toml::de::Error> {
     toml::from_str(text)
 }

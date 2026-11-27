@@ -111,7 +111,7 @@ Developer and test tools are never interlaced with product code.
   `dev` (written `dev = ["dep:<crate>"]`), and that feature is not on by default. `ecad-app` is the one crate
   allowed to have it on by default, for the desktop app's debugger.
 - **Dev features stay in the `dev` module.** In a product crate, the features `dev`, `verify-invariants`,
-  `fault-injection` and `test-ops` are read only in `src/dev.rs` or `src/dev/`, or on an attribute line
+  `fault-injection`, `test-ops` and `test-counts` are read only in `src/dev.rs` or `src/dev/`, or on an attribute line
   directly before a single line that calls into `dev::` or declares `mod dev;`. The engine files whose
   fault-injection and test-ops hooks sit inside the write and access paths they test are listed, with that
   reason.

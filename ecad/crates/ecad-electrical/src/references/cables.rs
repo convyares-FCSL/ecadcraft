@@ -559,7 +559,7 @@ pub enum Touch {
 
 /// Adds to `out` the cables whose references, or whose drawing at a reference end on any page, one
 /// effect could change, looked up in `doc` before the transaction; [`Touch::All`] when it could
-/// reach any cable. The match over [`Effect`] has no wildcard: a new kind of effect does not
+/// reach any cable. The match over [`Effect`](ecad_model::document::effect::Effect) has no wildcard: a new kind of effect does not
 /// compile until it says here which cables it reaches.
 ///
 /// # Semantics

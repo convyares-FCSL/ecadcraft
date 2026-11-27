@@ -114,6 +114,10 @@ test-changed` are enough; nextest is optional.
 `cargo xtask ci` runs the same locally: `lint`, then `cargo test --workspace --all-features --
 --include-ignored`. The fault-injection tests run only with all features, never in normal builds.
 
+`cargo xtask doc` builds the API docs (`cargo doc --workspace --no-deps --document-private-items`) with every
+rustdoc warning an error, so a broken link fails it. Private items are included because most items are
+`pub(crate)`; a public doc may link to one. It is run by hand and is not part of `lint`, `ci` or CI.
+
 ## The load benchmark
 
 `cargo xtask bench` builds synthetic projects, writes them as `.ecad` files and times opening, the first page,

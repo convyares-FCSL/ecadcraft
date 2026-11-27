@@ -23,7 +23,7 @@
 //!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map
-//! [`Strips`] lives inside `crate::reports::kept::ReportModels` and is updated with it from the same
+//! [`strip_model::Strips`] lives inside `crate::reports::kept::ReportModels` and is updated with it from the same
 //! [`crate::reports::Scope`], after the device, wire and cable rows:
 //!
 //! | In scope (from the ops) | Recomputed |
@@ -35,8 +35,8 @@
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
 //! | a strip's `block_label.*`, `terminal_block.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`): a device in scope | that strip |
 //! | project `terminal_block.level.separator` or `terminal_block.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
-//! | project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
-//! | a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
+//! | project `strip_<code>_*` or `terminal_block.<code>.description` | the strips inheriting it: their type part data and accessories only ([`strip_model::Strips::recompute_acc`]) |
+//! | a fuse terminal device created, changed or deleted | the `fuse-device` set ([`strip_model::Strips::note_devices`]) |
 //! | anything else | nothing |
 //!
 //! A full build happens only with the report models: open, reload, first show.

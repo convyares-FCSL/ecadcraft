@@ -1,4 +1,4 @@
-//! The engine half of [`crate::front`]: the cover's blocks drawn as parts in paper millimetres, in
+//! The engine half of [`ecad_electrical::pages::front`]: the cover's blocks drawn as parts in paper millimetres, in
 //! the places [`ecad_electrical::pages::front::layout`] works out.
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Solid};

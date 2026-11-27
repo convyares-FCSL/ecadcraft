@@ -6,7 +6,7 @@
 //! shows it is in the desktop app app.
 //!
 //! # Semantics
-//! - **Coherent and short.** [`ProjectHandle::debug_snapshot`] copies what the panel shows out of
+//! - **Coherent and short.** [`crate::ProjectHandle::debug_snapshot`] copies what the panel shows out of
 //!   the project under one `try_lock` and releases it before anything is drawn. A snapshot is
 //!   labelled with the transaction it shows ([`DebugSnapshot::label`]). It is rebuilt only when
 //!   its [`SnapshotKey`] changes (head, saved position, runtime events, active page, selection), so
@@ -18,10 +18,10 @@
 //!   only in memory (pending), written but not yet confirmed durable, or saved durably
 //!   ([`RecordState`]).
 //! - **Expensive checks only on request.** A snapshot never replays the log, reprojects a page or
-//!   reads the file. [`verify_replay`], [`verify_projection`] (inputs from
-//!   [`ProjectHandle::debug_projection_inputs`]) and [`verify_store`] do, when asked, on copies and
-//!   outside the lock. [`read_row`] reads one transaction's stored record, capped.
-//! - **History never touches the live project.** [`state_at`] rebuilds the document after
+//!   reads the file. [`super::checks::verify_replay`], [`super::checks::verify_projection`] (inputs from
+//!   [`crate::ProjectHandle::debug_projection_inputs`]) and [`super::checks::verify_store`] do, when asked, on copies and
+//!   outside the lock. [`super::checks::read_row`] reads one transaction's stored record, capped.
+//! - **History never touches the live project.** [`super::checks::state_at`] rebuilds the document after
 //!   transaction `n` from the panel's copy of the log.
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
@@ -44,7 +44,7 @@ use crate::project::{Mapped, Persistence, Project};
 pub(crate) const MAX_SELECTION: usize = 500;
 /// Runtime events carried by a snapshot (the most recent).
 pub(crate) const MAX_EVENTS: usize = 500;
-/// Record bytes shown by [`read_row`]; longer records are checked in full but shown cut.
+/// Record bytes shown by [`super::checks::read_row`]; longer records are checked in full but shown cut.
 pub(crate) const MAX_RECORD_SHOWN: usize = 16 * 1024;
 
 /// Any ECAD object, for following IDs across the model and the history.
@@ -483,7 +483,7 @@ impl Project {
         }
     }
 
-    /// Copies for [`verify_projection`].
+    /// Copies for [`super::checks::verify_projection`].
     pub(crate) fn projection_inputs(&self, pg: &PagesRef<'_>) -> ProjectionInputs {
         let pages = self
             .pages

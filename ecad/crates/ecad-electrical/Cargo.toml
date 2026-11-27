@@ -25,6 +25,11 @@ toml = { version = "1.1.8", default-features = false, features = ["std", "parse"
 # Revision dates (calendar only; no clock: the time is passed in).
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
+[features]
+# Test counters (`dev`): how often a page's texts were worked out. Enabled only by the engine's
+# dev-dependencies; never in a release or the desktop app.
+test-counts = []
+
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode).
 ecad-model = { workspace = true, features = ["verify-invariants"] }

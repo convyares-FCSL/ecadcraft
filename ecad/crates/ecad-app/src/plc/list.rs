@@ -15,7 +15,7 @@
 //! The rack heading line, the tiles' kind words, the
 //! card header with the PLC chip, **Compare**, **Export tags** and **→ Page**, the signal columns
 //! `Ch, Address, Tag, Description, Type, Safe, Drives, Page, PLC, Test`, free channels folded
-//! after the first of a run, and Import tags with its preview ([`crate::workspace::plc_compare`]). Each row
+//! after the first of a run, and Import tags with its preview. Each row
 //! carries its sync state from the kept index (`Plc::sync`); the same update map patches it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};

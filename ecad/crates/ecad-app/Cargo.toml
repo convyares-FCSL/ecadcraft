@@ -34,6 +34,8 @@ serde = { workspace = true }
 cadcraft-mcp = { path = "../../../crates/mcp" }
 egui = { version = "0.37", default-features = false }
 log = "0.4"
+# The default host's UTC times (house rule: time goes through chrono); no clock of its own.
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode).

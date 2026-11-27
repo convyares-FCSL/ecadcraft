@@ -4,7 +4,7 @@
 //! **Add a core**, **Remove**). Each box commits on Enter or focus loss as one `cableedit`; Esc
 //! restores; a refusal shows the box invalid with the words under it, and nothing is written.
 //!
-//! **Update map.** The copy ([`Copy`]) is read with the cable copy's colours, when the selection
+//! **Update map.** The copy ([`struct@Copy`]) is read with the cable copy's colours, when the selection
 //! or the project's change count changed ([`crate::cables::list::CablesView::sync_colours`]); never per
 //! frame.
 

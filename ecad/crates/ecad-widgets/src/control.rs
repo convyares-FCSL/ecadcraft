@@ -14,7 +14,7 @@
 //!   the box with its value, unit, colour swatch and the hint that says where it comes from.
 //! - [`read_text`]: a value read from the drawing, plain. [`crate::prim::read_value`] is the same
 //!   with a go-to.
-//! - [`jumper_bar`]: a go-to that names its target (`→ 2/C1`).
+//! - [`link`]: a go-to that names its target (`→ 2/C1`).
 //! - [`crate::panel::status_pill`], [`crate::panel::section_header`], and [`crate::prim::Button`]
 //!   (primary, secondary, quiet, danger) complete the set.
 //!

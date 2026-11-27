@@ -583,7 +583,7 @@ impl DevicesPanel {
 
     /// The selected device's six properties, each a text entry (`ecad_widgets::control::TextEntry`); Enter or
     /// leaving a changed field runs `setprop`, Esc puts it back. `caption` heads it with a rule and
-    /// "DEVICE <tag>" (beside the table); the Project panel's section header names it instead.
+    /// "DEVICE `<tag>`" (beside the table); the Project panel's section header names it instead.
     fn editor(&mut self, ui: &mut egui::Ui, c: DeviceId, writable: bool, caption: bool, out: &mut Vec<Action>) {
         let Some(e) = self.list.entries.iter().find(|e| e.id == c).cloned() else {
             self.selected = None;

@@ -12,6 +12,7 @@
 //! - [`continuations`]: continuation arrows and where their other ends are.
 //! - [`defaults`]: the defaults registry, one entry per project default and its levels.
 //! - [`devices`]: devices and tags, device kinds, ratings, the device list and placing.
+//! - `dev` (the `test-counts` feature only): counters the engine's update-map tests read.
 //! - [`error`]: the crate's error type and the refusals said in more than one place.
 //! - [`fields`]: the grammars of text typed into a field, each refusing with a named error (a
 //!   command's JSON parameters are read in [`commands::input`]).
@@ -45,6 +46,8 @@ pub mod commands;
 pub mod connectors;
 pub mod continuations;
 pub mod defaults;
+#[cfg(feature = "test-counts")]
+pub mod dev;
 pub mod devices;
 pub(crate) mod error;
 pub mod fields;

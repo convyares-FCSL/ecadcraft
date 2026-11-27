@@ -88,9 +88,23 @@ pub fn wire_colours(colours: &Colours, sheet: &ecad_model::palette::Sheet) -> Op
 
 /// The colour `c` is drawn in on `sheet`.
 pub fn drawn(c: ConductorColour, sheet: &ecad_model::palette::Sheet) -> ecad_model::palette::Color {
-    let dark = sheet.sheet == ecad_model::palette::sheet::DARK.sheet;
-    let (_, paper, on_dark) = CODE_COLOURS[c as usize];
-    if dark { on_dark } else { paper }
+    code_drawn(c as usize, sheet).unwrap_or(sheet.ink)
+}
+
+/// The colour the conductor colour at `index` in [`CODE_COLOURS`] is drawn in on `sheet`: its
+/// on-dark shade on the dark sheet ([`ecad_model::palette::Sheet::dark`]), its paper shade
+/// otherwise. `None` past the table.
+///
+/// # Example
+/// ```
+/// use ecad_electrical::cables::words::{code_drawn, CODE_COLOURS};
+/// use ecad_model::palette::sheet::{DARK, PAPER};
+/// assert_eq!(code_drawn(1, &PAPER), Some(CODE_COLOURS[1].1));
+/// assert_eq!(code_drawn(1, &DARK), Some(CODE_COLOURS[1].2));
+/// assert_eq!(code_drawn(99, &DARK), None);
+/// ```
+pub fn code_drawn(index: usize, sheet: &ecad_model::palette::Sheet) -> Option<ecad_model::palette::Color> {
+    CODE_COLOURS.get(index).map(|(_, paper, on_dark)| if sheet.dark { *on_dark } else { *paper })
 }
 
 /// The colour code a conductor's route is drawn in: its wire

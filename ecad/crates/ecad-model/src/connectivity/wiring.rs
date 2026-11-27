@@ -1,7 +1,7 @@
 //! Wire numbers, potentials and conductor label texts.
 //!
 //! The net carries the wire number; it is stored on every conductor of the net as the conductor
-//! property [`WIRE_NUMBER`] (wire numbers are stable labels people mark on real
+//! property [`WIRE_NUMBER`](super::WIRE_NUMBER) (wire numbers are stable labels people mark on real
 //! wires, so they are user data, not derived state). The **numbering pass** ([`assign`]) runs
 //! inside every ECAD commit, after the command's own ops, on the nets the transaction touched only,
 //! and returns `SetProperty` ops for the same transaction. It never runs on undo, redo, replay or
