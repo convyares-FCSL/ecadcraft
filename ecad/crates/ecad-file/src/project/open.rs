@@ -59,8 +59,8 @@ struct Facts {
 }
 
 /// `older format version (file 1, this build 2)` / `newer ...`, when `file` is not the build's
-/// [`SCHEMA_VERSION`]. Such a file is opened read-only whatever replay found, and never called
-/// damaged: its records may mean something else here.
+/// [`SCHEMA_VERSION`]. Such a file is opened read-only when it reads to its head, and refused when it does not:
+/// its records may mean something else here.
 pub(crate) fn format_note(file: u64) -> Option<String> {
     match file.cmp(&SCHEMA_VERSION) {
         std::cmp::Ordering::Equal => None,
@@ -293,11 +293,13 @@ impl Project {
     /// Open the project in `store` on the branch it was last shown on
     /// (`meta.active`), or `main` when that is absent, unknown or not open. `seed` seeds IDs
     /// allocated after opening. Damage found while loading opens read-only, at the last state that
-    /// verifies, with a report; so does a `meta.active` that does not read (on `main`).
+    /// verifies, with a report; so does a `meta.active` that does not read (on `main`). A file of another format
+    /// version opens read-only only when it reads to its head.
     ///
     /// # Errors
-    /// [`OpenError`] when the container facts or the branch row are unusable, or when a damaged page stopped the
-    /// storage engine ([`crate::StoreError::Halted`]).
+    /// [`OpenError`] when the container facts or the branch row are unusable, when a damaged page stopped the
+    /// storage engine ([`crate::StoreError::Halted`]), or when a file of another format version does not read to
+    /// its head.
     pub fn open(store: Store, seed: u64, writer: &str) -> Result<Opened, OpenError> {
         let store = Arc::new(store);
         // A damaged page that stopped the storage engine refuses the file, in the engine's words, whatever
@@ -328,6 +330,16 @@ impl Project {
             },
         };
         l.report.schema_version = facts.schema_version;
+        // A file of another format that this build cannot read to its head is refused: what it shows would be a
+        // part of the project presented as all of it, and a copy of it would keep only that part.
+        if let Some(n) = &note
+            && l.report.verified_seq < l.report.head
+        {
+            return Err(OpenError::Unsupported(format!(
+                "{n}: only {} of its {} transactions could be read by this build. It is kept as it is; open it with a build that reads its format",
+                l.report.verified_seq, l.report.head
+            )));
+        }
         if let Some(detail) = facts.active_damage
             && l.damage.is_none()
         {

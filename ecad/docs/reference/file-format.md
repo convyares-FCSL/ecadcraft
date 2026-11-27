@@ -18,7 +18,7 @@ A file records four numbers. Each is independent of the others and of the produc
 | --- | --- | --- | --- |
 | Container version | `meta.container_version` | `2` (`ecad_file::schema::CONTAINER_VERSION`) | refused: the file does not open |
 | Codec | `meta.codec` | `"json/1"` (`ecad_file::schema::CODEC`) | refused |
-| Record version | `meta.schema_version` | `4` (`ecad_file::SCHEMA_VERSION`, in `ecad-file/src/record.rs`) | opens read-only, named "older format version (file 3, this build 4)" or "newer…"; never reported as damage |
+| Record version | `meta.schema_version` | `4` (`ecad_file::SCHEMA_VERSION`, in `ecad-file/src/record.rs`) | opens read-only, named "older format version (file 3, this build 4)" or "newer…", when it reads to its head; refused otherwise, saying how many transactions could be read ("only 4 of its 18 transactions could be read") |
 | Op version | `v` in every op | `1` (`ecad_file::records::OP_VERSION`) | the record is refused (`OpVersion`) |
 
 The **record version** says what record contents mean. Every change to the format bumps it: a record's fields
@@ -34,7 +34,10 @@ far:
 | 4 | Device data: a potential's supply, a motor's rated voltage and the new rating fields. |
 
 There are no upcasts and no converters: a build reads the record version it writes, and opens other versions
-read-only.
+read-only when it can read them to their head. A file of another version that this build cannot read to its head
+is refused rather than shown in part: the part would look like the whole project, and a copy of it would keep only
+that part. Damage in a file of another version is reported with its version, never hidden by it, and such a file
+gets no Save As advice.
 
 ## The container
 
@@ -406,7 +409,7 @@ Open reads only what it needs:
 
 1. `meta`, checked: `format` must be `ecad-project`, `container_version` 2, `codec` `json/1`, and a
    `schema_version` must be present. A failure here refuses the file. A record version other than this build's
-   opens read-only.
+   opens read-only, or is refused when replay does not reach the head.
 2. The active branch's `branches` row and its head transaction (it must be the last row, with the head's chain
    value).
 3. The branch's latest snapshot at or before its head: the whole chunk set, each chunk checked against its hash.

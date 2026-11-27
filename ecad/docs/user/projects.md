@@ -59,7 +59,7 @@ A project opens read-only, with the reason, when:
   reported as another session;
 - the file itself cannot be written (a read-only file, or one you may not change);
 - the file is damaged: it is kept exactly as it is;
-- it is of **another format version** than this build's (older or newer);
+- it is of **another format version** than this build's (older or newer), and this build can read all of it;
 - it holds words this build does not know (for example a kind of object that no longer exists);
   the message names the word, the setting and where it is.
 
@@ -68,6 +68,9 @@ keeps your work in a new file and leaves the original untouched.
 
 A project does not open at all, and the file is kept as it is, when:
 
+- it is of another format version and this build cannot read all of it. The message says how much it could read,
+  for example "older format version (file 1, this build 4): only 4 of its 18 transactions could be read by this
+  build". Open it with a build that reads its format;
 - the file is damaged below the project's records (for example a lost disk sector), so that it "cannot be read".
   If this happens after a project opened (going back to an earlier state, undo past what was loaded, switching
   branch, Verify), ECAD says so and keeps running with what is on screen, but that file can no longer be read or
@@ -76,7 +79,8 @@ A project does not open at all, and the file is kept as it is, when:
 ## Older and newer files
 
 The `.ecad` format is a development format: before version 1.0 ECAD does not convert files from
-other format versions. Such a file opens read-only. Locations and functions from projects made
+other format versions. Such a file opens read-only, or does not open when this build cannot read all of it
+(see above). Locations and functions from projects made
 before they became a project list show `?`; see [Locations](locations.md).
 Details of the format: [File format](../reference/file-format.md).
 

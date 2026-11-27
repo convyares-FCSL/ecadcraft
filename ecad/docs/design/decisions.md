@@ -142,7 +142,8 @@ As in [`layout.md`](layout.md), and:
   of kind `auto`, never a name prefix. Every named point gets a snapshot in the save that writes it. A snapshot
   records at most 1,024 entries of each undo and redo stack.
 - **No compatibility before v1.** Any format change bumps `SCHEMA_VERSION`; the golden file pins it. An older or
-  newer file opens read-only with "older format version" or "newer …". An unknown `meta` name, field or word opens
+  newer file opens read-only with "older format version" or "newer …" when this build reads it to its head, and is
+  refused, saying how many transactions could be read, when it does not. An unknown `meta` name, field or word opens
   the project read-only, names it, and leaves the file as it is. Transactions, ops and records refuse unknown
   fields.
 - A writer holds an operating-system lock on `<file>.lock`; another opener is read-only. A crash never locks a

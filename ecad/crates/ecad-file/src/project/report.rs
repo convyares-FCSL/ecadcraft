@@ -91,16 +91,25 @@ impl Report {
         if self.repaired {
             s.push_str(" The file was not closed cleanly last time and was recovered to its last save.");
         }
-        if let Some(n) = format_note(self.schema_version) {
-            s.push_str(&format!(" Opened read-only: {n}; it is kept exactly as it is. Use Save As to keep a copy."));
-        } else if let Some(d) = &self.damage {
+        // Both facts are said: the format note never hides damage. A file of another format gets no Save As advice
+        // once it is damaged too.
+        let note = format_note(self.schema_version);
+        if let Some(n) = &note {
+            s.push_str(&format!(" Opened read-only: {n}; it is kept exactly as it is."));
+            if self.damage.is_none() {
+                s.push_str(" Use Save As to keep a copy.");
+            }
+        }
+        if let Some(d) = &self.damage {
             s.push_str(&format!(
-                " Opened read-only: {}{}. {} of {} transactions verified; use Save As to keep them.",
+                " {}: {}{}. {} of {} transactions verified",
+                if note.is_some() { "It is also damaged" } else { "Opened read-only" },
                 d.seq.map_or(String::new(), |q| format!("at transaction {q}, ")),
                 d.detail,
                 self.verified_seq,
                 self.head
             ));
+            s.push_str(if note.is_some() { "." } else { "; use Save As to keep them." });
         }
         s
     }
