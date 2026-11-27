@@ -64,11 +64,12 @@ pub fn instructions(writes: bool, agent: &str, live: bool) -> String {
 pub fn execute_description(writes: bool) -> String {
     let mode = if writes { "Writes are on." } else { "Writes are off: only read-only commands run." };
     format!(
-        "Run one command with JSON parameters (never prompts). ECAD commands (list_commands shows ids and parameter \
-         docs) change the project exactly as for a person: the same checks and refusals, and each change is one \
-         transaction authored by this agent and one step of `u` (undo) / `redo`. Read-only commands: ecadinspect, \
-         entities, texts, shapes, usage, loops, drawing.inspect, getvar, openpage, document.switch, cablereferences, \
-         cablegoto. File and document commands (open, new, close, saveas, export, ...) are refused; save with the `save` tool. At most \
+        "Run one command with JSON parameters (never prompts). Agents run ECAD's commands and a short list of drawing \
+         commands (line, move, erase, u, ...); list_commands shows them with their parameter docs, each marked read or \
+         write. They change the project exactly as for a person: the same checks and refusals, and each change is one \
+         transaction authored by this agent and one step of `u` (undo) / `redo`. Read-only commands (ecadinspect, \
+         entities, texts, openpage, nets, ...) run with writes off. Every other command is refused, and so are file \
+         and document commands (open, new, close, saveas, export, lisp, ...); save with the `save` tool. At most \
          {MAX_TRANSACTIONS_PER_CALL} transaction per call. {mode} Examples: wire {{points:[[0,0],[60,0]]}}, \
          cableslash {{from:[28,-3], to:[32,18]}}, cableview {{cable:\"<id>\", view:\"fan\"}}, u {{}}."
     )

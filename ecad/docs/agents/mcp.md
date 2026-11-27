@@ -77,18 +77,28 @@ file commands and several commands per call. Asking for one gives "unknown tool 
 `ecad_engine::agent::policy` decides what `execute` may run; `ecad_engine::agent::gate` runs it. The same code
 serves headless and live, so the same project state gives the same reply text in both.
 
+- **An allowlist:** an agent runs ECAD's own commands and a short, reviewed list of CADCraft drawing commands
+  (`ecad_engine::agent::upstream`), each marked read or write. Every other command is refused in every mode
+  (`Refused: <COMMAND> is not available to agents. …`). The CADCraft commands offered:
+  - read: `entities`, `texts`, `shapes`, `usage`, `loops`, `drawing.inspect`, `getvar`, `document.switch`;
+  - write: `line`, `pline`, `circle`, `arc`, `rectang`, `text`, `mtext`, `textedit`, `move`, `copy`, `rotate`,
+    `mirror`, `scale`, `stretch`, `erase`, `oops`, `explode`, `join`, `trim`, `extend`, `-array`, `u`, `undo`,
+    `redo`, `mredo`.
+  A test fails when an upstream sync adds a command nobody has classified (offered, never, or not offered).
+- **Never** (`NEVER_COMMANDS`): opening, creating, closing and saving under another name, import, export, plot,
+  publish, scripts, LISP and APPLOAD, AUDIT, SETVAR, external references, inserting blocks, images, hatch patterns
+  and line types from files, block libraries, and `agentaccess` (an agent never turns its own access on, widens it
+  or moves the port). Every command CADCraft lists as touching files (`file_access::commands`) is here.
 - **Writes off** (no `--write`, or the project opened read-only): only commands that record nothing run. A
-  generic command says so in its declaration (`Access`); session commands that only read are listed
-  (`READ_COMMANDS`: `openpage`, `cablegoto`, `refgoto`, `history`, `branches`, `printbook`, `prerelease`, …).
-  Some commands only read in one form: `projectprops {}`, `pageprops {page}`, `numbering {}`, `textstyle {}`,
-  `merge`/`renumber`/`finalise` with `preview: true`, `release {rev}` for an issued revision.
-- **Writes on:** every command runs exactly as for a person, and ECAD refuses or records it, except the commands
-  in `NEVER_COMMANDS`: opening, creating, closing and saving under another name, import, export, plot, publish,
-  scripts, AUDIT, external references, and `agentaccess` (an agent never turns its own access on, widens it or
-  moves the port).
-- **Files:** a parameter that names a file (`path`, `file`, `patternFile`, `template`, `folder`, `output`, or a
-  file key a command declares) is refused in every mode, except where the name is not a file (a page folder,
-  ARRAYPATH's path). `printbook` returns its PDF as base64 data instead.
+  generic command says so in its declaration (`Access`); ECAD session commands that only read are listed
+  (`READ_COMMANDS`: `openpage`, `cablegoto`, `refgoto`, `history`, `branches`, `printbook`, `prerelease`, …), and
+  the CADCraft ones are marked read. Some commands only read in one form: `projectprops {}`, `pageprops {page}`,
+  `numbering {}`, `textstyle {}`, `merge`/`renumber`/`finalise` with `preview: true`, `release {rev}` for an
+  issued revision.
+- **Writes on:** an offered command runs exactly as for a person, and ECAD refuses or records it.
+- **Files:** behind the allowlist, a parameter that names a file (`path`, `file`, `patternFile`, `template`,
+  `folder`, `output`, or a file key a command declares) is refused in every mode, except where the name is not a
+  file (a page folder). `printbook` returns its PDF as base64 data instead.
 - **One step per call:** one `execute` runs one command, which records at most one transaction. A request line
   (a JSON-RPC batch counts as one line) may record at most one; a call that records more is taken back and
   refused. `undo`, `redo` and `mredo` go one step per call (no count above 1, no `undo` back mode, no `mredo`
@@ -115,6 +125,7 @@ Every refusal says what happened and that nothing changed, in words an agent can
 | A change without `--write` | `Refused: this ECAD MCP server is read-only (started without --write). Nothing was changed. Restart it with --write to let the agent edit and save the project.` |
 | A change to a project that opened read-only | `Refused: the project opened read-only (<why>). Nothing was changed.` |
 | A command agents never run | `Refused: <COMMAND> is not available to agents. Opening, creating, closing and saving projects under another name, and reading or writing other files, stay with the person who started the server; …` |
+| A command not offered to agents | `Refused: <COMMAND> is not available to agents. Agents run ECAD's commands and a short list of drawing commands; list_commands shows them, each marked read or write. Nothing was changed.` |
 | `agentaccess` | `Refused: Agent access is set by the person in the ECAD window. Nothing was changed.` |
 | A file parameter | ``Refused: `<key>` names a file; agents cannot read or write files through <COMMAND> …`` |
 | Several undo steps | `Refused: UNDO takes one step per call here …` |

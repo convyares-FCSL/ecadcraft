@@ -3,7 +3,9 @@
 //! The headless server (`ecad-mcp`) and the ECAD window's live bridge (the desktop app) both use it, on
 //! whatever session and project they pass, so the same project state gives the same reply.
 //!
-//! - [`policy`]: which commands run with writes off or on, and the refusals.
+//! - [`policy`]: the allowlist of commands an agent may run, which run with writes off or on, and
+//!   the refusals.
+//! - [`upstream`]: the reviewed CADCraft drawing commands offered to agents.
 //! - [`gate`]: one `execute` call through the policy, its transaction cap and roll-back, and the
 //!   agent as the author.
 //! - [`tools`]: the ECAD tools (`ecad_project`, `ecad_history`, `ecad_inspect`, `save`).
@@ -18,6 +20,7 @@ pub mod bridge;
 pub mod gate;
 pub mod policy;
 pub mod tools;
+pub(crate) mod upstream;
 
 /// Longest request line, in bytes; a longer line is answered with an Invalid Request error and
 /// skipped without being kept in memory.

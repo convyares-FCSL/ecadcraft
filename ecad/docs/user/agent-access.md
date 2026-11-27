@@ -12,9 +12,11 @@ to set up the server, its tools and the protocol are in [../agents/mcp.md](../ag
   command that only reads (lists, reports, checks, a printed book returned as data).
 - **Change**, only when writes are on: one command per call, as you would type it. Each change is
   one step in the history by `agent <name>` and one step of undo.
-- **Never**: open, create, close or Save As a project, read or write other files, use your mouse,
-  keyboard or command line, or change agent access itself. A parameter that names a file is
-  refused.
+- **Only ECAD's commands and a few drawing commands** (line, text, move, copy, erase, undo and
+  similar). Other CADCraft commands, such as layers, dimensions, hatching and 3D, are refused.
+- **Never**: open, create, close or Save As a project, read or write other files, run LISP or
+  scripts, use your mouse, keyboard or command line, or change agent access itself. A parameter that
+  names a file is refused.
 
 An agent's `u` and redo take back only its own steps. One agent changes the project at a time;
 others can read.

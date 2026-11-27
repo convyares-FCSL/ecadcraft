@@ -67,18 +67,21 @@ fn a_table_the_user_placed_stays_and_is_a_check() {
     assert!(which.starts_with("The contact table of ") && which.contains("overlaps the title block on page"), "{which}");
 }
 
+/// TABLE is not offered to agents; a person typing it on an ECAD page is refused in clean words.
 #[test]
 fn table_is_refused_on_an_ecad_page_in_clean_words() {
-    let mut c = writer(WRITER_SEED);
-    let before = c.log();
-    let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "cols": 2}}));
+    for mut c in [writer(WRITER_SEED), reader()] {
+        let before = c.log();
+        let m = c.refused("execute", json!({"command": "table", "params": {"at": [100, 100], "rows": 2, "cols": 2}}));
+        assert_eq!(m, policy::not_offered("table"));
+        assert_eq!(c.log(), before, "nothing recorded");
+    }
+    ecad_engine::install();
+    let mut s = cadcraft_engine::Session::empty();
+    ecad_engine::Project::create_with(&mut s, "table", WRITER_SEED, ecad_engine::Persistence::File).unwrap();
+    let m = s.execute("table", &json!({"at": [100, 100], "rows": 2, "cols": 2})).unwrap_err().to_string();
     assert!(m.contains(ecad_engine::convert::TABLE_REFUSED), "{m}");
     assert!(!m.contains("kinds"), "{m}");
-    assert_eq!(c.log(), before, "nothing recorded");
-    // With writes off it is refused as every write is.
-    let mut r = reader();
-    let m = r.refused("execute", json!({"command": "table", "params": {}}));
-    assert!(m == policy::WRITES_OFF || m.contains(ecad_engine::convert::TABLE_REFUSED), "{m}");
 }
 
 #[test]

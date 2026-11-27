@@ -453,7 +453,8 @@ fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
         let ui = d.s.execute(cmd, &json!({})).expect_err("refused for a person").to_string();
         let typed = d.s.cmdline(cmd).expect_err("refused when typed").to_string();
         let m = c.refused("execute", json!({"command": cmd, "params": {}}));
-        assert_eq!(m, ui, "{cmd}: the agent gets the person's refusal");
+        let gate = if policy::NEVER_COMMANDS.contains(cmd) { policy::never(cmd) } else { policy::not_offered(cmd) };
+        assert_eq!(m, gate, "{cmd}: the gate refuses it before it runs for an agent");
         assert_eq!(typed, ui, "{cmd}: typed and JSON refusals are the same for a person");
         // Where ECAD's owner is the one refusing (the commands that start on a page), its reason
         // is given; BSAVE, BSAVEAS, BCLOSE, REFSET and REFCLOSE are refused earlier by CADCraft
@@ -464,13 +465,13 @@ fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
             _ => None,
         };
         if let Some(reason) = reason {
-            assert!(m.contains(&reason), "{cmd}: {m}");
+            assert!(ui.contains(&reason), "{cmd}: {ui}");
         }
         assert_eq!(c.log(), before, "{cmd} recorded nothing");
     }
     // Upper case or not, the same command.
     let m = c.refused("execute", json!({"command": "BEDIT", "params": {}}));
-    assert!(m.contains("BEDIT is not available on ECAD pages"), "{m}");
+    assert_eq!(m, policy::not_offered("bedit"));
 
     // A raw drawing command still goes through ECAD's commit gate: one transaction, the agent's.
     let r = c.exec("line", json!({"points": [[0, 0], [10, 0]]}));
