@@ -79,19 +79,64 @@ pub const OK: &str = "ok";
 pub(crate) const PROVISIONAL: &str = "provisional";
 pub const CHECK: &str = "check";
 
+/// What a Wires tab column shows.
+#[derive(Debug, Clone, Copy)]
+enum Shows {
+    /// The wire report's column, as the report gives it.
+    Report(WireColumn),
+    /// The wire report's column, marked when the number is provisional.
+    Marked(WireColumn),
+    /// Not built yet: a dash.
+    Placeholder(&'static str),
+    /// The row's status.
+    Status,
+}
+
+impl Shows {
+    /// The column's title: a wire report column's header, or the tab's own.
+    fn title(self) -> &'static str {
+        match self {
+            Shows::Report(c) | Shows::Marked(c) => c.header(),
+            Shows::Placeholder(t) => t,
+            Shows::Status => "Status",
+        }
+    }
+
+    /// Where its cells come from.
+    fn from(self) -> From {
+        match self {
+            Shows::Report(c) => From::Header(c.header()),
+            Shows::Placeholder(_) => From::Placeholder,
+            Shows::Marked(_) | Shows::Status => From::Derived,
+        }
+    }
+}
+
+/// The Wires tab's columns, in order: each one's id, what it shows, its width and whether it sorts.
+const SHOWN: [(ColumnId, Shows, Width, bool); 10] = [
+    (WIRE, Shows::Marked(WireColumn::WireNumber), Width::Initial(120.0), true),
+    (FROM, Shows::Report(WireColumn::From), Width::Initial(330.0), true),
+    (TO, Shows::Report(WireColumn::To), Width::Initial(330.0), true),
+    (COLOUR, Shows::Report(WireColumn::Colour), Width::Initial(110.0), true),
+    (SIZE, Shows::Report(WireColumn::CrossSection), Width::Initial(110.0), true),
+    (CATEGORY, Shows::Report(WireColumn::Category), Width::Initial(110.0), true),
+    (FERRULES, Shows::Placeholder("Ferrules"), Width::Initial(140.0), false),
+    (LENGTH, Shows::Placeholder("Length"), Width::Initial(76.0), false),
+    (PAGE, Shows::Report(WireColumn::Page), Width::Initial(76.0), true),
+    (STATUS, Shows::Status, Width::Remainder, true),
+];
+
+/// The columns the grouping reads, not shown.
+const HIDDEN: [(ColumnId, Shows); 2] = [(POTENTIAL, Shows::Report(WireColumn::Potential)), (CABLE, Shows::Report(WireColumn::Cable))];
+
 pub fn columns() -> Vec<Column> {
-    vec![
-        Column::read(WIRE.0, "Wire", Width::Initial(110.0)),
-        Column::read(FROM.0, "From", Width::Initial(330.0)),
-        Column::read(TO.0, "To", Width::Initial(330.0)),
-        Column::read(COLOUR.0, "Colour", Width::Initial(110.0)),
-        Column::read(SIZE.0, "Size", Width::Initial(90.0)),
-        Column::read(CATEGORY.0, "Category", Width::Initial(110.0)),
-        Column::read(FERRULES.0, "Ferrules", Width::Initial(140.0)).unsorted(),
-        Column::read(LENGTH.0, "Length", Width::Initial(76.0)).unsorted(),
-        Column::read(PAGE.0, "Page", Width::Initial(76.0)),
-        Column::read(STATUS.0, "Status", Width::Remainder),
-    ]
+    SHOWN
+        .iter()
+        .map(|(id, shows, width, sorted)| {
+            let c = Column::read(id.0, shows.title(), *width);
+            if *sorted { c } else { c.unsorted() }
+        })
+        .collect()
 }
 
 /// The wire report as a table source.
@@ -129,19 +174,8 @@ impl ReportColumns for WiresSource {
         &self.rows
     }
     fn from(&self, col: ColumnId) -> From {
-        match col {
-            WIRE => From::Derived,
-            FROM => From::Header(WireColumn::From.header()),
-            TO => From::Header(WireColumn::To.header()),
-            COLOUR => From::Header(WireColumn::Colour.header()),
-            SIZE => From::Header(WireColumn::CrossSection.header()),
-            CATEGORY => From::Header(WireColumn::Category.header()),
-            PAGE => From::Header(WireColumn::Page.header()),
-            POTENTIAL => From::Header(WireColumn::Potential.header()),
-            CABLE => From::Header(WireColumn::Cable.header()),
-            FERRULES | LENGTH => From::Placeholder,
-            _ => From::Derived,
-        }
+        let shows = SHOWN.iter().map(|(id, shows, ..)| (*id, *shows)).chain(HIDDEN).find(|(id, _)| *id == col);
+        shows.map_or(From::Derived, |(_, shows)| shows.from())
     }
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         match col {
