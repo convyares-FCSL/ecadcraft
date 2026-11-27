@@ -7,9 +7,14 @@
 //! `branches`, `versions` and `meta` rows (only the names `meta` allows). No code path updates or
 //! deletes a `transactions` row. Every write of one save happens in one redb write transaction
 //! with quick-repair on, committed durably before [`Writer::commit`] returns.
+//!
+//! Every read and write runs under the database's halt flag ([`ecad_store::Halt`]): a damaged page that makes
+//! redb panic is [`StoreError::Halted`], and the database is halted, so every later call returns that error
+//! without reading the file again.
 
 use std::ops::RangeInclusive;
 
+use ecad_store::Halt;
 use ecad_store::db::{Database, DbError};
 use redb::{ReadTransaction, ReadableTable, ReadableTableMetadata, StorageBackend, TableDefinition, TableHandle, WriteTransaction};
 
@@ -35,6 +40,10 @@ pub enum StoreError {
     /// A stored value that does not decode.
     #[error("damaged: {0}")]
     Damaged(String),
+    /// A damaged page stopped the storage engine (redb panicked on it), now or earlier through this database. The
+    /// database is halted: nothing more is read or written through it.
+    #[error("the file is damaged and cannot be read: {0}")]
+    Halted(String),
     /// An earlier write failed and the engine refuses this handle until it is reopened (done
     /// once, automatically).
     #[error("an earlier write to the file failed; the file was reopened")]
@@ -71,7 +80,14 @@ impl From<DbError> for StoreError {
             e @ DbError::Exists(_) => StoreError::Refused(e.to_string()),
             DbError::PreviousIo => StoreError::PreviousIo,
             DbError::ReadOnly => StoreError::ReadOnly,
+            DbError::Halted(e) => StoreError::Halted(e),
         }
+    }
+}
+
+impl From<ecad_store::Halted> for StoreError {
+    fn from(h: ecad_store::Halted) -> Self {
+        StoreError::Halted(h.0)
     }
 }
 
@@ -112,6 +128,14 @@ impl Store {
         Ok(me)
     }
 
+    /// Open a project database over `backend` read-only; see [`Database::with_backend_read_only`].
+    ///
+    /// # Errors
+    /// As [`Store::open`].
+    pub fn with_backend_read_only<B: StorageBackend>(backend: B) -> Result<Self, StoreError> {
+        Ok(Self { db: Database::with_backend_read_only(backend)? })
+    }
+
     /// Open a project database from its bytes, held in memory; see
     /// [`Database::from_bytes`].
     ///
@@ -148,12 +172,17 @@ impl Store {
         self.db.repaired()
     }
 
+    /// The error every call returns once a damaged page stopped the storage engine ([`StoreError::Halted`]).
+    pub fn halted(&self) -> Option<StoreError> {
+        self.db.halt().halted().map(|m| StoreError::Halted(m.to_string()))
+    }
+
     /// A consistent read view.
     ///
     /// # Errors
     /// The engine could not start a read.
     pub fn reader(&self) -> Result<Reader, StoreError> {
-        Ok(Reader { txn: self.db.read()? })
+        Ok(Reader { txn: Some(self.db.read()?), halt: self.db.halt().clone() })
     }
 
     /// Start a save: one redb write transaction, with quick-repair.
@@ -161,7 +190,7 @@ impl Store {
     /// # Errors
     /// [`StoreError::ReadOnly`], or the engine could not start a write.
     pub fn writer(&self) -> Result<Writer, StoreError> {
-        Ok(Writer { txn: self.db.write()? })
+        Ok(Writer { txn: Some(self.db.write()?), halt: self.db.halt().clone() })
     }
 
     /// Engine compaction: returns free pages; drops nothing ECAD stored.
@@ -191,9 +220,29 @@ pub struct TableStat {
     pub fragmented_bytes: u64,
 }
 
-/// A consistent read view of the database.
+/// A consistent read view of the database. Every read runs under the database's halt flag: a damaged page that
+/// makes redb panic returns [`StoreError::Halted`] and halts the database.
 pub struct Reader {
-    txn: ReadTransaction,
+    /// `None` only while it is dropped.
+    txn: Option<ReadTransaction>,
+    halt: Halt,
+}
+
+impl Drop for Reader {
+    fn drop(&mut self) {
+        self.halt.drop_guarded(self.txn.take());
+    }
+}
+
+/// The transaction a view holds; `None` only while it is dropped or committed.
+fn live<T>(txn: &Option<T>) -> Result<&T, StoreError> {
+    txn.as_ref().ok_or_else(|| StoreError::Engine("the transaction has ended".into()))
+}
+
+/// Run `f`, which reads or writes through redb, under `halt` ([`Halt::run`]): a panic inside redb, now or earlier
+/// on the same database, is [`StoreError::Halted`].
+fn guard<T>(halt: &Halt, f: impl FnOnce() -> Result<T, StoreError>) -> Result<T, StoreError> {
+    halt.run(f)?
 }
 
 fn table_stat<K: redb::Key + 'static, V: redb::Value + 'static>(txn: &ReadTransaction, def: TableDefinition<K, V>) -> Result<TableStat, StoreError> {
@@ -215,8 +264,11 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn meta(&self, name: &str) -> Result<Option<Vec<u8>>, StoreError> {
-        let t = self.txn.open_table(META).map_err(engine)?;
-        Ok(t.get(name).map_err(engine)?.map(|v| v.value().to_vec()))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(META).map_err(engine)?;
+            Ok(t.get(name).map_err(engine)?.map(|v| v.value().to_vec()))
+        })
     }
 
     /// Every `meta` row.
@@ -224,13 +276,16 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn meta_all(&self) -> Result<Vec<(String, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(META).map_err(engine)?;
-        let mut out = Vec::new();
-        for row in t.iter().map_err(engine)? {
-            let (k, v) = row.map_err(engine)?;
-            out.push((k.value().to_string(), v.value().to_vec()));
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(META).map_err(engine)?;
+            let mut out = Vec::new();
+            for row in t.iter().map_err(engine)? {
+                let (k, v) = row.map_err(engine)?;
+                out.push((k.value().to_string(), v.value().to_vec()));
+            }
+            Ok(out)
+        })
     }
 
     /// Every branch.
@@ -238,14 +293,17 @@ impl Reader {
     /// # Errors
     /// The engine failed, or a row does not decode.
     pub fn branches(&self) -> Result<Vec<(BranchId, BranchRecord)>, StoreError> {
-        let t = self.txn.open_table(BRANCHES).map_err(engine)?;
-        let mut out = Vec::new();
-        for row in t.iter().map_err(engine)? {
-            let (k, v) = row.map_err(engine)?;
-            let rec: BranchRecord = serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))?;
-            out.push((BranchId(k.value()), rec));
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(BRANCHES).map_err(engine)?;
+            let mut out = Vec::new();
+            for row in t.iter().map_err(engine)? {
+                let (k, v) = row.map_err(engine)?;
+                let rec: BranchRecord = serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))?;
+                out.push((BranchId(k.value()), rec));
+            }
+            Ok(out)
+        })
     }
 
     /// One branch.
@@ -253,9 +311,12 @@ impl Reader {
     /// # Errors
     /// The engine failed, or the row does not decode.
     pub fn branch(&self, id: BranchId) -> Result<Option<BranchRecord>, StoreError> {
-        let t = self.txn.open_table(BRANCHES).map_err(engine)?;
-        let Some(v) = t.get(id.0).map_err(engine)? else { return Ok(None) };
-        serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(BRANCHES).map_err(engine)?;
+            let Some(v) = t.get(id.0).map_err(engine)? else { return Ok(None) };
+            serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))
+        })
     }
 
     /// The stored `transactions` value of `seq` on `branch`: flag, chain value and body.
@@ -263,10 +324,13 @@ impl Reader {
     /// # Errors
     /// The engine failed, or the row is too short.
     pub fn tx(&self, branch: BranchId, seq: u64) -> Result<Option<(u8, Hash, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let Some(v) = t.get(tx_key(branch, seq)).map_err(engine)? else { return Ok(None) };
-        let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
-        Ok(Some((flag, chain, body.to_vec())))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let Some(v) = t.get(tx_key(branch, seq)).map_err(engine)? else { return Ok(None) };
+            let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
+            Ok(Some((flag, chain, body.to_vec())))
+        })
     }
 
     /// The stored rows of `seqs` on `branch`, in order (a range read).
@@ -274,17 +338,20 @@ impl Reader {
     /// # Errors
     /// As [`Reader::tx`].
     pub fn tx_range(&self, branch: BranchId, seqs: RangeInclusive<u64>) -> Result<Vec<(u64, u8, Hash, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let mut out = Vec::new();
-        if seqs.is_empty() {
-            return Ok(out);
-        }
-        for row in t.range(tx_key(branch, *seqs.start())..=tx_key(branch, *seqs.end())).map_err(engine)? {
-            let (k, v) = row.map_err(engine)?;
-            let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
-            out.push((key_seq(&k.value()), flag, chain, body.to_vec()));
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let mut out = Vec::new();
+            if seqs.is_empty() {
+                return Ok(out);
+            }
+            for row in t.range(tx_key(branch, *seqs.start())..=tx_key(branch, *seqs.end())).map_err(engine)? {
+                let (k, v) = row.map_err(engine)?;
+                let (flag, chain, body) = split_tx_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
+                out.push((key_seq(&k.value()), flag, chain, body.to_vec()));
+            }
+            Ok(out)
+        })
     }
 
     /// The highest `seq` stored for `branch`.
@@ -292,12 +359,15 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn last_seq(&self, branch: BranchId) -> Result<Option<u64>, StoreError> {
-        let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let mut r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
-        match r.next_back() {
-            Some(row) => Ok(Some(key_seq(&row.map_err(engine)?.0.value()))),
-            None => Ok(None),
-        }
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let mut r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
+            match r.next_back() {
+                Some(row) => Ok(Some(key_seq(&row.map_err(engine)?.0.value()))),
+                None => Ok(None),
+            }
+        })
     }
 
     /// The number of rows stored for `branch`.
@@ -305,9 +375,12 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn tx_count(&self, branch: BranchId) -> Result<u64, StoreError> {
-        let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
-        Ok(r.count() as u64)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
+            Ok(r.count() as u64)
+        })
     }
 
     /// A version row.
@@ -315,9 +388,12 @@ impl Reader {
     /// # Errors
     /// The engine failed, or the row does not decode.
     pub fn version(&self, branch: BranchId, kind: RowKind, name: &str) -> Result<Option<VersionRecord>, StoreError> {
-        let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let Some(v) = t.get(version_key(branch, kind, name).as_slice()).map_err(engine)? else { return Ok(None) };
-        serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            let Some(v) = t.get(version_key(branch, kind, name).as_slice()).map_err(engine)? else { return Ok(None) };
+            serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
+        })
     }
 
     /// The version rows of `kind` on `branch`, in key order (for automatic snapshots, `seq`
@@ -326,16 +402,19 @@ impl Reader {
     /// # Errors
     /// As [`Reader::version`].
     pub fn versions(&self, branch: BranchId, kind: RowKind) -> Result<Vec<VersionRecord>, StoreError> {
-        let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let lo = version_key(branch, kind, "");
-        let mut hi = branch.0.to_vec();
-        hi.push(kind.byte() + 1);
-        let mut out = Vec::new();
-        for row in t.range(lo.as_slice()..hi.as_slice()).map_err(engine)? {
-            let (_, v) = row.map_err(engine)?;
-            out.push(serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("version row: {e}")))?);
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            let lo = version_key(branch, kind, "");
+            let mut hi = branch.0.to_vec();
+            hi.push(kind.byte() + 1);
+            let mut out = Vec::new();
+            for row in t.range(lo.as_slice()..hi.as_slice()).map_err(engine)? {
+                let (_, v) = row.map_err(engine)?;
+                out.push(serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("version row: {e}")))?);
+            }
+            Ok(out)
+        })
     }
 
     /// The automatic snapshot with the highest `seq` at or before `seq` on `branch`.
@@ -343,17 +422,20 @@ impl Reader {
     /// # Errors
     /// As [`Reader::version`].
     pub fn auto_at_or_before(&self, branch: BranchId, seq: u64) -> Result<Option<VersionRecord>, StoreError> {
-        let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let lo = version_key(branch, RowKind::Auto, "");
-        let hi = version_key(branch, RowKind::Auto, &super::schema::auto_name(seq));
-        let mut r = t.range(lo.as_slice()..=hi.as_slice()).map_err(engine)?;
-        match r.next_back() {
-            Some(row) => {
-                let (_, v) = row.map_err(engine)?;
-                serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            let lo = version_key(branch, RowKind::Auto, "");
+            let hi = version_key(branch, RowKind::Auto, &super::schema::auto_name(seq));
+            let mut r = t.range(lo.as_slice()..=hi.as_slice()).map_err(engine)?;
+            match r.next_back() {
+                Some(row) => {
+                    let (_, v) = row.map_err(engine)?;
+                    serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("version row: {e}")))
+                }
+                None => Ok(None),
             }
-            None => Ok(None),
-        }
+        })
     }
 
     /// A stored chunk: flag and body.
@@ -361,11 +443,14 @@ impl Reader {
     /// # Errors
     /// The engine failed, or the row is empty.
     pub fn chunk(&self, hash: &Hash) -> Result<Option<(u8, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(CHUNKS).map_err(engine)?;
-        let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
-        let v = v.value();
-        let flag = *v.first().ok_or_else(|| StoreError::Damaged("an empty chunk row".into()))?;
-        Ok(Some((flag, v.get(1..).unwrap_or_default().to_vec())))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(CHUNKS).map_err(engine)?;
+            let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
+            let v = v.value();
+            let flag = *v.first().ok_or_else(|| StoreError::Damaged("an empty chunk row".into()))?;
+            Ok(Some((flag, v.get(1..).unwrap_or_default().to_vec())))
+        })
     }
 
     /// A chunk's uncompressed body, checked against its hash.
@@ -373,12 +458,15 @@ impl Reader {
     /// # Errors
     /// Missing, damaged, or not matching its hash.
     pub fn chunk_body(&self, hash: &Hash) -> Result<Vec<u8>, StoreError> {
-        let (flag, body) = self.chunk(hash)?.ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
-        let body = pack::unpack(flag, &body).map_err(|e| StoreError::Damaged(e.to_string()))?;
-        if super::schema::chunk_hash(&body) != *hash {
-            return Err(StoreError::Damaged(format!("chunk {} does not match its hash", crate::chain::hex(hash))));
-        }
-        Ok(body)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let (flag, body) = self.chunk(hash)?.ok_or_else(|| StoreError::Damaged(format!("chunk {} is missing", crate::chain::hex(hash))))?;
+            let body = pack::unpack(flag, &body).map_err(|e| StoreError::Damaged(e.to_string()))?;
+            if super::schema::chunk_hash(&body) != *hash {
+                return Err(StoreError::Damaged(format!("chunk {} does not match its hash", crate::chain::hex(hash))));
+            }
+            Ok(body)
+        })
     }
 
     /// Every chunk's hash, flag and stored length.
@@ -386,14 +474,17 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn chunk_list(&self) -> Result<Vec<(Hash, u8, u64)>, StoreError> {
-        let t = self.txn.open_table(CHUNKS).map_err(engine)?;
-        let mut out = Vec::new();
-        for row in t.iter().map_err(engine)? {
-            let (k, v) = row.map_err(engine)?;
-            let v = v.value();
-            out.push((k.value(), v.first().copied().unwrap_or(0), v.len().saturating_sub(1) as u64));
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(CHUNKS).map_err(engine)?;
+            let mut out = Vec::new();
+            for row in t.iter().map_err(engine)? {
+                let (k, v) = row.map_err(engine)?;
+                let v = v.value();
+                out.push((k.value(), v.first().copied().unwrap_or(0), v.len().saturating_sub(1) as u64));
+            }
+            Ok(out)
+        })
     }
 
     /// An asset: media type and bytes.
@@ -401,10 +492,13 @@ impl Reader {
     /// # Errors
     /// The engine failed, or the row does not decode.
     pub fn asset(&self, hash: &Hash) -> Result<Option<(String, Vec<u8>)>, StoreError> {
-        let t = self.txn.open_table(ASSETS).map_err(engine)?;
-        let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
-        let (media, bytes) = super::schema::split_asset_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
-        Ok(Some((media, bytes.to_vec())))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(ASSETS).map_err(engine)?;
+            let Some(v) = t.get(*hash).map_err(engine)? else { return Ok(None) };
+            let (media, bytes) = super::schema::split_asset_value(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?;
+            Ok(Some((media, bytes.to_vec())))
+        })
     }
 
     /// Row counts and sizes of every table.
@@ -412,14 +506,18 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn stats(&self) -> Result<Vec<TableStat>, StoreError> {
-        Ok(vec![
-            table_stat(&self.txn, META)?,
-            table_stat(&self.txn, BRANCHES)?,
-            table_stat(&self.txn, TRANSACTIONS)?,
-            table_stat(&self.txn, VERSIONS)?,
-            table_stat(&self.txn, CHUNKS)?,
-            table_stat(&self.txn, ASSETS)?,
-        ])
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let txn = live(&self.txn)?;
+            Ok(vec![
+                table_stat(txn, META)?,
+                table_stat(txn, BRANCHES)?,
+                table_stat(txn, TRANSACTIONS)?,
+                table_stat(txn, VERSIONS)?,
+                table_stat(txn, CHUNKS)?,
+                table_stat(txn, ASSETS)?,
+            ])
+        })
     }
 
     /// Every row of every table as (table, key, stored value), in schema order, for exports.
@@ -427,41 +525,52 @@ impl Reader {
     /// # Errors
     /// The engine failed.
     pub fn raw_rows(&self, mut each: impl FnMut(&'static str, &[u8], &[u8]) -> Result<(), StoreError>) -> Result<(), StoreError> {
-        {
-            let t = self.txn.open_table(META).map_err(engine)?;
-            for row in t.iter().map_err(engine)? {
-                let (k, v) = row.map_err(engine)?;
-                each("meta", k.value().as_bytes(), v.value())?;
-            }
-        }
-        macro_rules! fixed {
-            ($def:expr, $name:literal) => {{
-                let t = self.txn.open_table($def).map_err(engine)?;
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            {
+                let t = live(&self.txn)?.open_table(META).map_err(engine)?;
                 for row in t.iter().map_err(engine)? {
                     let (k, v) = row.map_err(engine)?;
-                    each($name, &k.value(), v.value())?;
+                    each("meta", k.value().as_bytes(), v.value())?;
                 }
-            }};
-        }
-        fixed!(BRANCHES, "branches");
-        fixed!(TRANSACTIONS, "transactions");
-        {
-            let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-            for row in t.iter().map_err(engine)? {
-                let (k, v) = row.map_err(engine)?;
-                each("versions", k.value(), v.value())?;
             }
-        }
-        fixed!(CHUNKS, "chunks");
-        fixed!(ASSETS, "assets");
-        Ok(())
+            macro_rules! fixed {
+                ($def:expr, $name:literal) => {{
+                    let t = live(&self.txn)?.open_table($def).map_err(engine)?;
+                    for row in t.iter().map_err(engine)? {
+                        let (k, v) = row.map_err(engine)?;
+                        each($name, &k.value(), v.value())?;
+                    }
+                }};
+            }
+            fixed!(BRANCHES, "branches");
+            fixed!(TRANSACTIONS, "transactions");
+            {
+                let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+                for row in t.iter().map_err(engine)? {
+                    let (k, v) = row.map_err(engine)?;
+                    each("versions", k.value(), v.value())?;
+                }
+            }
+            fixed!(CHUNKS, "chunks");
+            fixed!(ASSETS, "assets");
+            Ok(())
+        })
     }
 }
 
 /// One save: a redb write transaction behind the append-only API. Dropping it without
-/// [`Writer::commit`] writes nothing.
+/// [`Writer::commit`] writes nothing. Every write runs under the database's halt flag, as a [`Reader`]'s reads do.
 pub struct Writer {
-    txn: WriteTransaction,
+    /// `None` only after [`Writer::commit`] or while it is dropped.
+    txn: Option<WriteTransaction>,
+    halt: Halt,
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.halt.drop_guarded(self.txn.take());
+    }
 }
 
 impl Writer {
@@ -470,13 +579,16 @@ impl Writer {
     /// # Errors
     /// [`StoreError::Refused`] for another name; the engine failed.
     pub fn set_meta(&mut self, name: &str, value: &serde_json::Value) -> Result<(), StoreError> {
-        if !META_NAMES.contains(&name) {
-            return Err(StoreError::Refused(format!("meta name {name:?} is not part of the format")));
-        }
-        let bytes = serde_json::to_vec(value).map_err(engine)?;
-        let mut t = self.txn.open_table(META).map_err(engine)?;
-        t.insert(name, bytes.as_slice()).map_err(engine)?;
-        Ok(())
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            if !META_NAMES.contains(&name) {
+                return Err(StoreError::Refused(format!("meta name {name:?} is not part of the format")));
+            }
+            let bytes = serde_json::to_vec(value).map_err(engine)?;
+            let mut t = live(&self.txn)?.open_table(META).map_err(engine)?;
+            t.insert(name, bytes.as_slice()).map_err(engine)?;
+            Ok(())
+        })
     }
 
     /// A branch row, as this transaction sees it.
@@ -484,9 +596,12 @@ impl Writer {
     /// # Errors
     /// The engine failed, or the row does not decode.
     pub fn branch(&self, id: BranchId) -> Result<Option<BranchRecord>, StoreError> {
-        let t = self.txn.open_table(BRANCHES).map_err(engine)?;
-        let Some(v) = t.get(id.0).map_err(engine)? else { return Ok(None) };
-        serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(BRANCHES).map_err(engine)?;
+            let Some(v) = t.get(id.0).map_err(engine)? else { return Ok(None) };
+            serde_json::from_slice(v.value()).map(Some).map_err(|e| StoreError::Damaged(format!("branch row: {e}")))
+        })
     }
 
     /// Put a branch row (a new branch, or its new head or status).
@@ -494,10 +609,13 @@ impl Writer {
     /// # Errors
     /// The engine failed.
     pub fn put_branch(&mut self, id: BranchId, rec: &BranchRecord) -> Result<(), StoreError> {
-        let bytes = serde_json::to_vec(rec).map_err(engine)?;
-        let mut t = self.txn.open_table(BRANCHES).map_err(engine)?;
-        t.insert(id.0, bytes.as_slice()).map_err(engine)?;
-        Ok(())
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let bytes = serde_json::to_vec(rec).map_err(engine)?;
+            let mut t = live(&self.txn)?.open_table(BRANCHES).map_err(engine)?;
+            t.insert(id.0, bytes.as_slice()).map_err(engine)?;
+            Ok(())
+        })
     }
 
     /// Append transaction `seq` to `branch`: its chain value and its uncompressed record.
@@ -506,21 +624,24 @@ impl Writer {
     /// [`StoreError::Refused`] unless `seq` comes directly after the branch's last stored row
     /// (append-only: a stored row is never replaced); the engine failed.
     pub fn append_tx(&mut self, branch: BranchId, seq: u64, chain: &Hash, record: &[u8]) -> Result<u64, StoreError> {
-        let mut t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let last = {
-            let mut r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
-            match r.next_back() {
-                Some(row) => key_seq(&row.map_err(engine)?.0.value()),
-                None => 0,
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let mut t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let last = {
+                let mut r = t.range(tx_key(branch, 0)..=tx_key(branch, u64::MAX)).map_err(engine)?;
+                match r.next_back() {
+                    Some(row) => key_seq(&row.map_err(engine)?.0.value()),
+                    None => 0,
+                }
+            };
+            if last.checked_add(1) != Some(seq) {
+                return Err(StoreError::Refused(format!("transaction {seq} does not follow the branch's last stored transaction {last}")));
             }
-        };
-        if last.checked_add(1) != Some(seq) {
-            return Err(StoreError::Refused(format!("transaction {seq} does not follow the branch's last stored transaction {last}")));
-        }
-        let (flag, body) = pack::pack(record);
-        let value = tx_value(flag, chain, &body);
-        t.insert(tx_key(branch, seq), value.as_slice()).map_err(engine)?;
-        Ok(value.len() as u64)
+            let (flag, body) = pack::pack(record);
+            let value = tx_value(flag, chain, &body);
+            t.insert(tx_key(branch, seq), value.as_slice()).map_err(engine)?;
+            Ok(value.len() as u64)
+        })
     }
 
     /// Insert a chunk unless one with that hash is stored. Returns the bytes written (0 when it
@@ -529,19 +650,22 @@ impl Writer {
     /// # Errors
     /// [`StoreError::Refused`] when `hash` is not the hash of `body`; the engine failed.
     pub fn put_chunk(&mut self, hash: &Hash, body: &[u8]) -> Result<u64, StoreError> {
-        if super::schema::chunk_hash(body) != *hash {
-            return Err(StoreError::Refused("a chunk's hash does not match its body".into()));
-        }
-        let mut t = self.txn.open_table(CHUNKS).map_err(engine)?;
-        if t.get(*hash).map_err(engine)?.is_some() {
-            return Ok(0);
-        }
-        let (flag, packed) = pack::pack(body);
-        let mut value = Vec::with_capacity(1 + packed.len());
-        value.push(flag);
-        value.extend_from_slice(&packed);
-        t.insert(*hash, value.as_slice()).map_err(engine)?;
-        Ok(value.len() as u64)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            if super::schema::chunk_hash(body) != *hash {
+                return Err(StoreError::Refused("a chunk's hash does not match its body".into()));
+            }
+            let mut t = live(&self.txn)?.open_table(CHUNKS).map_err(engine)?;
+            if t.get(*hash).map_err(engine)?.is_some() {
+                return Ok(0);
+            }
+            let (flag, packed) = pack::pack(body);
+            let mut value = Vec::with_capacity(1 + packed.len());
+            value.push(flag);
+            value.extend_from_slice(&packed);
+            t.insert(*hash, value.as_slice()).map_err(engine)?;
+            Ok(value.len() as u64)
+        })
     }
 
     /// Insert an asset unless it is stored (assets are stored as they are). Returns its hash.
@@ -549,13 +673,16 @@ impl Writer {
     /// # Errors
     /// A media type over 255 bytes; the engine failed.
     pub fn put_asset(&mut self, media: &str, bytes: &[u8]) -> Result<Hash, StoreError> {
-        let hash = asset_hash(bytes);
-        let mut t = self.txn.open_table(ASSETS).map_err(engine)?;
-        if t.get(hash).map_err(engine)?.is_none() {
-            let value = asset_value(media, bytes).map_err(|e| StoreError::Refused(e.to_string()))?;
-            t.insert(hash, value.as_slice()).map_err(engine)?;
-        }
-        Ok(hash)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let hash = asset_hash(bytes);
+            let mut t = live(&self.txn)?.open_table(ASSETS).map_err(engine)?;
+            if t.get(hash).map_err(engine)?.is_none() {
+                let value = asset_value(media, bytes).map_err(|e| StoreError::Refused(e.to_string()))?;
+                t.insert(hash, value.as_slice()).map_err(engine)?;
+            }
+            Ok(hash)
+        })
     }
 
     /// Put a version row.
@@ -563,10 +690,13 @@ impl Writer {
     /// # Errors
     /// The engine failed.
     pub fn put_version(&mut self, branch: BranchId, rec: &VersionRecord) -> Result<(), StoreError> {
-        let bytes = serde_json::to_vec(rec).map_err(engine)?;
-        let mut t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        t.insert(version_key(branch, rec.kind, &rec.name).as_slice(), bytes.as_slice()).map_err(engine)?;
-        Ok(())
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let bytes = serde_json::to_vec(rec).map_err(engine)?;
+            let mut t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            t.insert(version_key(branch, rec.kind, &rec.name).as_slice(), bytes.as_slice()).map_err(engine)?;
+            Ok(())
+        })
     }
 
     /// The version rows of `kind` on `branch` as this transaction sees them, in key order.
@@ -574,16 +704,19 @@ impl Writer {
     /// # Errors
     /// The engine failed, or a row does not decode.
     pub fn versions(&self, branch: BranchId, kind: RowKind) -> Result<Vec<VersionRecord>, StoreError> {
-        let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let lo = version_key(branch, kind, "");
-        let mut hi = branch.0.to_vec();
-        hi.push(kind.byte() + 1);
-        let mut out = Vec::new();
-        for row in t.range(lo.as_slice()..hi.as_slice()).map_err(engine)? {
-            let (_, v) = row.map_err(engine)?;
-            out.push(serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("version row: {e}")))?);
-        }
-        Ok(out)
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            let lo = version_key(branch, kind, "");
+            let mut hi = branch.0.to_vec();
+            hi.push(kind.byte() + 1);
+            let mut out = Vec::new();
+            for row in t.range(lo.as_slice()..hi.as_slice()).map_err(engine)? {
+                let (_, v) = row.map_err(engine)?;
+                out.push(serde_json::from_slice(v.value()).map_err(|e| StoreError::Damaged(format!("version row: {e}")))?);
+            }
+            Ok(out)
+        })
     }
 
     /// Set the description of a `versions` row this write transaction holds.
@@ -591,16 +724,19 @@ impl Writer {
     /// # Errors
     /// No such row; the engine failed.
     pub(crate) fn describe_version(&mut self, branch: BranchId, kind: RowKind, name: &str, description: &str) -> Result<(), StoreError> {
-        let key = version_key(branch, kind, name);
-        let rec = {
-            let t = self.txn.open_table(VERSIONS).map_err(engine)?;
-            let v = t.get(key.as_slice()).map_err(engine)?;
-            match v {
-                Some(v) => serde_json::from_slice::<VersionRecord>(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?,
-                None => return Err(StoreError::Refused(format!("version {name:?} has no row to describe"))),
-            }
-        };
-        self.put_version(branch, &VersionRecord { description: Some(description.to_string()), ..rec })
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let key = version_key(branch, kind, name);
+            let rec = {
+                let t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+                let v = t.get(key.as_slice()).map_err(engine)?;
+                match v {
+                    Some(v) => serde_json::from_slice::<VersionRecord>(v.value()).map_err(|e| StoreError::Damaged(e.to_string()))?,
+                    None => return Err(StoreError::Refused(format!("version {name:?} has no row to describe"))),
+                }
+            };
+            self.put_version(branch, &VersionRecord { description: Some(description.to_string()), ..rec })
+        })
     }
 
     /// Remove a version row (a version unnamed by `UnnameVersion`, or a rescue dropping rows past
@@ -609,9 +745,12 @@ impl Writer {
     /// # Errors
     /// The engine failed.
     pub(crate) fn remove_version(&mut self, branch: BranchId, kind: RowKind, name: &str) -> Result<(), StoreError> {
-        let mut t = self.txn.open_table(VERSIONS).map_err(engine)?;
-        t.remove(version_key(branch, kind, name).as_slice()).map_err(engine)?;
-        Ok(())
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            let mut t = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            t.remove(version_key(branch, kind, name).as_slice()).map_err(engine)?;
+            Ok(())
+        })
     }
 
     /// Copy every row of `from` into this new, empty file, keeping the stored bytes: Save As.
@@ -623,86 +762,91 @@ impl Writer {
     /// [`StoreError::Refused`] when this file is not empty or a branch's rows have a gap; the
     /// engine failed.
     pub fn copy_all(&mut self, from: &Reader, cut: Option<(BranchId, u64)>) -> Result<u64, StoreError> {
-        {
-            let t = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-            if !t.is_empty().map_err(engine)? {
-                return Err(StoreError::Refused("Save As copies only into an empty file".into()));
+        let halt = self.halt.clone();
+        guard(&halt, || {
+            {
+                let t = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+                if !t.is_empty().map_err(engine)? {
+                    return Err(StoreError::Refused("Save As copies only into an empty file".into()));
+                }
             }
-        }
-        let mut bytes = 0u64;
-        let mut last: Option<([u8; 16], u64)> = None;
-        let mut meta = self.txn.open_table(META).map_err(engine)?;
-        let mut branches = self.txn.open_table(BRANCHES).map_err(engine)?;
-        let mut txs = self.txn.open_table(TRANSACTIONS).map_err(engine)?;
-        let mut versions = self.txn.open_table(VERSIONS).map_err(engine)?;
-        let mut chunks = self.txn.open_table(CHUNKS).map_err(engine)?;
-        let mut assets = self.txn.open_table(ASSETS).map_err(engine)?;
-        let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, StoreError> {
-            if k.len() == n { Ok(k.to_vec()) } else { Err(StoreError::Engine(format!("a key of {} bytes where {n} were expected", k.len()))) }
-        };
-        from.raw_rows(|table, k, v| {
-            bytes += (k.len() + v.len()) as u64;
-            let e = |e: redb::StorageError| StoreError::Engine(e.to_string());
-            match table {
-                "meta" => {
-                    let name = std::str::from_utf8(k).map_err(|e| StoreError::Engine(e.to_string()))?;
-                    meta.insert(name, v).map_err(e)?;
-                }
-                "branches" => {
-                    let mut key = [0u8; 16];
-                    key.copy_from_slice(&fixed(k, 16)?);
-                    branches.insert(key, v).map_err(e)?;
-                }
-                "transactions" => {
-                    let mut key = [0u8; 24];
-                    key.copy_from_slice(&fixed(k, 24)?);
-                    let mut b = [0u8; 16];
-                    b.copy_from_slice(key.get(..16).unwrap_or(&[0u8; 16]));
-                    let seq = key_seq(&key);
-                    let expected = match last {
-                        Some((lb, ls)) if lb == b => ls.saturating_add(1),
-                        _ => 1,
-                    };
-                    if cut.is_some_and(|(cb, cs)| cb.0 == b && seq > cs) {
-                        // A rescue copies only what verified.
-                        return Ok(());
+            let mut bytes = 0u64;
+            let mut last: Option<([u8; 16], u64)> = None;
+            let mut meta = live(&self.txn)?.open_table(META).map_err(engine)?;
+            let mut branches = live(&self.txn)?.open_table(BRANCHES).map_err(engine)?;
+            let mut txs = live(&self.txn)?.open_table(TRANSACTIONS).map_err(engine)?;
+            let mut versions = live(&self.txn)?.open_table(VERSIONS).map_err(engine)?;
+            let mut chunks = live(&self.txn)?.open_table(CHUNKS).map_err(engine)?;
+            let mut assets = live(&self.txn)?.open_table(ASSETS).map_err(engine)?;
+            let fixed = |k: &[u8], n: usize| -> Result<Vec<u8>, StoreError> {
+                if k.len() == n { Ok(k.to_vec()) } else { Err(StoreError::Engine(format!("a key of {} bytes where {n} were expected", k.len()))) }
+            };
+            from.raw_rows(|table, k, v| {
+                bytes += (k.len() + v.len()) as u64;
+                let e = |e: redb::StorageError| StoreError::Engine(e.to_string());
+                match table {
+                    "meta" => {
+                        let name = std::str::from_utf8(k).map_err(|e| StoreError::Engine(e.to_string()))?;
+                        meta.insert(name, v).map_err(e)?;
                     }
-                    if seq != expected {
-                        return Err(StoreError::Engine(format!("transaction {seq} follows {} on its branch", expected - 1)));
+                    "branches" => {
+                        let mut key = [0u8; 16];
+                        key.copy_from_slice(&fixed(k, 16)?);
+                        branches.insert(key, v).map_err(e)?;
                     }
-                    last = Some((b, seq));
-                    txs.insert(key, v).map_err(e)?;
+                    "transactions" => {
+                        let mut key = [0u8; 24];
+                        key.copy_from_slice(&fixed(k, 24)?);
+                        let mut b = [0u8; 16];
+                        b.copy_from_slice(key.get(..16).unwrap_or(&[0u8; 16]));
+                        let seq = key_seq(&key);
+                        let expected = match last {
+                            Some((lb, ls)) if lb == b => ls.saturating_add(1),
+                            _ => 1,
+                        };
+                        if cut.is_some_and(|(cb, cs)| cb.0 == b && seq > cs) {
+                            // A rescue copies only what verified.
+                            return Ok(());
+                        }
+                        if seq != expected {
+                            return Err(StoreError::Engine(format!("transaction {seq} follows {} on its branch", expected - 1)));
+                        }
+                        last = Some((b, seq));
+                        txs.insert(key, v).map_err(e)?;
+                    }
+                    "versions" => {
+                        versions.insert(k, v).map_err(e)?;
+                    }
+                    "chunks" => {
+                        let mut key = [0u8; 32];
+                        key.copy_from_slice(&fixed(k, 32)?);
+                        chunks.insert(key, v).map_err(e)?;
+                    }
+                    "assets" => {
+                        let mut key = [0u8; 32];
+                        key.copy_from_slice(&fixed(k, 32)?);
+                        assets.insert(key, v).map_err(e)?;
+                    }
+                    other => return Err(StoreError::Engine(format!("unknown table {other}"))),
                 }
-                "versions" => {
-                    versions.insert(k, v).map_err(e)?;
-                }
-                "chunks" => {
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&fixed(k, 32)?);
-                    chunks.insert(key, v).map_err(e)?;
-                }
-                "assets" => {
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&fixed(k, 32)?);
-                    assets.insert(key, v).map_err(e)?;
-                }
-                other => return Err(StoreError::Engine(format!("unknown table {other}"))),
-            }
-            Ok(())
+                Ok(())
+            })
+            .map_err(|e| match e {
+                StoreError::Engine(m) => StoreError::Refused(m),
+                e => e,
+            })?;
+            Ok(bytes)
         })
-        .map_err(|e| match e {
-            StoreError::Engine(m) => StoreError::Refused(m),
-            e => e,
-        })?;
-        Ok(bytes)
     }
 
     /// Commit durably: after a crash, all of this save is in the file or none of it.
     ///
     /// # Errors
     /// The engine failed; nothing of this save is in the file.
-    pub fn commit(self) -> Result<(), StoreError> {
-        self.txn.commit().map_err(engine)
+    pub fn commit(mut self) -> Result<(), StoreError> {
+        let halt = self.halt.clone();
+        let txn = self.txn.take().ok_or_else(|| StoreError::Engine("the transaction has ended".into()))?;
+        guard(&halt, || txn.commit().map_err(engine))
     }
 }
 

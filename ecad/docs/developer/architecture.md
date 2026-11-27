@@ -233,7 +233,7 @@ description is [`../reference/file-format.md`](../reference/file-format.md). Wha
 - **Not in the file:** derived results as fact, UI state, CADCraft handles, a DXF or DWG copy.
 - **Versions.** There is no compatibility before v1: any format change bumps the file's schema version
   (`ecad_file::SCHEMA_VERSION`), and a file of another version opens read-only with "older format version" (or
-  "newer format version"). An op of any version but the current
+  "newer format version"), or is refused when this build cannot read it to its head. An op of any version but the current
   one is refused.
 - **Damage.** A file whose history does not replay opens read-only at its last good transaction, and the error
   names the first bad one.

@@ -1,5 +1,6 @@
-//! A file of another format version is read-only and says so in
-//! those words, whatever replay finds; "damaged" is only real corruption at this build's version.
+//! A file of another format version is read-only and says so in those words when it reads to its head, and is
+//! refused, saying how much could be read, when it does not; "damaged" is only real corruption at this build's
+//! version.
 //! The version is pinned with the golden head hash, so a changed format keeping its number fails.
 
 use crate::common::*;
@@ -70,16 +71,36 @@ fn a_file_without_a_schema_version_is_refused() {
 }
 
 /// A real file of format version 1 (`tests/golden/v1-cable-tag-in-bag.ecad`, written by a version 1
-/// build): one of its cables keeps its tag in the property bag, which this build reads as a typed
-/// field only. It opens read-only as an older format, in those words, never as damaged.
+/// build, 18 transactions): one of its cables keeps its tag in the property bag, which this build reads as a
+/// typed field only, so replay stops after transaction 4. It is refused, naming its format and how much could be
+/// read: never shown as 4 transactions that look like the whole project, and never offered for Save As.
 #[test]
-fn a_version_1_file_with_a_cable_tag_in_the_bag_opens_read_only_as_an_older_format() {
+fn a_version_1_file_that_does_not_read_to_its_head_is_refused_saying_how_much_could_be_read() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/v1-cable-tag-in-bag.ecad");
     let bytes = std::fs::read(path).expect("the version 1 fixture");
-    let o = ecad_file::Project::open(ecad_file::Store::from_bytes(bytes).unwrap(), SEED, WRITER)
-        .unwrap_or_else(|e| panic!("a version 1 file opens (read-only): {e}"));
-    let want = format!("older format version (file 1, this build {SCHEMA_VERSION})");
-    assert_eq!(o.project.read_only().map(|s| s.contains(&want)), Some(true), "{:?}", o.project.read_only());
-    let said = o.report.describe();
-    assert!(said.contains(&want) && !said.contains("damaged"), "{said}");
+    let said = match ecad_file::Project::open(ecad_file::Store::from_bytes(bytes).unwrap(), SEED, WRITER) {
+        Ok(o) => panic!("a part of an older file opens as if it were all of it: {}", o.report.describe()),
+        Err(e) => e.to_string(),
+    };
+    let want = format!("older format version (file 1, this build {SCHEMA_VERSION}): only 4 of its 18 transactions could be read");
+    assert!(said.contains(&want) && !said.contains("Save As"), "{said}");
+}
+
+/// The report says both facts: another format version never hides damage, and gets no Save As advice then.
+#[test]
+fn the_report_of_a_damaged_file_of_another_format_says_both() {
+    let report = ecad_file::Report {
+        head: 18,
+        verified_seq: 18,
+        snapshot_seq: 0,
+        tail: 18,
+        repaired: false,
+        damage: Some(ecad_file::Damage { seq: Some(16), detail: "snapshot: a chunk is missing".into() }),
+        schema_version: SCHEMA_VERSION - 1,
+    };
+    let said = report.describe();
+    assert!(said.contains("older format version") && said.contains("It is also damaged: at transaction 16, snapshot: a chunk is missing"), "{said}");
+    assert!(!said.contains("Save As"), "{said}");
+    let current = ecad_file::Report { schema_version: SCHEMA_VERSION, ..report };
+    assert!(current.describe().contains("Opened read-only: at transaction 16") && current.describe().contains("use Save As"));
 }

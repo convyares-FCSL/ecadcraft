@@ -18,7 +18,7 @@ A file records four numbers. Each is independent of the others and of the produc
 | --- | --- | --- | --- |
 | Container version | `meta.container_version` | `2` (`ecad_file::schema::CONTAINER_VERSION`) | refused: the file does not open |
 | Codec | `meta.codec` | `"json/1"` (`ecad_file::schema::CODEC`) | refused |
-| Record version | `meta.schema_version` | `4` (`ecad_file::SCHEMA_VERSION`, in `ecad-file/src/record.rs`) | opens read-only, named "older format version (file 3, this build 4)" or "newer…"; never reported as damage |
+| Record version | `meta.schema_version` | `4` (`ecad_file::SCHEMA_VERSION`, in `ecad-file/src/record.rs`) | opens read-only, named "older format version (file 3, this build 4)" or "newer…", when it reads to its head; refused otherwise, saying how many transactions could be read ("only 4 of its 18 transactions could be read") |
 | Op version | `v` in every op | `1` (`ecad_file::records::OP_VERSION`) | the record is refused (`OpVersion`) |
 
 The **record version** says what record contents mean. Every change to the format bumps it: a record's fields
@@ -34,7 +34,10 @@ far:
 | 4 | Device data: a potential's supply, a motor's rated voltage and the new rating fields. |
 
 There are no upcasts and no converters: a build reads the record version it writes, and opens other versions
-read-only.
+read-only when it can read them to their head. A file of another version that this build cannot read to its head
+is refused rather than shown in part: the part would look like the whole project, and a copy of it would keep only
+that part. Damage in a file of another version is reported with its version, never hidden by it, and such a file
+gets no Save As advice.
 
 ## The container
 
@@ -406,7 +409,7 @@ Open reads only what it needs:
 
 1. `meta`, checked: `format` must be `ecad-project`, `container_version` 2, `codec` `json/1`, and a
    `schema_version` must be present. A failure here refuses the file. A record version other than this build's
-   opens read-only.
+   opens read-only, or is refused when replay does not reach the head.
 2. The active branch's `branches` row and its head transaction (it must be the last row, with the head's chain
    value).
 3. The branch's latest snapshot at or before its head: the whole chunk set, each chunk checked against its hash.
@@ -478,6 +481,16 @@ chunk) opens the project **read-only at the last state that verifies**, with a r
 is kept as it is. **Save As** rescues what verifies: the copy leaves out rows after the verified head and points
 the cache at the snapshot that loaded.
 
+**Damage below the records** (a damaged redb page) can make redb panic on an ordinary read; redb does not promise
+to survive damaged input. Every call into redb runs under a guard (`ecad_store::guard`) that catches the panic,
+reports it as `StoreError::Halted` ("the file is damaged and cannot be read: the storage engine stopped at a damaged
+page (redb: …, at …)") and halts that handle: nothing more is read or written through it. While opening, this
+**refuses the file**: nothing more can be read to open it at an earlier state. Opened read-only, the file is kept
+exactly as it is; a writable open may let redb update its own header, as it does for every file. After open (an
+earlier state, undo past the snapshot, a branch switch, Verify), the read fails with that error and the session goes
+on: what is shown stays, edits work in memory, and nothing more is read from or written to that file, so Save fails
+and Save As cannot copy it either.
+
 **Verify** checks a whole file, on request only (never as part of open):
 
 1. **Chain:** every row of every branch decoded and checked against the one before, each head against its last
@@ -498,6 +511,11 @@ the cache at the snapshot that loaded.
   `ECAD_CRASH_ROUNDS` sets the number of rounds.
 - **Hostile input:** limits and damage at rest (stored values corrupted in the file image) open read-only or are
   refused, never crash.
+- **Damaged pages** (`ecad-file/tests/all/container/damaged_pages.rs`): a corpus of damaged copies of the golden
+  file, one per redb panic site seen (`ecad-file/tests/damaged/redb-panics.txt`, kept as byte patches), is refused
+  in words; a panic in a read after open leaves the session going. In the slow set, seeded damage (flipped bits,
+  random blocks, zeroed 4 KiB, truncation) to the golden file is opened, read back and verified without a panic
+  escaping; `ECAD_DAMAGE_ROUNDS` sets the rounds.
 
 ## Not in the format
 
