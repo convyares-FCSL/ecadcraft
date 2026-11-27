@@ -601,10 +601,26 @@ impl EcadMcp {
                         Err(m) => error(id, INVALID_PARAMS, m),
                     });
                 }
+                if name == "list_commands" {
+                    // Only what the gate offers, each marked; `all` lists every command, the refused ones marked.
+                    let all = params.pointer("/arguments/all").and_then(Value::as_bool).unwrap_or(false);
+                    let mut r = self.inner.handle(msg)?;
+                    if let Some(t) = r.pointer_mut("/result/content/0/text") {
+                        agent_command_text(t, all, true);
+                    }
+                    return Some(r);
+                }
                 if CADCRAFT_TOOLS.contains(&name) {
                     return self.inner.handle(msg);
                 }
                 Some(error(id, INVALID_PARAMS, not_offered(name)))
+            }
+            "resources/read" if params.get("uri").and_then(Value::as_str) == Some("cadcraft://commands") => {
+                let mut r = self.inner.handle(msg)?;
+                if let Some(t) = r.pointer_mut("/result/contents/0/text") {
+                    agent_command_text(t, false, false);
+                }
+                Some(r)
             }
             _ => self.inner.handle(msg),
         }
@@ -632,6 +648,14 @@ impl EcadMcp {
                             o.insert("description".into(), json!(tools::execute_description(writes)));
                         }
                     }
+                    Some("list_commands") => {
+                        if let Some(o) = t.as_object_mut() {
+                            o.insert("description".into(), json!(tools::LIST_COMMANDS));
+                        }
+                        if let Some(p) = t.pointer_mut("/inputSchema/properties").and_then(Value::as_object_mut) {
+                            p.insert("all".into(), json!({"type": "boolean"}));
+                        }
+                    }
                     Some("render") => {
                         if let Some(p) = t.pointer_mut("/inputSchema/properties").and_then(Value::as_object_mut) {
                             p.remove("path");
@@ -645,6 +669,18 @@ impl EcadMcp {
         let live = self.mode().is_some();
         tools.extend(tools::definitions(writes, live));
         json!({ "tools": tools })
+    }
+}
+
+/// Rewrite the JSON command list in `text` (the engine's `engine.commands`) as an agent sees it
+/// ([`tools::agent_commands`]); `pretty` keeps the tool's pretty-printed text. Text that is not a
+/// command list is left as it is.
+fn agent_command_text(text: &mut Value, all: bool, pretty: bool) {
+    let Some(list) = text.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()) else { return };
+    let list = tools::agent_commands(list, all);
+    let out = if pretty { serde_json::to_string_pretty(&list) } else { serde_json::to_string(&list) };
+    if let Ok(out) = out {
+        *text = Value::String(out);
     }
 }
 

@@ -229,7 +229,9 @@ fn a_client_lists_the_ecad_commands_with_their_docs_and_the_ecad_tools() {
 
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    for spec in ecad_engine::commands::specs() {
+    // Every ECAD command is listed but `agentaccess`, which agents never run.
+    assert!(!catalog.iter().any(|i| i["id"] == "agentaccess"));
+    for spec in ecad_engine::commands::specs().into_iter().filter(|s| s.id != "agentaccess") {
         let info = catalog.iter().find(|i| i["id"] == spec.id).unwrap_or_else(|| panic!("{} not listed", spec.id));
         assert_eq!(info["params"].as_str(), Some(spec.params), "{}", spec.id);
         assert!(info["params"].as_str().is_some_and(|p| !p.is_empty()), "{} has no parameter docs", spec.id);
@@ -1238,4 +1240,44 @@ fn oops_trim_and_classic_array_from_an_agent_are_recorded_or_refused() {
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
         assert_eq!(r.log(), before, "{cmd}");
     }
+}
+
+/// `list_commands` lists only what the gate offers, each marked read or write; `all: true` lists every
+/// command with the refused ones marked and disabled; the filter still applies; the commands resource
+/// says the same as the default list.
+#[test]
+fn list_commands_lists_what_the_gate_offers_each_marked() {
+    let mut c = reader();
+    let text = |r: &Value| r["content"][0]["text"].as_str().unwrap().to_string();
+    let listed = c.call("list_commands", json!({}));
+    let full = c.call("list_commands", json!({"all": true}));
+    let (listed_text, full_text) = (text(&listed), text(&full));
+    let listed: Vec<Value> = serde_json::from_str(&listed_text).unwrap();
+    let full: Vec<Value> = serde_json::from_str(&full_text).unwrap();
+    eprintln!("list_commands: {} entries, {} bytes; all: {} entries, {} bytes", listed.len(), listed_text.len(), full.len(), full_text.len());
+    for e in &listed {
+        let id = e["id"].as_str().unwrap();
+        let offer = policy::offered(id).unwrap_or_else(|| panic!("{id} is listed but not offered"));
+        assert_eq!(e["agent"], json!(offer.word()), "{id}");
+    }
+    for id in ["wire", "place", "line", "move", "u", "entities", "nets"] {
+        assert!(listed.iter().any(|e| e["id"] == json!(id)), "{id} is offered");
+    }
+    assert_eq!(listed.iter().find(|e| e["id"] == json!("entities")).unwrap()["agent"], json!("read"));
+    assert_eq!(listed.iter().find(|e| e["id"] == json!("wire")).unwrap()["agent"], json!("write"));
+    for id in ["open", "saveas", "lisp", "appload", "script", "audit", "layer", "3dorbit"] {
+        assert!(!listed.iter().any(|e| e["id"] == json!(id)), "{id} is not offered");
+        let e = full.iter().find(|e| e["id"] == json!(id)).unwrap_or_else(|| panic!("{id} in the full list"));
+        assert_eq!((&e["agent"], &e["enabled"]), (&json!("refused"), &json!(false)), "{id}");
+        assert!(e["disabled_reason"].as_str().unwrap().contains("not available to agents"), "{id}");
+    }
+    assert!(full.len() > listed.len());
+    assert_eq!(full.iter().filter(|e| e["agent"] != json!("refused")).count(), listed.len());
+    // The filter applies to the offered list.
+    let lines: Vec<Value> = serde_json::from_str(&text(&c.call("list_commands", json!({"filter": "pline"})))).unwrap();
+    assert!(lines.iter().all(|e| e["agent"].is_string()) && lines.iter().any(|e| e["id"] == json!("pline")), "{lines:?}");
+    // The command catalog resource is the offered list too.
+    let r = c.request("resources/read", json!({"uri": "cadcraft://commands"}));
+    let catalog: Vec<Value> = serde_json::from_str(r["result"]["contents"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(catalog.len(), listed.len());
 }

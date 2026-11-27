@@ -1,4 +1,5 @@
-//! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
+//! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write); and
+//! the command list as an agent sees it ([`agent_commands`]).
 
 use ecad_model::Author;
 use serde_json::{Map, Value, json};
@@ -8,6 +9,7 @@ use crate::cad::Session;
 
 use crate::agent::MAX_TRANSACTIONS_PER_CALL;
 use crate::agent::gate::{self, Call, tx_summary};
+use crate::agent::policy;
 use ecad_file::history::logged_author_text;
 
 /// Names of the tools this module answers.
@@ -73,6 +75,46 @@ pub fn execute_description(writes: bool) -> String {
          {MAX_TRANSACTIONS_PER_CALL} transaction per call. {mode} Examples: wire {{points:[[0,0],[60,0]]}}, \
          cableslash {{from:[28,-3], to:[32,18]}}, cableview {{cable:\"<id>\", view:\"fan\"}}, u {{}}."
     )
+}
+
+/// The `list_commands` description in ECAD's server.
+pub const LIST_COMMANDS: &str = "List the commands this agent may run, with ids, labels, aliases and parameter docs; each is \
+     marked `agent`: `read` (runs with writes off) or `write` (only with writes on). Optional `filter`: a substring of the \
+     id, label or an alias. `all: true` lists every command of the engine instead, the refused ones marked `agent: \
+     \"refused\"` and `enabled: false` with the reason.";
+
+/// Why a refused command is disabled in the full list (the refusal itself says more).
+const NEVER_REASON: &str = "not available to agents: files, documents and the process stay with the person";
+const NOT_OFFERED_REASON: &str = "not available to agents";
+
+/// The engine's command list (`engine.commands`, an array of command entries) as an agent sees it:
+/// by default only the commands the gate offers ([`policy::offered`]), each marked `"agent": "read"`
+/// or `"write"`; with `all`, every command, the refused ones marked `"agent": "refused"` and
+/// `"enabled": false` with a short reason as `disabled_reason`.
+pub fn agent_commands(list: Value, all: bool) -> Value {
+    let Value::Array(items) = list else { return list };
+    let items = items.into_iter().filter_map(|mut c| {
+        let id = c.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let offer = policy::offered(&id);
+        if offer.is_none() && !all {
+            return None;
+        }
+        if let Some(o) = c.as_object_mut() {
+            match offer {
+                Some(offer) => {
+                    o.insert("agent".into(), json!(offer.word()));
+                }
+                None => {
+                    let why = if policy::NEVER_COMMANDS.contains(&id.as_str()) { NEVER_REASON } else { NOT_OFFERED_REASON };
+                    o.insert("agent".into(), json!("refused"));
+                    o.insert("enabled".into(), json!(false));
+                    o.insert("disabled_reason".into(), json!(why));
+                }
+            }
+        }
+        Some(c)
+    });
+    Value::Array(items.collect())
 }
 
 /// The ECAD tool definitions (`live`: a `--connect` server, which also lists `screenshot`).

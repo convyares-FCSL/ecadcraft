@@ -5,9 +5,10 @@ you read that description from the running program.
 
 ## Where to read it
 
-- **MCP:** the `list_commands` tool lists every command with its id, label, menu path, aliases and parameters
-  text. Pass `filter` (part of an id, a label or an alias) to narrow it: `{"filter": "cable"}`. See
-  [mcp.md](mcp.md).
+- **MCP:** the `list_commands` tool lists the commands the agent may run, with id, label, menu path, aliases
+  and parameters text, each marked `"agent": "read"` (runs with writes off) or `"write"`. Pass `filter` (part of
+  an id, a label or an alias) to narrow it: `{"filter": "cable"}`; `{"all": true}` lists every command, the
+  refused ones marked `"agent": "refused"` and `"enabled": false` with the reason. See [mcp.md](mcp.md).
 - **The control channel:** `engine.commands` returns the same list (id, label, menu path, shortcut, aliases,
   parameters text, enabled). See [control-protocol.md](control-protocol.md).
 
