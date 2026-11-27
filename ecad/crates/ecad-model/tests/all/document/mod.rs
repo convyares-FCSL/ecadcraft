@@ -3,6 +3,7 @@ pub(crate) mod effects;
 pub(crate) mod incremental;
 pub(crate) mod ledger;
 pub(crate) mod ledger_base;
+pub(crate) mod page_order_diff;
 pub(crate) mod page_sheet;
 pub(crate) mod page_sheet_acceptance;
 pub(crate) mod pages;

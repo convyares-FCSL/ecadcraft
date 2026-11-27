@@ -512,7 +512,8 @@ and Save As cannot copy it either.
 - **Hostile input:** limits and damage at rest (stored values corrupted in the file image) open read-only or are
   refused, never crash.
 - **Damaged pages** (`ecad-file/tests/all/container/damaged_pages.rs`): a corpus of damaged copies of the golden
-  file, one per redb panic site seen (`ecad-file/tests/damaged/redb-panics.txt`, kept as byte patches), is refused
+  file, one per redb panic site seen (`ecad-file/tests/damaged/redb-panics.txt`, kept as byte patches to
+  `tests/damaged/base.ecad`), is refused
   in words; a panic in a read after open leaves the session going. In the slow set, seeded damage (flipped bits,
   random blocks, zeroed 4 KiB, truncation) to the golden file is opened, read back and verified without a panic
   escaping; `ECAD_DAMAGE_ROUNDS` sets the rounds.

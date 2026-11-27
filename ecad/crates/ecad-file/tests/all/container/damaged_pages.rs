@@ -2,8 +2,9 @@
 //! process. Opening such a file is refused in words; a panic in a read after open (an earlier state, undo past
 //! the snapshot) is an error and the session goes on.
 //!
-//! - **Corpus** (`tests/damaged/redb-panics.txt`): one damaged copy of the golden project per redb panic site
-//!   seen, kept as byte patches to the golden file.
+//! - **Corpus** (`tests/damaged/redb-panics.txt`): one damaged copy of a project file per redb panic site seen,
+//!   kept as byte patches to `tests/damaged/base.ecad` (a golden project kept as it was, so the corpus does not
+//!   move when the golden file is written again).
 //! - **A read after open**: a storage backend that panics on demand, armed after the project opened.
 //! - **Seeded probe**, in the slow set: random damage (flipped bits, random blocks, zeroed 4 KiB, truncation) to
 //!   the golden file, each copy opened, read back and verified. `ECAD_DAMAGE_ROUNDS` sets the rounds (default
@@ -21,7 +22,7 @@ use ecad_file::{Project, Store, StoreError};
 use ecad_model::*;
 use ecad_store::power::Rng;
 
-const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/project.ecad");
+const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/damaged/base.ecad");
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/damaged/redb-panics.txt");
 
 /// One corpus case: its name, the redb line that panics, and the damaged bytes.

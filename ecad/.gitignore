@@ -4,7 +4,8 @@
 /private/
 
 # Projects a test or a manual run leaves in the source tree (brief 017 review): never committed.
-# The golden file of the format tests is the only tracked project.
+# The golden files of the format tests and the base of the damaged-page corpus are the only tracked projects.
 *.ecad
 *.ecad.lock
 !/crates/ecad-file/tests/golden/*.ecad
+!/crates/ecad-file/tests/damaged/*.ecad

@@ -676,3 +676,25 @@ fn place_without_a_symbol_embeds_and_reuses_the_two_point_coil() {
     }
     assert!(doc.definitions().values().all(|d| !d.name.to_lowercase().contains("experiment")));
 }
+
+/// `place` with no symbol finds the built-in coil by its fixed origin, never by its name: a symbol of the
+/// person's own that is also called "Two-point coil" is not placed as the coil.
+#[test]
+fn place_without_a_symbol_never_takes_a_users_definition_named_two_point_coil() {
+    use ecad_model::{Author, Definition, DefinitionId};
+    let mut h = new_h();
+    let mine: DefinitionId = h.cfg(|p| {
+        let id: DefinitionId = p.ids.fresh();
+        let own = Definition { name: "Two-point coil".into(), ..Definition::default() };
+        p.ledger.commit(Author::User, "own symbol", vec![Op::EmbedDefinition { id, definition: own }]).unwrap();
+        id
+    });
+    let placed = h.run("place", json!({"at": [100, 0]})).unwrap();
+    let doc = h.doc();
+    let used = doc.devices().get(&id::<DeviceId>(&placed, "component")).and_then(|d| d.definition).unwrap();
+    assert_ne!(used, mine, "the person's own definition is not the coil");
+    let coil = &doc.definitions()[&used];
+    assert_eq!(coil.connection_points.len(), 2, "the built-in coil, A1 and A2");
+    assert!(coil.origin.is_some(), "the built-in coil has its fixed origin");
+    assert_eq!(doc.definitions()[&mine].name, "Two-point coil", "left as it is");
+}

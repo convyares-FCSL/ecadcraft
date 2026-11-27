@@ -15,7 +15,7 @@ pub mod reply;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_model::{Color, ConnectionPointDef, Definition, PageId, Primitive, Pt, Style};
+use ecad_model::{Color, PageId, Style};
 use serde_json::Value;
 
 use crate::access::{Pages, owner_of_active, try_lock};
@@ -314,31 +314,4 @@ pub(crate) use ecad_electrical::commands::input::MAX_HANDLES;
 
 pub(crate) fn plain_style(p: &Project) -> Style {
     Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 }
-}
-
-/// The built-in definition `place` uses without a symbol, saved as **Two-point coil**: 10 × 20,
-/// connection points A1 (top) and A2 (bottom). `place` finds it again by that name.
-pub(crate) fn builtin_coil() -> Definition {
-    let r = [(-5.0, -10.0), (5.0, -10.0), (5.0, 10.0), (-5.0, 10.0)];
-    Definition {
-        bridges: Vec::new(),
-        name: "Two-point coil".into(),
-        origin: None,
-        graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
-        connection_points: vec![
-            ConnectionPointDef {
-                key: ecad_model::PointKey::def("A1"),
-                label: Some("A1".into()),
-                at: Pt::new(0.0, 10.0),
-                accepts: Default::default(),
-            },
-            ConnectionPointDef {
-                key: ecad_model::PointKey::def("A2"),
-                label: Some("A2".into()),
-                at: Pt::new(0.0, -10.0),
-                accepts: Default::default(),
-            },
-        ],
-        ..Default::default()
-    }
 }

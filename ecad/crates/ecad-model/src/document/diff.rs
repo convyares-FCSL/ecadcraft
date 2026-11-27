@@ -39,26 +39,38 @@ fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) 
     }
 }
 
-/// The longest common subsequence of `a` and `b` (as a set of the elements kept).
+/// The longest common subsequence of `a` and `b` (as a set of the elements kept). Page and folder IDs are unique in
+/// each order, so it is the longest increasing run of `b`-positions taken in `a`'s order: O(n log n) time and O(n)
+/// memory, whatever the orders' lengths. A repeated element (only in a damaged or hostile order) counts once, at its
+/// first place in each.
 fn kept<T: Copy + Ord>(a: &[T], b: &[T]) -> BTreeSet<T> {
-    let (n, m) = (a.len(), b.len());
-    let mut t = vec![vec![0u32; m + 1]; n + 1];
-    for i in (0..n).rev() {
-        for j in (0..m).rev() {
-            t[i][j] = if a[i] == b[j] { t[i + 1][j + 1] + 1 } else { t[i + 1][j].max(t[i][j + 1]) };
+    let mut at: BTreeMap<T, usize> = BTreeMap::new();
+    for (j, x) in b.iter().enumerate() {
+        at.entry(*x).or_insert(j);
+    }
+    let mut seen = BTreeSet::new();
+    // `a`'s elements that `b` holds, each once, with their place in `b`.
+    let seq: Vec<(T, usize)> = a.iter().filter(|x| seen.insert(**x)).filter_map(|x| at.get(x).map(|j| (*x, *j))).collect();
+    // Patience sorting: `tails[k]` is the index in `seq` of the smallest last position of an increasing run of
+    // length k + 1; `prev` links each element to the one before it in its run.
+    let mut tails: Vec<usize> = Vec::new();
+    let mut prev: Vec<Option<usize>> = vec![None; seq.len()];
+    for (i, &(_, pos)) in seq.iter().enumerate() {
+        let k = tails.partition_point(|&t| seq.get(t).is_some_and(|&(_, p)| p < pos));
+        prev[i] = k.checked_sub(1).and_then(|k| tails.get(k).copied());
+        if k == tails.len() {
+            tails.push(i);
+        } else if let Some(t) = tails.get_mut(k) {
+            *t = i;
         }
     }
-    let (mut i, mut j, mut out) = (0, 0, BTreeSet::new());
-    while i < n && j < m {
-        if a[i] == b[j] {
-            out.insert(a[i]);
-            i += 1;
-            j += 1;
-        } else if t[i + 1][j] >= t[i][j + 1] {
-            i += 1;
-        } else {
-            j += 1;
+    let mut out = BTreeSet::new();
+    let mut cur = tails.last().copied();
+    while let Some(i) = cur {
+        if let Some(&(x, _)) = seq.get(i) {
+            out.insert(x);
         }
+        cur = prev.get(i).copied().flatten();
     }
     out
 }
