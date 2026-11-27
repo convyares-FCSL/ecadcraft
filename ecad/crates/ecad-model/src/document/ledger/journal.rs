@@ -289,14 +289,15 @@ pub(super) fn apply_tx_extended(
 /// result and, apart from the result, any rollback failure (the document has then been restored
 /// from `history` when possible).
 pub(super) fn applied_then_reverted<R>(
-    doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, read: impl FnOnce(&Document) -> R,
+    doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, read: impl FnOnce(&Document, &[Op]) -> R,
 ) -> (Result<R>, Option<String>) {
     let mut journal = Journal::new(doc, ops, history, health);
     let mut touched = Touched::default();
     // As a commit does: the wires of the nets whose points changed follow.
+    let mut rewritten = Vec::new();
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
-        let wires = crate::connectivity::wire_order::rewrite(journal.doc, ops);
-        journal.extend(wires, &mut touched)?;
+        rewritten = crate::connectivity::wire_order::rewrite(journal.doc, ops);
+        journal.extend(rewritten.clone(), &mut touched)?;
         let cores = crate::connectivity::wire_order::cores(journal.doc, ops);
         journal.extend(cores, &mut touched)
     });
@@ -304,7 +305,7 @@ pub(super) fn applied_then_reverted<R>(
         Ok(()) => validate(journal.doc, &touched, verify),
         Err(e) => (Err(e), None),
     };
-    let result = checked.map(|()| read(journal.doc));
+    let result = checked.map(|()| read(journal.doc, &rewritten));
     let rollback_failure = journal.roll_back();
     drop(journal);
     // Assertions only now, with the document settled: a panic here loses nothing.
@@ -341,7 +342,7 @@ impl Document {
     /// assert!(doc.pages().is_empty()); // reverted
     /// ```
     pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
-        let (result, failure) = applied_then_reverted(self, ops, false, None, &mut Health::default(), read);
+        let (result, failure) = applied_then_reverted(self, ops, false, None, &mut Health::default(), |d, _| read(d));
         match failure {
             Some(f) => Err(ModelError::Invariant(format!("{f}: the document may no longer be valid"))),
             None => result,

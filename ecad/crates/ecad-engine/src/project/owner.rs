@@ -38,7 +38,11 @@ impl DocumentOwner for Project {
         {
             self.clips.insert(
                 clip.serial,
-                ClipSnapshot { doc: self.ledger.document().clone(), page, map: self.pages.get(&page).map(|v| v.map.clone()).unwrap_or_default() },
+                ClipSnapshot {
+                    source: crate::translate::ClipPage::of(self.ledger.document(), page),
+                    page,
+                    map: self.pages.get(&page).map(|v| v.map.clone()).unwrap_or_default(),
+                },
             );
             while self.clips.len() > 8 {
                 self.clips.pop_first();

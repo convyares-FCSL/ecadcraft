@@ -20,8 +20,8 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::connectivity::derive::{connection_point_position, connection_point_positions};
 use ecad_model::{
-    ConnectionPoint, ConnectionPointId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive,
-    Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Subject,
+    ConnectionPoint, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger,
+    Op, PageId, Primitive, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Subject,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -656,24 +656,112 @@ pub(crate) fn erase_routes(doc: &Document, unlinked: &[(RepresentationId, Repres
     }
 }
 
+/// What a paste reads of the page objects were copied from, as it was when they were put on the clipboard: the
+/// page's representations, the devices they show with their connection points and definitions, and the routes
+/// they draw. A paste reads nothing else, so the rest of the document is not kept.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ClipPage {
+    representations: BTreeMap<RepresentationId, Representation>,
+    devices: BTreeMap<DeviceId, Device>,
+    connection_points: BTreeMap<DeviceId, Vec<(ConnectionPointId, ConnectionPoint)>>,
+    definitions: BTreeMap<DefinitionId, Definition>,
+    routes: BTreeMap<RouteId, Route>,
+}
+
+impl ClipPage {
+    /// The objects of `page` in `doc` a paste reads.
+    pub(crate) fn of(doc: &Document, page: PageId) -> ClipPage {
+        let mut c = ClipPage::default();
+        for (id, r) in doc.representations_on(page) {
+            match r.subject {
+                Subject::Device(d) => {
+                    if let Some(device) = doc.devices().get(&d) {
+                        if let Some(def) = device.definition
+                            && let Some(x) = doc.definitions().get(&def)
+                        {
+                            c.definitions.insert(def, x.clone());
+                        }
+                        c.connection_points.insert(d, doc.connection_points_of(d).map(|(t, x)| (t, x.clone())).collect());
+                        c.devices.insert(d, device.clone());
+                    }
+                }
+                Subject::Route(route) => {
+                    if let Some(x) = doc.routes().get(&route) {
+                        c.routes.insert(route, x.clone());
+                    }
+                }
+                Subject::Wire(_) | Subject::Cable(_) | Subject::Aid(_) => {}
+            }
+            c.representations.insert(id, r.clone());
+        }
+        c
+    }
+}
+
+/// Where copied objects come from: the live document, or the page kept when they were put on the clipboard.
+#[derive(Clone, Copy)]
+enum CopyFrom<'a> {
+    Live(&'a Document),
+    Clip(&'a ClipPage),
+}
+
+impl<'a> CopyFrom<'a> {
+    /// The representations on `page`, in ID order.
+    fn representations_on(self, page: PageId) -> Vec<(&'a RepresentationId, &'a Representation)> {
+        let map = match self {
+            CopyFrom::Live(d) => d.representations(),
+            CopyFrom::Clip(c) => &c.representations,
+        };
+        map.iter().filter(|(_, r)| r.page == page).collect()
+    }
+
+    fn device(self, id: DeviceId) -> Option<&'a Device> {
+        match self {
+            CopyFrom::Live(d) => d.devices().get(&id),
+            CopyFrom::Clip(c) => c.devices.get(&id),
+        }
+    }
+
+    fn definition(self, id: DefinitionId) -> Option<&'a Definition> {
+        match self {
+            CopyFrom::Live(d) => d.definitions().get(&id),
+            CopyFrom::Clip(c) => c.definitions.get(&id),
+        }
+    }
+
+    fn connection_points_of(self, device: DeviceId) -> Vec<(ConnectionPointId, &'a ConnectionPoint)> {
+        match self {
+            CopyFrom::Live(d) => d.connection_points_of(device).collect(),
+            CopyFrom::Clip(c) => c.connection_points.get(&device).map(|v| v.iter().map(|(t, x)| (*t, x)).collect()).unwrap_or_default(),
+        }
+    }
+
+    fn route(self, id: RouteId) -> Option<&'a Route> {
+        match self {
+            CopyFrom::Live(d) => d.routes().get(&id),
+            CopyFrom::Clip(c) => c.routes.get(&id),
+        }
+    }
+}
+
 /// One copy operation's new entities.
 fn copy_batch(
     cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(RouteId, End)>,
     counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
-    let mut src_doc: Option<&Document> = None;
+    let mut src_doc: Option<CopyFrom<'_>> = None;
     let mut src_map: Option<&HandleMap> = None;
     let mut by_source: HashMap<Handle, Handle> = HashMap::new();
     for (new, src) in batch {
         let (doc, map, h) = match src {
-            Source::Entity(h) => (cx.ledger.document(), cx.map, *h),
+            Source::Entity(h) => (CopyFrom::Live(cx.ledger.document()), cx.map, *h),
             Source::Clipboard { serial, handle } => {
                 let snap = cx.clips.get(serial).ok_or("the clipboard was filled before this project recorded it; copy again")?;
                 if snap.page != cx.page {
                     return Err("pasting onto another page is not supported yet; paste on the page you copied from".into());
                 }
-                (&snap.doc, &snap.map, *handle)
+                (CopyFrom::Clip(&snap.source), &snap.map, *handle)
             }
         };
         match map.get(h) {
@@ -692,7 +780,7 @@ fn copy_batch(
     let mut point_map: BTreeMap<ConnectionPointId, ConnectionPointId> = BTreeMap::new();
 
     // Whole component representations: independent copies.
-    for (rid, r) in sdoc.representations().iter().filter(|(_, r)| r.page == cx.page) {
+    for (rid, r) in sdoc.representations_on(cx.page) {
         let Subject::Device(src_comp) = r.subject else { continue };
         let item_handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         let marker_handles: Vec<(ConnectionPointId, Handle)> =
@@ -704,11 +792,11 @@ fn copy_batch(
         if !all_copied || item_handles.is_empty() {
             continue;
         }
-        let comp = sdoc.devices().get(&src_comp).cloned().ok_or("source component missing")?;
+        let comp = sdoc.device(src_comp).cloned().ok_or("source component missing")?;
         if let Some(def) = comp.definition
             && !cx.ledger.document().definitions().contains_key(&def)
         {
-            let d = sdoc.definitions().get(&def).cloned().ok_or("source definition missing")?;
+            let d = sdoc.definition(def).cloned().ok_or("source definition missing")?;
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
         let new_comp: DeviceId = cx.ids.fresh();
@@ -772,13 +860,13 @@ fn copy_batch(
     }
 
     // Whole routes: new routes; ends follow copied connection points, else are resolved later.
-    for (_, r) in sdoc.representations().iter().filter(|(_, r)| r.page == cx.page) {
+    for (_, r) in sdoc.representations_on(cx.page) {
         let Subject::Route(src_r) = r.subject else { continue };
         let handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         if handles.is_empty() || handles.len() != r.items.len() || !handles.iter().all(|h| by_source.contains_key(h)) {
             continue;
         }
-        let src = sdoc.routes().get(&src_r).cloned().ok_or("source route missing")?;
+        let src = sdoc.route(src_r).cloned().ok_or("source route missing")?;
         let new_r: RouteId = cx.ids.fresh();
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();

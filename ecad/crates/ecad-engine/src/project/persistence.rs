@@ -102,10 +102,11 @@ impl MemoryStore {
 pub const SAVE_UNAVAILABLE: &str = "Saving is not available in the ECAD desktop app: project persistence is not implemented. \
 Nothing was written and the project is still unsaved. Closing it discards the design.";
 
-/// A copy of the project's meaning taken when objects were put on the clipboard.
+/// What a paste needs of the page objects were put on the clipboard from, taken then: that page's objects
+/// ([`crate::translate::ClipPage`]), the page, and how its drawing's entities map to them.
 #[derive(Debug, Clone)]
 pub(crate) struct ClipSnapshot {
-    pub doc: Document,
+    pub source: crate::translate::ClipPage,
     pub page: PageId,
     pub map: HandleMap,
 }

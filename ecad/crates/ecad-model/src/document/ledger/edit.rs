@@ -36,6 +36,16 @@ impl Ledger {
     /// `read` has not run). [`ModelError::CorruptLog`] when a revert failed and replaying the log
     /// could not restore the document either, from this call on, as commits are refused then.
     pub fn with_applied<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R> {
+        self.with_applied_and_rewrite(ops, |d, _| read(d))
+    }
+
+    /// [`Ledger::with_applied`], also handing `read` the wire rewrite a commit of `ops` adds
+    /// ([`crate::connectivity::wire_order::rewrite`]): the document `read` sees has it applied. A caller that
+    /// commits those ops with its own ops leaves the commit's rewrite nothing to do.
+    ///
+    /// # Errors
+    /// As [`Ledger::with_applied`].
+    pub fn with_applied_and_rewrite<R>(&mut self, ops: &[Op], read: impl FnOnce(&Document, &[Op]) -> R) -> Result<R> {
         if self.health.broken {
             return Err(ModelError::CorruptLog("the document could not be restored after a failed rollback; reopen the project".into()));
         }
