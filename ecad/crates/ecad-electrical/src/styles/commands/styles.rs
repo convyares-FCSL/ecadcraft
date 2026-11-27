@@ -505,7 +505,7 @@ pub(crate) fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue,
     let fields = fields(doc, cat, edit.fields)?;
     if edit.new {
         let name = name.filter(|n| is_name(n)).ok_or(CmdError::refused(STYLE_NEEDS_NAME))?;
-        if ecad_model::registry::styles::rows(doc, cat).iter().any(|r| r.name.eq_ignore_ascii_case(&name)) {
+        if !ecad_model::registry::styles::called(doc, cat, &name).is_empty() {
             return Err(CmdError::refused(format!("A {} is already called {name:?}; choose another name.", cat.one.to_lowercase())));
         }
         // A catalogue with no built-in styles (cable types, rating tables) starts an
@@ -972,13 +972,12 @@ impl Generic for SetstyleParams {
         let changed = !plan.ops.is_empty();
         let id = plan.id;
         Ok(Outcome::edit_then(plan.label, plan.ops, move |doc| {
-            let row =
-                ecad_model::registry::styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| ecad_model::registry::styles::Row {
-                    id: id.clone(),
-                    name: ecad_model::registry::styles::name(doc, cat, &id),
-                    layer: Layer::Project,
-                    overridden: false,
-                });
+            let row = ecad_model::registry::styles::row(doc, cat, &id).unwrap_or_else(|| ecad_model::registry::styles::Row {
+                id: id.clone(),
+                name: ecad_model::registry::styles::name(doc, cat, &id),
+                layer: Layer::Project,
+                overridden: false,
+            });
             let mut v = style_json(doc, cat, &row, false);
             v["changed"] = json!(changed);
             v

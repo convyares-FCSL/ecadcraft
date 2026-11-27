@@ -23,7 +23,7 @@ use ecad_model::{Document, ObjectRef, Op, PageId, Subject, Word};
 
 use ecad_model::registry::Scope;
 use ecad_model::registry::data::Registry;
-use ecad_model::registry::styles::{Catalogue, Count, Reach, Row, chosen, exists, name, rows};
+use ecad_model::registry::styles::{Catalogue, Count, Reach, chosen, exists, name};
 
 use crate::CmdError;
 
@@ -53,16 +53,16 @@ pub fn find(doc: &Document, cat: &Catalogue, text: &str) -> Result<StyleRef, Cmd
     if let Some(id) = StyleRef::parse(t).filter(|id| exists(doc, cat, id)) {
         return Ok(id);
     }
-    let hits: Vec<Row> = rows(doc, cat).into_iter().filter(|r| r.name.eq_ignore_ascii_case(t)).collect();
+    let hits = ecad_model::registry::styles::called(doc, cat, t);
     match hits.as_slice() {
-        [one] => Ok(one.id.clone()),
+        [one] => Ok(one.clone()),
         [] => Err(CmdError::refused(format!("No {} is called {t:?}.", cat.one.to_lowercase()))),
         _ => Err(CmdError::refused(format!("{} {} are called {t:?}; give the ID ({}).", hits.len(), cat.plural.to_lowercase(), ids(&hits)))),
     }
 }
 
-fn ids(rows: &[Row]) -> String {
-    rows.iter().map(|r| r.id.text()).collect::<Vec<_>>().join(", ")
+fn ids(hits: &[StyleRef]) -> String {
+    hits.iter().map(StyleRef::text).collect::<Vec<_>>().join(", ")
 }
 
 /// The catalogue words, for messages.

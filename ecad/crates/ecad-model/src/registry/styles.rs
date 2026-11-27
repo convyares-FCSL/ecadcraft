@@ -343,6 +343,31 @@ pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
     out
 }
 
+/// The row [`rows`] lists for style `id` of `cat`, looked up alone; `None` when `cat` has no such style.
+pub fn row(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Option<Row> {
+    let has = |l| record(doc, l, cat.catalogue, id).is_some();
+    if let Some(b) = cat.builtin(id) {
+        let overridden = has(StyleLayer::Project) || has(StyleLayer::Standard);
+        return Some(Row { id: id.clone(), name: b.name.to_string(), layer: Layer::Builtin, overridden });
+    }
+    let layer = if has(StyleLayer::Standard) {
+        Layer::Standard
+    } else if has(StyleLayer::Project) {
+        Layer::Project
+    } else {
+        return None;
+    };
+    Some(Row { id: id.clone(), name: name(doc, cat, id), layer, overridden: false })
+}
+
+/// The styles of `cat` whose [`rows`] name is `text`, ignoring case, in the order [`rows`] lists them: one
+/// pass over the names, without building or sorting the rows.
+pub fn called(doc: &Document, cat: &Catalogue, text: &str) -> Vec<StyleRef> {
+    let builtins = cat.builtins.iter().filter(|b| b.name.eq_ignore_ascii_case(text)).map(|b| StyleRef::Builtin(b.id.to_string()));
+    let own = ids(doc, cat).into_iter().filter(|id| cat.builtin(id).is_none() && name(doc, cat, id).eq_ignore_ascii_case(text));
+    builtins.chain(own).collect()
+}
+
 /// The IDs of [`rows`], without their names or order: for a reader that looks every style up by
 /// ID, so reading them costs one pass over the records.
 pub fn ids(doc: &Document, cat: &Catalogue) -> Vec<StyleRef> {
