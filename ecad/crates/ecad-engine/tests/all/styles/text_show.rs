@@ -303,10 +303,10 @@ fn text_views_are_worked_out_again_only_where_a_change_shows() {
     h.project.open_page(&mut h.s, p1).unwrap();
     // Run `cmd`; the passes it caused per page, and the pages it names.
     let counted = |h: &mut H, cmd: &str, params: Value| -> ([u64; 3], Option<std::collections::BTreeSet<PageId>>) {
-        let before = [p1, p2, p3].map(ecad_electrical::devices::texts::text_passes);
+        let before = [p1, p2, p3].map(ecad_electrical::dev::text_passes);
         let n = h.p(|p| p.change_count());
         h.s.execute(cmd, &params).unwrap();
-        let after = [p1, p2, p3].map(ecad_electrical::devices::texts::text_passes);
+        let after = [p1, p2, p3].map(ecad_electrical::dev::text_passes);
         ([after[0] - before[0], after[1] - before[1], after[2] - before[2]], h.p(|p| p.changes_since(n)))
     };
     // -K01's tag (on pages 1 and 2), page 1 on screen: page 1 now, page 2 named, page 3 neither.

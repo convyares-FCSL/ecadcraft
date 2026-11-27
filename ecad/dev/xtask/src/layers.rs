@@ -87,7 +87,7 @@ pub(crate) const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 pub(crate) const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
 /// Features whose code lives only in a crate's `dev` module.
-pub(crate) const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops"];
+pub(crate) const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops", "test-counts"];
 
 /// The engine files that read a dev feature outside its `dev` module, and why: the fault-injection and
 /// test-ops hooks sit inside the write and access paths they break or open, so a test exercises the

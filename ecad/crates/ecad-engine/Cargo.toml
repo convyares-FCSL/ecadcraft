@@ -52,3 +52,5 @@ ecad-model = { workspace = true, features = ["verify-invariants"] }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # This crate's own tests see `apply_ops` and the test project builder.
 ecad-engine = { path = ".", features = ["test-ops", "test-support"] }
+# The update-map tests count how often a page's texts are worked out.
+ecad-electrical = { workspace = true, features = ["test-counts"] }

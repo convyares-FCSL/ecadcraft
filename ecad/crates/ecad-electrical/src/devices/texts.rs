@@ -159,17 +159,6 @@ pub struct PageText {
     pub overlaps: bool,
 }
 
-thread_local! {
-    /// How many times [`all_texts_on_page`] ran per page on this thread: the update-map tests
-    /// count it (a change elsewhere must not work a page's texts out again).
-    static TEXT_PASSES: std::cell::RefCell<BTreeMap<PageId, u64>> = const { std::cell::RefCell::new(BTreeMap::new()) };
-}
-
-/// How many times this thread has worked out `page`'s derived texts (see `TEXT_PASSES`).
-pub fn text_passes(page: PageId) -> u64 {
-    TEXT_PASSES.with(|c| c.borrow().get(&page).copied().unwrap_or(0))
-}
-
 /// The run rule of a symbol, from its starter kind.
 pub(crate) fn run_rule(doc: &Document, r: &Representation) -> ecad_model::look::RunRule {
     use ecad_model::look::RunRule;
@@ -193,7 +182,8 @@ pub(crate) fn run_rule(doc: &Document, r: &Representation) -> ecad_model::look::
 /// and `m` measures the texts (the C wrappers
 /// `all_texts_on_page` and `all_texts_on_page_with` pass CADCraft's fonts).
 pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc::kept::Plc>, m: &dyn Look) -> Vec<PageText> {
-    TEXT_PASSES.with(|c| *c.borrow_mut().entry(page).or_default() += 1);
+    #[cfg(feature = "test-counts")]
+    crate::dev::count_text_pass(page);
     use crate::devices::text_place::Block;
     use ecad_model::look::TextKind;
     use ecad_model::look::{Shown, TextTarget};
