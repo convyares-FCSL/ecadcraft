@@ -102,6 +102,9 @@ pub const fn prints(meaning: Meaning) -> bool {
 /// One sheet's colours.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sheet {
+    /// Whether this is the dark sheet: colour codes draw in their on-dark shade on it. Read this,
+    /// never a comparison of colours, so a palette change cannot flip which shade is drawn.
+    pub dark: bool,
     pub sheet: Color,
     pub ink: Color,
     pub ink_2: Color,
@@ -124,6 +127,7 @@ pub struct Sheet {
 
 /// The paper sheet, the default.
 pub const PAPER: Sheet = Sheet {
+    dark: false,
     sheet: Color::hex(0xF6F4EF),
     ink: Color::hex(0x16191D),
     ink_2: Color::hex(0x5A616B),
@@ -143,6 +147,7 @@ pub const PAPER: Sheet = Sheet {
 
 /// The dark sheet.
 pub const DARK: Sheet = Sheet {
+    dark: true,
     sheet: Color::hex(0x1B1D21),
     ink: Color::hex(0xE4E6E9),
     ink_2: Color::hex(0x9299A3),
