@@ -166,7 +166,9 @@ pub struct Net {
     pub wires: Vec<WireId>,
 }
 
-/// Nets from stored attachments only (geometry is never consulted).
+/// Nets joined by conductor ends only (geometry is never consulted): a simpler builder kept for
+/// benches and test invariants. The project's nets, as the app, wire numbers, checks and agents
+/// see them, are [`crate::Connectivity`], which also joins bridges, jumper bars and continuations.
 pub fn nets(doc: &Document) -> Vec<Net> {
     // Union-find over terminals and conductors.
     let mut nodes: Vec<Node> = Vec::new();

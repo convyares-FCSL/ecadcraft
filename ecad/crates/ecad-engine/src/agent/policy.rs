@@ -1,31 +1,57 @@
-//! What an agent may run through `execute` (scope item 4).
+//! What an agent may run through `execute`: an allowlist.
 //!
 //! # Semantics
-//! - **Writes off** (no `--write`, or the project opened read-only): only the commands in
-//!   [`READ_COMMANDS`] run; every other command is refused before it reaches the engine, so the
-//!   head never moves.
-//! - **Writes on:** every command runs through the engine exactly as for a person (ECAD's owner
-//!   refuses or records it), except the file and session commands in [`NEVER_COMMANDS`]: opening,
-//!   creating, closing and saving under another name stay with the person who started the server,
-//!   and nothing reads or writes other files. Saving the project is the `save` tool.
-//! - Parameters naming a file ([`FILE_KEYS`]) are refused in every mode, whatever the command.
+//! - **Offered** ([`offered`]): ECAD's own commands ([`crate::commands::specs`]) and a short, reviewed
+//!   list of CADCraft drawing commands ([`crate::agent::upstream`]), each marked [`Offered::Read`]
+//!   or [`Offered::Write`]. Every other command is refused in every mode, before it reaches the
+//!   engine.
+//! - **Never** ([`NEVER_COMMANDS`]): the file, document and process commands, named so that they stay
+//!   refused even if one were offered by mistake: opening, creating, closing and saving under
+//!   another name stay with the person who started the server, nothing reads or writes other files,
+//!   and no LISP runs. Every command CADCraft classifies as touching files is here. Saving the
+//!   project is the `save` tool.
+//! - **Writes off** (no `--write`, or the project opened read-only): only commands that read run
+//!   ([`is_read_command`], and the reading forms of [`reads_only`]); a write is refused before it
+//!   reaches the engine, so the head never moves.
+//! - **Writes on:** an offered command runs through the engine exactly as for a person (ECAD's owner
+//!   refuses or records it).
+//! - Parameters naming a file ([`FILE_KEYS`], or a file key a generic command declares) are refused
+//!   in every mode, whatever the command: a second fence behind the allowlist.
+
+use std::collections::BTreeSet;
+use std::sync::OnceLock;
 
 use serde_json::Value;
 
-/// Session commands that change nothing in the project or its files, allowed with writes off. A
-/// generic command says so in its declaration instead ([`is_read_command`]).
+use crate::agent::upstream;
+
+/// What an offered command does to the project, as `list_commands` marks it (`"agent"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Offered {
+    /// It records nothing, whatever its parameters: it runs with writes off.
+    Read,
+    /// It may record a transaction: it runs only with writes on (some forms only read, see
+    /// [`reads_only`]).
+    Write,
+}
+
+impl Offered {
+    /// The word `list_commands` shows: `read` or `write`.
+    pub const fn word(self) -> &'static str {
+        match self {
+            Offered::Read => "read",
+            Offered::Write => "write",
+        }
+    }
+}
+
+/// ECAD session commands that change nothing in the project or its files, allowed with writes
+/// off. A generic command says so in its declaration instead, and an offered CADCraft command in
+/// its entry ([`is_read_command`]).
 pub(crate) const READ_COMMANDS: &[&str] = &[
     "ecadinspect",
-    "entities",
-    "texts",
-    "shapes",
-    "usage",
-    "loops",
-    "drawing.inspect",
-    "getvar",
     // Navigation between the project's pages: opens or shows a page, records nothing.
     "openpage",
-    "document.switch",
     // Cable references: going to the other end opens or shows its page and selects
     // it, and records nothing.
     "cablegoto",
@@ -83,14 +109,33 @@ const READ_WITH_REV: &[&str] = &["release"];
 const READ_WITH_DRY_RUN: &[&str] = &["plcimport"];
 
 /// Whether command `id` only reads, whatever its parameters: a session command in
-/// [`READ_COMMANDS`], or a generic command that declares it.
+/// [`READ_COMMANDS`], a generic command that declares it, or an offered CADCraft command marked so.
 pub fn is_read_command(id: &str) -> bool {
-    READ_COMMANDS.contains(&id) || crate::commands::declared_read(id)
+    READ_COMMANDS.contains(&id) || crate::commands::declared_read(id) || upstream::offered(id) == Some(Offered::Read)
 }
 
 /// Every command that only reads, whatever its parameters ([`is_read_command`]).
 pub fn read_commands() -> Vec<&'static str> {
-    READ_COMMANDS.iter().copied().chain(crate::commands::declared_reads()).collect()
+    let upstream_reads = upstream::UPSTREAM_COMMANDS.iter().filter(|(_, o)| *o == Offered::Read).map(|(c, _)| *c);
+    READ_COMMANDS.iter().copied().chain(crate::commands::declared_reads()).chain(upstream_reads).collect()
+}
+
+/// Whether `id` is one of ECAD's own commands ([`crate::commands::specs`]).
+pub fn is_ecad_command(id: &str) -> bool {
+    static IDS: OnceLock<BTreeSet<&'static str>> = OnceLock::new();
+    IDS.get_or_init(|| crate::commands::specs().iter().map(|c| c.id).collect()).contains(id)
+}
+
+/// What command `id` (its canonical id) does for an agent, or `None` when agents may not run it:
+/// one of [`NEVER_COMMANDS`], or neither ECAD's nor an offered CADCraft command.
+pub fn offered(id: &str) -> Option<Offered> {
+    if NEVER_COMMANDS.contains(&id) {
+        return None;
+    }
+    if is_ecad_command(id) {
+        return Some(if is_read_command(id) { Offered::Read } else { Offered::Write });
+    }
+    upstream::offered(id)
 }
 
 /// Whether `id` with `params` only reads ([`READ_WITHOUT_FIELDS`], [`READ_WITH_PREVIEW`],
@@ -105,9 +150,12 @@ pub fn reads_only(id: &str, params: &Value) -> bool {
             && params.get("existing").and_then(Value::as_str).is_none_or(|e| e.trim() != "replace"))
 }
 
-/// Commands an agent never runs: files, documents and the process. The project is opened by the
-/// person who starts the server; saving is the `save` tool (only with `--write`).
+/// Commands an agent never runs: files, documents, LISP and the process. The project is opened by
+/// the person who starts the server; saving is the `save` tool (only with `--write`). Every command
+/// CADCraft lists as touching files (`file_access::commands::FILES`) or refuses under automation
+/// roots (`REFUSED`) is here; a test checks it after each upstream sync.
 pub const NEVER_COMMANDS: &[&str] = &[
+    // Opening, creating, closing and saving documents.
     "open",
     "new",
     "close",
@@ -116,6 +164,8 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "saveas",
     "recover",
     "drawingrecovery",
+    "reinit",
+    // Other files in or out: import, export, print, publish, compare, data links.
     "import",
     "export",
     "exportpdf",
@@ -123,15 +173,8 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "plotwindow",
     "publish",
     "pdfbook",
+    "pdfimport",
     "preview",
-    "wblock",
-    "xref",
-    "-xref",
-    "xattach",
-    "attach",
-    "xopen",
-    "xbind",
-    "layout.saveas",
     "tableexport",
     "compare",
     "compareexport",
@@ -140,14 +183,42 @@ pub const NEVER_COMMANDS: &[&str] = &[
     "datalink",
     "datalinkupdate",
     "eattext",
-    "script",
-    "options",
-    "aliasedit",
-    "reinit",
+    "share",
+    "layout",
+    "layout.saveas",
+    "pagesetup",
+    "plotstyle",
     "plottermanager",
     "-plottermanager",
     "stylesmanager",
-    "share",
+    // Blocks, references, images and patterns from files.
+    "wblock",
+    "-wblock",
+    "insert",
+    "minsert",
+    "xref",
+    "-xref",
+    "xattach",
+    "attach",
+    "xopen",
+    "xbind",
+    "image",
+    "imageattach",
+    "blocklibrary",
+    "blocklibraries",
+    "blocklibimport",
+    "hatch",
+    "hatch.patterns",
+    "linetype",
+    "-linetype",
+    // Scripts and LISP: they run anything, outside the commands ECAD records.
+    "script",
+    "lisp",
+    "appload",
+    // Settings of the person or the program; SETVAR also sets the path variables.
+    "options",
+    "aliasedit",
+    "setvar",
     // AUDIT rewrites the drawing outside ECAD's commands; its log setting writes a file.
     "audit",
     // An agent never turns its own access on, widens it or moves the port.
@@ -160,9 +231,8 @@ pub const AGENT_ACCESS: &str = "Refused: Agent access is set by the person in th
 /// Parameter names that name a file on disk.
 pub(crate) const FILE_KEYS: &[&str] = &["path", "file", "patternFile", "template", "folder", "output"];
 
-/// Commands whose `path` parameter is not a file (ARRAYPATH's path is a handle).
+/// Commands whose file-named parameter is not a file.
 const PATH_IS_NOT_A_FILE: &[&str] = &[
-    "arraypath",
     // `folder` names a folder of pages, never a file.
     "newpage",
     "movepage",
@@ -197,11 +267,6 @@ fn several_steps(id: &str, params: &Value) -> bool {
     counted || back || all
 }
 
-/// Whether SETVAR is asked to set AUDITCTL (which makes AUDIT write a log file).
-fn sets_auditctl(id: &str, params: &Value) -> bool {
-    id == "setvar" && params.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().eq_ignore_ascii_case("auditctl"))
-}
-
 /// Said when a write is refused because the server was started without `--write`.
 pub const WRITES_OFF: &str = "Refused: this ECAD MCP server is read-only (started without --write). \
 Nothing was changed. Restart it with --write to let the agent edit and save the project.";
@@ -215,6 +280,15 @@ pub fn never(id: &str) -> String {
         "Refused: {} is not available to agents. Opening, creating, closing and saving projects under another name, \
          and reading or writing other files, stay with the person who started the server; save the project with the \
          `save` tool. Nothing was changed.",
+        id.to_ascii_uppercase()
+    )
+}
+
+/// Said when the command is neither ECAD's nor an offered CADCraft command.
+pub fn not_offered(id: &str) -> String {
+    format!(
+        "Refused: {} is not available to agents. Agents run ECAD's commands and a short list of drawing commands; \
+         list_commands shows them, each marked read or write. Nothing was changed.",
         id.to_ascii_uppercase()
     )
 }
@@ -251,10 +325,8 @@ pub fn check(id: &str, params: &Value, writes: bool, read_only: Option<&str>) ->
     if NEVER_COMMANDS.contains(&id) {
         return Err(never(id));
     }
-    if sets_auditctl(id, params) {
-        return Err(never("setvar auditctl"));
-    }
-    if is_read_command(id) || reads_only(id, params) {
+    let Some(offer) = offered(id) else { return Err(not_offered(id)) };
+    if offer == Offered::Read || reads_only(id, params) {
         return Ok(());
     }
     if !writes {
@@ -299,15 +371,24 @@ mod tests {
             assert!(check(id, &p, true, None).is_ok(), "{id} {p}");
         }
         assert!(check("audit", &none, true, None).is_err());
-        assert!(check("setvar", &json!({"name": "AuditCtl", "value": 1}), true, None).is_err());
-        assert!(check("setvar", &json!({"name": "osmode", "value": 1}), true, None).is_ok());
+        assert_eq!(check("setvar", &json!({"name": "osmode", "value": 1}), true, None), Err(never("setvar")));
+        for id in ["lisp", "appload", "blocklibraries", "insert", "hatch"] {
+            assert_eq!(check(id, &none, true, None), Err(never(id)), "{id}");
+        }
+        // Commands nobody offered are refused in every mode, as are names that are no command.
+        for id in ["3dorbit", "layer", "pastetable", "nosuch"] {
+            assert_eq!(check(id, &none, true, None), Err(not_offered(id)), "{id}");
+            assert_eq!(check(id, &none, false, None), Err(not_offered(id)), "{id}");
+        }
+        assert!(check("entities", &none, false, Some("locked")).is_ok());
+        assert_eq!(check("line", &none, false, None), Err(WRITES_OFF.into()));
         assert!(check("wire", &none, false, None).is_err());
         assert!(check("wire", &none, true, None).is_ok());
         assert!(check("wire", &none, true, Some("locked")).is_err());
         assert!(check("saveas", &none, true, None).is_err());
         assert_eq!(check("agentaccess", &json!({"mode": "write"}), true, None), Err(AGENT_ACCESS.into()));
         assert!(check("line", &json!({"path": "x.dxf"}), true, None).is_err());
-        assert!(check("arraypath", &json!({"path": "1A"}), true, None).is_ok());
+        assert_eq!(check("newfolder", &json!({"folder": "A"}), true, None), Ok(()));
         assert!(check("entities", &json!({"path": null}), false, None).is_ok());
         // The check reads; `release` issues only without `rev`; no folder of its own.
         assert!(check("prerelease", &none, false, Some("locked")).is_ok());
@@ -319,5 +400,18 @@ mod tests {
         assert!(check("release", &json!({"rev": "A", "existing": "replace"}), true, None).is_ok());
         assert!(check("release", &none, true, None).is_ok());
         assert_eq!(check("release", &json!({"folder": "x"}), true, None), Err(file_key("release", "folder")));
+    }
+
+    /// Every command the read lists name is offered, and every special form belongs to one of
+    /// ECAD's own commands.
+    #[test]
+    fn every_read_command_is_offered() {
+        for id in read_commands() {
+            assert_eq!(offered(id), Some(Offered::Read), "{id}");
+        }
+        let forms = [READ_WITH_PREVIEW, READ_WITH_REV, READ_WITH_DRY_RUN, PATH_IS_NOT_A_FILE].concat();
+        for id in forms.into_iter().chain(READ_WITHOUT_FIELDS.iter().map(|(c, _)| *c)) {
+            assert!(is_ecad_command(id), "{id}");
+        }
     }
 }

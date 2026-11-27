@@ -1,13 +1,15 @@
-//! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
+//! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write); and
+//! the command list as an agent sees it ([`agent_commands`]).
 
+use ecad_model::Author;
 use serde_json::{Map, Value, json};
-use {ecad_model::Author, ecad_model::connectivity::derive};
 
 use crate::ProjectHandle;
 use crate::cad::Session;
 
 use crate::agent::MAX_TRANSACTIONS_PER_CALL;
 use crate::agent::gate::{self, Call, tx_summary};
+use crate::agent::policy;
 use ecad_file::history::logged_author_text;
 
 /// Names of the tools this module answers.
@@ -64,14 +66,55 @@ pub fn instructions(writes: bool, agent: &str, live: bool) -> String {
 pub fn execute_description(writes: bool) -> String {
     let mode = if writes { "Writes are on." } else { "Writes are off: only read-only commands run." };
     format!(
-        "Run one command with JSON parameters (never prompts). ECAD commands (list_commands shows ids and parameter \
-         docs) change the project exactly as for a person: the same checks and refusals, and each change is one \
-         transaction authored by this agent and one step of `u` (undo) / `redo`. Read-only commands: ecadinspect, \
-         entities, texts, shapes, usage, loops, drawing.inspect, getvar, openpage, document.switch, cablereferences, \
-         cablegoto. File and document commands (open, new, close, saveas, export, ...) are refused; save with the `save` tool. At most \
+        "Run one command with JSON parameters (never prompts). Agents run ECAD's commands and a short list of drawing \
+         commands (line, move, erase, u, ...); list_commands shows them with their parameter docs, each marked read or \
+         write. They change the project exactly as for a person: the same checks and refusals, and each change is one \
+         transaction authored by this agent and one step of `u` (undo) / `redo`. Read-only commands (ecadinspect, \
+         entities, texts, openpage, nets, ...) run with writes off. Every other command is refused, and so are file \
+         and document commands (open, new, close, saveas, export, lisp, ...); save with the `save` tool. At most \
          {MAX_TRANSACTIONS_PER_CALL} transaction per call. {mode} Examples: wire {{points:[[0,0],[60,0]]}}, \
          cableslash {{from:[28,-3], to:[32,18]}}, cableview {{cable:\"<id>\", view:\"fan\"}}, u {{}}."
     )
+}
+
+/// The `list_commands` description in ECAD's server.
+pub const LIST_COMMANDS: &str = "List the commands this agent may run, with ids, labels, aliases and parameter docs; each is \
+     marked `agent`: `read` (runs with writes off) or `write` (only with writes on). Optional `filter`: a substring of the \
+     id, label or an alias. `all: true` lists every command of the engine instead, the refused ones marked `agent: \
+     \"refused\"` and `enabled: false` with the reason.";
+
+/// Why a refused command is disabled in the full list (the refusal itself says more).
+const NEVER_REASON: &str = "not available to agents: files, documents and the process stay with the person";
+const NOT_OFFERED_REASON: &str = "not available to agents";
+
+/// The engine's command list (`engine.commands`, an array of command entries) as an agent sees it:
+/// by default only the commands the gate offers ([`policy::offered`]), each marked `"agent": "read"`
+/// or `"write"`; with `all`, every command, the refused ones marked `"agent": "refused"` and
+/// `"enabled": false` with a short reason as `disabled_reason`.
+pub fn agent_commands(list: Value, all: bool) -> Value {
+    let Value::Array(items) = list else { return list };
+    let items = items.into_iter().filter_map(|mut c| {
+        let id = c.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let offer = policy::offered(&id);
+        if offer.is_none() && !all {
+            return None;
+        }
+        if let Some(o) = c.as_object_mut() {
+            match offer {
+                Some(offer) => {
+                    o.insert("agent".into(), json!(offer.word()));
+                }
+                None => {
+                    let why = if policy::NEVER_COMMANDS.contains(&id.as_str()) { NEVER_REASON } else { NOT_OFFERED_REASON };
+                    o.insert("agent".into(), json!("refused"));
+                    o.insert("enabled".into(), json!(false));
+                    o.insert("disabled_reason".into(), json!(why));
+                }
+            }
+        }
+        Some(c)
+    });
+    Value::Array(items.collect())
 }
 
 /// The ECAD tool definitions (`live`: a `--connect` server, which also lists `screenshot`).
@@ -82,7 +125,7 @@ pub fn definitions(writes: bool, live: bool) -> Vec<Value> {
         "Save the project to its .ecad file. Refused now: writes are off (start the server with --write)."
     };
     let mut v = vec![
-        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`connection_points`), conductors with their ends and cable, cables with their members in order, and nets (derived from the stored attachments). Each list has `count` and at most `limit` entries (default 500).",
+        json!({"name": "ecad_project", "description": "The ECAD project: name, file, whether writes are on, head and unsaved changes, pages, components with their connection points (`connection_points`), conductors with their ends and cable, cables with their members in order, and nets as the app, wire numbers and checks see them (joined by conductor ends, definition bridges, jumper bars and continuations of one name; each with its connection points, conductors, continuation names and wire numbers). Each list has `count` and at most `limit` entries (default 500).",
             "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_history", "description": "The project's transactions in order: seq, id, label, kind (edit, undo of #n, redo of #n), author (`user` or `agent <name>`), time and op count. Page with offset and limit (default: the last 100).",
             "inputSchema": {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 0}}}}),
@@ -231,12 +274,18 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 .collect();
             json!({"id": id.hex(), "tag": c.tag_shown(), "tag_state": c.tag.state().map(ecad_model::naming::words::Word::word), "description": c.description(), "properties": c.properties, "members": members})
         });
-        let nets = derive::nets(doc);
+        // The nets the app, wire numbers and checks use: every net with at least one conductor,
+        // ordered by its lowest conductor ID (as the `nets` command lists them).
+        let conn = doc.connectivity();
+        let mut nets: Vec<_> = conn.nets().map(|(_, n)| n).filter(|n| !n.wires.is_empty()).collect();
+        nets.sort_by_key(|n| n.first_conductor());
         let net_count = nets.len();
         let nets = nets.into_iter().map(|n| {
             json!({
                 "connection_points": n.connection_points.iter().map(|t| t.hex()).collect::<Vec<_>>(),
                 "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+                "continuations": n.names,
+                "numbers": n.numbers.keys().collect::<Vec<_>>(),
             })
         });
         let status = p.file_status();
