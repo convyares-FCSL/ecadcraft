@@ -4,7 +4,7 @@
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
 //! the desktop app does. On top of CADCraft's server it adds:
 //!
-//! - **a write gate** ([`policy`]): read-only unless started with `--write`, and read-only
+//! - **a write gate** ([`policy`](ecad_engine::agent::policy)): read-only unless started with `--write`, and read-only
 //!   whatever the flag when the project opened read-only. Writes reach the project only through
 //!   `execute`, so every refusal, check and transaction is the one a person gets;
 //! - **agent authorship**: every transaction the agent makes (edits, undos, redos) is recorded as
@@ -12,7 +12,7 @@
 //! - **the ECAD read tools** (`ecad_project`, `ecad_history`, `ecad_inspect`) and **`save`**
 //!   (only with `--write`; save-as, open, new and close stay with the person);
 //! - **caps**: request size ([`MAX_REQUEST_BYTES`]), batch length ([`MAX_BATCH`]) and
-//!   transactions per call ([`MAX_TRANSACTIONS_PER_CALL`]).
+//!   transactions per call (`MAX_TRANSACTIONS_PER_CALL`).
 //!
 //! CADCraft's `command_line`, `script`, `cancel`, `new_drawing` and `open` tools are not offered:
 //! typed lines could reach file commands and several commands per call.
@@ -76,7 +76,7 @@ pub(crate) struct State {
     /// Whether the author name was taken from a client's `initialize` (later ones are ignored).
     pub(crate) named: bool,
     /// Transactions recorded so far by the request line being answered: a batch counts as one
-    /// call ([`MAX_TRANSACTIONS_PER_CALL`]).
+    /// call (`MAX_TRANSACTIONS_PER_CALL`).
     pub(crate) line_transactions: usize,
     /// Request lines answered so far (sent with bridged calls: the window counts per line).
     line: u64,
@@ -139,7 +139,7 @@ impl State {
     /// Why the headless project cannot be written, if it cannot.
     ///
     /// # Errors
-    /// [`UNREADABLE`] when the project cannot be read.
+    /// [`UNREADABLE`](ecad_engine::agent::UNREADABLE) when the project cannot be read.
     pub(crate) fn read_only(&mut self) -> Result<Option<String>, String> {
         let l = self.local()?;
         gate::read_only(&mut l.headless.session, &l.project)
