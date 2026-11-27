@@ -191,7 +191,7 @@ fn one_line_on_four_devices_is_one_row() {
     assert_eq!(r["location"], "+CP1");
     // By part too.
     let rows = bom(&mut f.h, json!({"group": "part"}));
-    assert_eq!(row(&rows, "AB-1NO")["location"], "+CP1 \u{d7}4");
+    assert_eq!(row(&rows, "AB-1NO")["locations"], "+CP1 \u{d7}4");
     same_as_built(&mut f.h);
     // `setprop part.1.qty` is the same as `partline set`.
     f.h.run("setprop", json!({"component": f.k[0].hex(), "key": "part.1.qty", "value": "2"})).unwrap();

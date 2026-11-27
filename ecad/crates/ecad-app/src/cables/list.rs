@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_electrical::reports::kept::{CableBase, CableColumn, CoreColumn, ReportModels};
+use ecad_electrical::reports::kept::{CableColumn, CoreColumn, ReportModels};
 use ecad_electrical::terminal_strips::cores::CoreState;
 use ecad_model::CableId;
 use ecad_widgets::prim::Tone;
@@ -110,9 +110,9 @@ impl ReportColumns for CablesSource {
     }
     fn from(&self, col: ColumnId) -> From {
         match col {
-            CABLE => From::Header(CableBase::Tag.header()),
-            TYPE => From::Header(CableBase::Type.header()),
-            CORES => From::Header(CableBase::Cores.header()),
+            CABLE => From::Header(CableColumn::Tag.header()),
+            TYPE => From::Header(CableColumn::Type.header()),
+            CORES => From::Header(CableColumn::Cores.header()),
             // A cable not drawn shows its planned ends.
             FROM | TO => From::Derived,
             // Each end's gland, `M20, M20`.
@@ -123,7 +123,7 @@ impl ReportColumns for CablesSource {
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         let r = &self.rows;
         match col {
-            FROM | TO if self.drawn(k) => r.cell(k, if col == FROM { CableBase::From } else { CableBase::To }.header()),
+            FROM | TO if self.drawn(k) => r.cell(k, if col == FROM { CableColumn::From } else { CableColumn::To }.header()),
             FROM | TO => {
                 let side = usize::from(col == TO);
                 match self.info.get(k).and_then(|i| i.planned.get(side).cloned().flatten()) {
@@ -143,7 +143,7 @@ impl ReportColumns for CablesSource {
                 Some(c) => Cell::Text(c.text.clone()),
                 None => Cell::read(crate::reports::report::DASH),
             },
-            USED => Cell::Text(format!("{} of {}", r.text(k, CableBase::Used.header()), r.text(k, CableBase::Cores.header()))),
+            USED => Cell::Text(format!("{} of {}", r.text(k, CableColumn::Used.header()), r.text(k, CableColumn::Cores.header()))),
             CHECKS => {
                 // Open cores are errors, first.
                 if let Some(n) = self.open.get(k).map(Vec::len).filter(|n| *n > 0) {
@@ -534,7 +534,7 @@ impl CablesView {
     /// The selected cable as drawn.
     pub fn drawing(&self, k: usize) -> crate::cables::view::Drawing {
         let rows = &self.source.rows;
-        let words = [rows.text(k, CableBase::Type.header()), rows.text(k, CableColumn::Length.header())]
+        let words = [rows.text(k, CableColumn::Type.header()), rows.text(k, CableColumn::Length.header())]
             .into_iter()
             .filter(|w| !w.is_empty() && w != "?")
             .collect::<Vec<_>>()
@@ -556,12 +556,12 @@ impl CablesView {
         // A cable not drawn shows its plan at each end.
         let info = self.source.info.get(k).cloned().unwrap_or(RowInfo { drawn: true, ..RowInfo::default() });
         let (from, to) = if info.drawn {
-            (rows.text(k, CableBase::From.header()), rows.text(k, CableBase::To.header()))
+            (rows.text(k, CableColumn::From.header()), rows.text(k, CableColumn::To.header()))
         } else {
             (info.planned[0].clone().unwrap_or_default(), info.planned[1].clone().unwrap_or_default())
         };
         let glands = [info.glands[0].clone().unwrap_or_default(), info.glands[1].clone().unwrap_or_default()];
-        crate::cables::view::Drawing { tag: rows.text(k, CableBase::Tag.header()), words, from, to, cores, not_drawn: !info.drawn, glands }
+        crate::cables::view::Drawing { tag: rows.text(k, CableColumn::Tag.header()), words, from, to, cores, not_drawn: !info.drawn, glands }
     }
 
     /// Forget the copies.
@@ -653,8 +653,8 @@ pub(crate) fn show_tab(t: &mut crate::shell::app::App, ui: &mut eframe::egui::Ui
     }
     let Some(k) = v.selected() else { return go };
     let rows = &v.source.rows;
-    let tag = rows.text(k, CableBase::Tag.header());
-    let words = [rows.text(k, CableBase::Type.header()), rows.text(k, CableColumn::Length.header())]
+    let tag = rows.text(k, CableColumn::Tag.header());
+    let words = [rows.text(k, CableColumn::Type.header()), rows.text(k, CableColumn::Length.header())]
         .into_iter()
         .filter(|w| !w.is_empty() && w != "?")
         .collect::<Vec<_>>()

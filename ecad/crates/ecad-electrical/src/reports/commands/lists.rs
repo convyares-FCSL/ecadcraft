@@ -1,6 +1,7 @@
 //! The report lists: `bom`, `wirelist` and `cablelist`
 //! read the kept report models and answer a page of rows, or write the CSV. Their parameters, the
-//! paging, each row's ids and each column's JSON key sit here; the commands are generic
+//! paging and each row's ids sit here; each column's JSON key is its column type's
+//! ([`crate::reports::kept::WireColumn`], [`crate::reports::kept::CableColumn`], [`crate::reports::kept::BomColumn`]); the commands are generic
 //! ([`crate::commands::run`]). Excludes the Print Book, which is the engine's.
 
 use schemars::JsonSchema;
@@ -9,8 +10,9 @@ use serde_json::{Value, json};
 
 use crate::commands::run::{Access, Cx, Generic, Io, Outcome, Pages};
 use crate::error::CmdError;
-use crate::reports::kept::{CableColumn, ReportModels};
-use crate::reports::{self, Group, Table};
+use crate::reports::kept::{BomColumn, ReportModels, WireColumn};
+use crate::reports::{self, Group, ReportColumn, Table};
+use ecad_model::Word;
 
 /// `bom`'s `columns` for this call: whether the article column is shown, and the rating columns
 /// (`rating.<word>`) in order (`None`: as the project's report settings say).
@@ -98,25 +100,6 @@ pub(crate) fn bom_ids_json(o: &ReportModels, group: Group, nested: bool) -> Vec<
         .collect()
 }
 
-/// The JSON keys of `bom`'s columns: with a `line` column when kits are `nested`, the article
-/// number when the `article` column is shown, then each rating column (`rating.<word>`).
-pub(crate) fn bom_keys(nested: bool, article: bool, ratings: &[&str]) -> Vec<String> {
-    let mut keys: Vec<String> = ["location", "qty", "unit", "tags"].map(String::from).to_vec();
-    if nested {
-        keys.push("line".into());
-    }
-    keys.extend(["description", "maker", "part_number"].map(String::from));
-    if article {
-        keys.push("article_number".into());
-    }
-    keys.extend(ratings.iter().map(|w| format!("{}{w}", ecad_model::objects::devices::RATING_OF_PREFIX)));
-    keys
-}
-
-/// The JSON keys of `wirelist`'s columns.
-pub(crate) const WIRE_KEYS: &[&str] =
-    &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"];
-
 /// The ids of each `wirelist` row.
 pub(crate) fn wire_ids_json(o: &ReportModels) -> Vec<Value> {
     o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect()
@@ -124,8 +107,8 @@ pub(crate) fn wire_ids_json(o: &ReportModels) -> Vec<Value> {
 
 /// The ids of each `cablelist` row (the cables not drawn too when `include`).
 ///
-/// `used` (a count), `spare` (the spare cores, or null when the offer
-/// is unknown) and the devices at each end; these keys are the CSV columns.
+/// `used` (a count), `spare` (the spare cores, left out when the offer is unknown) and the devices at
+/// each end, beside the cells' own keys (`used_text`, `spare_text`).
 pub(crate) fn cable_ids_json(o: &ReportModels, include: bool) -> Vec<Value> {
     o.cables()
         .iter()
@@ -144,18 +127,15 @@ pub(crate) fn cable_ids_json(o: &ReportModels, include: bool) -> Vec<Value> {
         .collect()
 }
 
-/// The JSON keys of `cablelist`'s columns: the nine fixed ones, then one per optional column it shows.
-pub(crate) fn cable_keys(columns: &[CableColumn]) -> Vec<&'static str> {
-    let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
-    keys.extend(columns.iter().map(|c| c.key()));
-    keys
-}
-
 // ---------------------------------------------------------------------------------------------
 // The commands
 
-/// A report's result: the page of rows asked for, or with `path` the CSV written.
-fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: Paging, what: &str) -> Outcome {
+/// A report's result: the page of rows asked for, each cell under its column's key, or with `path` the CSV
+/// written.
+///
+/// # Errors
+/// `t` is not a table of `columns` ([`reports::rows_json`]).
+fn report_result<C: ReportColumn>(t: &Table, columns: &[C], ids: &[Value], pg: Paging, what: &str) -> Result<Outcome, CmdError> {
     let flagged = t.flagged();
     if let Some(path) = &pg.path {
         let text = reports::csv(t, pg.excel_safe);
@@ -164,16 +144,16 @@ fn report_result(t: &Table, keys: &[&str], ids: &[Value], pg: Paging, what: &str
         let answer = json!({ "path": path, "rows": t.rows.len(), "flagged": flagged, "message": message });
         let mut out = Outcome::answer(answer);
         out.writes.push(("path", text.into_bytes()));
-        return out;
+        return Ok(out);
     }
-    let all = reports::rows_json(t, keys, ids);
+    let all = reports::rows_json(t, columns, ids)?;
     let total = all.len();
     let rows: Vec<Value> = all.into_iter().skip(pg.after).take(pg.limit).collect();
     let mut v = json!({ "rows": rows, "total": total, "flagged": flagged });
     if pg.after.saturating_add(pg.limit) < total {
         v["next"] = json!(pg.after + pg.limit);
     }
-    Outcome::answer(v)
+    Ok(Outcome::answer(v))
 }
 
 /// The file a report writes.
@@ -235,11 +215,10 @@ impl Generic for BomParams {
         let (article, ratings) = columns.unwrap_or_else(|| (o.view.article, o.view.ratings.clone()));
         let view = reports::BomView { article, ratings, nested: lines.unwrap_or(o.view.nested) };
         let nested = view.nested && group == Group::Location;
-        let keys = bom_keys(nested, view.article, &view.ratings);
+        let columns = BomColumn::columns(group, &view, true);
         let t = o.bom_table_with(group, view, true);
         let ids = bom_ids_json(o, group, nested);
-        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
-        Ok(report_result(&t, &keys, &ids, pg, "BOM"))
+        report_result(&t, &columns, &ids, pg, "BOM")
     }
 }
 
@@ -272,7 +251,7 @@ impl Generic for WirelistParams {
         let pg = Paging::of(self.limit, self.after, self.excel_safe, self.path);
         let o = cx.derived.reports(cx.doc);
         let t = o.wire_table();
-        Ok(report_result(&t, WIRE_KEYS, &wire_ids_json(o), pg, "wire"))
+        report_result(&t, WireColumn::ALL, &wire_ids_json(o), pg, "wire")
     }
 }
 
@@ -311,7 +290,6 @@ impl Generic for CablelistParams {
         let o = cx.derived.reports(cx.doc);
         let t = o.cable_table_with(include);
         let ids = cable_ids_json(o, include);
-        let keys = cable_keys(&o.cable_columns(include));
-        Ok(report_result(&t, &keys, &ids, pg, "cable"))
+        report_result(&t, &o.cable_columns(include), &ids, pg, "cable")
     }
 }

@@ -1,6 +1,7 @@
 //! The report tables: the BOM, the wire and cable lists, the terminal block plan and the core table.
 
 use super::*;
+use ecad_model::Word;
 
 impl ReportModels {
     /// The BOM as a table (`Location` or `Locations` first), as the window shows it, in the
@@ -9,70 +10,12 @@ impl ReportModels {
         self.bom_table_with(group, self.view.clone(), false)
     }
 
-    /// The BOM as a table in `view`. `csv`: `Qty` a plain number and a `Unit`
-    /// column, a `Line` column in the nested layout; otherwise `Qty` reads `5.6 m`.
+    /// The BOM as a table in `view`, its columns [`BomColumn::columns`]. `csv`: `Qty` a plain number and a
+    /// `Unit` column, a `Line` column in the nested layout; otherwise `Qty` reads `5.6 m`.
     pub fn bom_table_with(&self, group: Group, view: BomView, csv: bool) -> Table {
-        let first = if group == Group::Location { "Location" } else { "Locations" };
         let nested = view.nested && group == Group::Location;
-        let mut headers = vec![first, "Qty"];
-        if csv {
-            headers.push("Unit");
-        }
-        headers.push("Tags");
-        if csv && nested {
-            headers.push("Line");
-        }
-        headers.extend(["Description", "Maker", "Part number"]);
-        if view.article {
-            headers.push("Article number");
-        }
-        headers.extend(view.ratings.iter().map(|w| crate::reports::bom::rating_column_label(w)));
-        let mut t = Table { headers, rows: Vec::new() };
-        for r in self.bom_with(group, nested) {
-            let who = self.row_who(&r);
-            let mut cells = vec![Cell::opt(&r.location, || format!("{who} has no location."))];
-            let qty = if r.no_qty() {
-                String::new()
-            } else if csv {
-                r.qty.to_string()
-            } else {
-                r.qty_text()
-            };
-            cells.push(if r.overflow { Cell { text: qty, flag: Some("The quantity is too large to add up.".into()) } } else { Cell::ok(qty) });
-            if csv {
-                cells.push(Cell::ok(if r.metres { "m" } else { "pcs" }));
-            }
-            cells.push(Cell::ok(r.tags.join(", ")));
-            if csv && nested {
-                // `0` a main part (or a strip's own row), `1`… a line, blank for an item.
-                let line = match (r.line, r.item) {
-                    (Some(n), _) => n.to_string(),
-                    (None, true) => String::new(),
-                    (None, false) => "0".into(),
-                };
-                cells.push(Cell::ok(line));
-            }
-            let description = if csv { r.description.clone() } else { r.description_text() };
-            cells.push(Cell::opt(&description, || format!("{who} has no description.")));
-            cells.push(Cell::opt(&r.maker, || format!("{who} has no maker.")));
-            cells.push(Cell::opt(&r.part_number, || format!("{who} has no part number.")));
-            if view.article {
-                let a = r.article_number.clone().unwrap_or_default();
-                cells.push(match &r.article_flag {
-                    Some(why) => Cell { text: if a.is_empty() { "?".into() } else { a }, flag: Some(why.clone()) },
-                    None => Cell::ok(a),
-                });
-            }
-            for w in &view.ratings {
-                cells.push(match r.ratings.iter().find(|(x, _, _)| x == w) {
-                    Some((_, v, Some(why))) => Cell { text: v.clone(), flag: Some(why.clone()) },
-                    Some((_, v, None)) => Cell::ok(v.clone()),
-                    None => Cell::ok(String::new()),
-                });
-            }
-            t.rows.push(cells);
-        }
-        t
+        let columns = BomColumn::columns(group, &view, csv);
+        Table::of_columns(&columns, self.bom_with(group, nested), |c, r| c.cell(r, &self.row_who(r), csv))
     }
 
     /// Who a row's `?` hover names: the first tag, `Line 2 of -K03` for a nested line, or the item.
@@ -88,34 +31,9 @@ impl ReportModels {
         }
     }
 
-    /// The wire report as a table.
+    /// The wire report as a table: every [`WireColumn`].
     pub fn wire_table(&self) -> Table {
-        let mut t = Table { headers: WireColumn::headers(), rows: Vec::new() };
-        for r in self.wires() {
-            let style = self.style;
-            let end_loc = |e: &EndCell| match (&e.device, &e.location) {
-                (Some(_), None) => Cell { text: "?".into(), flag: Some(format!("{} has no location.", e.text(style).unwrap_or_default())) },
-                (_, Some(l)) => Cell::ok(l.clone()),
-                (None, None) => Cell::default(),
-            };
-            t.rows.push(vec![
-                Cell::opt(&r.wire_number, || "The wire has no number.".into()),
-                Cell::opt(&r.from.text(style), || "Loose end.".into()),
-                end_loc(&r.from),
-                Cell::opt(&r.to.text(style), || "Loose end.".into()),
-                end_loc(&r.to),
-                // The wire's own value or its category's.
-                Cell::opt(&r.cross_section, || "No cross-section, and its category gives none.".into()),
-                Cell::opt(&r.colour.as_deref().map(|c| ecad_model::connectivity::wiring::colour_text(self.colour_style, c)), || {
-                    "No colour, and its category gives none.".into()
-                }),
-                Cell::ok(r.potential.clone().unwrap_or_default()),
-                Cell::ok(r.category.as_ref().map(|c| c.1.clone()).unwrap_or_default()),
-                Cell::ok(r.cable.clone()),
-                Cell::opt(&r.page.as_ref().map(|p| p.text(style)), || "The wire has no route.".into()),
-            ]);
-        }
-        t
+        Table::of_columns(WireColumn::ALL, self.wires(), |c, r| c.cell(self, r))
     }
 
     /// The cable report as a table; `Maker`, `Length` and `Designation` follow when any cable
@@ -125,49 +43,27 @@ impl ReportModels {
         self.cable_table_with(true)
     }
 
-    /// The optional columns of the cable report, in order: `Maker`, `Length` and `Designation`
-    /// when any listed cable has them, then `Glands`, `Shield`,
-    /// `Planned from` and `Planned to` when any has them, and `Drawn` when one is not drawn.
+    /// The columns of the cable report, in order: the nine every report has, then `Maker`, `Length` and
+    /// `Designation` when any listed cable has them, then `Glands`, `Shield`, `Planned from` and `Planned to`
+    /// when any has them, and `Drawn` when one is not drawn.
     pub fn cable_columns(&self, include_not_drawn: bool) -> Vec<CableColumn> {
-        let mut rows = self.cables();
-        if !include_not_drawn {
-            rows.retain(|r| r.drawn);
-        }
-        CableColumn::ALL.into_iter().filter(|c| c.shown(&rows)).collect()
+        let rows = self.cables_listed(include_not_drawn);
+        CableColumn::ALL.iter().copied().filter(|c| c.shown(&rows)).collect()
     }
 
-    /// The cable report, with or without the cables not drawn yet (the choice made
-    /// when the report is generated). Its optional columns are [`ReportModels::cable_columns`]; a
-    /// planned end reads `(planned)`.
-    pub fn cable_table_with(&self, include_not_drawn: bool) -> Table {
-        let cols = self.cable_columns(include_not_drawn);
+    /// The cables the report lists: with or without the cables not drawn yet.
+    fn cables_listed(&self, include_not_drawn: bool) -> Vec<&CableRow> {
         let mut rows = self.cables();
         if !include_not_drawn {
             rows.retain(|r| r.drawn);
         }
-        let mut t = Table { headers: CableBase::headers(), rows: Vec::new() };
-        t.headers.extend(cols.iter().map(|c| c.header()));
-        for r in rows {
-            let why = r.location_reason.clone();
-            let loc = |v: &Option<String>| match v {
-                Some(l) => Cell::ok(l.clone()),
-                None => Cell { text: "?".into(), flag: Some(why.clone().unwrap_or_default()) },
-            };
-            let mut row = vec![
-                Cell::opt(&r.tag, || "The cable has no tag.".into()),
-                Cell::opt(&r.kind, || "The cable has no type.".into()),
-                Cell::ok(r.core_total().to_string()),
-                loc(&r.from_location),
-                loc(&r.to_location),
-                Cell::ok(r.count.used().to_string()),
-                Cell::opt(&r.count.spare_text(), || "Set the cable's cores or type (7G1.5) to count spares.".into()),
-                Cell::ok(ends_text(&r.from_location, &r.from_devices)),
-                Cell::ok(ends_text(&r.to_location, &r.to_devices)),
-            ];
-            row.extend(cols.iter().map(|c| c.cell(r)));
-            t.rows.push(row);
-        }
-        t
+        rows
+    }
+
+    /// The cable report, with or without the cables not drawn yet (the choice made when the report is
+    /// generated), in its columns [`ReportModels::cable_columns`].
+    pub fn cable_table_with(&self, include_not_drawn: bool) -> Table {
+        Table::of_columns(&self.cable_columns(include_not_drawn), self.cables_listed(include_not_drawn), |c, r| c.cell(r))
     }
 }
 

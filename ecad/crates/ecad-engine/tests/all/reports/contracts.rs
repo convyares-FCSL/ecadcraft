@@ -278,7 +278,10 @@ fn the_reports_keep_wires_off_the_bom_and_flag_missing_values() {
     let _ = std::fs::remove_dir_all(&dir);
     // Nothing recorded by reading.
     let head = h.head();
-    h.run("bom", json!({"group": "part"})).unwrap();
+    // By part, the first column lists the locations the part is in, keyed by what it shows.
+    let by_part = h.run("bom", json!({"group": "part"})).unwrap();
+    let r0 = &by_part["rows"][0];
+    assert!(r0["locations"].is_string() && r0.get("location").is_none(), "{by_part}");
     h.run("wirelist", json!({})).unwrap();
     assert_eq!(h.head(), head);
 }

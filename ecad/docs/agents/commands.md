@@ -44,3 +44,23 @@ lock the project, commit the edit as one transaction, answer); the agent gate re
 get their parameters text from their params struct.
 
 How to add a command: [../developer/commands.md](../developer/commands.md).
+
+## Report rows
+
+`bom`, `wirelist` and `cablelist` answer a page of rows (`rows`, `total`, `flagged`, and `next` while more
+follow), or with `path` write the CSV. Each row is a JSON object: the row's ids, then each cell under its
+column's key, then `flags`, the keys of its cells marked `?` (given as null). A column's key is its word in the
+report's column type (`WireColumn`, `CableColumn`, `BomColumn` in
+`ecad/crates/ecad-electrical/src/reports/kept/columns.rs`), the same list that makes the table and the CSV
+headers, so the keys and the cells always line up.
+
+- **`wirelist`:** ids `conductor`; cells `wire_number`, `from`, `from_location`, `to`, `to_location`,
+  `cross_section`, `colour`, `potential`, `category`, `cable`, `page`.
+- **`cablelist`:** ids `cable`, `used` and `spare` (counts; `spare` left out when the cable's cores are not
+  known), `over`, `from_devices`, `to_devices`; cells `tag`, `type`, `cores` (a number), `from_location`,
+  `to_location`, `used_text`, `spare_text`, `from`, `to`, then the optional columns the listed cables have:
+  `maker`, `length`, `designation`, `glands`, `shield`, `planned_from`, `planned_to`, `drawn`.
+- **`bom`:** ids `devices`, `entries` (and `accessory` with `strip`, `kit` in the nested layout); cells
+  `location` (grouped by location) or `locations` (grouped by part), `qty` (a number), `unit`, `tags`, `line`
+  (nested layout), `description`, `maker`, `part_number`, `article_number` (when shown), then one
+  `rating.<word>` per rating column.

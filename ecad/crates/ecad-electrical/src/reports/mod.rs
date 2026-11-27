@@ -32,6 +32,7 @@
 //!
 //! This module reads the document; it changes nothing.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::document::effect::{Effect, Effects};
@@ -39,6 +40,7 @@ use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId
 use serde_json::{Value, json};
 
 use crate::checks::{Check, Fix, Kind, Object};
+use crate::error::CmdError;
 use crate::locations::{self, BoxCache, Located};
 use crate::reports::bom::Qty;
 
@@ -455,6 +457,29 @@ impl Table {
     /// How many flagged cells.
     pub fn flagged(&self) -> usize {
         self.rows.iter().flatten().filter(|c| c.flag.is_some()).count()
+    }
+
+    /// A report table of `columns`, one row per item of `rows`, each cell from `cell`: the headers are the
+    /// columns' and every row has one cell per column, in their order.
+    pub(crate) fn of_columns<C: ReportColumn, R>(columns: &[C], rows: impl IntoIterator<Item = R>, mut cell: impl FnMut(C, &R) -> Cell) -> Table {
+        Table {
+            headers: columns.iter().map(|c| c.header()).collect(),
+            rows: rows.into_iter().map(|r| columns.iter().map(|c| cell(*c, &r)).collect()).collect(),
+        }
+    }
+}
+
+/// A column of a report table, by what it shows (the wire report's `WireColumn`, the cable report's
+/// `CableColumn`, the BOM's `BomColumn`). One list of them makes a table's headers and cells
+/// ([`Table::of_columns`]) and its rows' keys for an agent ([`rows_json`]).
+pub trait ReportColumn: Copy {
+    /// The header: the table, the CSV and the app show it.
+    fn header(self) -> &'static str;
+    /// The key of its cell in an agent's JSON row.
+    fn key(self) -> Cow<'static, str>;
+    /// Whether the JSON row gives its cell as a number when the cell reads as one (a count, or metres).
+    fn number(self) -> bool {
+        false
     }
 }
 
@@ -941,9 +966,23 @@ pub fn csv(t: &Table, excel_safe: bool) -> String {
     out
 }
 
-/// A table's rows as JSON objects keyed by `keys`, with the flagged keys in `flags`.
-pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
-    t.rows
+/// A table's rows as JSON objects: each row's `ids` (by index), then each cell under its column's key, with
+/// the keys of its flagged cells (`?`, given as null) in `flags`.
+///
+/// # Errors
+/// `t` is not a table of `columns` (another header, or a row with more or fewer cells), so no key would be
+/// sure to name its cell. A table made by [`Table::of_columns`] from the same columns always matches.
+pub(crate) fn rows_json<C: ReportColumn>(t: &Table, columns: &[C], ids: &[Value]) -> Result<Vec<Value>, CmdError> {
+    let headers_match = t.headers.len() == columns.len() && t.headers.iter().zip(columns).all(|(h, c)| *h == c.header());
+    if !headers_match || t.rows.iter().any(|r| r.len() != columns.len()) {
+        return Err(CmdError::refused(format!(
+            "The report's columns ({}) do not match its table ({}); no rows were given.",
+            columns.iter().map(|c| c.header()).collect::<Vec<_>>().join(", "),
+            t.headers.join(", ")
+        )));
+    }
+    let keys: Vec<(Cow<'static, str>, bool)> = columns.iter().map(|c| (c.key(), c.number())).collect();
+    Ok(t.rows
         .iter()
         .enumerate()
         .map(|(i, r)| {
@@ -954,17 +993,17 @@ pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
                 }
             }
             let mut flags = Vec::new();
-            for (k, c) in keys.iter().zip(r) {
-                let v = match (c.flag.is_some(), *k) {
+            for ((k, number), c) in keys.iter().zip(r) {
+                let v = match (c.flag.is_some(), number) {
                     (true, _) => Value::Null,
-                    (false, "qty" | "cores") => match c.text.parse::<u64>() {
+                    (false, true) => match c.text.parse::<u64>() {
                         Ok(n) => json!(n),
                         // Metres (`5.6`).
                         Err(_) => c.text.parse::<f64>().ok().filter(|x| x.is_finite()).map_or_else(|| json!(c.text), |x| json!(x)),
                     },
-                    (false, _) => json!(c.text),
+                    (false, false) => json!(c.text),
                 };
-                o.insert((*k).to_string(), v);
+                o.insert(k.to_string(), v);
                 if c.flag.is_some() {
                     flags.push(json!(k));
                 }
@@ -972,7 +1011,7 @@ pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
             o.insert("flags".into(), Value::Array(flags));
             Value::Object(o)
         })
-        .collect()
+        .collect())
 }
 
 /// Whether the position before gap `gap` of strip `s` is PE (the end gap: the last position).
