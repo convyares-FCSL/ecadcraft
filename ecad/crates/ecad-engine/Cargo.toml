@@ -13,9 +13,10 @@ workspace = true
 # Deliberate panics inside owner callbacks and ECAD commands, for the experiment's containment
 # tests only. Never enabled in normal builds; `cargo xtask ci` tests with all features.
 fault-injection = []
-# `ProjectHandle::apply_ops`, for tests that build objects no command makes yet (brief 010's
-# cable reference ends). Enabled only for tests, through the dev-dependencies below; never in a
-# release or the desktop app (brief 009 review S3). Delete once brief 010's `cablereference` is merged.
+# `ProjectHandle::apply_ops`, for tests that commit ops no command makes: a cable's second reference
+# end on another page, and hostile or stale edits the ledger must refuse or survive. Enabled only for
+# tests, through the dev-dependencies of this crate, ecad-app and ecad-mcp; never in a release or
+# the desktop app.
 test-ops = []
 # `test_support::ProjectBuilder` (brief 062): builds the small projects tests start from, with the same
 # commands a user runs. Enabled only for tests (this crate's own, through the dev-dependencies below);
