@@ -5,7 +5,7 @@ use crate::project::*;
 use ecad_electrical::views::Changes;
 
 /// How many recent changes [`Project::changes_since`] can answer for.
-const CHANGE_LOG: usize = 64;
+pub(super) const CHANGE_LOG: usize = 64;
 
 /// One change the project went through (a transaction, an undo or redo, a view switch): its
 /// number and the pages whose drawing it could change (`None`: any page). Session only.

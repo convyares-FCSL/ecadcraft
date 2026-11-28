@@ -1,6 +1,6 @@
 //! The columns of the wire, cable and BOM reports, one type per report. Each column says its header (the
 //! table, the CSV and the app read it), its key in the agent's JSON rows (its word) and its cell of a
-//! row, so a table's headers, cells and keys all come from one list of columns ([`Table::of_columns`],
+//! row, so a table's headers, cells and keys all come from one list of columns ([`crate::reports::Table::of_columns`],
 //! [`crate::reports::rows_json`]). A report that shows only some columns (the cable report's optional ones,
 //! the BOM's settings, a sheet of a paged report) picks them from that list.
 
