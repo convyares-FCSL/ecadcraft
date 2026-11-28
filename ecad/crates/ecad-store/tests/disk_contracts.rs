@@ -285,3 +285,15 @@ fn one_path_rule_reads_dots_either_separator_and_existing_folders_alike() {
         assert!(disk::same_path(&unborn, &slashed));
     }
 }
+
+#[test]
+fn times_read_as_utc_dates_including_leap_days_and_the_far_future() {
+    for (secs, want) in [
+        (0, "1970-01-01 00:00:00 UTC"),
+        (951_825_600, "2000-02-29 12:00:00 UTC"),
+        (1_798_761_599, "2026-12-31 23:59:59 UTC"),
+        (u64::MAX, "time unknown"),
+    ] {
+        assert_eq!(disk::utc(secs), want, "{secs}");
+    }
+}

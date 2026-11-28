@@ -13,6 +13,8 @@ workspace = true
 # The project file's engine: `db` opens the database and runs its transactions; the memory and
 # power-loss backends implement its storage backend.
 redb = { workspace = true }
+# Lock records and history times as UTC dates (house rule: time goes through chrono).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 thiserror = { workspace = true }
 # File identity (device and inode on Unix, volume serial and file index on Windows) without
 # `unsafe` (BurntSushi, Unlicense OR MIT; owner approved 2026-10-31, brief 002).
