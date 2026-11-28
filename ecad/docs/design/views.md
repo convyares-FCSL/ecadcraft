@@ -80,11 +80,8 @@ being threaded through callers.
 
 A view keeps an incremental update only where a full rebuild after each commit costs more than
 about 5 ms on the large bench project. Elsewhere it rebuilds whole after a commit, and no
-incremental code is kept for it. There are no update maps for terminal strip pages, connectors
-or the book outline. The PLC model keeps one for a device's own data (a channel's text, a card's
-slot, a rack's address style): its whole build costs about 3.6 ms on the large project, which with
-the page redraw put one channel edit near 7 ms; any other effect builds it whole, as its "all"
-case (module `plc::kept`). Where a view keeps one, its `note` says which effects change what
+incremental code is kept for it. There are no update maps for terminal strip pages, PLC,
+connectors or the book outline. Where a view keeps one, its `note` says which effects change what
 it shows and what it does for each; every other effect does nothing. There are no refresh buttons:
 views stay live.
 

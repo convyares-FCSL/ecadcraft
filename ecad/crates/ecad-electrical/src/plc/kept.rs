@@ -1,14 +1,6 @@
-//! The kept PLC model (see [`super`]). The rules that measure text (an address wider than its cell) take the
-//! text look, [`ecad_model::look::Look`], which the caller supplies.
-//!
-//! # Update map
-//! - A device's own record, its definition or a property of it (not a jumper bar, which joins nets): that
-//!   device is set again, with the cards that name it as their rack, and the Checks groups of each and of the
-//!   racks they were in and are in.
-//! - A version, a loose part, a device link: nothing.
-//! - Every other effect (a wire, a connection point, a symbol shown or moved, a page, a definition, the
-//!   settings…) can change which channels are used, where a card is drawn or how its tag reads, for any card:
-//!   the model is built again.
+//! The kept PLC model, built from scratch after every commit (see [`super`]). The rules that measure text
+//! (an address wider than its cell) take the text look, [`ecad_model::look::Look`], which the
+//! caller supplies.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,16 +11,12 @@ use serde_json::{Value, json};
 use crate::plc::*;
 use ecad_model::look::Look;
 
-/// What one commit's effects name, noted effect by effect ([`Plc::note`]): the devices to set again, or the
-/// whole model, and the I/O rows besides (a renamed target, a renumbered wire).
+/// What one commit's effects name for the I/O rows (a renamed target, a renumbered wire), noted
+/// effect by effect ([`Plc::note`]); the model itself is rebuilt.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Touch {
     /// The cards whose I/O rows can change.
     rows: BTreeSet<DeviceId>,
-    /// The devices whose own data changed.
-    devices: BTreeSet<DeviceId>,
-    /// An effect that can reach any card: the model is built again.
-    whole: bool,
 }
 
 /// The kept PLC model.
@@ -183,40 +171,11 @@ impl Plc {
         }
     }
 
-    /// Note what one effect of the transaction just committed on `doc` (the state after) changes (the module's
-    /// update map), and the I/O rows it can change, reading the model as it is before the update. Pair with
+    /// Note the I/O rows one effect of the transaction just committed on `doc` (the state after)
+    /// can change, reading the model as it is before the update. Pair with
     /// [`Plc::update_touched`].
     pub fn note(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
         self.note_rows(doc, effect, &mut t.rows);
-        match effect {
-            Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
-                t.devices.insert(*id);
-            }
-            Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
-                if ecad_model::connectivity::jumper_bars::jumper_bar_number(key.raw).is_some() {
-                    t.whole = true;
-                } else {
-                    t.devices.insert(*c);
-                }
-            }
-            Effect::Version { .. } | Effect::LoosePart { .. } | Effect::DeviceLink { .. } => {}
-            Effect::Prop { .. }
-            | Effect::Wire { .. }
-            | Effect::ConnectionPoint { .. }
-            | Effect::Page { .. }
-            | Effect::Layer { .. }
-            | Effect::Item { .. }
-            | Effect::Rep { .. }
-            | Effect::Route { .. }
-            | Effect::Cable { .. }
-            | Effect::Definition { .. }
-            | Effect::Settings { .. }
-            | Effect::Folder { .. }
-            | Effect::Style { .. }
-            | Effect::Standard { .. }
-            | Effect::Project { .. }
-            | Effect::Aid { .. } => t.whole = true,
-        }
     }
 
     /// Build the model again after `effects` (just committed; `doc` is the state after). Returns
@@ -229,63 +188,11 @@ impl Plc {
         self.update_touched(doc, t, m)
     }
 
-    /// Bring the model up to `doc`, the state after, as `t` says ([`Plc::note`]): the devices it names set
-    /// again, or the whole model built again. Works out what reads differently from the model before; `t` names
-    /// the I/O rows the effects reach besides. Returns whether anything changed.
+    /// Build the model again from scratch on `doc`, the state after, and work out what reads
+    /// differently from the model before; `t` names the I/O rows the effects reach besides
+    /// ([`Plc::note`]). Returns whether anything changed.
     pub(crate) fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn Look) -> bool {
-        let Touch { rows, devices, whole } = t;
-        let rebuilt = if whole {
-            Plc::build_with(doc, m)
-        } else {
-            let mut next = self.clone();
-            next.set_again(doc, &devices, m);
-            next
-        };
-        self.settle(rebuilt, rows)
-    }
-
-    /// Set `devices` again on `doc`, with the cards naming any of them as their rack, and work out the Checks
-    /// groups they were in and are in.
-    fn set_again(&mut self, doc: &Document, devices: &BTreeSet<DeviceId>, m: &dyn Look) {
-        let mut scope = devices.clone();
-        for d in devices {
-            scope.extend(self.naming.get(d).into_iter().flatten().copied());
-        }
-        let mut groups = BTreeSet::new();
-        for c in &scope {
-            self.forget(*c, &mut groups);
-        }
-        for c in &scope {
-            self.set(doc, *c, &mut groups);
-        }
-        for g in groups {
-            self.set_checks(doc, g, m);
-        }
-        self.last_changed.clear();
-    }
-
-    /// Take device `c` out of the model, noting the groups it was in.
-    fn forget(&mut self, c: DeviceId, groups: &mut BTreeSet<Group>) {
-        groups.insert(c);
-        if let Some(card) = self.cards.remove(&c)
-            && let RackRef::Rack(x) | RackRef::Missing(x) = card.rack
-        {
-            if let Some(n) = self.naming.get_mut(&x) {
-                n.remove(&c);
-                if n.is_empty() {
-                    self.naming.remove(&x);
-                }
-            }
-            groups.insert(x);
-        }
-        self.racks.remove(&c);
-        self.unracked.remove(&c);
-        self.blocks.remove(&c);
-    }
-
-    /// Become `rebuilt`, the model after, noting what reads differently from the model before and the I/O
-    /// rows that can change (`rows` and the changed cards'). Returns whether anything changed.
-    fn settle(&mut self, rebuilt: Plc, rows: BTreeSet<DeviceId>) -> bool {
+        let rebuilt = Plc::build_with(doc, m);
         let ids: BTreeSet<DeviceId> =
             self.cards.keys().chain(self.racks.keys()).chain(rebuilt.cards.keys()).chain(rebuilt.racks.keys()).copied().collect();
         let last_changed: BTreeSet<DeviceId> = ids
@@ -295,7 +202,7 @@ impl Plc {
             })
             .collect();
         let checks_changed = self.checks != rebuilt.checks || self.no_address != rebuilt.no_address || self.unracked != rebuilt.unracked;
-        let mut rows_changed = rows;
+        let mut rows_changed = t.rows;
         rows_changed.extend(last_changed.iter().filter(|c| rebuilt.cards.contains_key(c)).copied());
         let changed = !last_changed.is_empty() || checks_changed || !rows_changed.is_empty();
         let updates = self.updates + 1;
@@ -320,8 +227,6 @@ impl Plc {
             } else {
                 self.no_address.remove(&g);
             }
-        } else {
-            self.no_address.remove(&g);
         }
         let rows = self.group_checks(doc, g, m);
         let old = if rows.is_empty() { self.checks.remove(&g) } else { self.checks.insert(g, rows.clone()) };

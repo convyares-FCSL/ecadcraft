@@ -22,7 +22,7 @@ impl ReportModels {
         // What this update changes, for the generated pages that depend on it.
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
-        // The PLC model, by its own update map.
+        // The PLC model is built again after every commit (no update map since 0.2.3).
         if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
@@ -175,20 +175,6 @@ impl ReportModels {
         // The page layout follows the rebuilt strips.
         self.strip_pages.adopt(crate::terminal_strips::pages::StripPages::build(doc, &self.strips));
         Some("the terminal strip model was out of step; rebuilt".to_string())
-    }
-
-    /// Verify mode: the kept PLC model against a rebuild on `doc`, text measured in `m`; a difference is put
-    /// right and described (a bug, for the event log).
-    pub fn verify_plc_with(&mut self, doc: &Document, m: &dyn Look) -> Option<String> {
-        let mut built = crate::plc::kept::Plc::build_with(doc, m);
-        if self.plc == built {
-            return None;
-        }
-        built.last_changed = std::mem::take(&mut self.plc.last_changed);
-        built.rows_changed = std::mem::take(&mut self.plc.rows_changed);
-        built.updates = self.plc.updates;
-        self.plc = built;
-        Some("the PLC model was out of step; rebuilt".to_string())
     }
 
     pub(super) fn remove_device(&mut self, c: DeviceId) {
