@@ -1,7 +1,8 @@
 //! Reading a command's JSON parameters into its params struct.
 //!
-//! Each command has a `#[derive(Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]` struct;
-//! [`parse`] reads it. Fields are ordinary types: typed IDs read their hex form themselves,
+//! Each command has a `#[derive(Serialize, Deserialize, JsonSchema)] #[serde(deny_unknown_fields)]`
+//! struct; [`parse`] reads it, and the app writes it (`call`). [`Point`] and [`Bounded`] also write
+//! themselves as they read, so a reply can hold them too. Fields are ordinary types: typed IDs read their hex form themselves,
 //! [`Point`] reads `[x, y]`, [`Bounded`] a list of bounded length, a closed set of words is an
 //! enum (or [`Said`], when the set also takes other spellings), and [`nullable`] tells `null`
 //! from absent. Input is strict: a value of the wrong kind is refused, never ignored.
@@ -339,6 +340,18 @@ pub fn point(v: &Value) -> Option<Pt> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point(pub Pt);
 
+impl serde::Serialize for Point {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        [self.0.x, self.0.y].serialize(s)
+    }
+}
+
+impl From<Pt> for Point {
+    fn from(p: Pt) -> Self {
+        Point(p)
+    }
+}
+
 impl<'de> Deserialize<'de> for Point {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let v = Value::deserialize(d)?;
@@ -374,6 +387,12 @@ impl Point {
 /// A list of `MIN` to `MAX` entries.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bounded<T, const MIN: usize, const MAX: usize>(pub Vec<T>);
+
+impl<T: serde::Serialize, const MIN: usize, const MAX: usize> serde::Serialize for Bounded<T, MIN, MAX> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(s)
+    }
+}
 
 impl<'de, T: Deserialize<'de>, const MIN: usize, const MAX: usize> Deserialize<'de> for Bounded<T, MIN, MAX> {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -493,7 +512,8 @@ impl<T: JsonSchema> JsonSchema for OrNull<T> {
 
 /// `deserialize_with` for a parameter whose `null` means something (clear, release): the field
 /// is `Option<Option<T>>` with `#[serde(default)]`, so absent is `None` and `null` is
-/// `Some(None)`.
+/// `Some(None)`. The field also has `skip_serializing_if = "Option::is_none"`, so a struct the app
+/// writes leaves it absent rather than writing `null`.
 ///
 /// # Errors
 /// A value that is not a `T`.

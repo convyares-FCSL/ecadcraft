@@ -25,7 +25,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cables::views;
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{MAX_HANDLES, on_project, plain_style};
 use crate::project::{Mapped, Project};
 use ecad_electrical::commands::input::{Bounded, Point, TextOrNumber, nullable};
@@ -40,9 +40,9 @@ fn style(p: &Project) -> Style {
 
 /// The commands of this module with a typed input.
 pub(crate) const TYPED: &[Typed] = &[
-    Typed::of::<PlaceParams>("place"),
-    Typed::of::<ConvertcomponentParams>("convertcomponent"),
-    Typed::of::<AddConnectionPointParams>("addconnectionpoint"),
+    Typed::json::<PlaceParams>("place"),
+    Typed::json::<ConvertcomponentParams>("convertcomponent"),
+    Typed::json::<AddConnectionPointParams>("addconnectionpoint"),
 ];
 
 /// Places a starter symbol (`symbol`, see `symbols`) as a new device or as another symbol of one (`device`; `tag`
@@ -120,7 +120,7 @@ impl PlaceParams {
     }
 }
 
-impl Command for PlaceParams {
+impl JsonCommand for PlaceParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         // A starter symbol, as a new device or another symbol of one.
         if self.symbol.is_some() || self.device.is_some() || self.tag.is_some() {
@@ -327,7 +327,7 @@ pub(crate) struct ConvertcomponentParams {
     handles: Option<Bounded<String, 0, MAX_HANDLES>>,
 }
 
-impl Command for ConvertcomponentParams {
+impl JsonCommand for ConvertcomponentParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         // Every entry must be a valid hex handle: a typo is an error, never a smaller set.
         let hs: Vec<Handle> = match self.handles {
@@ -379,7 +379,7 @@ pub(crate) struct AddConnectionPointParams {
     label: Option<String>,
 }
 
-impl Command for AddConnectionPointParams {
+impl JsonCommand for AddConnectionPointParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let h = Handle::parse_hex(&self.handle).ok_or_else(|| err(format!("`{}` is not a valid handle", json!(self.handle))))?;
         let (at, label) = (self.at.0, self.label);

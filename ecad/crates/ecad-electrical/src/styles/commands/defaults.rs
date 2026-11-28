@@ -27,7 +27,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::{Said, TextOrNumber, Words};
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use ecad_model::registry::Scope;
 
@@ -448,7 +448,7 @@ pub struct SetdefaultParams {
     reset: Option<bool>,
 }
 
-impl Generic for SetdefaultParams {
+impl JsonGeneric for SetdefaultParams {
     const ID: &'static str = "setdefault";
     const TITLE: &'static str = "Set Default";
 
@@ -531,7 +531,7 @@ pub struct DefaultsParams {
     representation: Option<RepresentationId>,
 }
 
-impl Generic for DefaultsParams {
+impl JsonGeneric for DefaultsParams {
     const ID: &'static str = "defaults";
     const TITLE: &'static str = "Defaults";
     const PAGES: Pages = Pages::Any;

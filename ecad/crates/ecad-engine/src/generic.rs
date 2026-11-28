@@ -1,11 +1,11 @@
 //! The one runner of generic commands.
 //!
-//! A generic command is a declaration in ecad-electrical: a params struct that implements
-//! [`Generic`]. Its [`Entry`] in the registry registers it and lists it with its schema, access
-//! and file parameters; [`run`] does the whole path: read the parameters, read the files it declares, lock
-//! the project, give the command its [`Cx`] and its declared state, commit its edit as one
-//! transaction under its id ([`Project::apply_edit`]: history, undo, views), echo its message and
-//! answer. The files it returns are written after its edit is committed, so a refusal leaves no file behind; a
+//! A generic command is a declaration in ecad-electrical: a type that implements [`Generic`] (or a
+//! params struct that implements the older [`JsonGeneric`]). Its [`Entry`] in the registry registers
+//! it and lists it with its schemas, access and file parameters; [`run`] does the whole path: read
+//! the parameters, read the files it declares, lock the project, give the command its [`Cx`] and its
+//! declared state, commit its edit as one transaction under its id ([`Project::apply_edit`]:
+//! history, undo, views), echo its message and answer with its reply, made JSON here. The files it returns are written after its edit is committed, so a refusal leaves no file behind; a
 //! file that cannot be written then is said in the answer (`not_written`), and refuses the command only when
 //! nothing else happened (no edit, no other file). Any refusal puts back the ids, tag numbers and designation
 //! uses the command took, and once the edit is committed the answer no longer refuses. The agent gate reads the same declaration
@@ -19,9 +19,14 @@ use cadcraft_engine::cmd::Factory;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::commands::input::{parse, schema};
-use ecad_electrical::commands::run::{Answer, Cx, Echo, Generic, Got, LastPlaced, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
+use ecad_electrical::commands::run::{
+    Access, Answer, Cx, Echo, Generic, Got, Io, JsonGeneric, LastPlaced, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread,
+};
 use ecad_electrical::symbols::proposals::Conflict;
 use ecad_model::PageId;
+use schemars::JsonSchema;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::access::Pages;
@@ -38,11 +43,81 @@ pub(crate) struct Entry {
     undoable: bool,
 }
 
+/// What the runner reads of a generic command, whichever form it is written in: [`Def`] for a
+/// [`Generic`], [`Json`] for a [`JsonGeneric`].
+pub(crate) trait Declared {
+    /// What it takes.
+    type Params: DeserializeOwned + JsonSchema;
+    /// What it answers, made JSON by the runner.
+    type Answer: Serialize + 'static;
+    const ID: &'static str;
+    const TITLE: &'static str;
+    const PAGES: Runs;
+    const ACCESS: Access;
+    const IO: Io;
+    const STATE: State;
+    /// Its reply's schema (none: a JSON value).
+    const REPLY: Option<fn() -> Value>;
+    fn check(p: &Self::Params) -> Result<(), CmdError>;
+    fn run(p: Self::Params, cx: &mut Cx<'_>) -> Result<Outcome<Self::Answer>, CmdError>;
+}
+
+/// A [`Generic`] command, as the runner reads it.
+pub(crate) struct Def<G>(std::marker::PhantomData<G>);
+
+impl<G: Generic> Declared for Def<G> {
+    type Params = G::Params;
+    type Answer = G::Reply;
+    const ID: &'static str = G::ID;
+    const TITLE: &'static str = G::TITLE;
+    const PAGES: Runs = G::PAGES;
+    const ACCESS: Access = G::ACCESS;
+    const IO: Io = G::IO;
+    const STATE: State = G::STATE;
+    const REPLY: Option<fn() -> Value> = Some(schema::<G::Reply>);
+    fn check(p: &G::Params) -> Result<(), CmdError> {
+        G::check(p, &ecad_drawing_style::REGISTRY)
+    }
+    fn run(p: G::Params, cx: &mut Cx<'_>) -> Result<Outcome<G::Reply>, CmdError> {
+        G::run(p, cx)
+    }
+}
+
+/// A [`JsonGeneric`] command, as the runner reads it.
+pub(crate) struct Json<P>(std::marker::PhantomData<P>);
+
+impl<P: JsonGeneric> Declared for Json<P> {
+    type Params = P;
+    type Answer = Value;
+    const ID: &'static str = P::ID;
+    const TITLE: &'static str = P::TITLE;
+    const PAGES: Runs = P::PAGES;
+    const ACCESS: Access = P::ACCESS;
+    const IO: Io = P::IO;
+    const STATE: State = P::STATE;
+    const REPLY: Option<fn() -> Value> = None;
+    fn check(p: &P) -> Result<(), CmdError> {
+        p.check(&ecad_drawing_style::REGISTRY)
+    }
+    fn run(p: P, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        p.run(cx)
+    }
+}
+
 impl Entry {
-    /// Generic command `P`.
-    pub(crate) const fn of<P: Generic>() -> Entry {
-        let typed = Typed { id: P::ID, run: run::<P>, schema: schema::<P>, access: Some(P::ACCESS), files: P::IO };
-        Entry { typed, spec: spec::<P>, interactive: None, undoable: false }
+    /// Generic command `G`.
+    pub(crate) const fn of<G: Generic>() -> Entry {
+        Entry::declared::<Def<G>>()
+    }
+
+    /// The older generic command `P`, answering with a JSON value.
+    pub(crate) const fn json<P: JsonGeneric>() -> Entry {
+        Entry::declared::<Json<P>>()
+    }
+
+    const fn declared<D: Declared>() -> Entry {
+        let typed = Typed { id: D::ID, run: run::<D>, schema: schema::<D::Params>, reply: D::REPLY, access: Some(D::ACCESS), files: D::IO };
+        Entry { typed, spec: spec::<D>, interactive: None, undoable: false }
     }
 
     /// With the click-based form `f`, started by a bare command name, a menu or a tool button.
@@ -67,7 +142,7 @@ impl Entry {
 }
 
 /// The registration of generic command `P` (its parameters text is set by [`crate::commands::specs`]).
-fn spec<P: Generic>() -> CommandSpec {
+fn spec<P: Declared>() -> CommandSpec {
     CommandSpec::new(P::ID, P::TITLE, run::<P>).noundo()
 }
 
@@ -87,9 +162,9 @@ enum Held {
 /// # Errors
 /// Parameters that do not read, a project that cannot be taken, the command's refusal, or a file
 /// it returned that could not be written.
-pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
-    let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
-    p.check(&ecad_drawing_style::REGISTRY).map_err(|e| err(e.to_string()))?;
+pub(crate) fn run<P: Declared>(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
+    let p = parse::<P::Params>(params).map_err(|e| err(e.to_string()))?;
+    P::check(&p).map_err(|e| err(e.to_string()))?;
     let read: Read = P::IO.reads.iter().filter_map(|(k, what)| Some((*k, read_file(given(params, k)?, *what)))).collect();
     let (v, lines) = match P::PAGES {
         Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), params, &read, p, None))?,
@@ -175,8 +250,8 @@ impl Before {
 /// edit is committed (or a file written) the answer cannot fail: an answer read from the committed
 /// document that cannot be made says so in its fields (`committed`, `problem`), and so does a file that
 /// could not be written (`committed`, `not_written`: each path with its problem, and the message).
-fn commit<P: Generic>(
-    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P, no_edit: Option<&'static str>,
+fn commit<P: Declared>(
+    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P::Params, no_edit: Option<&'static str>,
 ) -> Result<(Value, Vec<String>), CmdError> {
     let before = Before::of(proj);
     let ran = run_and_write::<P>(proj, pg, page, params, read, p, no_edit);
@@ -197,10 +272,14 @@ fn commit<P: Generic>(
         Held::Conflicts(Some(c)) => proj.conflicts = c,
         Held::LastPlaced(l) => proj.defaults.last_placed = l,
     }
-    let v = match answer {
-        Answer::Now(v) => v,
-        Answer::Committed(f) => f(proj.ledger.document(), &mut proj.derived).unwrap_or_else(|e| committed_with_problem(label.as_deref(), &e)),
+    let answer = match answer {
+        Answer::Now(v) => Ok(v),
+        Answer::Committed(f) => f(proj.ledger.document(), &mut proj.derived),
     };
+    // The edge: the reply becomes JSON here.
+    let v = answer
+        .and_then(|a| serde_json::to_value(a).map_err(|e| CmdError::refused(format!("the reply could not be written: {e}"))))
+        .unwrap_or_else(|e| committed_with_problem(label.as_deref(), &e));
     let (v, also) = if unwritten.is_empty() { (v, None) } else { with_unwritten(v, label.as_deref(), &unwritten) };
     let mut echo = match echo {
         Echo::Nothing => Vec::new(),
@@ -253,13 +332,13 @@ fn committed_with_problem(label: Option<&str>, e: &CmdError) -> Value {
 /// What [`run_and_write`] gives once the edit (if any) is committed and the files written: the edit's label,
 /// the command's outcome with its edit and files taken, its declared state, and the files that could not be
 /// written.
-type Ran = (Option<String>, Outcome, Held, Vec<Unwritten>);
+type Ran<A> = (Option<String>, Outcome<A>, Held, Vec<Unwritten>);
 
 /// Every step of [`commit`] that may refuse: run `p`, refuse an edit when `no_edit` is given, check its file
 /// parameters, commit its edit; then write its files, which refuses only when nothing else happened.
-fn run_and_write<P: Generic>(
-    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P, no_edit: Option<&'static str>,
-) -> Result<Ran, CmdError> {
+fn run_and_write<P: Declared>(
+    proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, params: &Value, read: &Read, p: P::Params, no_edit: Option<&'static str>,
+) -> Result<Ran<P::Answer>, CmdError> {
     let mut held = match P::STATE {
         State::None => Held::None,
         State::LastCaption => Held::LastCaption(proj.defaults.last_caption.clone()),
@@ -294,7 +373,7 @@ fn run_and_write<P: Generic>(
             read,
             state,
         };
-        p.run(&mut cx)?
+        P::run(p, &mut cx)?
     };
     let edit = out.edit.take();
     if edit.is_some()
@@ -344,7 +423,7 @@ mod tests {
     #[derive(serde::Deserialize, schemars::JsonSchema)]
     struct EditAndWrite {}
 
-    impl Generic for EditAndWrite {
+    impl JsonGeneric for EditAndWrite {
         const ID: &'static str = "editandwrite";
         const TITLE: &'static str = "Edit and write";
         const PAGES: Runs = Runs::Any;
@@ -396,7 +475,7 @@ mod tests {
         let head = handle.read(&mut s, |p, _| p.ledger.head()).unwrap();
         let files = Files::new("editandwrite");
         let target = files.blocked();
-        let v = run::<EditAndWrite>(&mut s, &serde_json::json!({"path": target.to_string_lossy()})).unwrap();
+        let v = run::<Json<EditAndWrite>>(&mut s, &serde_json::json!({"path": target.to_string_lossy()})).unwrap();
         assert_eq!(v["committed"], true, "{v}");
         assert_eq!(v["not_written"][0]["path"], target.to_string_lossy().as_ref(), "{v}");
         assert!(v["message"].as_str().is_some_and(|m| m.contains("was done, but a file could not be written")), "{v}");
@@ -409,7 +488,7 @@ mod tests {
         edit: bool,
     }
 
-    impl Generic for TwoFiles {
+    impl JsonGeneric for TwoFiles {
         const ID: &'static str = "twofiles";
         const TITLE: &'static str = "Two files";
         const PAGES: Runs = Runs::Any;
@@ -439,7 +518,7 @@ mod tests {
         let files = Files::new("twofiles");
         let (first, second) = (files.path("first.csv"), files.blocked());
         let params = serde_json::json!({"edit": true, "first": first.to_string_lossy(), "second": second.to_string_lossy()});
-        let v = run::<TwoFiles>(&mut s, &params).unwrap();
+        let v = run::<Json<TwoFiles>>(&mut s, &params).unwrap();
         assert_eq!(v["committed"], true, "{v}");
         let not_written = v["not_written"].as_array().unwrap();
         assert_eq!(not_written.len(), 1, "{v}");
@@ -451,7 +530,7 @@ mod tests {
         // Without an edit, the same: the first file was written, so the answer says what was not.
         std::fs::remove_file(&first).unwrap();
         let params = serde_json::json!({"edit": false, "first": first.to_string_lossy(), "second": second.to_string_lossy()});
-        let v = run::<TwoFiles>(&mut s, &params).unwrap();
+        let v = run::<Json<TwoFiles>>(&mut s, &params).unwrap();
         assert_eq!(
             (v["committed"].clone(), v["not_written"][0]["path"].clone()),
             (Value::Bool(false), Value::from(second.to_string_lossy().as_ref()))
@@ -465,7 +544,7 @@ mod tests {
         let (mut s, h, state) = fresh();
         let files = Files::new("nofile");
         let params = serde_json::json!({"edit": false, "first": files.blocked().to_string_lossy(), "second": files.blocked().to_string_lossy()});
-        let r = run::<TwoFiles>(&mut s, &params);
+        let r = run::<Json<TwoFiles>>(&mut s, &params);
         assert!(r.is_err_and(|e| e.to_string().contains("Could not write")));
         assert_eq!(session_state(&h, &mut s), state);
     }
@@ -478,7 +557,7 @@ mod tests {
         how: String,
     }
 
-    impl Generic for TakeThenEdit {
+    impl JsonGeneric for TakeThenEdit {
         const ID: &'static str = "takethenedit";
         const TITLE: &'static str = "Take then edit";
         const PAGES: Runs = Runs::ReadAnywhere;
@@ -544,7 +623,7 @@ mod tests {
             p.pages.get_mut(&page).unwrap().unavailable = true;
         })
         .unwrap();
-        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "write"}));
+        let r = run::<Json<TakeThenEdit>>(&mut s, &serde_json::json!({"how": "write"}));
         assert!(r.is_err_and(|e| e.to_string().contains(UNAVAILABLE)));
         assert_eq!(session_state(&h, &mut s), state);
         assert_eq!(views_differ(&h, &mut s), Vec::<String>::new());
@@ -563,7 +642,7 @@ mod tests {
             s.execute("setlocation", &serde_json::json!({"component": device, "aspect": "location", "value": code})).unwrap();
         }
         let state = session_state(&h, &mut s);
-        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "stale"}));
+        let r = run::<Json<TakeThenEdit>>(&mut s, &serde_json::json!({"how": "stale"}));
         assert!(r.is_err());
         assert_eq!(session_state(&h, &mut s), state);
         let (kept, fresh_build) = h
@@ -584,7 +663,7 @@ mod tests {
         let (mut s, h, state) = fresh();
         let files = Files::new("stale");
         let target = files.path("out.csv");
-        let r = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "stale", "path": target.to_string_lossy()}));
+        let r = run::<Json<TakeThenEdit>>(&mut s, &serde_json::json!({"how": "stale", "path": target.to_string_lossy()}));
         assert!(r.is_err_and(|e| e.to_string().contains("differ from the recorded value")));
         assert!(!target.exists(), "a refusal leaves no file behind");
         assert_eq!(session_state(&h, &mut s), state);
@@ -597,7 +676,7 @@ mod tests {
     fn an_answer_that_cannot_be_read_still_answers_committed() {
         let (mut s, h, _) = fresh();
         let head = h.read(&mut s, |p, _| p.ledger.head()).unwrap();
-        let v = run::<TakeThenEdit>(&mut s, &serde_json::json!({"how": "answer"})).unwrap();
+        let v = run::<Json<TakeThenEdit>>(&mut s, &serde_json::json!({"how": "answer"})).unwrap();
         assert_eq!(v["committed"], true);
         assert_eq!(v["problem"], "the answer cannot be read");
         assert_ne!(h.read(&mut s, |p, _| p.ledger.head()).unwrap(), head);

@@ -2,15 +2,14 @@
 //! connection point (moving the route's end onto it), or let it go. Each returns the ops to
 //! commit; the commit's rewrite makes the wires follow.
 //!
-//! Excludes: the interactive forms and the JSON.
+//! Excludes: the interactive forms.
 
 use ecad_model::{ConnectionPointId, Document, End, Op, PageId, RouteEnd, RouteId};
 
 use schemars::JsonSchema;
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, Generic, Outcome, Reply, Request};
 use crate::error::CmdError;
 use crate::wires::joining::end_index;
 use crate::wires::routes::RouteEdits;
@@ -65,8 +64,8 @@ pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdEr
 // The commands (generic: crate::commands::run)
 
 /// A route's end.
-#[derive(Deserialize, Clone, Copy, JsonSchema)]
-pub(crate) enum EndParam {
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, JsonSchema)]
+pub enum EndParam {
     /// The start.
     #[serde(rename = "A", alias = "a")]
     A,
@@ -84,44 +83,83 @@ impl From<EndParam> for End {
     }
 }
 
+impl From<End> for EndParam {
+    fn from(e: End) -> Self {
+        match e {
+            End::A => EndParam::A,
+            End::B => EndParam::B,
+        }
+    }
+}
+
 /// Lands a route's end on a connection point, moving the end onto it.
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectParams {
     /// The route (a drawn wire line).
-    route: RouteId,
+    pub route: RouteId,
     /// Which end of it.
-    end: EndParam,
+    pub end: EndParam,
     /// The connection point, shown on the active page.
-    connection_point: ConnectionPointId,
+    pub connection_point: ConnectionPointId,
 }
 
-impl Generic for ConnectParams {
+/// What `connect` did.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct ConnectReply {
+    /// Always true: the end is on the connection point.
+    pub connected: bool,
+}
+impl Reply for ConnectReply {}
+
+/// `connect`: land a route's end on a connection point.
+pub enum Connect {}
+impl Request for Connect {
     const ID: &'static str = "connect";
+    type Params = ConnectParams;
+    type Reply = ConnectReply;
+}
+
+impl Generic for Connect {
     const TITLE: &'static str = "Connect";
 
-    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let ops = connect(cx.doc, self.route, self.end.into(), self.connection_point)?;
-        Ok(Outcome::edit("Connect", ops, json!({"connected": true})))
+    fn run(p: ConnectParams, cx: &mut Cx<'_>) -> Result<Outcome<ConnectReply>, CmdError> {
+        let ops = connect(cx.doc, p.route, p.end.into(), p.connection_point)?;
+        Ok(Outcome::edit("Connect", ops, ConnectReply { connected: true }))
     }
 }
 
 /// Lets a route's end go; it ends free where it is.
-#[derive(Deserialize, JsonSchema)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DisconnectParams {
     /// The route (a drawn wire line).
-    route: RouteId,
+    pub route: RouteId,
     /// Which end of it.
-    end: EndParam,
+    pub end: EndParam,
 }
 
-impl Generic for DisconnectParams {
+/// What `disconnect` did.
+#[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
+pub struct DisconnectReply {
+    /// Always true: the end is free.
+    pub disconnected: bool,
+}
+impl Reply for DisconnectReply {}
+
+/// `disconnect`: let a route's end go.
+pub enum Disconnect {}
+impl Request for Disconnect {
     const ID: &'static str = "disconnect";
+    type Params = DisconnectParams;
+    type Reply = DisconnectReply;
+}
+
+impl Generic for Disconnect {
     const TITLE: &'static str = "Disconnect";
 
-    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
-        let ops = disconnect(cx.doc, self.route, self.end.into())?;
-        Ok(Outcome::edit("Disconnect", ops, json!({"disconnected": true})))
+    fn run(p: DisconnectParams, cx: &mut Cx<'_>) -> Result<Outcome<DisconnectReply>, CmdError> {
+        let ops = disconnect(cx.doc, p.route, p.end.into())?;
+        Ok(Outcome::edit("Disconnect", ops, DisconnectReply { disconnected: true }))
     }
 }

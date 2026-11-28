@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::{AddressInput, plan_address};
 use crate::commands::input::{TextOrNumber, nullable};
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::plc::address::*;
 
@@ -46,7 +46,7 @@ pub struct PlcaddressParams {
     clear: Option<bool>,
 }
 
-impl Generic for PlcaddressParams {
+impl JsonGeneric for PlcaddressParams {
     const ID: &'static str = "plcaddress";
     const TITLE: &'static str = "PLC Addresses";
 

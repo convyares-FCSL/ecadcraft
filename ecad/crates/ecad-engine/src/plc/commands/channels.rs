@@ -8,7 +8,7 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::commands::input::Command;
+use crate::commands::input::JsonCommand;
 use crate::commands::{err, on_project, plain_style};
 use ecad_electrical::commands::input::{Point, TextOrNumber};
 use ecad_electrical::plc::channels::*;
@@ -158,7 +158,7 @@ pub(crate) struct PlcchannelsParams {
     at: Option<Point>,
 }
 
-impl Command for PlcchannelsParams {
+impl JsonCommand for PlcchannelsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let rest = self.rest.unwrap_or(false);
         let first = self.first.map(|t| rules::channel_number(&t.text())).transpose().map_err(|e| err(e.to_string()))?;

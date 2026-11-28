@@ -23,7 +23,7 @@ authorship never depends on the connection.
 |---|---|---|
 | `ecad.hello` | `{session, name, write, client_version}` | `{writes, why?, project: {name, file}, writer, app_version}` |
 | `ecad.execute` | `{session, name, line, command, params}` | `ecad-mcp`'s `execute` result, with `ecadTransactions` (the transactions the call recorded) |
-| `ecad.tool` | `{session, name, line, tool, arguments}` | the tool's MCP result (`ecad_project`, `ecad_history`, `ecad_inspect`, `save`); `{protocolError}` for invalid arguments or an unknown tool |
+| `ecad.tool` | `{session, name, line, tool, arguments}` | the tool's MCP result (`ecad_project`, `ecad_history`, `ecad_inspect`, `describe_command`, `save`); `{protocolError}` for invalid arguments or an unknown tool |
 | `ecad.bye` | `{session}` | `{}` |
 
 Answered by the window's own handler: `drawing.inspect`, `engine.commands`, `ui.render` and `ui.screenshot`

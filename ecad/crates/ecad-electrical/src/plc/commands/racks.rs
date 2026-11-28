@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::{RackChoice, plan_card_type, slot_given, slot_plan};
 use crate::commands::input::{TextOrNumber, nullable};
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use crate::plc::rack::*;
 
@@ -30,7 +30,7 @@ pub struct PlcslotParams {
     swap: Option<bool>,
 }
 
-impl Generic for PlcslotParams {
+impl JsonGeneric for PlcslotParams {
     const ID: &'static str = "plcslot";
     const TITLE: &'static str = "Card Slot";
 
@@ -76,7 +76,7 @@ pub struct PlcracksParams {
     rack: Option<String>,
 }
 
-impl Generic for PlcracksParams {
+impl JsonGeneric for PlcracksParams {
     const ID: &'static str = "plcracks";
     const TITLE: &'static str = "PLC Racks";
     const PAGES: Pages = Pages::Any;
@@ -114,7 +114,7 @@ pub struct PlccardtypeParams {
     ty: crate::commands::input::Said<crate::plc::rack::IoType>,
 }
 
-impl Generic for PlccardtypeParams {
+impl JsonGeneric for PlccardtypeParams {
     const ID: &'static str = "plccardtype";
     const TITLE: &'static str = "Card Type";
 

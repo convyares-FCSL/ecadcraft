@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use ecad_electrical::properties::Row;
 use ecad_electrical::properties::{PropsView, Target};
+use ecad_electrical::wires::commands::nets::{LabelRuleWord, Wiresettings, WiresettingsParams, WiresettingsReply};
 use ecad_model::SheetSpec;
 use ecad_widgets::control::{self, Decor, Select, TextEntry};
 use ecad_widgets::dialog::{Dialog, action};
@@ -1082,24 +1083,29 @@ use ecad_model::connectivity::wiring::NumberBy;
 /// (one per net or one per wire). Committed as one `wiresettings` line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireLabels {
-    rule_orig: String,
-    /// `net` or `each`.
-    pub rule: String,
+    rule_orig: LabelRuleWord,
+    /// Which wires get a label.
+    pub rule: LabelRuleWord,
     min_orig: String,
     /// Shortest labelled wire, millimetres, as typed.
     pub min_length: String,
-    number_by_orig: String,
-    /// `net` or `conductor`.
-    pub number_by: String,
+    number_by_orig: NumberBy,
+    /// What one wire number counts.
+    pub number_by: NumberBy,
 }
 
 impl WireLabels {
-    /// From `wiresettings {}`.
-    pub fn from_json(v: &Value) -> Self {
-        let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::connectivity::wiring::LABEL_RULE_NET).to_string();
-        let min = v.get("label_min_length").and_then(Value::as_f64).map_or_else(String::new, |v| v.to_string());
-        let by = v.get("number_by").and_then(Value::as_str).unwrap_or(ecad_model::Word::word(NumberBy::Net)).to_string();
-        WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min, number_by_orig: by.clone(), number_by: by }
+    /// From `wiresettings {}`'s reply.
+    pub fn from_reply(w: &WiresettingsReply) -> Self {
+        let min = w.label_min_length.to_string();
+        WireLabels {
+            rule_orig: w.label_rule,
+            rule: w.label_rule,
+            min_orig: min.clone(),
+            min_length: min,
+            number_by_orig: w.number_by,
+            number_by: w.number_by,
+        }
     }
 
     /// The `wiresettings` line of what changed, `None` when nothing did.
@@ -1107,46 +1113,47 @@ impl WireLabels {
     /// # Errors
     /// `Shortest labelled wire is 0 to 100 mm.`
     pub fn line(&self) -> Result<Option<String>, String> {
-        let mut m = Map::new();
+        let mut p = WiresettingsParams::default();
         if self.rule != self.rule_orig {
-            m.insert("label_rule".into(), Value::String(self.rule.clone()));
+            p.label_rule = Some(self.rule);
         }
         if self.min_length.trim() != self.min_orig {
-            let v = ecad_electrical::fields::label_min_length(&self.min_length).map_err(|e| e.to_string())?;
-            m.insert("label_min_length".into(), json!(v));
+            p.label_min_length = Some(ecad_electrical::fields::label_min_length(&self.min_length).map_err(|e| e.to_string())?);
         }
         if self.number_by != self.number_by_orig {
-            m.insert("number_by".into(), Value::String(self.number_by.clone()));
+            p.number_by = Some(self.number_by);
         }
-        Ok((!m.is_empty()).then(|| format!("wiresettings {}", Value::Object(m))))
+        if p.label_rule.is_none() && p.label_min_length.is_none() && p.number_by.is_none() {
+            return Ok(None);
+        }
+        ecad_engine::commands::line::<Wiresettings>(&p).map(Some).map_err(|e| e.to_string())
     }
 
     fn show(&mut self, ui: &mut egui::Ui) {
         prim::PropertyGrid::new().show(ui, |g| {
             g.row("Labels", |ui| {
-                for (word, shown, name) in [
-                    (ecad_model::connectivity::wiring::LABEL_RULE_NET, "One per net per page", "ecad.projectsettings.label_rule.net"),
-                    (ecad_model::connectivity::wiring::LABEL_RULE_EACH, "Every wire", "ecad.projectsettings.label_rule.each"),
+                for (rule, shown, name) in [
+                    (LabelRuleWord::Net, "One per net per page", "ecad.projectsettings.label_rule.net"),
+                    (LabelRuleWord::Each, "Every wire", "ecad.projectsettings.label_rule.each"),
                 ] {
-                    if Radio::new(self.rule == word, shown).show(ui).accessible_name(name).clicked() {
-                        self.rule = word.to_string();
+                    if Radio::new(self.rule == rule, shown).show(ui).accessible_name(name).clicked() {
+                        self.rule = rule;
                     }
                 }
             });
-            let each = self.rule == ecad_model::connectivity::wiring::LABEL_RULE_EACH;
+            let each = self.rule == LabelRuleWord::Each;
             g.row("Shortest wire", |ui| {
                 ui.add_enabled_ui(each, |ui| {
                     TextEntry::new(&mut self.min_length, "ecad.projectsettings.label_min_length").number("mm").width(SHORT_W * 1.5).show(ui);
                 });
             });
             g.row("Wire numbers", |ui| {
-                for (word, shown, name) in [
+                for (by, shown, name) in [
                     (NumberBy::Net, "One per net", "ecad.projectsettings.number_by.net"),
                     (NumberBy::Conductor, "One per wire", "ecad.projectsettings.number_by.conductor"),
                 ] {
-                    let word = ecad_model::Word::word(word);
-                    if Radio::new(self.number_by == word, shown).show(ui).accessible_name(name).clicked() {
-                        self.number_by = word.to_string();
+                    if Radio::new(self.number_by == by, shown).show(ui).accessible_name(name).clicked() {
+                        self.number_by = by;
                     }
                 }
             });

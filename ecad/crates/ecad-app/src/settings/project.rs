@@ -18,6 +18,7 @@ use crate::settings::sheets::{Out, Part, Popout};
 use crate::settings::{card, dashed_rect, later_row, row};
 use crate::shell::app::App;
 use crate::shell::bar;
+use ecad_electrical::wires::commands::nets::{Wiresettings, WiresettingsParams};
 
 /// Pages and sheets' two tabs.
 pub(crate) const TABS: [&str; 2] = ["Page types", "Text styles"];
@@ -323,7 +324,8 @@ impl App {
                     // label rows read `wiresettings {}` (reads only).
                     d.text =
                         self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));
-                    d.labels = self.run_value("wiresettings", serde_json::json!({})).ok().map(|w| crate::settings::sheets::WireLabels::from_json(&w));
+                    d.labels =
+                        self.call::<Wiresettings>(WiresettingsParams::default()).ok().map(|w| crate::settings::sheets::WireLabels::from_reply(&w));
                 }
                 self.dialogs.project_props = Some(d);
             }

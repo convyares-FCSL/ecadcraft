@@ -914,6 +914,18 @@ impl App {
         r
     }
 
+    /// Run command `C` with `params` through the command path, as [`App::run_value`] does (its
+    /// message echoed, the app refreshed after), and read its reply as its type.
+    ///
+    /// # Errors
+    /// The command's refusal, in the session's words, or a reply that does not read as `C::Reply`.
+    pub(crate) fn call<C: ecad_electrical::commands::request::Request>(&mut self, params: C::Params) -> Result<C::Reply, ecad_electrical::CmdError> {
+        let params = ecad_engine::commands::params_json::<C>(&params)?;
+        let r = self.cad.run(C::ID, params).map_err(ecad_electrical::CmdError::refused);
+        self.after_logic();
+        ecad_engine::commands::reply_of::<C>(r?)
+    }
+
     pub(crate) fn run_value(&mut self, cmd: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
         let r = self.cad.run(cmd, params).map_err(|e| e.to_string());
         self.after_logic();

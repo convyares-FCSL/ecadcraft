@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::{Bounded, nullable};
-use crate::commands::run::{Cx, Generic, Outcome, Slot, State};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// Most arrows one `contcaption` names.
@@ -184,7 +184,7 @@ pub struct ContcaptionParams {
     caption: Option<Option<String>>,
 }
 
-impl Generic for ContcaptionParams {
+impl JsonGeneric for ContcaptionParams {
     const ID: &'static str = "contcaption";
     const TITLE: &'static str = "Caption Continuations";
     const STATE: State = State::LastCaption;

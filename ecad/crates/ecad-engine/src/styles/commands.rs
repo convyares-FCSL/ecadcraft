@@ -14,21 +14,21 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{on_any_page, on_project};
 use ecad_electrical::commands::input::{Said, nullable};
 use ecad_model::look::{Shown, TextKind};
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<ShowtextParams>("showtext"), Typed::of::<HiddentextParams>("hiddentext")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<ShowtextParams>("showtext"), Typed::json::<HiddentextParams>("hiddentext")];
 
 /// The commands of this module, appended to the registry by [`crate::commands::specs`].
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("showtext", "Show/Hide Text", crate::commands::input::typed::<ShowtextParams>)
+        CommandSpec::new("showtext", "Show/Hide Text", crate::commands::input::run_json::<ShowtextParams>)
             .interactive(crate::styles::interact::showtext)
             .noundo(),
-        CommandSpec::new("hiddentext", "Show Hidden Text", crate::commands::input::typed::<HiddentextParams>).noundo(),
+        CommandSpec::new("hiddentext", "Show Hidden Text", crate::commands::input::run_json::<HiddentextParams>).noundo(),
     ]
 }
 
@@ -59,7 +59,7 @@ pub(crate) struct ShowtextParams {
     page: Option<PageId>,
 }
 
-impl Command for ShowtextParams {
+impl JsonCommand for ShowtextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let kind = self.kind;
         let show = self.show.flatten().map(|s| s.0.word().to_string());
@@ -94,7 +94,7 @@ pub(crate) struct HiddentextParams {
     on: Option<bool>,
 }
 
-impl Command for HiddentextParams {
+impl JsonCommand for HiddentextParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let on = self.on;
         on_any_page(s, |p, pg| {

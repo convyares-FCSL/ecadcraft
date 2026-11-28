@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Bounded, nullable};
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::terminal_strips::accessories::{self as acc, Acc, Spot};
 use crate::views::Views;
@@ -701,7 +701,7 @@ impl WordsParam {
     }
 }
 
-impl Generic for AccessoryParams {
+impl JsonGeneric for AccessoryParams {
     const ID: &'static str = "accessory";
     const TITLE: &'static str = "Strip Accessory";
 
@@ -726,7 +726,7 @@ impl Generic for AccessoryParams {
     }
 }
 
-impl Generic for JumperParams {
+impl JsonGeneric for JumperParams {
     const ID: &'static str = "jumper";
     const TITLE: &'static str = "Jumper";
 

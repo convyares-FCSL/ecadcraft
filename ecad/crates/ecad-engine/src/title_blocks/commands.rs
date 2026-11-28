@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::commands::err;
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 
 /// The command of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimport")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<TitleblockimportParams>("titleblockimport")];
 
 /// The command of this module.
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("titleblockimport", "Import Title Block", crate::commands::input::typed::<TitleblockimportParams>).noundo()]
+    vec![CommandSpec::new("titleblockimport", "Import Title Block", crate::commands::input::run_json::<TitleblockimportParams>).noundo()]
 }
 
 /// A new frame from a DXF drawing (`{path | dxf, sheet?, name?}`), or a DXF drawing put into a logo item (`{id |
@@ -47,7 +47,7 @@ pub(crate) struct TitleblockimportParams {
     item: Option<u64>,
 }
 
-impl Command for TitleblockimportParams {
+impl JsonCommand for TitleblockimportParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let params = serde_json::to_value(&self).map_err(|e| err(e.to_string()))?;
         crate::title_blocks::dxf::run_import(s, &params)

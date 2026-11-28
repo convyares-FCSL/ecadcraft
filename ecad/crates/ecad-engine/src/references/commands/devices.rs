@@ -10,14 +10,14 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::on_any_page;
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<RefgotoParams>("refgoto")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<RefgotoParams>("refgoto")];
 
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::typed::<RefgotoParams>).noundo()]
+    vec![CommandSpec::new("refgoto", "Go to Reference", crate::commands::input::run_json::<RefgotoParams>).noundo()]
 }
 
 /// Opens the place a cable reference end, a contact, a coil or a continuation arrow shows. Records nothing.
@@ -31,7 +31,7 @@ pub(crate) struct RefgotoParams {
     target: Option<RepresentationId>,
 }
 
-impl Command for RefgotoParams {
+impl JsonCommand for RefgotoParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let (uid, jump, opened) = on_any_page(s, |p, pg| {
             let ring = p.display.goto_ring.map(|(page, at, _)| (page, at));

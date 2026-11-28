@@ -14,18 +14,18 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_any_page, on_project};
 use crate::releases::release::{prerelease, release_issued, release_pending};
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<PrereleaseParams>("prerelease"), Typed::of::<ReleaseParams>("release")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<PrereleaseParams>("prerelease"), Typed::json::<ReleaseParams>("release")];
 
 /// The commands this module adds.
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::typed::<PrereleaseParams>).noundo(),
-        CommandSpec::new("release", "Release", crate::commands::input::typed::<ReleaseParams>).noundo(),
+        CommandSpec::new("prerelease", "Pre-release Check", crate::commands::input::run_json::<PrereleaseParams>).noundo(),
+        CommandSpec::new("release", "Release", crate::commands::input::run_json::<ReleaseParams>).noundo(),
     ]
 }
 
@@ -49,7 +49,7 @@ pub(crate) struct PrereleaseParams {
     accept: Option<Accept>,
 }
 
-impl Command for PrereleaseParams {
+impl JsonCommand for PrereleaseParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let params = as_json(&self)?;
         on_any_page(s, |p, _| prerelease(p, &params).map_err(CmdError::refused))
@@ -87,7 +87,7 @@ pub(crate) struct ReleaseParams {
     lineweights: Option<bool>,
 }
 
-impl Command for ReleaseParams {
+impl JsonCommand for ReleaseParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let params = as_json(&self)?;
         match self.rev {

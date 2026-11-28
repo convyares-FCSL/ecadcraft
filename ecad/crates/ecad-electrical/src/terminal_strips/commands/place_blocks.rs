@@ -12,7 +12,7 @@ use serde_json::json;
 use super::terminal_strips::{TerminalBlocksInput, block_type, connection_points_message, plan_terminal_blocks};
 use crate::commands::input::Point;
 use crate::commands::input::{MAX_COORD, OUT_OF_RANGE};
-use crate::commands::run::{Cx, Generic, LastPlaced, Outcome, Slot, State};
+use crate::commands::run::{Cx, JsonGeneric, LastPlaced, Outcome, Slot, State};
 use crate::error::CmdError;
 
 /// One terminal block, or one level, on each wire the line from `from` to `to` crosses (at most 200). A level
@@ -41,7 +41,7 @@ pub struct TerminalBlocksParams {
     to: Point,
 }
 
-impl Generic for TerminalBlocksParams {
+impl JsonGeneric for TerminalBlocksParams {
     const ID: &'static str = "terminalblocks";
     const TITLE: &'static str = "Place Terminals";
     const STATE: State = State::LastPlaced;

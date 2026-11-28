@@ -23,7 +23,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::{TextOrNumber, nullable};
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect};
@@ -661,7 +661,7 @@ impl From<CablenewParams> for CableInput {
     }
 }
 
-impl Generic for CablenewParams {
+impl JsonGeneric for CablenewParams {
     const ID: &'static str = "cablenew";
     const TITLE: &'static str = "New Cable";
 
@@ -677,7 +677,7 @@ impl Generic for CablenewParams {
     }
 }
 
-impl Generic for CableeditParams {
+impl JsonGeneric for CableeditParams {
     const ID: &'static str = "cableedit";
     const TITLE: &'static str = "Edit Cable";
 
@@ -694,7 +694,7 @@ impl Generic for CableeditParams {
     }
 }
 
-impl Generic for CableremoveParams {
+impl JsonGeneric for CableremoveParams {
     const ID: &'static str = "cableremove";
     const TITLE: &'static str = "Remove Cable";
 

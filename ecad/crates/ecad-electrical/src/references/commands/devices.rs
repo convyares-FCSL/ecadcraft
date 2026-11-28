@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::Point;
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::devices::traits::DeviceKind;
 use crate::error::CmdError;
 use crate::references::devices;
@@ -218,7 +218,7 @@ pub struct MirrormoveParams {
     placement: Option<ContactMirror>,
 }
 
-impl Generic for DeviceReferencesParams {
+impl JsonGeneric for DeviceReferencesParams {
     const ID: &'static str = "references";
     const TITLE: &'static str = "List References";
     const PAGES: Pages = Pages::Any;
@@ -237,7 +237,7 @@ impl Generic for DeviceReferencesParams {
     }
 }
 
-impl Generic for ContactsParams {
+impl JsonGeneric for ContactsParams {
     const ID: &'static str = "contacts";
     const TITLE: &'static str = "Device Contacts";
     const PAGES: Pages = Pages::Any;
@@ -248,7 +248,7 @@ impl Generic for ContactsParams {
     }
 }
 
-impl Generic for MirrormoveParams {
+impl JsonGeneric for MirrormoveParams {
     const ID: &'static str = "mirrormove";
     const TITLE: &'static str = "Move Mirror Table";
 

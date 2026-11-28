@@ -33,7 +33,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::commands::input::{Command, Typed, typed};
+use crate::commands::input::{JsonCommand, Typed, run_json};
 use crate::commands::{on_any_page, on_project};
 use crate::history;
 use crate::project::Project;
@@ -591,13 +591,13 @@ fn prep_latest_revision(prep: &Prepared) -> String {
 }
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<MergeParams>("merge"), Typed::of::<UndomergeParams>("undomerge")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<MergeParams>("merge"), Typed::json::<UndomergeParams>("undomerge")];
 
 /// The commands this module adds.
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("merge", "Merge", typed::<MergeParams>).noundo(),
-        CommandSpec::new("undomerge", "Undo Merge", typed::<UndomergeParams>).noundo(),
+        CommandSpec::new("merge", "Merge", run_json::<MergeParams>).noundo(),
+        CommandSpec::new("undomerge", "Undo Merge", run_json::<UndomergeParams>).noundo(),
     ]
 }
 
@@ -642,7 +642,7 @@ pub(crate) struct MergeParams {
     close: Option<bool>,
 }
 
-impl Command for MergeParams {
+impl JsonCommand for MergeParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let given = self.choices.unwrap_or_default();
         if self.preview == Some(true) {
@@ -811,7 +811,7 @@ pub(crate) fn undo_question(p: &Project) -> Option<String> {
 #[schemars(extend("properties" = {}))]
 pub(crate) struct UndomergeParams {}
 
-impl Command for UndomergeParams {
+impl JsonCommand for UndomergeParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, undo_merge)
     }

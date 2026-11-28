@@ -15,7 +15,7 @@ use ecad_model::{ConnectionPointId, DeviceId, Document, Form, Noun, ObjectRef, O
 
 use super::defaults::level_word;
 use crate::commands::input::Point;
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::defaults::{self};
 use crate::devices::text_place;
 use crate::devices::texts::TextOf;
@@ -232,7 +232,7 @@ pub struct PagetextsParams {
     page: Option<PageId>,
 }
 
-impl Generic for PagetextsParams {
+impl JsonGeneric for PagetextsParams {
     const ID: &'static str = "pagetexts";
     const TITLE: &'static str = "Page Texts";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -319,7 +319,7 @@ pub struct MovetextParams {
     reset: Option<bool>,
 }
 
-impl Generic for MovetextParams {
+impl JsonGeneric for MovetextParams {
     const ID: &'static str = "movetext";
     const TITLE: &'static str = "Move Text";
 

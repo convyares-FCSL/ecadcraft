@@ -10,12 +10,12 @@ pub(crate) mod page;
 
 use cadcraft_engine::CommandSpec;
 
-use crate::commands::input::{Typed, typed};
+use crate::commands::input::{Typed, run_json};
 
 /// The PLC commands with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<channels::PlcchannelsParams>("plcchannels"), Typed::of::<page::PlcpageParams>("plcpage")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<channels::PlcchannelsParams>("plcchannels"), Typed::json::<page::PlcpageParams>("plcpage")];
 
 /// The PLC commands that place drawing.
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("plcchannels", "Place Channels", typed::<channels::PlcchannelsParams>).noundo()]
+    vec![CommandSpec::new("plcchannels", "Place Channels", run_json::<channels::PlcchannelsParams>).noundo()]
 }

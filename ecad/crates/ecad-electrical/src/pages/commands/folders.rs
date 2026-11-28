@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::sheets::{delete_folder, folder_name, move_folder, new_folder, rename_folder};
 use crate::commands::input::nullable;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 
 /// A new folder, last among its siblings.
@@ -55,7 +55,7 @@ pub struct DeletefolderParams {
     folder: FolderId,
 }
 
-impl Generic for NewfolderParams {
+impl JsonGeneric for NewfolderParams {
     const ID: &'static str = "newfolder";
     const TITLE: &'static str = "New Folder";
 
@@ -70,7 +70,7 @@ impl Generic for NewfolderParams {
     }
 }
 
-impl Generic for RenamefolderParams {
+impl JsonGeneric for RenamefolderParams {
     const ID: &'static str = "renamefolder";
     const TITLE: &'static str = "Rename Folder";
 
@@ -88,7 +88,7 @@ impl Generic for RenamefolderParams {
     }
 }
 
-impl Generic for MovefolderParams {
+impl JsonGeneric for MovefolderParams {
     const ID: &'static str = "movefolder";
     const TITLE: &'static str = "Move Folder";
 
@@ -100,7 +100,7 @@ impl Generic for MovefolderParams {
     }
 }
 
-impl Generic for DeletefolderParams {
+impl JsonGeneric for DeletefolderParams {
     const ID: &'static str = "deletefolder";
     const TITLE: &'static str = "Delete Folder";
 

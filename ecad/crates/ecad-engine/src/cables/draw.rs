@@ -46,11 +46,11 @@ pub fn pick_routes(p: &crate::Project, page: PageId, selection: &[cadcraft_engin
 }
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[crate::commands::input::Typed] = &[crate::commands::input::Typed::of::<CanvassheetParams>("canvassheet")];
+pub const TYPED: &[crate::commands::input::Typed] = &[crate::commands::input::Typed::json::<CanvassheetParams>("canvassheet")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<cadcraft_engine::CommandSpec> {
-    vec![cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::typed::<CanvassheetParams>).noundo()]
+    vec![cadcraft_engine::CommandSpec::new("canvassheet", "Canvas Sheet", crate::commands::input::run_json::<CanvassheetParams>).noundo()]
 }
 
 /// The sheet the project is shown on (its display's `sheet`, [`crate::project::Project::display`]), for the
@@ -64,7 +64,7 @@ pub(crate) struct CanvassheetParams {
     dark: bool,
 }
 
-impl crate::commands::input::Command for CanvassheetParams {
+impl crate::commands::input::JsonCommand for CanvassheetParams {
     fn run(self, s: &mut cadcraft_engine::Session) -> cadcraft_engine::Result<serde_json::Value> {
         let dark = self.dark;
         let sheet = if dark { &ecad_model::palette::sheet::DARK } else { &ecad_model::palette::sheet::PAPER };

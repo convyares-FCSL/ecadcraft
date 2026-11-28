@@ -11,7 +11,7 @@ checked transactions a person gets, recorded as `Author::Agent(<client name>)`.
 ## Contents
 - `policy`: the write gate (what is read-only, what is never offered, one step per call).
 - `gate`, `bridge`: the gate on the person's own session, and the bridged mode that sends calls to a running ECAD window (`--connect PORT`).
-- `tools`: the ECAD tools (`ecad_project`, `ecad_history`, `ecad_inspect`, `save`).
+- `tools`: the ECAD tools (`ecad_project`, `ecad_history`, `ecad_inspect`, `describe_command`, `save`).
 - `args`, `launch`: command-line options, and starting the window (`--launch`).
 - `demo`, `src/bin/ecad-demo.rs`: a demo session.
 - `src/lib.rs`: `EcadMcp`, `Options`, and the caps (`MAX_REQUEST_BYTES`, `MAX_BATCH`, `MAX_TRANSACTIONS_PER_CALL`).

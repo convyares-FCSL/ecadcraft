@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cables::views::Settings;
-use crate::commands::input::{Command, Typed, typed};
+use crate::commands::input::{JsonCommand, Typed, run_json};
 use crate::commands::{err, on_any_page};
 use crate::project::Project;
 
@@ -188,10 +188,10 @@ pub struct Status {
 }
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<AgentaccessParams>("agentaccess")];
+pub const TYPED: &[Typed] = &[Typed::json::<AgentaccessParams>("agentaccess")];
 
 pub fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("agentaccess", "Agent Access", typed::<AgentaccessParams>).noundo()]
+    vec![CommandSpec::new("agentaccess", "Agent Access", run_json::<AgentaccessParams>).noundo()]
 }
 
 fn reply(st: Option<&Status>, pref: Preference) -> Value {
@@ -217,7 +217,7 @@ pub(crate) struct AgentaccessParams {
     port: Option<u64>,
 }
 
-impl Command for AgentaccessParams {
+impl JsonCommand for AgentaccessParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let mode = self.mode.map(|m| m.0);
         let port = self

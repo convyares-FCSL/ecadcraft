@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use crate::terminal_strips::commands::terminal_strips as rules;
 use crate::terminal_strips::strip_model::StripData;
@@ -31,7 +31,7 @@ pub struct StripplanParams {
     accessories: Option<bool>,
 }
 
-impl Generic for StripplanParams {
+impl JsonGeneric for StripplanParams {
     const ID: &'static str = "stripplan";
     const TITLE: &'static str = "Terminal Plan";
     const PAGES: Pages = Pages::Any;
@@ -69,7 +69,7 @@ pub struct CablecoresParams {
     cable: CableId,
 }
 
-impl Generic for CablecoresParams {
+impl JsonGeneric for CablecoresParams {
     const ID: &'static str = "cablecores";
     const TITLE: &'static str = "Cable Cores";
     const PAGES: Pages = Pages::Any;

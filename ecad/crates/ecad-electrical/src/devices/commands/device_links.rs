@@ -22,7 +22,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 
 /// The key prefix of a user field's value in `setprop` (`user.Panel row`).
@@ -193,7 +193,7 @@ pub struct LinkParams {
     devices: [DeviceId; 2],
 }
 
-impl Generic for LinkParams {
+impl JsonGeneric for LinkParams {
     const ID: &'static str = "linkdevices";
     const TITLE: &'static str = "Link Devices";
 
@@ -212,7 +212,7 @@ pub struct UnlinkParams {
     link: LinkId,
 }
 
-impl Generic for UnlinkParams {
+impl JsonGeneric for UnlinkParams {
     const ID: &'static str = "unlinkdevices";
     const TITLE: &'static str = "Unlink Devices";
 
@@ -277,7 +277,7 @@ impl UserFieldParams {
     }
 }
 
-impl Generic for UserFieldParams {
+impl JsonGeneric for UserFieldParams {
     const ID: &'static str = "userfield";
     const TITLE: &'static str = "User Field";
 

@@ -21,7 +21,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{on_any_page, on_project};
 use crate::project::Project;
 use ecad_electrical::commands::input::nullable;
@@ -58,20 +58,20 @@ pub fn issue_undo_question(rev: &str, date: &str) -> String {
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
-    Typed::of::<IssuerevisionParams>("issuerevision"),
-    Typed::of::<OpenrevisionParams>("openrevision"),
-    Typed::of::<CloserevisionParams>("closerevision"),
-    Typed::of::<UndoissueParams>("undoissue"),
+    Typed::json::<IssuerevisionParams>("issuerevision"),
+    Typed::json::<OpenrevisionParams>("openrevision"),
+    Typed::json::<CloserevisionParams>("closerevision"),
+    Typed::json::<UndoissueParams>("undoissue"),
 ];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
-    use crate::commands::input::typed;
+    use crate::commands::input::run_json;
     vec![
-        CommandSpec::new("issuerevision", "Issue Revision", typed::<IssuerevisionParams>).noundo(),
-        CommandSpec::new("openrevision", "Reopen Revision", typed::<OpenrevisionParams>).noundo(),
-        CommandSpec::new("closerevision", "Back to Current", typed::<CloserevisionParams>).noundo(),
-        CommandSpec::new("undoissue", "Undo Issue", typed::<UndoissueParams>).noundo(),
+        CommandSpec::new("issuerevision", "Issue Revision", run_json::<IssuerevisionParams>).noundo(),
+        CommandSpec::new("openrevision", "Reopen Revision", run_json::<OpenrevisionParams>).noundo(),
+        CommandSpec::new("closerevision", "Back to Current", run_json::<CloserevisionParams>).noundo(),
+        CommandSpec::new("undoissue", "Undo Issue", run_json::<UndoissueParams>).noundo(),
     ]
 }
 
@@ -180,7 +180,7 @@ pub(crate) struct IssuerevisionParams {
     provisional: Option<ecad_electrical::releases::release::Provisional>,
 }
 
-impl Command for IssuerevisionParams {
+impl JsonCommand for IssuerevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let f = revision_fields([self.rev, self.date, self.description, self.drawn, self.checked, self.approved], None, None);
         on_project(s, |p, pg, _| {
@@ -212,7 +212,7 @@ pub(crate) struct OpenrevisionParams {
     rev: String,
 }
 
-impl Command for OpenrevisionParams {
+impl JsonCommand for OpenrevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let rev = self.rev.trim().to_string();
         on_any_page(s, |p, _| {
@@ -245,7 +245,7 @@ impl Command for OpenrevisionParams {
 #[schemars(extend("properties" = {}))]
 pub(crate) struct CloserevisionParams {}
 
-impl Command for CloserevisionParams {
+impl JsonCommand for CloserevisionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
             let was = p.display.revision_view.take().map(|v| v.rev);
@@ -260,7 +260,7 @@ impl Command for CloserevisionParams {
 #[schemars(extend("properties" = {}))]
 pub(crate) struct UndoissueParams {}
 
-impl Command for UndoissueParams {
+impl JsonCommand for UndoissueParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, _| {
             let rev = rules::undone_issue(&p.ledger.undo_ops().unwrap_or_default())?;

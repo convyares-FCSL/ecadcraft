@@ -13,7 +13,7 @@ use crate::agent::policy;
 use ecad_file::history::logged_author_text;
 
 /// Names of the tools this module answers.
-pub(crate) const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
+pub(crate) const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "describe_command", "save", "ecad_connection", "screenshot"];
 
 /// Said by `screenshot` when no ECAD window is connected.
 pub const NO_WINDOW: &str = "No ECAD window is connected; use render.";
@@ -131,6 +131,8 @@ pub fn definitions(writes: bool, live: bool) -> Vec<Value> {
             "inputSchema": {"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 0}}}}),
         json!({"name": "ecad_inspect", "description": "ecadinspect's read-only JSON snapshot of the project (live, or at transaction `seq`).",
             "inputSchema": {"type": "object", "properties": {"seq": {"type": "integer", "minimum": 0}}}}),
+        json!({"name": "describe_command", "description": "One command offered to agents: its parameters text, the JSON Schema of its parameters (`params`) and of its reply (`reply`; null while that command still answers untyped JSON), and whether it reads or writes (`agent`).",
+            "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}}),
         json!({"name": "save", "description": save, "inputSchema": {"type": "object", "properties": {}}}),
         json!({"name": "ecad_connection", "description": "Where this server's calls go: `mode` headless (no window) or bridged (the ECAD window, the person watches), the port, the window's project and whether it lets this agent write (`app.writes`, `app.why`), the agent name, the session id and whether this session is the window's writer.",
             "inputSchema": {"type": "object", "properties": {}}}),
@@ -201,6 +203,14 @@ pub fn call(st: &mut Host<'_>, name: &str, args: &Value) -> Result<Value, String
                 Err(e) => err_text(&e.to_string()),
             })
         }
+        "describe_command" => {
+            let o = object(name, args, &[])?;
+            let id = o.get("id").and_then(Value::as_str).ok_or("`id` of `describe_command` must be a command id")?;
+            Ok(match describe(id) {
+                Ok(v) => text(&v),
+                Err(e) => err_text(&e),
+            })
+        }
         "save" => {
             let o = object(name, args, &[])?;
             if o.get("path").is_some_and(|v| !v.is_null()) {
@@ -216,6 +226,23 @@ pub fn call(st: &mut Host<'_>, name: &str, args: &Value) -> Result<Value, String
         }
         other => Err(crate::agent::not_offered(other)),
     }
+}
+
+/// `describe_command`: an offered typed command's parameters text, params schema, reply schema and
+/// access.
+///
+/// # Errors
+/// A command that is not offered to agents, or whose input is not typed.
+fn describe(id: &str) -> Result<Value, String> {
+    let offer = policy::offered(id).ok_or_else(|| crate::agent::not_offered(id))?;
+    let params = crate::commands::schema_of(id).ok_or_else(|| format!("`{id}` has no typed parameters; list_commands shows its parameter docs."))?;
+    Ok(json!({
+        "id": id,
+        "agent": offer.word(),
+        "help": crate::commands::help_of(id),
+        "params": params,
+        "reply": crate::commands::reply_schema_of(id),
+    }))
 }
 
 fn save(st: &mut Host<'_>) -> Result<Value, String> {

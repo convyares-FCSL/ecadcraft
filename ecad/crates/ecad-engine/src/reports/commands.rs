@@ -10,19 +10,19 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_any_page};
 use crate::export::printbook::{self, Options, Scope};
 use crate::project::Project;
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<PrintbookParams>("printbook"), Typed::of::<ReportsParams>("reports")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<PrintbookParams>("printbook"), Typed::json::<ReportsParams>("reports")];
 
 /// The commands this module adds.
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("printbook", "Print Book", crate::commands::input::typed::<PrintbookParams>).noundo(),
-        CommandSpec::new("reports", "Reports", crate::commands::input::typed::<ReportsParams>).noundo(),
+        CommandSpec::new("printbook", "Print Book", crate::commands::input::run_json::<PrintbookParams>).noundo(),
+        CommandSpec::new("reports", "Reports", crate::commands::input::run_json::<ReportsParams>).noundo(),
     ]
 }
 
@@ -118,7 +118,7 @@ pub(crate) struct PrintbookParams {
     lineweights: Option<bool>,
 }
 
-impl Command for PrintbookParams {
+impl JsonCommand for PrintbookParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let scope = scope_of(self.scope).map_err(|e| err(e.to_string()))?;
         let lineweights = self.lineweights.unwrap_or(true);
@@ -146,7 +146,7 @@ impl Command for PrintbookParams {
 #[schemars(extend("properties" = {}))]
 pub(crate) struct ReportsParams {}
 
-impl Command for ReportsParams {
+impl JsonCommand for ReportsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
             p.asks.open_reports = true;

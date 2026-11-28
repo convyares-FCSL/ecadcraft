@@ -1,8 +1,10 @@
-//! The electrical work of ECAD's commands: typed input in, ops and a plain result (or a
-//! [`crate::CmdError`]) out, and the JSON answers built from the document (`*_json`). No engine
-//! and no locking. A generic command is a params struct here that implements [`run::Generic`];
-//! the engine's one runner reads it ([`input`]), takes the project, runs it and commits its edit.
-//! Commands that need the session keep a shim in `ecad_engine::commands`.
+//! The electrical work of ECAD's commands: typed input in, ops and a typed reply (or a
+//! [`crate::CmdError`]) out. No engine and no locking. Every command has one definition
+//! ([`request::Request`]: its id, params and reply). A generic command implements
+//! [`run::Generic`] here; the engine's one runner reads its params ([`input`]), takes the project,
+//! runs it, commits its edit and makes its reply JSON. Commands that need the session keep a shim
+//! in `ecad_engine::commands`.
 
 pub mod input;
+pub mod request;
 pub mod run;

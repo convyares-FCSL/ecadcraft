@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Bounded, OrNull, Said, TextOrNumber, Words, nullable};
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::locations::designations::{Aspect, Pending};
 use crate::reports::bom::*;
@@ -608,7 +608,7 @@ impl ItemParams {
     }
 }
 
-impl Generic for PartlineParams {
+impl JsonGeneric for PartlineParams {
     const ID: &'static str = "partline";
     const TITLE: &'static str = "Part Line";
 
@@ -634,7 +634,7 @@ impl Generic for PartlineParams {
     }
 }
 
-impl Generic for BomitemParams {
+impl JsonGeneric for BomitemParams {
     const ID: &'static str = "bomitem";
     const TITLE: &'static str = "BOM Item";
 
@@ -673,7 +673,7 @@ impl Generic for BomitemParams {
     }
 }
 
-impl Generic for ArticleParams {
+impl JsonGeneric for ArticleParams {
     const ID: &'static str = "article";
     const TITLE: &'static str = "Article Number";
 

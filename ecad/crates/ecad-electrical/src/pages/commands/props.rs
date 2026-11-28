@@ -15,7 +15,7 @@ use super::sheets::{
     proposal_mode, release_line_refusal, revision_fields, revision_ops,
 };
 use crate::commands::input::nullable;
-use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, Pages, Slot, State};
 use crate::error::CmdError;
 use crate::pages::generated;
 use crate::releases::revisions;
@@ -274,7 +274,7 @@ fn props_outcome(
     Outcome::edit_then_derived(label, plan.ops, answer).echo_lines(lines)
 }
 
-impl Generic for PagepropsParams {
+impl JsonGeneric for PagepropsParams {
     const ID: &'static str = "pageprops";
     const TITLE: &'static str = "Page Properties";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -328,7 +328,7 @@ impl Generic for PagepropsParams {
     }
 }
 
-impl Generic for ProjectpropsParams {
+impl JsonGeneric for ProjectpropsParams {
     const ID: &'static str = "projectprops";
     const TITLE: &'static str = "Project Properties";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -387,7 +387,7 @@ impl Generic for ProjectpropsParams {
     }
 }
 
-impl Generic for RevisionParams {
+impl JsonGeneric for RevisionParams {
     const ID: &'static str = "revision";
     const TITLE: &'static str = "Revision";
 

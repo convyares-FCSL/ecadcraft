@@ -14,7 +14,7 @@ use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader,
 
 use crate::commands::input::{Said, Words};
 
-use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
+use crate::commands::run::{Access, Cx, Got, Io, JsonGeneric, Outcome, Pages, Read};
 use crate::error::CmdError;
 use crate::styles::{self};
 use ecad_model::registry::data::Registry;
@@ -892,7 +892,7 @@ pub fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec
     fields.into_iter().flatten().map(|(k, v)| (k, input(v))).collect()
 }
 
-impl Generic for StylesParams {
+impl JsonGeneric for StylesParams {
     const ID: &'static str = "styles";
     const TITLE: &'static str = "Styles";
     const PAGES: Pages = Pages::Any;
@@ -916,7 +916,7 @@ impl Generic for StylesParams {
     }
 }
 
-impl Generic for StandardParams {
+impl JsonGeneric for StandardParams {
     const ID: &'static str = "standard";
     const TITLE: &'static str = "Standard";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -949,7 +949,7 @@ impl Generic for StandardParams {
     }
 }
 
-impl Generic for SetstyleParams {
+impl JsonGeneric for SetstyleParams {
     const ID: &'static str = "setstyle";
     const TITLE: &'static str = "Set Style";
 
@@ -985,7 +985,7 @@ impl Generic for SetstyleParams {
     }
 }
 
-impl Generic for DeletestyleParams {
+impl JsonGeneric for DeletestyleParams {
     const ID: &'static str = "deletestyle";
     const TITLE: &'static str = "Delete Style";
 
@@ -1004,7 +1004,7 @@ impl Generic for DeletestyleParams {
     }
 }
 
-impl Generic for PromoteParams {
+impl JsonGeneric for PromoteParams {
     const ID: &'static str = "promote";
     const TITLE: &'static str = "Promote to Standard";
 

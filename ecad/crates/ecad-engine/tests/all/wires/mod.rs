@@ -5,4 +5,5 @@ pub(crate) mod junctions;
 pub(crate) mod loose_lines;
 pub(crate) mod nets;
 pub(crate) mod routes_acceptance;
+pub(crate) mod typed_calls;
 pub(crate) mod wiring;

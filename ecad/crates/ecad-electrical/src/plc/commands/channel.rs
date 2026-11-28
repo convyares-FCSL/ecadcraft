@@ -10,7 +10,7 @@ use serde_json::json;
 
 use super::{ChannelInput, channel_number, plan_channel};
 use crate::commands::input::{TextOrNumber, nullable};
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 
 /// Sets one PLC channel's data in one transaction. `move_to` gives the points of one drawn copy of the channel
@@ -49,7 +49,7 @@ pub struct PlcchannelParams {
     connection_point: Option<ConnectionPointId>,
 }
 
-impl Generic for PlcchannelParams {
+impl JsonGeneric for PlcchannelParams {
     const ID: &'static str = "plcchannel";
     const TITLE: &'static str = "Channel";
 

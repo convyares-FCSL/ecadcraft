@@ -38,6 +38,16 @@ impl Meets {
     }
 }
 
+/// How an end of a drawn line met another line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum JoinHow {
+    /// It met that line's open end: the two became one line.
+    Merged,
+    /// It landed on that line (a T).
+    On,
+}
+
 /// A planned `wire`: its ops and what the result reports.
 #[derive(Debug, Clone)]
 pub struct WirePlan {
@@ -48,8 +58,8 @@ pub struct WirePlan {
     pub item: ItemId,
     /// False when the line was merged into an existing route.
     pub created: bool,
-    /// The ends that met other routes: (end, the route met, `merged` or `on`).
-    pub joined: Vec<(End, RouteId, &'static str)>,
+    /// The ends that met other routes: (end, the route met, how).
+    pub joined: Vec<(End, RouteId, JoinHow)>,
     /// Routes merged into the survivor and removed.
     pub removed: Vec<RouteId>,
     /// Ends on a connection point.
@@ -376,8 +386,8 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
             tail = remove_route_ops(doc, *r2);
             edits.forget(*r2);
             removed.push(*r2);
-            joined_ends.push((End::A, *r1, "merged"));
-            joined_ends.push((End::B, *r2, "merged"));
+            joined_ends.push((End::A, *r1, JoinHow::Merged));
+            joined_ends.push((End::B, *r2, JoinHow::Merged));
             let item = route_item(doc, *r1).map(|(_, i, _)| i).ok_or(CmdError::refused("The wire has no drawing on this page."))?;
             (*r1, item, false)
         }
@@ -393,7 +403,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
             if let Some(x) = s.ends.get_mut(end_index(*end)) {
                 *x = far;
             }
-            joined_ends.push((if at_a { End::A } else { End::B }, *route, "merged"));
+            joined_ends.push((if at_a { End::A } else { End::B }, *route, JoinHow::Merged));
             let item = route_item(doc, *route).map(|(_, i, _)| i).ok_or(CmdError::refused("The wire has no drawing on this page."))?;
             (*route, item, false)
         }
@@ -412,7 +422,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
         match m {
             Meets::Point(t) => attached.push((end, *t)),
             Meets::On { route, others } => {
-                joined_ends.push((end, *route, "on"));
+                joined_ends.push((end, *route, JoinHow::On));
                 for (r, e) in others {
                     edits.set_end(*r, *e, RouteEnd::On { route: *route, at });
                 }

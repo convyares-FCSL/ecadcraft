@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::tag_cards;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::plc::signals::make_tags_ops;
 
@@ -23,7 +23,7 @@ pub struct PlcmaketagsParams {
     rack: Option<String>,
 }
 
-impl Generic for PlcmaketagsParams {
+impl JsonGeneric for PlcmaketagsParams {
     const ID: &'static str = "plcmaketags";
     const TITLE: &'static str = "Make PLC Tags";
 

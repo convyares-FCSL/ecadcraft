@@ -25,14 +25,14 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, typed};
+use crate::commands::input::{JsonCommand, run_json};
 use crate::commands::{on_any_page, plain_style};
 use ecad_electrical::commands::input::TextOrNumber;
 use ecad_electrical::plc::channels::first_number;
 
 /// The command `plcpage`.
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("plcpage", "Make Card Page", typed::<PlcpageParams>).noundo()]
+    vec![CommandSpec::new("plcpage", "Make Card Page", run_json::<PlcpageParams>).noundo()]
 }
 
 /// A new page with every channel of a PLC card not drawn yet, and the card's body. One transaction.
@@ -46,7 +46,7 @@ pub(crate) struct PlcpageParams {
     after: Option<TextOrNumber>,
 }
 
-impl Command for PlcpageParams {
+impl JsonCommand for PlcpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let after = self.after.map(|t| t.text());
         on_any_page(s, |p, pg| {

@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use crate::plc::iolist::*;
 use crate::plc::rack::{RackRef, card_named, rack_named};
@@ -53,7 +53,7 @@ pub struct IolistParams {
     after: Option<u64>,
 }
 
-impl Generic for IolistParams {
+impl JsonGeneric for IolistParams {
     const ID: &'static str = "iolist";
     const TITLE: &'static str = "I/O List";
     const PAGES: Pages = Pages::Any;

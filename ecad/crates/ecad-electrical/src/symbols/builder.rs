@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 
 use super::commands::{self as rules, Content, ContentInput, MAX_COPIES, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, PointInput, SlotInput, Update};
 use crate::commands::input::{Bounded, Point};
-use crate::commands::run::{Access, Cx, Generic, Outcome};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 
 // ---------------------------------------------------------------- content
@@ -270,7 +270,7 @@ pub struct UpdateParams {
     to: Option<DefinitionId>,
 }
 
-impl Generic for NewParams {
+impl JsonGeneric for NewParams {
     const ID: &'static str = "symbolnew";
     const TITLE: &'static str = "New Symbol";
 
@@ -291,7 +291,7 @@ impl Generic for NewParams {
     }
 }
 
-impl Generic for ImpactParams {
+impl JsonGeneric for ImpactParams {
     const ID: &'static str = "symbolimpact";
     const TITLE: &'static str = "Symbol Impact";
     const ACCESS: Access = Access::Reads;
@@ -323,7 +323,7 @@ impl Generic for ImpactParams {
     }
 }
 
-impl Generic for EditParams {
+impl JsonGeneric for EditParams {
     const ID: &'static str = "symboledit";
     const TITLE: &'static str = "Edit Symbol";
 
@@ -352,7 +352,7 @@ impl Generic for EditParams {
     }
 }
 
-impl Generic for UpdateParams {
+impl JsonGeneric for UpdateParams {
     const ID: &'static str = "symbolupdate";
     const TITLE: &'static str = "Update Symbol";
 

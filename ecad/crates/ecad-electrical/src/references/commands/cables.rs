@@ -17,7 +17,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::Point;
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use crate::references::cables::{self, Plan};
 
@@ -245,7 +245,7 @@ pub struct CablereferencesParams {
     cable: Option<CableId>,
 }
 
-impl Generic for CableReferenceParams {
+impl JsonGeneric for CableReferenceParams {
     const ID: &'static str = "cablereference";
     const TITLE: &'static str = "Cable Reference";
 
@@ -272,7 +272,7 @@ impl Generic for CableReferenceParams {
     }
 }
 
-impl Generic for CablecontinueParams {
+impl JsonGeneric for CablecontinueParams {
     const ID: &'static str = "cablecontinue";
     const TITLE: &'static str = "Continue Cable";
 
@@ -321,7 +321,7 @@ impl Generic for CablecontinueParams {
     }
 }
 
-impl Generic for CablereferencesParams {
+impl JsonGeneric for CablereferencesParams {
     const ID: &'static str = "cablereferences";
     const TITLE: &'static str = "List Cable References";
     const PAGES: Pages = Pages::Any;

@@ -1,14 +1,18 @@
-//! A generic command: its params struct, what it may read
+//! A generic command: its definition ([`Request`]: id, params and reply), what it may read
 //! and change ([`Cx`]), the files it declares ([`Io`]) and its result ([`Outcome`]).
 //!
-//! A generic command is a declaration: a `#[derive(Deserialize, JsonSchema)]` params struct that
-//! implements [`Generic`], with what it touches as data: its pages, its access, its files, its own
-//! state. The engine's one runner reads the parameters ([`crate::commands::input`]),
-//! takes the project, gives the command a [`Cx`], commits its [`Edit`] as one transaction under its
-//! id, echoes its message and answers with its JSON. Its MCP schema is the params struct's, and so
-//! is its parameters text ([`crate::commands::input::help`]): the struct's doc comment is the
-//! command's summary and notes (its alternative forms, units, refusals), each field's doc comment
-//! that field's help, and a closed set of words is an enum, so its words are listed.
+//! A generic command is a declaration: a type that implements [`Generic`], with its params and
+//! reply types and what it touches as data: its pages, its access, its files, its own state. The
+//! engine's one runner reads the parameters ([`crate::commands::input`]), takes the project, gives
+//! the command a [`Cx`], commits its [`Edit`] as one transaction under its id, echoes its message
+//! and answers with its reply, made JSON only there. Its MCP schemas are its params' and its
+//! reply's, and its parameters text is made from the params ([`crate::commands::input::help`]):
+//! the struct's doc comment is the command's summary and notes (its alternative forms, units,
+//! refusals), each field's doc comment that field's help, and a closed set of words is an enum, so
+//! its words are listed.
+//!
+//! [`JsonGeneric`] is the older form, a params struct answering with a JSON value; commands still
+//! written that way are run by the same runner.
 //!
 //! Excludes: the session (drawing, cursor, selection, CADCraft entities), locking and committing,
 //! which are the engine's. A command that needs the session is not generic.
@@ -20,6 +24,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::CmdError;
+pub use crate::commands::request::{Reply, Request};
 use crate::devices::tags::TagHigh;
 use crate::locations::designations::Uses;
 use crate::symbols::StarterKey;
@@ -129,12 +134,13 @@ pub struct Edit {
     pub ops: Vec<Op>,
 }
 
-/// A generic command's result.
-pub struct Outcome {
+/// A generic command's result, answering with `R` (its [`Request::Reply`]; a JSON value for a
+/// [`JsonGeneric`]).
+pub struct Outcome<R = Value> {
     /// The transaction to commit (none: the command writes nothing).
     pub edit: Option<Edit>,
-    /// The JSON answer.
-    pub answer: Answer,
+    /// The answer.
+    pub answer: Answer<R>,
     /// Files to write once the edit (if any) is committed: a write parameter of [`Generic::IO`] (its value
     /// is the path) and the bytes. The engine writes them; one that cannot be written commits nothing.
     pub writes: Vec<(&'static str, Vec<u8>)>,
@@ -153,72 +159,72 @@ pub enum Echo {
     Message,
 }
 
-impl Outcome {
-    fn new(edit: Option<Edit>, answer: Answer) -> Outcome {
+impl<R: 'static> Outcome<R> {
+    fn new(edit: Option<Edit>, answer: Answer<R>) -> Outcome<R> {
         Outcome { edit, answer, writes: Vec::new(), echo: Echo::Nothing }
     }
 
     /// This outcome, echoing `line` (none: nothing).
     #[must_use]
-    pub fn echo(mut self, line: Option<impl Into<String>>) -> Outcome {
+    pub fn echo(mut self, line: Option<impl Into<String>>) -> Outcome<R> {
         self.echo = line.map_or(Echo::Nothing, |l| Echo::Lines(vec![l.into()]));
         self
     }
 
     /// This outcome, echoing `lines`, one after another.
     #[must_use]
-    pub fn echo_lines(mut self, lines: Vec<String>) -> Outcome {
+    pub fn echo_lines(mut self, lines: Vec<String>) -> Outcome<R> {
         self.echo = Echo::Lines(lines);
         self
     }
 
     /// This outcome, echoing the answer's `message` (read once the edit is committed).
     #[must_use]
-    pub fn echo_message(mut self) -> Outcome {
+    pub fn echo_message(mut self) -> Outcome<R> {
         self.echo = Echo::Message;
         self
     }
 
     /// An answer that writes nothing.
-    pub fn answer(answer: Value) -> Outcome {
+    pub fn answer(answer: R) -> Outcome<R> {
         Outcome::new(None, Answer::Now(answer))
     }
 
     /// `ops` as one transaction labelled `label`, and the answer.
-    pub fn edit(label: impl Into<String>, ops: Vec<Op>, answer: Value) -> Outcome {
+    pub fn edit(label: impl Into<String>, ops: Vec<Op>, answer: R) -> Outcome<R> {
         Outcome::new(Some(Edit { label: label.into(), ops }), Answer::Now(answer))
     }
 
     /// As [`Outcome::edit`], with no transaction when `ops` is empty.
-    pub fn edit_if_any(label: impl Into<String>, ops: Vec<Op>, answer: Value) -> Outcome {
+    pub fn edit_if_any(label: impl Into<String>, ops: Vec<Op>, answer: R) -> Outcome<R> {
         let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
         Outcome::new(edit, Answer::Now(answer))
     }
 
     /// As [`Outcome::edit_if_any`], answering from the document once the edit is committed.
-    pub fn edit_then(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Value + 'static) -> Outcome {
+    pub fn edit_then(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> R + 'static) -> Outcome<R> {
         Outcome::edit_then_try(label, ops, move |doc| Ok(answer(doc)))
     }
 
     /// As [`Outcome::edit_then`], with an answer that may refuse (the edit stays committed).
-    pub fn edit_then_try(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Result<Value, CmdError> + 'static) -> Outcome {
+    pub fn edit_then_try(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Result<R, CmdError> + 'static) -> Outcome<R> {
         let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
         Outcome::new(edit, Answer::Committed(Box::new(move |doc, _| answer(doc))))
     }
 
     /// As [`Outcome::edit_then`], answering from the document and its derived views.
-    pub fn edit_then_derived(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document, &mut Views) -> Value + 'static) -> Outcome {
+    pub fn edit_then_derived(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document, &mut Views) -> R + 'static) -> Outcome<R> {
         let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
         Outcome::new(edit, Answer::Committed(Box::new(move |doc, views| Ok(answer(doc, views)))))
     }
 }
 
-/// A command's JSON answer.
-pub enum Answer {
+/// A command's answer, `R` (made JSON by the engine's runner).
+pub enum Answer<R = Value> {
     /// Known before the commit.
-    Now(Value),
+    Now(R),
     /// Read from the document once the edit is committed (a refusal leaves the edit committed).
-    Committed(Box<dyn FnOnce(&Document, &mut Views) -> Result<Value, CmdError>>),
+    Committed(Box<dyn FnOnce(&Document, &mut Views) -> Result<R, CmdError>>),
 }
 
 /// Which pages a command runs on.
@@ -279,8 +285,72 @@ pub enum Got {
     Standard(Box<Standard>),
 }
 
-/// A generic command: its params struct, read from the JSON, and its run.
-pub trait Generic: DeserializeOwned + schemars::JsonSchema {
+/// A generic command: its definition ([`Request`]: its id, params and reply) and its run. Implemented
+/// on a type of its own (`pub enum Net {}`), which names the command everywhere: the registry's
+/// entry, the app's `call` and the tests.
+///
+/// # Example
+/// ```
+/// use ecad_electrical::CmdError;
+/// use ecad_electrical::commands::run::{Cx, Generic, Outcome, Reply, Request};
+///
+/// /// Says hello. Reads only.
+/// #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema, Default)]
+/// #[serde(deny_unknown_fields)]
+/// pub struct HelloParams {}
+///
+/// /// What `hello` answers.
+/// #[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+/// pub struct HelloReply {
+///     /// Always "hello".
+///     pub said: String,
+/// }
+/// impl Reply for HelloReply {}
+///
+/// pub enum Hello {}
+/// impl Request for Hello {
+///     const ID: &'static str = "hello";
+///     type Params = HelloParams;
+///     type Reply = HelloReply;
+/// }
+/// impl Generic for Hello {
+///     const TITLE: &'static str = "Hello";
+///     fn run(_: HelloParams, _: &mut Cx<'_>) -> Result<Outcome<HelloReply>, CmdError> {
+///         Ok(Outcome::answer(HelloReply { said: "hello".into() }))
+///     }
+/// }
+/// ```
+pub trait Generic: Request {
+    /// Its title in menus and the history.
+    const TITLE: &'static str;
+    /// The pages it runs on.
+    const PAGES: Pages = Pages::Available;
+    /// Whether it changes the project.
+    const ACCESS: Access = Access::Edits;
+    /// The files it declares.
+    const IO: Io = Io::NONE;
+    /// The state it keeps beyond the document.
+    const STATE: State = State::None;
+
+    /// Refuse parameters that read but do not fit together, before the project is taken.
+    ///
+    /// # Errors
+    /// The refusal, in words.
+    fn check(_params: &Self::Params, _registry: &ecad_model::registry::data::Registry) -> Result<(), CmdError> {
+        Ok(())
+    }
+
+    /// Decide: the edit to commit and the reply.
+    ///
+    /// # Errors
+    /// The command's refusal, in words; nothing is written.
+    fn run(params: Self::Params, cx: &mut Cx<'_>) -> Result<Outcome<Self::Reply>, CmdError>;
+}
+
+/// The older form of a generic command: its params struct, read from the JSON, answering with a
+/// JSON value. Run by the same runner as [`Generic`]; a command moves to [`Generic`] when its
+/// feature's replies are typed.
+pub trait JsonGeneric: DeserializeOwned + schemars::JsonSchema {
     /// The command's id (`execute`'s name, the command line's word).
     const ID: &'static str;
     /// Its title in menus and the history.

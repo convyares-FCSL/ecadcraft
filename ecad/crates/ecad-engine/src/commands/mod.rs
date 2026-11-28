@@ -1,4 +1,9 @@
-//! The ECAD command registry ([`specs`]) and the shared helpers of the commands that need the session.
+//! The ECAD command registry ([`specs`]), [`call`] (run a command and read its reply as its type) and
+//! the shared helpers of the commands that need the session.
+//!
+//! Every command has one definition ([`ecad_electrical::commands::request::Request`]: its id, params and
+//! reply), whichever kind it is. Its reply becomes JSON only at the edge: the generic runner
+//! ([`crate::generic`]), a session command's run ([`input::typed`]), and [`call`] reading it back.
 //!
 //! A command's JSON form builds a transaction from resolved inputs (IDs, coordinates) and commits it through
 //! [`Project::apply_edit`]. Generic commands are declared in `ecad-electrical` and run by the one generic
@@ -15,6 +20,7 @@ pub mod reply;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
+use ecad_electrical::commands::request::Request;
 use ecad_model::{Color, PageId, Style};
 use serde_json::Value;
 
@@ -62,144 +68,149 @@ pub fn specs() -> Vec<CommandSpec> {
 /// The generic commands, each listed once: its registration, its schema and what the agent gate
 /// reads come from its entry.
 const GENERIC: &[Entry] = &[
-    Entry::of::<connect::ConnectParams>().interactive(crate::properties::forms::connect::connect),
-    Entry::of::<connect::DisconnectParams>().interactive(crate::properties::forms::connect::disconnect),
-    Entry::of::<default::SetdefaultParams>(),
-    Entry::of::<default::DefaultsParams>(),
-    Entry::of::<ecad_drawing_style::text::commands::TextstyleParams>(),
-    Entry::of::<text::PagetextsParams>(),
-    Entry::of::<text::MovetextParams>().interactive(crate::styles::interact::movetext),
-    Entry::of::<designation::DesignationsParams>(),
-    Entry::of::<designation::AddParams>(),
-    Entry::of::<designation::EditParams>(),
-    Entry::of::<designation::MergeParams>(),
-    Entry::of::<designation::RemoveParams>(),
-    Entry::of::<level::TerminalblocklabelParams>(),
-    Entry::of::<level::TopositionParams>(),
-    Entry::of::<continuation::ContcaptionParams>().interactive(crate::continuations::interact::contcaption),
-    Entry::of::<device_link::LinkParams>().undoable(),
-    Entry::of::<device_link::UnlinkParams>().undoable(),
-    Entry::of::<device_link::UserFieldParams>().undoable(),
-    Entry::of::<location::SetlocationParams>(),
-    Entry::of::<location::SetfunctionParams>(),
-    Entry::of::<location::ConflictsParams>(),
-    Entry::of::<prop::SetpropParams>(),
-    Entry::of::<cable::CablenewParams>(),
-    Entry::of::<cable::CableeditParams>(),
-    Entry::of::<cable::CableremoveParams>(),
-    Entry::of::<style::StylesParams>(),
-    Entry::of::<style::StandardParams>(),
-    Entry::of::<style::SetstyleParams>(),
-    Entry::of::<style::DeletestyleParams>(),
-    Entry::of::<style::PromoteParams>(),
-    Entry::of::<ecad_drawing_style::title_blocks::commands::TitleblocksParams>(),
-    Entry::of::<ecad_drawing_style::title_blocks::commands::TitleblockParams>(),
-    Entry::of::<bom::PartlineParams>(),
-    Entry::of::<bom::BomitemParams>().interactive(crate::reports::interact::bomitem),
-    Entry::of::<bom::ArticleParams>(),
-    Entry::of::<boxes::LocationboxParams>().interactive(crate::locations::interact::locationbox),
-    Entry::of::<boxes::FunctionboxParams>().interactive(crate::locations::interact::functionbox),
-    Entry::of::<lists::BomParams>(),
-    Entry::of::<lists::WirelistParams>(),
-    Entry::of::<lists::CablelistParams>(),
-    Entry::of::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>()
+    Entry::of::<connect::Connect>().interactive(crate::properties::forms::connect::connect),
+    Entry::of::<connect::Disconnect>().interactive(crate::properties::forms::connect::disconnect),
+    Entry::json::<default::SetdefaultParams>(),
+    Entry::json::<default::DefaultsParams>(),
+    Entry::json::<ecad_drawing_style::text::commands::TextstyleParams>(),
+    Entry::json::<text::PagetextsParams>(),
+    Entry::json::<text::MovetextParams>().interactive(crate::styles::interact::movetext),
+    Entry::json::<designation::DesignationsParams>(),
+    Entry::json::<designation::AddParams>(),
+    Entry::json::<designation::EditParams>(),
+    Entry::json::<designation::MergeParams>(),
+    Entry::json::<designation::RemoveParams>(),
+    Entry::json::<level::TerminalblocklabelParams>(),
+    Entry::json::<level::TopositionParams>(),
+    Entry::json::<continuation::ContcaptionParams>().interactive(crate::continuations::interact::contcaption),
+    Entry::json::<device_link::LinkParams>().undoable(),
+    Entry::json::<device_link::UnlinkParams>().undoable(),
+    Entry::json::<device_link::UserFieldParams>().undoable(),
+    Entry::json::<location::SetlocationParams>(),
+    Entry::json::<location::SetfunctionParams>(),
+    Entry::json::<location::ConflictsParams>(),
+    Entry::json::<prop::SetpropParams>(),
+    Entry::json::<cable::CablenewParams>(),
+    Entry::json::<cable::CableeditParams>(),
+    Entry::json::<cable::CableremoveParams>(),
+    Entry::json::<style::StylesParams>(),
+    Entry::json::<style::StandardParams>(),
+    Entry::json::<style::SetstyleParams>(),
+    Entry::json::<style::DeletestyleParams>(),
+    Entry::json::<style::PromoteParams>(),
+    Entry::json::<ecad_drawing_style::title_blocks::commands::TitleblocksParams>(),
+    Entry::json::<ecad_drawing_style::title_blocks::commands::TitleblockParams>(),
+    Entry::json::<bom::PartlineParams>(),
+    Entry::json::<bom::BomitemParams>().interactive(crate::reports::interact::bomitem),
+    Entry::json::<bom::ArticleParams>(),
+    Entry::json::<boxes::LocationboxParams>().interactive(crate::locations::interact::locationbox),
+    Entry::json::<boxes::FunctionboxParams>().interactive(crate::locations::interact::functionbox),
+    Entry::json::<lists::BomParams>(),
+    Entry::json::<lists::WirelistParams>(),
+    Entry::json::<lists::CablelistParams>(),
+    Entry::json::<ecad_electrical::terminal_strips::commands::place_blocks::TerminalBlocksParams>()
         .interactive(crate::terminal_strips::interact::terminal_blocks::terminal_blocks),
-    Entry::of::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
-    Entry::of::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),
-    Entry::of::<ecad_electrical::plc::commands::racks::PlcslotParams>(),
-    Entry::of::<ecad_electrical::plc::commands::racks::PlcracksParams>(),
-    Entry::of::<ecad_electrical::plc::commands::racks::PlccardtypeParams>(),
-    Entry::of::<ecad_electrical::plc::commands::channel::PlcchannelParams>(),
-    Entry::of::<ecad_electrical::plc::commands::iolist::IolistParams>(),
-    Entry::of::<ecad_electrical::plc::commands::address::PlcaddressParams>(),
-    Entry::of::<ecad_electrical::plc::commands::tags::PlcmaketagsParams>(),
-    Entry::of::<ecad_electrical::plc::commands::exchange::PlcexportParams>(),
-    Entry::of::<ecad_electrical::plc::commands::exchange::PlcimportParams>(),
-    Entry::of::<accessory::AccessoryParams>().interactive(crate::terminal_strips::interact::accessories::accessory),
-    Entry::of::<accessory::JumperParams>().interactive(crate::terminal_strips::interact::accessories::jumper),
-    Entry::of::<rating::RatingParams>(),
-    Entry::of::<rating::RatingtableParams>(),
-    Entry::of::<rating::RatingsParams>(),
-    Entry::of::<numbering::RenumberParams>(),
-    Entry::of::<numbering::FinaliseParams>(),
-    Entry::of::<numbering::NumberingParams>(),
-    Entry::of::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
-    Entry::of::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
-    Entry::of::<ecad_electrical::pages::commands::page_edits::RenamepageParams>(),
-    Entry::of::<ecad_electrical::pages::commands::page_edits::MovepageParams>(),
-    Entry::of::<ecad_electrical::pages::commands::folders::NewfolderParams>(),
-    Entry::of::<ecad_electrical::pages::commands::folders::RenamefolderParams>(),
-    Entry::of::<ecad_electrical::pages::commands::folders::MovefolderParams>(),
-    Entry::of::<ecad_electrical::pages::commands::folders::DeletefolderParams>(),
-    Entry::of::<ecad_electrical::pages::commands::props::PagepropsParams>(),
-    Entry::of::<ecad_electrical::pages::commands::props::ProjectpropsParams>(),
-    Entry::of::<ecad_electrical::pages::commands::props::RevisionParams>(),
-    Entry::of::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
-    Entry::of::<ecad_electrical::references::commands::devices::ContactsParams>(),
-    Entry::of::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(crate::references::interact::devices::mirrormove),
-    Entry::of::<ecad_electrical::references::commands::cables::CableReferenceParams>()
+    Entry::json::<ecad_electrical::terminal_strips::commands::reads::StripplanParams>(),
+    Entry::json::<ecad_electrical::terminal_strips::commands::reads::CablecoresParams>(),
+    Entry::json::<ecad_electrical::plc::commands::racks::PlcslotParams>(),
+    Entry::json::<ecad_electrical::plc::commands::racks::PlcracksParams>(),
+    Entry::json::<ecad_electrical::plc::commands::racks::PlccardtypeParams>(),
+    Entry::json::<ecad_electrical::plc::commands::channel::PlcchannelParams>(),
+    Entry::json::<ecad_electrical::plc::commands::iolist::IolistParams>(),
+    Entry::json::<ecad_electrical::plc::commands::address::PlcaddressParams>(),
+    Entry::json::<ecad_electrical::plc::commands::tags::PlcmaketagsParams>(),
+    Entry::json::<ecad_electrical::plc::commands::exchange::PlcexportParams>(),
+    Entry::json::<ecad_electrical::plc::commands::exchange::PlcimportParams>(),
+    Entry::json::<accessory::AccessoryParams>().interactive(crate::terminal_strips::interact::accessories::accessory),
+    Entry::json::<accessory::JumperParams>().interactive(crate::terminal_strips::interact::accessories::jumper),
+    Entry::json::<rating::RatingParams>(),
+    Entry::json::<rating::RatingtableParams>(),
+    Entry::json::<rating::RatingsParams>(),
+    Entry::json::<numbering::RenumberParams>(),
+    Entry::json::<numbering::FinaliseParams>(),
+    Entry::json::<numbering::NumberingParams>(),
+    Entry::json::<ecad_electrical::pages::commands::page_types::FolderpropsParams>(),
+    Entry::json::<ecad_electrical::pages::commands::page_types::RenumberpagesParams>(),
+    Entry::json::<ecad_electrical::pages::commands::page_edits::RenamepageParams>(),
+    Entry::json::<ecad_electrical::pages::commands::page_edits::MovepageParams>(),
+    Entry::json::<ecad_electrical::pages::commands::folders::NewfolderParams>(),
+    Entry::json::<ecad_electrical::pages::commands::folders::RenamefolderParams>(),
+    Entry::json::<ecad_electrical::pages::commands::folders::MovefolderParams>(),
+    Entry::json::<ecad_electrical::pages::commands::folders::DeletefolderParams>(),
+    Entry::json::<ecad_electrical::pages::commands::props::PagepropsParams>(),
+    Entry::json::<ecad_electrical::pages::commands::props::ProjectpropsParams>(),
+    Entry::json::<ecad_electrical::pages::commands::props::RevisionParams>(),
+    Entry::json::<ecad_electrical::references::commands::devices::DeviceReferencesParams>(),
+    Entry::json::<ecad_electrical::references::commands::devices::ContactsParams>(),
+    Entry::json::<ecad_electrical::references::commands::devices::MirrormoveParams>().interactive(crate::references::interact::devices::mirrormove),
+    Entry::json::<ecad_electrical::references::commands::cables::CableReferenceParams>()
         .interactive(crate::references::interact::cables::cablereference),
-    Entry::of::<ecad_electrical::references::commands::cables::CablecontinueParams>().interactive(crate::references::interact::cables::cablecontinue),
-    Entry::of::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
-    Entry::of::<device::EcaddeleteParams>(),
-    Entry::of::<device::SymbolsParams>(),
-    Entry::of::<device::DevicesParams>(),
-    Entry::of::<device::TagsettingsParams>(),
-    Entry::of::<device::DevicepropsParams>().interactive(crate::devices::interact::deviceprops),
-    Entry::of::<device::DevicedeleteParams>().interactive(crate::devices::interact::devicedelete),
-    Entry::of::<net::NetsParams>(),
-    Entry::of::<net::NetParams>(),
-    Entry::of::<net::WirenumberParams>().interactive(crate::wires::interact::wirenumber),
-    Entry::of::<net::PotentialParams>(),
-    Entry::of::<net::CategoryParams>(),
-    Entry::of::<net::WiresettingsParams>(),
-    Entry::of::<net::RenumberwiresParams>().interactive(crate::wires::interact::renumberwires),
-    Entry::of::<net::ChecksParams>(),
-    Entry::of::<ecad_electrical::symbols::builder::NewParams>(),
-    Entry::of::<ecad_electrical::symbols::builder::EditParams>(),
-    Entry::of::<ecad_electrical::symbols::builder::ImpactParams>(),
-    Entry::of::<ecad_electrical::symbols::builder::UpdateParams>(),
+    Entry::json::<ecad_electrical::references::commands::cables::CablecontinueParams>()
+        .interactive(crate::references::interact::cables::cablecontinue),
+    Entry::json::<ecad_electrical::references::commands::cables::CablereferencesParams>(),
+    Entry::json::<device::EcaddeleteParams>(),
+    Entry::json::<device::SymbolsParams>(),
+    Entry::json::<device::DevicesParams>(),
+    Entry::json::<device::TagsettingsParams>(),
+    Entry::json::<device::DevicepropsParams>().interactive(crate::devices::interact::deviceprops),
+    Entry::json::<device::DevicedeleteParams>().interactive(crate::devices::interact::devicedelete),
+    Entry::of::<net::Nets>(),
+    Entry::of::<net::Net>(),
+    Entry::of::<net::Wirenumber>().interactive(crate::wires::interact::wirenumber),
+    Entry::of::<net::Potential>(),
+    Entry::of::<net::Category>(),
+    Entry::of::<net::Wiresettings>(),
+    Entry::of::<net::Renumberwires>().interactive(crate::wires::interact::renumberwires),
+    Entry::of::<net::Checks>(),
+    Entry::json::<ecad_electrical::symbols::builder::NewParams>(),
+    Entry::json::<ecad_electrical::symbols::builder::EditParams>(),
+    Entry::json::<ecad_electrical::symbols::builder::ImpactParams>(),
+    Entry::json::<ecad_electrical::symbols::builder::UpdateParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("convertcomponent", "Convert to Device", crate::commands::input::typed::<crate::devices::commands::ConvertcomponentParams>)
-            .interactive(crate::properties::forms::convert::convert)
-            .noundo(),
+        CommandSpec::new(
+            "convertcomponent",
+            "Convert to Device",
+            crate::commands::input::run_json::<crate::devices::commands::ConvertcomponentParams>,
+        )
+        .interactive(crate::properties::forms::convert::convert)
+        .noundo(),
         CommandSpec::new(
             "addconnectionpoint",
             "Add Connection Point",
-            crate::commands::input::typed::<crate::devices::commands::AddConnectionPointParams>,
+            crate::commands::input::run_json::<crate::devices::commands::AddConnectionPointParams>,
         )
         .interactive(crate::properties::forms::add_connection_point::addconnectionpoint)
         .noundo(),
-        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::WireParams>)
+        CommandSpec::new("wire", "Wire", crate::commands::input::typed::<crate::wires::commands::Wire>)
             .interactive(crate::properties::forms::wire::wire)
             .noundo(),
-        CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::typed::<crate::cables::commands::CableslashParams>)
+        CommandSpec::new("cableslash", "Cable Slash", crate::commands::input::run_json::<crate::cables::commands::CableslashParams>)
             .interactive(crate::properties::forms::cable_slash::cableslash)
             .noundo(),
-        CommandSpec::new("cableview", "Cable View", crate::commands::input::typed::<crate::cables::commands::CableviewParams>)
+        CommandSpec::new("cableview", "Cable View", crate::commands::input::run_json::<crate::cables::commands::CableviewParams>)
             .interactive(crate::properties::forms::cable_view::cableview)
             .noundo(),
-        CommandSpec::new("cablecore", "Core Label", crate::commands::input::typed::<crate::cables::commands::CablecoreParams>)
+        CommandSpec::new("cablecore", "Core Label", crate::commands::input::run_json::<crate::cables::commands::CablecoreParams>)
             .interactive(crate::properties::forms::cable_core::cablecore)
             .noundo(),
-        CommandSpec::new("cablefan", "Cable Join", crate::commands::input::typed::<crate::cables::commands::CablefanParams>)
+        CommandSpec::new("cablefan", "Cable Join", crate::commands::input::run_json::<crate::cables::commands::CablefanParams>)
             .interactive(crate::properties::forms::cable_fan::cablefan)
             .noundo(),
-        CommandSpec::new("cablegoto", "Go to Reference", crate::commands::input::typed::<crate::references::commands::cables::CablegotoParams>)
+        CommandSpec::new("cablegoto", "Go to Reference", crate::commands::input::run_json::<crate::references::commands::cables::CablegotoParams>)
             .interactive(crate::references::interact::cables::cablegoto)
             .noundo(),
-        CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::typed::<crate::cables::commands::CableaddParams>).noundo(),
-        CommandSpec::new("place", "Place Symbol", crate::commands::input::typed::<crate::devices::commands::PlaceParams>)
+        CommandSpec::new("cableadd", "Add to Cable", crate::commands::input::run_json::<crate::cables::commands::CableaddParams>).noundo(),
+        CommandSpec::new("place", "Place Symbol", crate::commands::input::run_json::<crate::devices::commands::PlaceParams>)
             .interactive(crate::devices::interact::place)
             .noundo(),
-        CommandSpec::new("newpage", "New Page", crate::commands::input::typed::<crate::pages::commands::pages::NewpageParams>).noundo(),
-        CommandSpec::new("openpage", "Open Page", crate::commands::input::typed::<crate::pages::commands::pages::OpenpageParams>).noundo(),
-        CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::typed::<crate::pages::commands::pages::EcadinspectParams>)
+        CommandSpec::new("newpage", "New Page", crate::commands::input::run_json::<crate::pages::commands::pages::NewpageParams>).noundo(),
+        CommandSpec::new("openpage", "Open Page", crate::commands::input::run_json::<crate::pages::commands::pages::OpenpageParams>).noundo(),
+        CommandSpec::new("ecadinspect", "Inspect Project", crate::commands::input::run_json::<crate::pages::commands::pages::EcadinspectParams>)
             .noundo(),
-        CommandSpec::new("joinwires", "Join Wires", crate::commands::input::typed::<crate::wires::commands::JoinwiresParams>)
+        CommandSpec::new("joinwires", "Join Wires", crate::commands::input::typed::<crate::wires::commands::Joinwires>)
             .interactive(crate::wires::interact::joinwires)
             .noundo(),
     ]
@@ -216,15 +227,69 @@ pub(crate) fn err(m: impl Into<String>) -> EngineError {
 pub(crate) fn on_project<R>(
     s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>,
 ) -> cadcraft_engine::Result<R> {
-    let owner = owner_of_active(s).map_err(err)?;
-    let uid = s.state()?.uid;
-    let mut guard = try_lock(&owner).map_err(err)?;
-    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or_else(|| err("this page is not owned by an ECAD project"))?;
-    let page = p.page_of(uid).ok_or_else(|| err("page view not found"))?;
+    in_project(s, f).map_err(|e| err(e.to_string()))
+}
+
+/// [`on_project`] for a typed session command ([`input::Command`]): the refusal stays a
+/// [`CmdError`]; the session's own (no project, a busy one) is said in words.
+pub(crate) fn in_project<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut Pages<'_>, PageId) -> Result<R, CmdError>) -> Result<R, CmdError> {
+    let owner = owner_of_active(s).map_err(CmdError::refused)?;
+    let uid = s.state().map_err(|e| CmdError::refused(e.to_string()))?.uid;
+    let mut guard = try_lock(&owner).map_err(CmdError::refused)?;
+    let p = guard.as_any_mut().downcast_mut::<Project>().ok_or(CmdError::refused("this page is not owned by an ECAD project"))?;
+    let page = p.page_of(uid).ok_or(CmdError::refused("page view not found"))?;
     if p.pages.get(&page).is_some_and(|v| v.unavailable) {
-        return Err(err(UNAVAILABLE));
+        return Err(CmdError::refused(UNAVAILABLE));
     }
-    f(p, &mut Pages(s), page).map_err(|e| err(e.to_string()))
+    f(p, &mut Pages(s), page)
+}
+
+/// Run command `C` with `params` through the session, as the command line, scripts and MCP do (its
+/// echo, undo and agent gate included), and read its reply as its type. JSON is only how the call
+/// travels: this is its one edge on the caller's side.
+///
+/// # Errors
+/// The command's refusal (in the words the session gives), or a reply that does not read as
+/// `C::Reply` (a command whose edit was committed but whose reply could not be made says so).
+///
+/// # Example
+/// ```no_run
+/// # fn f(s: &mut ecad_engine::cad::Session) -> Result<(), ecad_electrical::CmdError> {
+/// use ecad_electrical::wires::commands::nets::{Net, NetParams};
+/// let net = ecad_engine::commands::call::<Net>(s, NetParams { number: Some("24V-01".into()), ..NetParams::default() })?;
+/// println!("{} wires", net.conductors.len());
+/// # Ok(()) }
+/// ```
+pub fn call<C: Request>(s: &mut Session, params: C::Params) -> Result<C::Reply, CmdError> {
+    let reply = s.execute(C::ID, &params_json::<C>(&params)?).map_err(|e| CmdError::refused(e.to_string()))?;
+    reply_of::<C>(reply)
+}
+
+/// `params` as the JSON command `C` reads (for a caller that runs it through its own path, such as
+/// the app's command line).
+///
+/// # Errors
+/// Params that cannot be written as JSON (never expected).
+pub fn params_json<C: Request>(params: &C::Params) -> Result<Value, CmdError> {
+    serde_json::to_value(params).map_err(|e| CmdError::input(format!("{}: the parameters could not be written: {e}", C::ID)))
+}
+
+/// Command `C` with `params` as one command line (`name {json}`), for a caller that runs lines as a
+/// script (the settings dialogs' OK).
+///
+/// # Errors
+/// Params that cannot be written as JSON (never expected).
+pub fn line<C: Request>(params: &C::Params) -> Result<String, CmdError> {
+    Ok(format!("{} {}", C::ID, params_json::<C>(params)?))
+}
+
+/// Command `C`'s JSON reply read as its type.
+///
+/// # Errors
+/// A reply that does not read as `C::Reply`; its `message` is said when it has one.
+pub fn reply_of<C: Request>(reply: Value) -> Result<C::Reply, CmdError> {
+    let message = reply.get("message").and_then(Value::as_str).map(str::to_string);
+    serde_json::from_value(reply).map_err(|e| CmdError::refused(message.unwrap_or_else(|| format!("{}: the reply does not read: {e}", C::ID))))
 }
 
 /// Like [`on_project`] for commands that also work on an unavailable page (open, inspect).
@@ -284,6 +349,11 @@ pub(crate) fn declared_file_keys(id: &str) -> impl Iterator<Item = &'static str>
 /// The JSON Schema of command `id`'s parameters, when its input is typed.
 pub fn schema_of(id: &str) -> Option<Value> {
     typed_commands().into_iter().find(|t| t.id == id).map(|t| (t.schema)())
+}
+
+/// The JSON Schema of command `id`'s reply, when its reply is typed.
+pub fn reply_schema_of(id: &str) -> Option<Value> {
+    typed_commands().into_iter().find(|t| t.id == id).and_then(|t| t.reply).map(|f| f())
 }
 
 /// The parameters text of typed command `id` (`help`, the command lists of MCP and the agent), made from

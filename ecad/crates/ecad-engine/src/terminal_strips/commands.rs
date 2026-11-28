@@ -19,18 +19,18 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_project, plain_style};
 use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[Typed::of::<BridgeParams>("bridge")];
+pub const TYPED: &[Typed] = &[Typed::json::<BridgeParams>("bridge")];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::typed::<BridgeParams>)
+        CommandSpec::new("bridge", "Draw Bridge", crate::commands::input::run_json::<BridgeParams>)
             .interactive(crate::terminal_strips::interact::terminal_blocks::bridge)
             .noundo(),
     ]
@@ -159,7 +159,7 @@ pub(crate) struct BridgeParams {
     to: ConnectionPointId,
 }
 
-impl Command for BridgeParams {
+impl JsonCommand for BridgeParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let v = on_project(s, |p, pg, page| {
             let style = plain_style(p);

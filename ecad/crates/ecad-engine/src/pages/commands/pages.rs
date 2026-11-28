@@ -14,12 +14,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_any_page, on_project};
 
 /// The commands of this module with a typed input.
 pub(crate) const TYPED: &[Typed] =
-    &[Typed::of::<NewpageParams>("newpage"), Typed::of::<OpenpageParams>("openpage"), Typed::of::<EcadinspectParams>("ecadinspect")];
+    &[Typed::json::<NewpageParams>("newpage"), Typed::json::<OpenpageParams>("openpage"), Typed::json::<EcadinspectParams>("ecadinspect")];
 
 /// Open `page` (or bring it to the front): its ID and document.
 fn open(s: &mut Session, page: PageId) -> cadcraft_engine::Result<Value> {
@@ -69,7 +69,7 @@ pub(crate) struct NewpageParams {
     style: Option<ecad_electrical::defaults::strip_pages::StripPageForm>,
 }
 
-impl Command for NewpageParams {
+impl JsonCommand for NewpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let kind = rules::new_page_kind(self.generated, self.style, self.strip).map_err(|e| err(e.to_string()))?;
         let default_title = match (kind.generated, kind.style) {
@@ -106,7 +106,7 @@ pub(crate) struct OpenpageParams {
     sheet: Option<std::num::NonZeroUsize>,
 }
 
-impl Command for OpenpageParams {
+impl JsonCommand for OpenpageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         match self.sheet {
             Some(n) => open_sheet(s, self.page, n.get()),
@@ -124,7 +124,7 @@ pub(crate) struct EcadinspectParams {
     seq: Option<u64>,
 }
 
-impl Command for EcadinspectParams {
+impl JsonCommand for EcadinspectParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, pg| p.snapshot(&pg.as_ref(), self.seq).map_err(CmdError::refused))
     }

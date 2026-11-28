@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use crate::title_blocks::house;
 use ecad_electrical::CmdError;
-use ecad_electrical::commands::run::{Access, Cx, Generic, Outcome};
+use ecad_electrical::commands::run::{Access, Cx, JsonGeneric, Outcome};
 use ecad_electrical::styles;
 use ecad_electrical::styles::commands::styles::{FieldInput, FieldParam, STYLE_NEEDS_NAME, field_inputs, fields};
 use ecad_electrical::title_blocks::bind;
@@ -354,7 +354,7 @@ pub(crate) fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
     check_body(l)
 }
 
-impl Generic for TitleblocksParams {
+impl JsonGeneric for TitleblocksParams {
     const ID: &'static str = "titleblocks";
     const TITLE: &'static str = "Title Blocks";
     const ACCESS: Access = Access::Reads;
@@ -364,7 +364,7 @@ impl Generic for TitleblocksParams {
     }
 }
 
-impl Generic for TitleblockParams {
+impl JsonGeneric for TitleblockParams {
     const ID: &'static str = "titleblock";
     const TITLE: &'static str = "Title Block";
 

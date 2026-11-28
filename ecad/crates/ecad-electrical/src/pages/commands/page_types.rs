@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::nullable;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::pages::page_types::*;
 use crate::reports::kept::ReportModels;
@@ -204,7 +204,7 @@ pub struct RenumberpagesParams {
     folder: Option<FolderId>,
 }
 
-impl Generic for FolderpropsParams {
+impl JsonGeneric for FolderpropsParams {
     const ID: &'static str = "folderprops";
     const TITLE: &'static str = "Folder Properties";
 
@@ -236,7 +236,7 @@ impl Generic for FolderpropsParams {
     }
 }
 
-impl Generic for RenumberpagesParams {
+impl JsonGeneric for RenumberpagesParams {
     const ID: &'static str = "renumberpages";
     const TITLE: &'static str = "Renumber Pages";
 

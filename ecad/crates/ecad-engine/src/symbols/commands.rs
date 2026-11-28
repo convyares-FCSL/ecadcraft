@@ -22,18 +22,18 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
 use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<MakeParams>("makesymbol")];
 
 /// The commands this module adds (registered in `lanes.rs`).
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>).noundo()]
+    vec![CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::run_json::<MakeParams>).noundo()]
 }
 
 // ---------------------------------------------------------------- content
@@ -83,7 +83,7 @@ pub(crate) struct MakeParams {
     at: Option<Point>,
 }
 
-impl Command for MakeParams {
+impl JsonCommand for MakeParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         // A promoted component's drawing is its own; the selection is not read.
         let hs: Vec<Handle> = match (&self.component, self.handles) {

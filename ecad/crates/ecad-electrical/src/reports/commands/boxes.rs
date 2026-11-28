@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Bounded, Point};
-use crate::commands::run::{Cx, Generic, Outcome, Slot, State};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, Slot, State};
 use crate::error::CmdError;
 use crate::locations;
 use crate::locations::designations::{Aspect, Pending};
@@ -172,7 +172,7 @@ pub struct LocationboxParams {
     proposal: Option<proposals::ProposalWord>,
 }
 
-impl Generic for LocationboxParams {
+impl JsonGeneric for LocationboxParams {
     const ID: &'static str = "locationbox";
     const TITLE: &'static str = "Location Box";
     const STATE: State = State::Conflicts;
@@ -210,7 +210,7 @@ pub struct FunctionboxParams {
     proposal: Option<proposals::ProposalWord>,
 }
 
-impl Generic for FunctionboxParams {
+impl JsonGeneric for FunctionboxParams {
     const ID: &'static str = "functionbox";
     const TITLE: &'static str = "Function Box";
     const STATE: State = State::Conflicts;

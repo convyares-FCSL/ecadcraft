@@ -9,7 +9,7 @@ use super::*;
 #[schemars(extend("properties" = {}))]
 pub(crate) struct BranchesParams {}
 
-impl Command for BranchesParams {
+impl JsonCommand for BranchesParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
             let cur = current(p);
@@ -99,7 +99,7 @@ pub(crate) struct BranchParams {
     switch: Option<bool>,
 }
 
-impl Command for BranchParams {
+impl JsonCommand for BranchParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let switch = self.switch.unwrap_or(true);
         let from = self.from.map(|f| PointQuery { branch: f.branch, version: f.version, revision: f.revision, seq: f.seq, now: f.now });
@@ -152,7 +152,7 @@ pub(crate) struct RenamebranchParams {
     name: String,
 }
 
-impl Command for RenamebranchParams {
+impl JsonCommand for RenamebranchParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, pg| {
             branch_file(p).map_err(CmdError::refused)?;
@@ -195,7 +195,7 @@ pub(crate) struct SwitchbranchParams {
     save: Option<bool>,
 }
 
-impl Command for SwitchbranchParams {
+impl JsonCommand for SwitchbranchParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let save = self.save.unwrap_or(false);
         on_any_page(s, |p, pg| switch_branch(p, pg, &self.branch, save))
@@ -247,7 +247,7 @@ pub(crate) struct ArchivebranchParams {
     branch: String,
 }
 
-impl Command for ArchivebranchParams {
+impl JsonCommand for ArchivebranchParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, pg| archive_branch(p, pg, &self.branch))
     }
@@ -311,7 +311,7 @@ pub(crate) struct ReopenbranchParams {
     name: Option<String>,
 }
 
-impl Command for ReopenbranchParams {
+impl JsonCommand for ReopenbranchParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, pg| reopen_branch(p, pg, &self.branch, self.name.as_deref()))
     }

@@ -30,12 +30,14 @@ For example:
 ```
 
 So the text changes when the struct's docs change, and it is the same everywhere it is shown. The full JSON
-Schema of a command's parameters is `commands::schema_of`. A command whose input is not typed has an empty
-parameters text.
+Schema of a command's parameters is `commands::schema_of`, and of its reply `commands::reply_schema_of`; MCP's
+`describe_command` tool shows both, with the parameters text (see [mcp.md](mcp.md)). A command whose input is not
+typed has an empty parameters text; a command whose reply is not typed yet has a null reply schema.
 
 ## Generic and session commands
 
-A **generic command** is a declaration in `ecad-electrical`: a params struct with its access (whether it only
+Every command has one definition: its id, its params type and its reply type (`Request`). A **generic
+command** is a declaration in `ecad-electrical`: that definition with its access (whether it only
 reads), the files it reads or writes, and its edit. It is one `Entry` line in the `GENERIC` list of
 `ecad/crates/ecad-engine/src/commands/mod.rs`, and the one generic runner does the rest (read the parameters,
 lock the project, commit the edit as one transaction, answer); the agent gate reads the same declaration. A

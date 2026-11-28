@@ -56,7 +56,7 @@ pub(crate) struct VersionParams {
     description: Option<String>,
 }
 
-impl Command for VersionParams {
+impl JsonCommand for VersionParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let description = self.description.as_deref().map(str::trim).filter(|d| !d.is_empty()).map(str::to_string);
         on_project(s, |p, pg, _| {

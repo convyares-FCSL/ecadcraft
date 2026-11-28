@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::circuits::{self, RatedSubject};
 use crate::commands::input::{Bounded, TextOrNumber, nullable};
-use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
+use crate::commands::run::{Access, Cx, Got, Io, JsonGeneric, Outcome, Pages, Read};
 use crate::error::CmdError;
 use crate::styles::{self, cable, ratingtable};
 use ecad_model::objects::wire::Basis;
@@ -658,7 +658,7 @@ impl RatingParams {
     }
 }
 
-impl Generic for RatingParams {
+impl JsonGeneric for RatingParams {
     const ID: &'static str = "rating";
     const TITLE: &'static str = "Rating";
 
@@ -707,7 +707,7 @@ impl RatingtableParams {
     }
 }
 
-impl Generic for RatingtableParams {
+impl JsonGeneric for RatingtableParams {
     const ID: &'static str = "ratingtable";
     const TITLE: &'static str = "Rating Table";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -759,7 +759,7 @@ impl Generic for RatingtableParams {
     }
 }
 
-impl Generic for RatingsParams {
+impl JsonGeneric for RatingsParams {
     const ID: &'static str = "ratings";
     const TITLE: &'static str = "Ratings";
     const PAGES: Pages = Pages::Any;

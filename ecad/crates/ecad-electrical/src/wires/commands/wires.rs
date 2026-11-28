@@ -3,7 +3,6 @@
 //! Each function reads the document and returns the ops to commit and what to report.
 
 use ecad_model::geometry::units::Radians;
-use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::wiring::{self, Scheme};
@@ -14,6 +13,7 @@ use ecad_model::{
     RouteId, Style, StyleRef, Wire, WireId,
 };
 
+use super::nets::{CategoryName, LabelRuleWord, NetPage, NetPoint, NetReply, PotentialSetting, WiresettingsReply};
 use crate::error::{CmdError, msg};
 use crate::wires;
 
@@ -40,45 +40,18 @@ impl NetChoice {
     }
 }
 
-/// A wire category as a net shows it.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct CategoryName {
-    pub id: String,
-    pub name: String,
-}
-
-/// A net as `nets` and `net` show it.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct NetView {
-    pub number: Option<String>,
-    pub fixed: bool,
-    pub potential: Option<String>,
-    /// The category every wire of the net has; `None` when there is none or they differ.
-    pub category: Option<CategoryName>,
-    /// The categories, when the net's wires resolve to different ones (or some have none).
-    pub categories: Option<Vec<CategoryName>>,
-    pub wires: Vec<WireId>,
-    /// Its device connection points (not continuations), with their words.
-    pub points: Vec<(ConnectionPointId, String)>,
-    /// The names of its continuations.
-    pub continuations: BTreeSet<String>,
-    /// Per page it is drawn on, in page order: the shown page number and the column of the first
-    /// route start there.
-    pub pages: Vec<(String, Option<String>)>,
-}
-
 /// The net `net` as shown.
-pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
+pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetReply {
     let pot = wiring::net_potential(doc, net);
     let order: BTreeMap<PageId, usize> = doc.page_order().iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
-    let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
+    let mut pages: BTreeMap<usize, NetPage> = BTreeMap::new();
     for c in &net.wires {
         for r in wires::routes::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes().get(&r)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = r.points.first().and_then(|a| wiring::place(doc, r.page, *a)).map(|p| p.column_label);
-            let slot = pages.entry(*n).or_insert_with(|| (ecad_model::document::book::page_number(doc, r.page), None));
-            if slot.1.is_none() {
-                slot.1 = col;
+            let slot = pages.entry(*n).or_insert_with(|| NetPage { page: ecad_model::document::book::page_number(doc, r.page), column: None });
+            if slot.column.is_none() {
+                slot.column = col;
             }
         }
     }
@@ -86,7 +59,7 @@ pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
         .connection_points
         .iter()
         .filter(|t| doc.connection_points().get(t).is_none_or(|x| x.owner.aid().is_none()))
-        .map(|t| (*t, wires::words::point_words(doc, *t)))
+        .map(|t| NetPoint { connection_point: *t, label: wires::words::point_words(doc, *t) })
         .collect();
     let continuations = net
         .connection_points
@@ -104,13 +77,13 @@ pub(crate) fn net_view(doc: &Document, net: &NetData) -> NetView {
         (0, _) => (None, None),
         _ => (None, Some(cats.iter().map(named).collect())),
     };
-    NetView {
+    NetReply {
         number: wiring::net_number(doc, net),
         fixed: wiring::net_fixed(net),
         potential: pot.name,
         category,
         categories,
-        wires: net.wires.iter().copied().collect(),
+        conductors: net.wires.iter().copied().collect(),
         points,
         continuations,
         pages: pages.into_values().collect(),
@@ -150,7 +123,7 @@ pub(crate) fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, C
 ///
 /// # Errors
 /// As [`chosen_net`].
-pub(crate) fn net(doc: &Document, choice: &NetChoice) -> Result<NetView, CmdError> {
+pub(crate) fn net(doc: &Document, choice: &NetChoice) -> Result<NetReply, CmdError> {
     let id = chosen_net(doc, choice)?;
     let net = doc.connectivity().net(id).ok_or(CmdError::NotFound(Noun::Net))?;
     Ok(net_view(doc, net))
@@ -174,7 +147,7 @@ pub(crate) struct NetsQuery {
 /// One page of `nets`.
 #[derive(Debug, Clone)]
 pub(crate) struct NetsPage {
-    pub nets: Vec<NetView>,
+    pub nets: Vec<NetReply>,
     /// The cursor for the next page, when there is more.
     pub next: Option<String>,
 }
@@ -742,40 +715,25 @@ pub(crate) fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value
     }
 }
 
-pub(crate) fn net_json(n: &NetView) -> Value {
-    let cat = |c: &CategoryName| json!({"id": c.id, "name": c.name});
-    let mut out = json!({
-        "number": n.number,
-        "fixed": n.fixed,
-        "potential": n.potential,
-        "category": n.category.as_ref().map(cat),
-        "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        "points": n.points.iter().map(|(t, label)| json!({"connection_point": t.hex(), "label": label})).collect::<Vec<_>>(),
-        "continuations": n.continuations,
-        "pages": n.pages.iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
-    });
-    if let Some(list) = &n.categories {
-        out["categories"] = json!(list.iter().map(cat).collect::<Vec<_>>());
-    }
-    out
-}
-
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
-pub(crate) fn settings_json(doc: &Document, registry: &ecad_model::registry::data::Registry) -> Value {
+pub(crate) fn settings(doc: &Document, registry: &ecad_model::registry::data::Registry) -> WiresettingsReply {
     let w = &doc.settings().wiring;
-    json!({
-        "scheme": w.scheme.name(),
-        "colour_style": ecad_model::naming::words::Word::word(w.colour_style()),
-        "label_height": crate::pages::commands::sheets::wire_label_height(doc, registry),
-        "label_rule": wires::label_rule::label_rule_word(doc),
-        "label_min_length": wires::label_rule::label_min_length(doc),
-        "digits": w.digits(),
-        "number_by": ecad_model::Word::word(w.number_by),
-        "unclassified_prefix": w.unclassified_prefix,
-        "potentials": w.potentials.iter().map(|p| json!({
-            "name": p.name, "prefix": p.prefix, "numbered": p.numbered, "supply": p.supply,
-        })).collect::<Vec<_>>(),
-    })
+    let label_rule = if wires::label_rule::label_rule_word(doc) == wiring::LABEL_RULE_EACH { LabelRuleWord::Each } else { LabelRuleWord::Net };
+    WiresettingsReply {
+        scheme: w.scheme.into(),
+        colour_style: w.colour_style(),
+        label_height: crate::pages::commands::sheets::wire_label_height(doc, registry),
+        label_rule,
+        label_min_length: wires::label_rule::label_min_length(doc),
+        digits: w.digits(),
+        number_by: w.number_by,
+        unclassified_prefix: w.unclassified_prefix.clone(),
+        potentials: w
+            .potentials
+            .iter()
+            .map(|p| PotentialSetting { name: p.name.clone(), prefix: p.prefix.clone(), numbered: p.numbered, supply: p.supply })
+            .collect(),
+    }
 }
 
 /// Whether `wire` joins ends that meet other wires when `join` is not given:

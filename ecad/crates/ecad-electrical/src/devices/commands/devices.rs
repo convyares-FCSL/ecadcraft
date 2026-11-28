@@ -16,7 +16,7 @@ use ecad_model::{
     Representation, RepresentationId, RouteEnd, RouteId, Subject, WireId,
 };
 
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::devices;
 use crate::error::CmdError;
 
@@ -288,7 +288,7 @@ pub struct SymbolsParams {
     query: Option<String>,
 }
 
-impl Generic for SymbolsParams {
+impl JsonGeneric for SymbolsParams {
     const ID: &'static str = "symbols";
     const TITLE: &'static str = "Find Symbol";
     const PAGES: Pages = Pages::Any;
@@ -308,7 +308,7 @@ pub struct DevicesParams {
     tag: Option<String>,
 }
 
-impl Generic for DevicesParams {
+impl JsonGeneric for DevicesParams {
     const ID: &'static str = "devices";
     const TITLE: &'static str = "List Devices";
     const PAGES: Pages = Pages::Any;
@@ -327,7 +327,7 @@ pub struct DevicepropsParams {
     component: DeviceId,
 }
 
-impl Generic for DevicepropsParams {
+impl JsonGeneric for DevicepropsParams {
     const ID: &'static str = "deviceprops";
     const TITLE: &'static str = "Device Properties";
     const PAGES: Pages = Pages::Any;
@@ -369,7 +369,7 @@ fn delete(doc: &Document, doomed: Doomed, answer: impl FnOnce(Value) -> Value) -
     Ok(Outcome::edit("Delete", done.ops, answer(json)).echo(echo))
 }
 
-impl Generic for EcaddeleteParams {
+impl JsonGeneric for EcaddeleteParams {
     const ID: &'static str = "ecaddelete";
     const TITLE: &'static str = "Delete Electrical Object";
 
@@ -392,7 +392,7 @@ pub struct DevicedeleteParams {
     component: DeviceId,
 }
 
-impl Generic for DevicedeleteParams {
+impl JsonGeneric for DevicedeleteParams {
     const ID: &'static str = "devicedelete";
     const TITLE: &'static str = "Delete Device";
 
@@ -420,7 +420,7 @@ pub struct TagsettingsParams {
     prefixes: Option<BTreeMap<String, Option<String>>>,
 }
 
-impl Generic for TagsettingsParams {
+impl JsonGeneric for TagsettingsParams {
     const ID: &'static str = "tagsettings";
     const TITLE: &'static str = "Tag Settings";
 

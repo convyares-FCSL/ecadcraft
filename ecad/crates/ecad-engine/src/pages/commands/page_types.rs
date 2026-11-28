@@ -12,16 +12,16 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_project};
 use ecad_electrical::commands::input::Bounded;
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<DeletepageParams>("deletepage")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<DeletepageParams>("deletepage")];
 
 /// The commands this module adds (registered in [`crate::commands::specs`]).
 pub(crate) fn specs() -> Vec<CommandSpec> {
-    vec![CommandSpec::new("deletepage", "Delete Page", crate::commands::input::typed::<DeletepageParams>).noundo()]
+    vec![CommandSpec::new("deletepage", "Delete Page", crate::commands::input::run_json::<DeletepageParams>).noundo()]
 }
 
 /// Deletes generated pages only (a cover, a contents, a report…): `page`, or several `pages`. One transaction.
@@ -36,7 +36,7 @@ pub(crate) struct DeletepageParams {
     pages: Option<Bounded<PageId, 0, MAX_PAGES>>,
 }
 
-impl Command for DeletepageParams {
+impl JsonCommand for DeletepageParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let ids: Vec<PageId> = match (self.pages, self.page) {
             (Some(pages), _) => pages.0,

@@ -42,7 +42,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::commands::input::{Command, Typed, typed};
+use crate::commands::input::{JsonCommand, Typed, run_json};
 use crate::commands::{on_any_page, on_project};
 use crate::pages::commands::sheets::{RevisionView, next_view_id};
 use crate::project::Project;
@@ -435,37 +435,37 @@ pub(crate) fn find_branch(p: &Project, text: &str) -> Result<(BranchId, BranchRe
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
-    Typed::of::<HistoryParams>("history"),
-    Typed::of::<StepsParams>("steps"),
-    Typed::of::<PointinfoParams>("pointinfo"),
-    Typed::of::<VersionParams>("version"),
-    Typed::of::<ShowpointParams>("showpoint"),
-    Typed::of::<ClosepointParams>("closepoint"),
-    Typed::of::<RestoreParams>("restore"),
-    Typed::of::<BranchesParams>("branches"),
-    Typed::of::<BranchParams>("branch"),
-    Typed::of::<RenamebranchParams>("renamebranch"),
-    Typed::of::<SwitchbranchParams>("switchbranch"),
-    Typed::of::<ArchivebranchParams>("archivebranch"),
-    Typed::of::<ReopenbranchParams>("reopenbranch"),
+    Typed::json::<HistoryParams>("history"),
+    Typed::json::<StepsParams>("steps"),
+    Typed::json::<PointinfoParams>("pointinfo"),
+    Typed::json::<VersionParams>("version"),
+    Typed::json::<ShowpointParams>("showpoint"),
+    Typed::json::<ClosepointParams>("closepoint"),
+    Typed::json::<RestoreParams>("restore"),
+    Typed::json::<BranchesParams>("branches"),
+    Typed::json::<BranchParams>("branch"),
+    Typed::json::<RenamebranchParams>("renamebranch"),
+    Typed::json::<SwitchbranchParams>("switchbranch"),
+    Typed::json::<ArchivebranchParams>("archivebranch"),
+    Typed::json::<ReopenbranchParams>("reopenbranch"),
 ];
 
 /// The commands this module adds.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("history", "History", typed::<HistoryParams>).noundo(),
-        CommandSpec::new("steps", "History Steps", typed::<StepsParams>).noundo(),
-        CommandSpec::new("pointinfo", "Point Info", typed::<PointinfoParams>).noundo(),
-        CommandSpec::new("version", "New Version", typed::<VersionParams>).noundo(),
-        CommandSpec::new("showpoint", "Show Point", typed::<ShowpointParams>).noundo(),
-        CommandSpec::new("closepoint", "Back to Current", typed::<ClosepointParams>).noundo(),
-        CommandSpec::new("restore", "Restore", typed::<RestoreParams>).noundo(),
-        CommandSpec::new("branches", "Branches", typed::<BranchesParams>).noundo(),
-        CommandSpec::new("branch", "New Branch", typed::<BranchParams>).noundo(),
-        CommandSpec::new("renamebranch", "Rename Branch", typed::<RenamebranchParams>).noundo(),
-        CommandSpec::new("switchbranch", "Switch Branch", typed::<SwitchbranchParams>).noundo(),
-        CommandSpec::new("archivebranch", "Archive Branch", typed::<ArchivebranchParams>).noundo(),
-        CommandSpec::new("reopenbranch", "Reopen Branch", typed::<ReopenbranchParams>).noundo(),
+        CommandSpec::new("history", "History", run_json::<HistoryParams>).noundo(),
+        CommandSpec::new("steps", "History Steps", run_json::<StepsParams>).noundo(),
+        CommandSpec::new("pointinfo", "Point Info", run_json::<PointinfoParams>).noundo(),
+        CommandSpec::new("version", "New Version", run_json::<VersionParams>).noundo(),
+        CommandSpec::new("showpoint", "Show Point", run_json::<ShowpointParams>).noundo(),
+        CommandSpec::new("closepoint", "Back to Current", run_json::<ClosepointParams>).noundo(),
+        CommandSpec::new("restore", "Restore", run_json::<RestoreParams>).noundo(),
+        CommandSpec::new("branches", "Branches", run_json::<BranchesParams>).noundo(),
+        CommandSpec::new("branch", "New Branch", run_json::<BranchParams>).noundo(),
+        CommandSpec::new("renamebranch", "Rename Branch", run_json::<RenamebranchParams>).noundo(),
+        CommandSpec::new("switchbranch", "Switch Branch", run_json::<SwitchbranchParams>).noundo(),
+        CommandSpec::new("archivebranch", "Archive Branch", run_json::<ArchivebranchParams>).noundo(),
+        CommandSpec::new("reopenbranch", "Reopen Branch", run_json::<ReopenbranchParams>).noundo(),
     ]
 }
 
@@ -484,7 +484,7 @@ pub(crate) struct HistoryParams {
     limit: Option<u64>,
 }
 
-impl Command for HistoryParams {
+impl JsonCommand for HistoryParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let show = Show {
             autos: self.autos.unwrap_or(false),
@@ -535,7 +535,7 @@ pub(crate) struct StepsParams {
     limit: Option<u64>,
 }
 
-impl Command for StepsParams {
+impl JsonCommand for StepsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let limit = self.limit.unwrap_or(STEPS_PAGE).clamp(1, 1_000);
         on_any_page(s, |p, _| {

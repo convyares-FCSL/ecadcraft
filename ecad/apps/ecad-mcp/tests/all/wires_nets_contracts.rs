@@ -1,4 +1,4 @@
-//! MCP contract: `wire` merging and
+//! MCP contract: `describe_command` for the wire commands, `wire` merging and
 //! folding, `joinwires`, `cableslash` continuing a cable, `cablecontinue`'s refusal and
 //! `wiresettings` through `execute` record the agent's transaction (or none), and are refused with
 //! writes off.
@@ -118,4 +118,49 @@ fn wiresettings_label_rule_through_execute() {
     assert_eq!(r["label_min_length"], json!(10.0));
     let t = last(&mut c);
     assert!(matches!(&t.ops[..], [Op::SetProjectSettings { .. }]), "{:?}", t.ops);
+}
+
+/// `describe_command` (writes off): each wire command's parameters text, params schema and reply schema; a command
+/// that is not offered is refused.
+#[test]
+fn describe_command_shows_the_wire_commands_params_and_reply() {
+    let mut c = reader();
+    for id in [
+        "wire",
+        "joinwires",
+        "nets",
+        "net",
+        "wirenumber",
+        "potential",
+        "category",
+        "wiresettings",
+        "renumberwires",
+        "checks",
+        "connect",
+        "disconnect",
+    ] {
+        let d = c.ok("describe_command", json!({"id": id}));
+        assert_eq!(d["id"], json!(id));
+        assert!(d["params"].is_object() && d["reply"].is_object(), "{id}: {d}");
+        assert!(!d["help"].as_str().unwrap_or_default().is_empty(), "{id}: {d}");
+    }
+    assert_eq!(c.ok("describe_command", json!({"id": "net"}))["agent"], json!("read"));
+    assert_eq!(c.ok("describe_command", json!({"id": "wire"}))["agent"], json!("write"));
+    assert!(c.refused("describe_command", json!({"id": "lisp"})).contains("lisp"));
+}
+
+/// The wire commands' replies through `execute` read as their types: what an agent gets is what the type says.
+#[test]
+fn the_wire_commands_replies_read_as_their_types() {
+    use ecad_electrical::wires::commands::nets::{NetsReply, RenumberwiresReply, WiresettingsReply};
+    use ecad_engine::wires::commands::{JoinwiresReply, WireReply};
+    let mut c = writer(WRITER_SEED);
+    let r: WireReply = serde_json::from_value(c.exec("wire", json!({"points": [[0, 0], [50, 0]]}))).unwrap();
+    assert!(r.created);
+    c.exec("wire", json!({"points": [[50, 0], [50, -20]], "join": false}));
+    let j: JoinwiresReply = serde_json::from_value(c.exec("joinwires", json!({"at": [50, 0]}))).unwrap();
+    assert!(matches!(j, JoinwiresReply::Merged { .. }), "{j:?}");
+    let _: WiresettingsReply = serde_json::from_value(c.exec("wiresettings", json!({}))).unwrap();
+    let _: RenumberwiresReply = serde_json::from_value(c.exec("renumberwires", json!({}))).unwrap();
+    let _: NetsReply = serde_json::from_value(c.exec("nets", json!({"all": true}))).unwrap();
 }

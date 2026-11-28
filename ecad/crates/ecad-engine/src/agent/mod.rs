@@ -8,7 +8,7 @@
 //! - [`upstream`]: the reviewed CADCraft drawing commands offered to agents.
 //! - [`gate`]: one `execute` call through the policy, its transaction cap and roll-back, and the
 //!   agent as the author.
-//! - [`tools`]: the ECAD tools (`ecad_project`, `ecad_history`, `ecad_inspect`, `save`).
+//! - [`tools`]: the ECAD tools (`ecad_project`, `ecad_history`, `ecad_inspect`, `describe_command`, `save`).
 //! - [`bridge`]: the words both ends of the live bridge share.
 //! - [`access`]: the per-user agent access preference.
 //!

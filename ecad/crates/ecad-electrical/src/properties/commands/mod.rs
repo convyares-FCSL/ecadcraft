@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use crate::commands::input::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
-use crate::commands::run::{Cx, Generic, Outcome, State};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, State};
 use crate::devices::tags::{Holder, TagHigh};
 use crate::error::CmdError;
 use crate::locations::commands::locations::{self, MAX_DEVICES};
@@ -736,7 +736,7 @@ impl SetpropParams {
     }
 }
 
-impl Generic for SetpropParams {
+impl JsonGeneric for SetpropParams {
     const ID: &'static str = "setprop";
     const TITLE: &'static str = "Set Property";
     const STATE: State = State::Conflicts;

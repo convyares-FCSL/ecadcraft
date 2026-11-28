@@ -36,7 +36,9 @@ use ecad_model::connectivity::name_key;
 use ecad_model::connectivity::wiring;
 use ecad_model::document::effect::Effect;
 use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, WireId};
-use serde_json::{Value, json};
+use serde_json::Value;
+
+use crate::commands::input::Point;
 
 use crate::wires::{self, ON_WIRE};
 use ecad_model::look::Look;
@@ -555,39 +557,103 @@ impl Check {
         (self.severity(), page, y, x, self.kind, self.object)
     }
 
-    pub fn to_json(&self, doc: &Document) -> Value {
+    /// The row as `checks` answers it.
+    pub fn row(&self, doc: &Document) -> CheckRow {
         let object = match self.object {
-            Object::Wire(c) => json!({"conductor": c.hex()}),
-            Object::Route(r) => json!({"route": r.hex()}),
-            Object::ConnectionPoint(t) => json!({"connection_point": t.hex()}),
-            Object::Device(c) => json!({"component": c.hex()}),
-            Object::Aid(a) => json!({"aid": a.hex()}),
-            Object::Reference(r) => json!({"reference": r.hex()}),
-            Object::Cable(k) => json!({"cable": k.hex()}),
-            Object::None => Value::Null,
+            Object::Wire(c) => Some(RowObject::Conductor(c)),
+            Object::Route(r) => Some(RowObject::Route(r)),
+            Object::ConnectionPoint(t) => Some(RowObject::ConnectionPoint(t)),
+            Object::Device(c) => Some(RowObject::Component(c)),
+            Object::Aid(a) => Some(RowObject::Aid(a)),
+            Object::Reference(r) => Some(RowObject::Reference(r)),
+            Object::Cable(k) => Some(RowObject::Cable(k)),
+            Object::None => None,
         };
         let place = self.page.zip(self.at).and_then(|(p, a)| ecad_model::connectivity::wiring::place(doc, p, a));
-        json!({
-            "kind": self.kind.name(),
-            "severity": self.severity().name(),
-            "page": self.page.map(|p| ecad_model::document::book::page_number(doc, p)),
-            "column": place.as_ref().map(|p| p.column_label.clone()),
-            "row": place.as_ref().map(|p| p.row_label.clone()),
-            "at": self.at.map(|a| [a.x, a.y]),
-            "object": object,
-            "text": self.what(),
-            "which": self.which,
-            "where": self.locator(doc),
-            // The command a page type or folder start fix runs.
-            "fix": match self.fix {
+        CheckRow {
+            kind: self.kind.name().to_string(),
+            severity: self.severity().name().to_string(),
+            page: self.page.map(|p| ecad_model::document::book::page_number(doc, p)),
+            column: place.as_ref().map(|p| p.column_label.clone()),
+            row: place.as_ref().map(|p| p.row_label.clone()),
+            at: self.at.map(Point),
+            object,
+            text: self.what(),
+            which: self.which.clone(),
+            place: self.locator(doc),
+            fix: match self.fix {
                 Some(Fix::Page(f)) => {
                     let (command, params) = f.command();
-                    json!({"label": f.label(), "command": command, "params": params})
+                    Some(RowFix { label: f.label().to_string(), command: command.to_string(), params })
                 }
-                _ => Value::Null,
+                _ => None,
             },
-        })
+        }
     }
+
+    /// [`Check::row`] as JSON, for the release check's report.
+    pub fn to_json(&self, doc: &Document) -> Value {
+        serde_json::to_value(self.row(doc)).unwrap_or(Value::Null)
+    }
+}
+
+/// A Checks row as `checks` answers it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct CheckRow {
+    /// The kind of check.
+    pub kind: String,
+    /// Error, Warning or Info.
+    pub severity: String,
+    /// The page number as shown.
+    pub page: Option<String>,
+    /// The column there.
+    pub column: Option<String>,
+    /// The row there.
+    pub row: Option<String>,
+    /// Where on the page.
+    pub at: Option<Point>,
+    /// What the row points at.
+    pub object: Option<RowObject>,
+    /// What is wrong, in words.
+    pub text: String,
+    /// Which net, wire or point, in words (`24V-01`, `-W01 3`, `-M01:PE`).
+    pub which: String,
+    /// Where the row is, as references name a place (`3-D-5`).
+    #[serde(rename = "where")]
+    pub place: String,
+    /// The command a page type or folder start fix runs.
+    pub fix: Option<RowFix>,
+}
+
+/// What a Checks row points at.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RowObject {
+    /// A wire.
+    Conductor(WireId),
+    /// A drawn route.
+    Route(RouteId),
+    /// A connection point.
+    ConnectionPoint(ConnectionPointId),
+    /// A device.
+    Component(DeviceId),
+    /// A drawing aid.
+    Aid(ecad_model::AidId),
+    /// A cable reference end.
+    Reference(ecad_model::RepresentationId),
+    /// A cable.
+    Cable(CableId),
+}
+
+/// The fix a page type or folder start row offers: a command and its parameters.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct RowFix {
+    /// The button's label.
+    pub label: String,
+    /// The command it runs.
+    pub command: String,
+    /// That command's parameters.
+    pub params: Value,
 }
 
 /// What a check belongs to.

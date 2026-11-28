@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::sheets::{move_page_ops, move_page_to, page_title, rename_page};
 use crate::commands::input::nullable;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 
 /// Renames a page in one transaction; the same title changes nothing.
@@ -37,7 +37,7 @@ pub struct MovepageParams {
     folder: Option<Option<FolderId>>,
 }
 
-impl Generic for RenamepageParams {
+impl JsonGeneric for RenamepageParams {
     const ID: &'static str = "renamepage";
     const TITLE: &'static str = "Rename Page";
 
@@ -54,7 +54,7 @@ impl Generic for RenamepageParams {
     }
 }
 
-impl Generic for MovepageParams {
+impl JsonGeneric for MovepageParams {
     const ID: &'static str = "movepage";
     const TITLE: &'static str = "Move Page";
 

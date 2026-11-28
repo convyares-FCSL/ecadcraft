@@ -484,7 +484,7 @@ fn methods() -> Value {
     json!([
         {"method": "ecad.hello", "params": "{session, name, write, client_version}", "description": "Start a bridge session."},
         {"method": "ecad.execute", "params": "{session, name, line, command, params}", "description": "One command through ECAD's gate."},
-        {"method": "ecad.tool", "params": "{session, name, line, tool, arguments}", "description": "ecad_project, ecad_history, ecad_inspect or save."},
+        {"method": "ecad.tool", "params": "{session, name, line, tool, arguments}", "description": "ecad_project, ecad_history, ecad_inspect, describe_command or save."},
         {"method": "ecad.bye", "params": "{session}", "description": "End the bridge session."},
         {"method": "drawing.inspect", "params": "{entities?, limit?}", "description": "The active page's drawing."},
         {"method": "engine.commands", "params": "", "description": "Every command."},
@@ -914,7 +914,7 @@ impl App {
         let scoped = gate::as_agent(&mut self.cad.session, &p, &name, |s| {
             let call = Call { write, refusal: refusal.as_deref(), line_transactions: &mut line_used, owned: Some(&mut owned) };
             match &tool {
-                Some(t) if ["ecad_project", "ecad_history", "ecad_inspect", "save"].contains(&t.as_str()) => {
+                Some(t) if ["ecad_project", "ecad_history", "ecad_inspect", "describe_command", "save"].contains(&t.as_str()) => {
                     let mut host = tools::Host { session: s, project: &p, call, agent: &name };
                     match tools::call(&mut host, t, &args) {
                         Ok(v) => Ok(v),

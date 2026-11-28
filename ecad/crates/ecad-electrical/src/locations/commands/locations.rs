@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::commands::input::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
-use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, Pages, Slot, State};
 use crate::error::CmdError;
 use crate::locations::designations::{self, Aspect};
 use crate::symbols::proposals::{self, Conflict};
@@ -437,7 +437,7 @@ pub struct ConflictsParams {
     aspect: Option<Aspect>,
 }
 
-impl Generic for SetlocationParams {
+impl JsonGeneric for SetlocationParams {
     const ID: &'static str = "setlocation";
     const TITLE: &'static str = "Set Location";
     const STATE: State = State::Conflicts;
@@ -453,7 +453,7 @@ impl Generic for SetlocationParams {
     }
 }
 
-impl Generic for SetfunctionParams {
+impl JsonGeneric for SetfunctionParams {
     const ID: &'static str = "setfunction";
     const TITLE: &'static str = "Set Function";
     const STATE: State = State::Conflicts;
@@ -483,7 +483,7 @@ fn said(v: Value) -> Outcome {
     Outcome::answer(v).echo(echo)
 }
 
-impl Generic for ConflictsParams {
+impl JsonGeneric for ConflictsParams {
     const ID: &'static str = "conflicts";
     const TITLE: &'static str = "Location Conflicts";
     const PAGES: Pages = Pages::ReadAnywhere;

@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::nullable;
-use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Access, Cx, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 
 /// The aspect a call must name where its other fields allow none (`designationremove`).
@@ -308,7 +308,7 @@ pub struct DesignationsParams {
     aspect: Option<Aspect>,
 }
 
-impl Generic for DesignationsParams {
+impl JsonGeneric for DesignationsParams {
     const ID: &'static str = "designations";
     const TITLE: &'static str = "Functions and Locations";
     const PAGES: Pages = Pages::Any;
@@ -334,7 +334,7 @@ pub struct AddParams {
     description: Option<String>,
 }
 
-impl Generic for AddParams {
+impl JsonGeneric for AddParams {
     const ID: &'static str = "designationadd";
     const TITLE: &'static str = "Add Function or Location";
 
@@ -370,7 +370,7 @@ pub struct EditParams {
     description: Option<Option<String>>,
 }
 
-impl Generic for EditParams {
+impl JsonGeneric for EditParams {
     const ID: &'static str = "designationedit";
     const TITLE: &'static str = "Rename Function or Location";
 
@@ -397,7 +397,7 @@ pub struct MergeParams {
     into: String,
 }
 
-impl Generic for MergeParams {
+impl JsonGeneric for MergeParams {
     const ID: &'static str = "designationmerge";
     const TITLE: &'static str = "Merge Functions or Locations";
 
@@ -428,7 +428,7 @@ pub struct RemoveParams {
     unused: Option<bool>,
 }
 
-impl Generic for RemoveParams {
+impl JsonGeneric for RemoveParams {
     const ID: &'static str = "designationremove";
     const TITLE: &'static str = "Remove Function or Location";
 

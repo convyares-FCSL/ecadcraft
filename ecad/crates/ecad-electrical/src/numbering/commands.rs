@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Said, Words, nullable};
-use crate::commands::run::{Cx, Generic, Outcome, Pages};
+use crate::commands::run::{Cx, JsonGeneric, Outcome, Pages};
 use crate::devices::tags::TagHigh;
 use crate::devices::{self};
 use crate::error::CmdError;
@@ -750,7 +750,7 @@ fn renumber_with(cx: &mut Cx<'_>, input: Option<&RenumberInput>, how: How) -> Re
     Ok(Outcome::edit(label, ops, answer).echo(Some(line)))
 }
 
-impl Generic for RenumberParams {
+impl JsonGeneric for RenumberParams {
     const ID: &'static str = "renumber";
     const TITLE: &'static str = "Renumber";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -767,7 +767,7 @@ impl Generic for RenumberParams {
     }
 }
 
-impl Generic for FinaliseParams {
+impl JsonGeneric for FinaliseParams {
     const ID: &'static str = "finalise";
     const TITLE: &'static str = "Finalise Numbering";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -778,7 +778,7 @@ impl Generic for FinaliseParams {
     }
 }
 
-impl Generic for NumberingParams {
+impl JsonGeneric for NumberingParams {
     const ID: &'static str = "numbering";
     const TITLE: &'static str = "Numbering Settings";
     const PAGES: Pages = Pages::ReadAnywhere;

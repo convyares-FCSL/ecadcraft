@@ -358,7 +358,7 @@ impl PointinfoParams {
     }
 }
 
-impl Command for PointinfoParams {
+impl JsonCommand for PointinfoParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let q = self.query();
         on_any_page(s, |p, _| {
@@ -399,7 +399,7 @@ pub(crate) struct ShowpointParams {
     now: Option<bool>,
 }
 
-impl Command for ShowpointParams {
+impl JsonCommand for ShowpointParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let q = PointQuery { branch: self.branch, version: self.version, revision: self.revision, seq: self.seq, now: self.now };
         on_any_page(s, |p, _| show_point(p, &q))
@@ -442,7 +442,7 @@ fn show_point(p: &mut Project, q: &PointQuery) -> Result<Value, CmdError> {
 #[schemars(extend("properties" = {}))]
 pub(crate) struct ClosepointParams {}
 
-impl Command for ClosepointParams {
+impl JsonCommand for ClosepointParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_any_page(s, |p, _| {
             let was = p.display.revision_view.take().map(|v| v.rev);
@@ -502,7 +502,7 @@ impl RestoreParams {
     }
 }
 
-impl Command for RestoreParams {
+impl JsonCommand for RestoreParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let preview = self.preview == Some(true);
         let q = self.query();

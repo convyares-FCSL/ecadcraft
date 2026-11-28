@@ -9,7 +9,7 @@
 //!   `execute`, so every refusal, check and transaction is the one a person gets;
 //! - **agent authorship**: every transaction the agent makes (edits, undos, redos) is recorded as
 //!   `Author::Agent(<client name>)`, from the client's `initialize` (or `--agent`);
-//! - **the ECAD read tools** (`ecad_project`, `ecad_history`, `ecad_inspect`) and **`save`**
+//! - **the ECAD read tools** (`ecad_project`, `ecad_history`, `ecad_inspect`, `describe_command`) and **`save`**
 //!   (only with `--write`; save-as, open, new and close stay with the person);
 //! - **caps**: request size ([`MAX_REQUEST_BYTES`]), batch length ([`MAX_BATCH`]) and
 //!   transactions per call (`MAX_TRANSACTIONS_PER_CALL`).

@@ -90,7 +90,7 @@ flat (backend, db, disk, power).
 ```
 ecad-electrical/src/
   lib.rs, error.rs
-  commands/        the Generic trait, Cx, Outcome, CmdError, shared argument readers (run.rs, input.rs)
+  commands/        a command's definition (request.rs), the Generic trait, Cx, Outcome, CmdError, shared argument readers (run.rs, input.rs)
   views/           the view pipeline: Views, Changes, Lazy
   fields.rs        typed input: the grammars of what a person types into a field, with named refusals
   defaults/        built-in data, one file per feature

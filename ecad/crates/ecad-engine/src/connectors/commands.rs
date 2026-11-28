@@ -24,22 +24,22 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_project, plain_style};
 use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::connectors::{self as cn, Names};
 use ecad_electrical::symbols::Starter;
 
 /// The commands of this module with a typed input.
-pub(crate) const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];
+pub(crate) const TYPED: &[Typed] = &[Typed::json::<ConnectorParams>("connector"), Typed::json::<PinlabelParams>("pinlabel")];
 
 /// The commands this module adds (registered in `lanes.rs`).
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("connector", "Connector", crate::commands::input::typed::<ConnectorParams>)
+        CommandSpec::new("connector", "Connector", crate::commands::input::run_json::<ConnectorParams>)
             .interactive(crate::connectors::interact::connector)
             .noundo(),
-        CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::typed::<PinlabelParams>).noundo(),
+        CommandSpec::new("pinlabel", "Rename Pin", crate::commands::input::run_json::<PinlabelParams>).noundo(),
     ]
 }
 
@@ -101,7 +101,7 @@ pub(crate) struct ConnectorParams {
     page: Option<PageId>,
 }
 
-impl Command for ConnectorParams {
+impl JsonCommand for ConnectorParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let degrees = self.rotation.unwrap_or_default();
         if ![0.0, 90.0, 180.0, 270.0].contains(&degrees.0) {
@@ -275,7 +275,7 @@ pub(crate) struct PinlabelParams {
     to: String,
 }
 
-impl Command for PinlabelParams {
+impl JsonCommand for PinlabelParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let input = PinlabelInput { device: self.device, pin: self.pin, connection_point: self.connection_point, to: self.to };
         let v = on_project(s, |p, pg, _| {

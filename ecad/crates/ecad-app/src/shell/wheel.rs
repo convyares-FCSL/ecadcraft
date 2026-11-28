@@ -12,6 +12,7 @@
 
 use crate::commands::actions::{self, Action, App, Choices, Context, Enabled, IdOf, Params};
 use ecad_electrical::devices::kinds::ObjectKind;
+use ecad_electrical::wires::commands::nets::{Net, NetParams, Wiresettings, WiresettingsParams};
 use ecad_engine::cad::Input;
 use ecad_engine::cad::Vec2;
 use ecad_engine::pointer::kind::{self, Target};
@@ -167,11 +168,9 @@ impl crate::shell::app::App {
     fn choices(&mut self, c: Choices) -> (Vec<String>, Vec<Value>) {
         match c {
             Choices::Potentials => {
-                let w = self.run_value("wiresettings", json!({})).unwrap_or(Value::Null);
-                let mut names: Vec<String> = w
-                    .get("potentials")
-                    .and_then(Value::as_array)
-                    .map(|a| a.iter().filter_map(|p| p.get("name").and_then(Value::as_str).map(str::to_string)).collect())
+                let mut names: Vec<String> = self
+                    .call::<Wiresettings>(WiresettingsParams::default())
+                    .map(|w| w.potentials.into_iter().map(|p| p.name).collect())
                     .unwrap_or_default();
                 names.truncate(ecad_widgets::wheel::MAX_LIST - 1);
                 let mut vals: Vec<Value> = names.iter().map(|n| Value::String(n.clone())).collect();
@@ -354,8 +353,8 @@ impl crate::shell::app::App {
             App::ShowNet => {
                 let t = target.ok_or("no wire")?;
                 let w = t.conductor.ok_or("no wire")?;
-                let v = self.cad.run("net", json!({"conductor": w.hex()}))?;
-                let wires: Vec<ecad_model::WireId> = ecad_engine::commands::reply::ids(&v, "conductors");
+                let net = self.call::<Net>(NetParams { conductor: Some(w), ..NetParams::default() }).map_err(|e| e.to_string())?;
+                let wires = net.conductors;
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
                         wires
@@ -365,7 +364,7 @@ impl crate::shell::app::App {
                     })?;
                     self.cad.session.set_selection(handles);
                 }
-                let number = v.get("number").and_then(Value::as_str).unwrap_or("unnumbered");
+                let number = net.number.as_deref().unwrap_or("unnumbered");
                 self.shell.tools.intent.note = Some(format!("Net {number}: {} wire{}", wires.len(), ecad_widgets::plural(wires.len())));
             }
             App::CableReference => {

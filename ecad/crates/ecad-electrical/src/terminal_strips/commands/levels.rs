@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::input::nullable;
-use crate::commands::run::{Cx, Generic, Outcome};
+use crate::commands::run::{Cx, JsonGeneric, Outcome};
 use crate::error::CmdError;
 use crate::terminal_strips::terminal_blocks as tt;
 
@@ -443,7 +443,7 @@ pub struct TerminalblocklabelParams {
     move_to: Option<MoveToParam>,
 }
 
-impl Generic for TerminalblocklabelParams {
+impl JsonGeneric for TerminalblocklabelParams {
     const ID: &'static str = "terminalblocklabel";
     const TITLE: &'static str = "Terminal Block Label";
 
@@ -485,7 +485,7 @@ pub struct TopositionParams {
     position: Option<String>,
 }
 
-impl Generic for TopositionParams {
+impl JsonGeneric for TopositionParams {
     const ID: &'static str = "toposition";
     const TITLE: &'static str = "Make Strip Position";
 

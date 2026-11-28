@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use ecad_electrical::CmdError;
 use ecad_electrical::commands::input::Said;
 use ecad_electrical::commands::input::{Bounded, nullable};
-use ecad_electrical::commands::run::{Cx, Generic, Outcome, Pages};
+use ecad_electrical::commands::run::{Cx, JsonGeneric, Outcome, Pages};
 use ecad_electrical::styles::commands::text::{BAD_HEIGHT, NOT_A_SYMBOL};
 use ecad_model::objects::styles::text::Weight;
 
@@ -455,7 +455,7 @@ pub struct TextstyleParams {
     kinds: Option<Option<Bounded<KindRowParams, 0, { MAX_KINDS }>>>,
 }
 
-impl Generic for TextstyleParams {
+impl JsonGeneric for TextstyleParams {
     const ID: &'static str = "textstyle";
     const TITLE: &'static str = "Text Styles";
     const PAGES: Pages = Pages::ReadAnywhere;

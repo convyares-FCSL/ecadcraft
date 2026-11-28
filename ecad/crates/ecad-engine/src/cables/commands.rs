@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cables::views::{self, View};
-use crate::commands::input::{Command, Typed};
+use crate::commands::input::{JsonCommand, Typed};
 use crate::commands::{err, on_any_page, on_project, plain_style};
 use ecad_electrical::cables::cable_title;
 use ecad_electrical::cables::layout::{FanEnd, MarkerEnd};
@@ -27,11 +27,11 @@ use ecad_electrical::commands::input::{Bounded, OrNull, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub(crate) const TYPED: &[Typed] = &[
-    Typed::of::<CableslashParams>("cableslash"),
-    Typed::of::<CableaddParams>("cableadd"),
-    Typed::of::<CablecoreParams>("cablecore"),
-    Typed::of::<CablefanParams>("cablefan"),
-    Typed::of::<CableviewParams>("cableview"),
+    Typed::json::<CableslashParams>("cableslash"),
+    Typed::json::<CableaddParams>("cableadd"),
+    Typed::json::<CablecoreParams>("cablecore"),
+    Typed::json::<CablefanParams>("cablefan"),
+    Typed::json::<CableviewParams>("cableview"),
 ];
 
 /// The wires the slash from `from` to `to` crosses on the active page become one new cable, in crossing order,
@@ -53,7 +53,7 @@ pub(crate) struct CableslashParams {
     cable: Option<CableId>,
 }
 
-impl Command for CableslashParams {
+impl JsonCommand for CableslashParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let from = self.from.within(ecad_electrical::commands::input::MAX_COORD, "from").map_err(|e| err(e.to_string()))?;
         let to = self.to.within(ecad_electrical::commands::input::MAX_COORD, "to").map_err(|e| err(e.to_string()))?;
@@ -98,7 +98,7 @@ pub(crate) struct CableaddParams {
     tag: Option<String>,
 }
 
-impl Command for CableaddParams {
+impl JsonCommand for CableaddParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, _| {
             let (cable, ops) =
@@ -128,7 +128,7 @@ pub(crate) struct CablecoreParams {
     cores: Option<Vec<Option<String>>>,
 }
 
-impl Command for CablecoreParams {
+impl JsonCommand for CablecoreParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         if let Some(given) = self.cores {
             let cable = self.cable.ok_or_else(|| err("`cable` (hex id) is required"))?;
@@ -202,7 +202,7 @@ pub(crate) struct CablefanParams {
     at: Option<Option<FanAt>>,
 }
 
-impl Command for CablefanParams {
+impl JsonCommand for CablefanParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let cable = self.cable;
         let end = self.end.map(|e| if e == FanEndParam::A { MarkerEnd::A } else { MarkerEnd::B });
@@ -324,7 +324,7 @@ pub(crate) struct CableviewParams {
     view: Option<ViewParam>,
 }
 
-impl Command for CableviewParams {
+impl JsonCommand for CableviewParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let view = self.view.map(|v| match v {
             ViewParam::Traditional => View::Traditional,

@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::commands::run::{Access, Cx, Generic, Io, Outcome, Pages};
+use crate::commands::run::{Access, Cx, Io, JsonGeneric, Outcome, Pages};
 use crate::error::CmdError;
 use crate::reports::kept::{BomColumn, ReportModels, WireColumn};
 use crate::reports::{self, Group, ReportColumn, Table};
@@ -198,7 +198,7 @@ pub struct BomParams {
     after: Option<u64>,
 }
 
-impl Generic for BomParams {
+impl JsonGeneric for BomParams {
     const ID: &'static str = "bom";
     const TITLE: &'static str = "Bill of Materials";
     const PAGES: Pages = Pages::Any;
@@ -240,7 +240,7 @@ pub struct WirelistParams {
     after: Option<u64>,
 }
 
-impl Generic for WirelistParams {
+impl JsonGeneric for WirelistParams {
     const ID: &'static str = "wirelist";
     const TITLE: &'static str = "Wire Report";
     const PAGES: Pages = Pages::Any;
@@ -276,7 +276,7 @@ pub struct CablelistParams {
     include_not_drawn: Option<bool>,
 }
 
-impl Generic for CablelistParams {
+impl JsonGeneric for CablelistParams {
     const ID: &'static str = "cablelist";
     const TITLE: &'static str = "Cable Report";
     const PAGES: Pages = Pages::Any;

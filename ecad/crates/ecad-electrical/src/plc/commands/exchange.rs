@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::commands::run::{Access, Cx, Generic, Io, Outcome, Pages, Read as FileRead};
+use crate::commands::run::{Access, Cx, Io, JsonGeneric, Outcome, Pages, Read as FileRead};
 use crate::error::CmdError;
 use crate::plc::exchange::*;
 use crate::plc::tagtable::{self, TagFormat};
@@ -92,7 +92,7 @@ pub struct PlcimportParams {
     what: Option<WhatParam>,
 }
 
-impl Generic for PlcimportParams {
+impl JsonGeneric for PlcimportParams {
     const ID: &'static str = "plcimport";
     const TITLE: &'static str = "Import an I/O List";
     const PAGES: Pages = Pages::ReadAnywhere;
@@ -153,7 +153,7 @@ pub struct PlcexportParams {
     path: Option<String>,
 }
 
-impl Generic for PlcexportParams {
+impl JsonGeneric for PlcexportParams {
     const ID: &'static str = "plcexport";
     const TITLE: &'static str = "Export PLC Tags";
     const PAGES: Pages = Pages::Any;
