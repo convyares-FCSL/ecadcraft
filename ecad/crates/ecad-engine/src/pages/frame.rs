@@ -5,7 +5,7 @@
 //! - [`FrameInput::of`] reads everything a page's frame shows: its sheet, the project and page
 //!   properties, the newest issued revisions, the page's number, the next page's number and the
 //!   page count. [`parts`] turns it into lines and texts.
-//! - **Update map** (`ecad/CLAUDE.md` "Derived views"): [`touches`] says which ops
+//! - **Update map** (`ecad/CLAUDE.md` "Derived views"): [`ecad_electrical::pages::frames::touches`] says which ops
 //!   can change the frame of the page shown; the project keeps the last parts and recomputes them
 //!   only after such an op, on open and when another page becomes active. Every other op leaves
 //!   them as they are.

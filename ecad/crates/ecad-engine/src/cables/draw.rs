@@ -183,10 +183,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
 pub(crate) fn text_colour_rgb(c: ecad_model::look::TextColour, sheet: &ecad_model::palette::Sheet) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {
         ecad_model::look::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
-        ecad_model::look::TextColour::Code(i) => {
-            let dark = sheet.sheet == ecad_model::palette::sheet::DARK.sheet;
-            ecad_electrical::cables::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
-        }
+        ecad_model::look::TextColour::Code(i) => ecad_electrical::cables::words::code_drawn(i, sheet).map(rgb),
     }
 }
 

@@ -1,5 +1,5 @@
-//! The nine primitives: [`button`], [`icon_button`], [`pill`], [`chip`],
-//! [`badge`], [`field`], [`segmented`], [`keycap`], [`row`]; and the set-versus-read pair
+//! The nine primitives: [`fn@button`], [`icon_button`], [`pill`], [`chip`],
+//! [`badge`], [`fn@field`], [`fn@segmented`], [`keycap`], [`fn@row`]; and the set-versus-read pair
 //! [`read_value`] (a value read from the drawing: plain text, a go-to) and [`provisional`].
 //!
 //! Each returns an `egui::Response` (or a small struct holding one) and carries an accessible

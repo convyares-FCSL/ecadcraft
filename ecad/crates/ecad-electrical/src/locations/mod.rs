@@ -24,7 +24,7 @@
 //! whole project. Callers decide when to ask: the page drawing on every draw of the active page
 //! (tag prefixes and box labels), [`crate::reports`] for the devices a change could move.
 //!
-//! This module records nothing; [`plan_box`] and [`plan_from_item`] only build ops.
+//! This module records nothing; [`plan_box_with`] and [`plan_from_item_with`] only build ops.
 
 pub mod commands;
 pub mod designations;

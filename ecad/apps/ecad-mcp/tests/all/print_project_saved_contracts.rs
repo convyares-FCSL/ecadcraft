@@ -84,12 +84,9 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         let other = hex(&c.exec("newpage", json!({"title": "Other"})), "page");
         let m = refused(&mut c, "pageprops", json!({"page": other, "number": "402"}));
         assert_eq!(m, "Number 402 is sheet 3 of page 400 (BOM by location).");
-        // AC13: `table`.
+        // AC13: `table` is not offered to agents (a person typing it is refused in its own words).
         let m = refused(&mut c, "table", json!({"at": [50, 50], "rows": 2, "cols": 2}));
-        assert_eq!(
-            m,
-            "Tables can't be placed on ECAD pages yet. Draw it with lines and text, or add a generated page for lists (New Page \u{25b8} Generated)."
-        );
+        assert_eq!(m, ecad_engine::agent::policy::not_offered("table"));
         // S4: the revision scheme is the project's; the agent changes it in one transaction.
         let n = c.log().len();
         let v = c.exec("projectprops", json!({"rev_scheme": {"kind": "letters_dash"}}));
@@ -150,7 +147,6 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         ("newpage", json!({"title": "X", "number": "401"})),
         ("pageprops", json!({"page": bom, "number": "500"})),
         ("mirrormove", json!({"component": k1, "at": [100, 30]})),
-        ("table", json!({"at": [50, 50], "rows": 2, "cols": 2})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd} {params}");

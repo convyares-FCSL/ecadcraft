@@ -287,7 +287,7 @@ pub fn read_storage(store: &ecad_file::Store, path: Option<&Path>) -> Result<Sto
 }
 
 /// Reproject every open page from the document and compare (same handles), then check each page
-/// without relying on handle numbers ([`verify_page`]). Runs on copies, outside the lock.
+/// without relying on handle numbers ([`super::verify::verify_page`]). Runs on copies, outside the lock.
 pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     let mut lines = Vec::new();
     let mut ok = true;

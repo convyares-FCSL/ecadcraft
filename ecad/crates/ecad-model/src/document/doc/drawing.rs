@@ -123,7 +123,7 @@ pub struct PageChange<'a> {
 
 /// A folder of pages: a name and a place in the tree. Pages name their
 /// folder in their `folder` field; sibling order is the relative order in
-/// [`Document::folder_order`].
+/// [`Document::folder_order`](super::document::Document::folder_order).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Folder {

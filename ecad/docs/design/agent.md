@@ -25,8 +25,13 @@ refusal, a cap or a roll-back that behaved differently live would be a second po
 
 - A command runs through the session's own `execute`, never the app's UI path, so commands that exist only
   in the user interface stay unknown to an agent in both modes.
-- Some commands are never run by an agent: opening, closing, Save As and other file and session commands,
-  and `agentaccess` itself. An agent can never turn its own access on, widen it or move the port; the
+- An agent runs only what is offered: ECAD's own commands and a short, reviewed list of CADCraft drawing
+  commands, each marked read or write. Everything else is refused. Why: CADCraft adds commands with every
+  upstream sync, and a denylist lets a new one that touches files (under a parameter name nobody listed) through
+  silently; an allowlist fails closed, and a test fails until each new upstream command is classified.
+- Some commands are never run by an agent, named so even if one were offered by mistake: opening, closing,
+  Save As and other file and session commands, LISP, every command CADCraft classifies as touching files, and
+  `agentaccess` itself. Parameters that name a file stay refused too, as a second fence. An agent can never turn its own access on, widen it or move the port; the
   refusal says the person sets it in the ECAD window.
 - `save` is allowed with writes on, to the project's own file only. Save As and a never-saved project stay
   with the person.

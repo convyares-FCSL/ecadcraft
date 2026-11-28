@@ -135,7 +135,7 @@ pub const CABLE_TYPE_KEY: &str = "cable_type";
 /// A cable groups existing conductors.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
-    /// Its tag (`-W01`) and what it is (the identity of the cable), as [`Device::tag`].
+    /// Its tag (`-W01`) and what it is (the identity of the cable), as [`Device::tag`](super::device::Device::tag).
     pub tag: crate::naming::tag::TagSlot,
     /// What it is for, in words (`setprop` key `description`).
     pub description: Option<crate::objects::devices::Description>,

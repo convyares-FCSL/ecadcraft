@@ -32,6 +32,8 @@
 //! Not here: library files and checkpoints (neither exists yet; a checkpoint record is refused), and other
 //! codecs.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+// Every byte read here may come from a hostile file: no indexing or slicing that can panic.
+#![deny(clippy::indexing_slicing)]
 
 pub mod binding;
 pub mod canonical;

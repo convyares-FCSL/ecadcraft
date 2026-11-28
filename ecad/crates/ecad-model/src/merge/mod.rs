@@ -15,7 +15,7 @@
 //!   target's), two sibling folders with one name (rename one), page or folder order changed
 //!   differently on both sides.
 //! - Nothing is preselected: an unanswered conflict leaves the target's side in
-//!   the provisional result and is listed in [`Plan::unanswered`]; [`Plan::ops`] is empty until
+//!   the provisional result and is listed in [`state::Plan::unanswered`]; [`state::Plan::ops`] is empty until
 //!   every conflict has a choice. Never a dead end: every conflict offers at least two choices.
 //! - The result is ordinary ops from the target's state ([`crate::document::diff::ops_between_in`]) over
 //!   the scope and what the rules added to it.
@@ -23,12 +23,12 @@
 //!   merged only where `keep_project_key` allows (revision fields are never merged into the
 //!   release line).
 //!
-//! - A tag conflict also offers **Make them one** ([`Choice::MakeOne`]): the
-//!   source's device joins the target's through [`Inputs::join`] (the device merge), or the
+//! - A tag conflict also offers **Make them one** ([`state::Choice::MakeOne`]): the
+//!   source's device joins the target's through [`state::Inputs::join`] (the device merge), or the
 //!   source's cable's members join the target's cable; the target's property values are kept.
-//!   When they cannot be one, the choice is left out and [`Plan::unavailable`] says why.
+//!   When they cannot be one, the choice is left out and [`state::Plan::unavailable`] says why.
 //!   Devices and cables share one tag namespace. Provisional tags (`-K?1`) added on both sides are
-//!   not conflicts: the source's gets the next provisional number ([`Plan::provisional_renumbered`]).
+//!   not conflicts: the source's gets the next provisional number ([`state::Plan::provisional_renumbered`]).
 //!
 //! Excluded: "combine" for sibling folders (the rename choice covers it); an inline editor for
 //! anything but property values.

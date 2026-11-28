@@ -11,7 +11,7 @@
 //!   level (lowest terminal ID) decides when they differ (`position-mixed`).
 //! - The **shown label** of level n of position p is the strip property `block_label.<p>.<n>`, else
 //!   `p` for a one-level type, else `p` + separator + level name (`1.L`). Separator and level names
-//!   are registry entries ([`crate::defaults::connection_points`]), resolved strip → project → built-in.
+//!   are registry entries (`crate::defaults::terminal_blocks`), resolved strip → project → built-in.
 //! - Types, codes, level counts, bridges and geometry are what a part *is*: catalogue code here,
 //!   never defaults.
 //!

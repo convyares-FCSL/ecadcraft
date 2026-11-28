@@ -8,13 +8,14 @@ patch guard, the full CI run, the benchmark and the scoped test run. It is a dev
 never shipped.
 
 ## Contents
-- `layers`: the crate-map rules, one module per family: `src/layers.rs` (layers, no OS in Core, `anyhow`,
+- `layers`: the crate-map rules, one module per family: `src/layers.rs` (layers, no OS in Core or the app, `anyhow`,
   `tokio` and `rayon`, dev tools apart), `src/ui_style.rs` (UI components and tokens), `src/drawn_text.rs`,
   `src/errors.rs` (typed errors), `src/readme.rs` (a README per crate whose Contents names real files), and
   the `src/*_guards.rs` modules (typed model, views, engine rules, starters, no history in the comments of
   `src/` or `defaults/*.toml`).
 - `patches`: files changed outside `ecad/` must be listed in `UPSTREAM-PATCHES.md`.
 - `lint`, `ci`: fmt, clippy, tests (slow set included), layers, patches (the QA gate's run).
+- `doc`: the API docs, private items included, with every rustdoc warning an error (not in `lint` or `ci`).
 - `test-changed`: fast tests of the crates not pushed yet (`--with-dependents` adds their dependents).
 - `bench`, `demo`: the load benchmark and the demo session.
 - `clean-builds` (`src/clean.rs`): deletes build folders and merged worktrees.

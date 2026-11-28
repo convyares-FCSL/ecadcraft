@@ -153,8 +153,8 @@ pub fn pages_touched(doc: &Document, registry: &Registry, op: &Op) -> Option<BTr
 }
 
 /// Whether record `r` may be written as `(layer, cat, id)`: a name that is
-/// none or 1–64 characters, at most [`MAX_FIELDS_PER_STYLE`] fields of at most
-/// [`MAX_FIELD_CHARS`] characters, and room in the layer for a new style.
+/// none or 1–64 characters, at most [`MAX_FIELDS_PER_STYLE`](ecad_model::objects::styles::MAX_FIELDS_PER_STYLE) fields of at most
+/// [`MAX_FIELD_CHARS`](ecad_model::objects::styles::MAX_FIELD_CHARS) characters, and room in the layer for a new style.
 ///
 /// # Errors
 /// The bound it breaks, in words.

@@ -1,7 +1,7 @@
 //! The commands of the symbol builder: `symbolnew`, `symboledit`,
 //! `symbolimpact` (read only), `symbolupdate` and `makesymbol`, and `place` of a project symbol.
 //!
-//! Every write is one transaction, committed through [`Project::apply_edit`]; nothing here opens a
+//! Every write is one transaction, committed through [`crate::Project::apply_edit`]; nothing here opens a
 //! dialog. The builder saves through these JSON forms.
 //!
 //! Each command is a thin shim: its params struct reads the JSON, the rules in

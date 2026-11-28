@@ -6,7 +6,7 @@
 //! so no data file can widen what is allowed.
 //!
 //! # Semantics
-//! - [`load`] reads one file (a built-in file now, a company standard file later). It never panics
+//! - [`load_in`] reads one file (a built-in file now, a company standard file later). It never panics
 //!   and never gives a value outside its entry's range: a file too large or nested too deep is
 //!   refused before parsing, a syntax error refuses the whole file, an unknown key is listed and
 //!   ignored, a value of the wrong kind or out of range is listed and left out, so the layer below
@@ -33,9 +33,9 @@ use toml::de::{DeTable, DeValue};
 use crate::registry::styles::{Builtin as BuiltinStyle, Catalogue, Field};
 use crate::registry::{Entry, Kind, Value, parse_value};
 
-/// The largest file [`load`] parses: a guard, not a preference.
+/// The largest file [`load_in`] parses: a guard, not a preference.
 pub const MAX_BYTES: usize = 256 * 1024;
-/// The deepest nesting [`load`] parses: brackets, braces and dotted keys.
+/// The deepest nesting [`load_in`] parses: brackets, braces and dotted keys.
 pub const MAX_DEPTH: usize = 16;
 /// The unknown keys listed one by one; the rest are counted in one problem.
 pub const MAX_LISTED: usize = 50;

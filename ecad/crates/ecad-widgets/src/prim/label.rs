@@ -100,7 +100,7 @@ impl<'a> Chip<'a> {
         self.selected = selected;
         self
     }
-    /// Show a close button (accessible label "Remove <text>").
+    /// Show a close button (accessible label "Remove `<text>`").
     pub fn closable(mut self) -> Self {
         self.closable = true;
         self

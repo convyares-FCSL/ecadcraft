@@ -3,7 +3,7 @@
 //! ("from box" where a box gives it), symbol, pages placed (a go-to), part and state read. Filter
 //! chips: Provisional, Not on a page yet.
 //!
-//! **Update map.** The rows are the Devices list's entries ([`ecad_engine::device_list`]) plus
+//! **Update map.** The rows are the Devices list's entries ([`ecad_engine::reports::device_list`]) plus
 //! each device's resolved location. On each sync the project's device feed
 //! (`device_changes_since`) names the touched devices; only their rows are re-read and patched.
 //! A touched location box (its outline or value) or changed project settings re-read every row's

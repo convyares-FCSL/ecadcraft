@@ -163,7 +163,7 @@ pub static POINT_GRID: Entry = Entry {
     project: ProjectSource::Property,
 };
 
-/// Entries (listed in [`crate::defaults::all`]).
+/// Entries (listed in [`crate::defaults::data::LISTS`]).
 pub static BUILDER_ENTRIES: &[&Entry] = &[&POINT_GRID];
 
 /// The point grid of `doc`, millimetres.

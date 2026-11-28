@@ -1,4 +1,4 @@
-//! The engine half of [`crate::generated`]: a generated page's sheets drawn as frame and content
+//! The engine half of [`ecad_electrical::pages::generated`]: a generated page's sheets drawn as frame and content
 //! parts in paper millimetres, from the rows and sheets the rules work out.
 
 use cadcraft_engine::doc::{EntityKind, HAlign, Text, VAlign};

@@ -7,4 +7,6 @@ Status: Draft, not started; release not yet placed
 - Pass the branch seed in explicitly: `create_branch` (ecad-file's `project/branches.rs`) takes its entropy
   from `ecad_store::random_u128` inside it.
 
-Deleting `apply_ops` and the `test-ops` feature is in [0.2.4](release-0.2.4.md) (#171).
+- Build a cable's reference end on a second page with a command in the tests that pair two ends
+  (`reference_end` in the engine, app and MCP test helpers), once a command draws a cable on two pages.
+  The `test-ops` feature (`apply_ops`) stays for the hostile and stale edits tests commit on purpose.

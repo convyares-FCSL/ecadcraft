@@ -52,7 +52,7 @@ impl App {
         self.command.hint
     }
 
-    /// Act on a click of an ECAD Tool Sets button (see [`tools`]): start its command's interactive
+    /// Act on a click of an ECAD Tool Sets button (see [`super::tools`]): start its command's interactive
     /// form (as typing its bare name does; the Command field is cleared and the drawing gets the
     /// keyboard, so the next key answers the prompt), run its command through the command line
     /// (the same path as typing it), or put its template in the command field. The selection is

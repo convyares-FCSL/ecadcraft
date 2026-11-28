@@ -2,17 +2,17 @@
 //! manager is a [`ecad_widgets::table::TableSource`] over a kept model plus the table's state, never a
 //! panel of its own.
 //!
-//! - [`checks`]: Checks (read-mostly): severity, message, object, page (a go-to) and fixes.
-//! - [`devices`]: Devices: tag and description set here, function, location, symbol, pages, part
+//! - [`crate::checks::list`]: Checks (read-mostly): severity, message, object, page (a go-to) and fixes.
+//! - [`crate::devices::list`]: Devices: tag and description set here, function, location, symbol, pages, part
 //!   and state read.
-//! - [`connection_points`]: the terminal manager, mirrored (inside | strip | outside).
-//! - [`plc`]: Lists ▸ PLC: rack chips, tiles, the channel table.
-//! - [`wires`], [`cables`]: the Project ▸ Wires and Cables tabs over the report models
-//!   ([`report`]); [`reports`]: Project ▸ Reports' list round today's Reports window.
-//! - [`workspace`]: the Project workspace: the tab strip, the head's
+//! - [`crate::terminal_strips::plan`]: the terminal manager, mirrored (inside | strip | outside).
+//! - [`crate::plc::list`]: Lists ▸ PLC: rack chips, tiles, the channel table.
+//! - [`crate::wires::list`], [`crate::cables::list`]: the Project ▸ Wires and Cables tabs over the report models
+//!   ([`crate::reports::report`]); [`crate::reports::list`]: Project ▸ Reports' list round today's Reports window.
+//! - [`frame`]: the Project workspace: the tab strip, the head's
 //!   actions, each tab's body and the foot; [`detail`]: its right panel, the selected item.
 //!
-//! The Project workspace ([`workspace`]) places each view; the Project panel's Checks and Devices
+//! The Project workspace ([`frame`]) places each view; the Project panel's Checks and Devices
 //! tabs ([`crate::checks::panel`], [`crate::devices::panel`]) and Reports ▸ Terminals
 //! ([`crate::reports::panel`]) call the same views.
 //!

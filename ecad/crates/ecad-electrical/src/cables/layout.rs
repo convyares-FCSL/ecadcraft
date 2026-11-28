@@ -268,7 +268,7 @@ pub enum Shape {
 pub enum Weight {
     /// [`CABLE_WEIGHT`]: trunk and spine.
     Cable,
-    /// [`WIRE_WEIGHT`]: bends, tails, box frame, flag.
+    /// [`crate::cables::words::WIRE_WEIGHT`]: bends, tails, box frame, flag.
     Wire,
     /// Text (the layer's weight).
     Text,

@@ -1,5 +1,6 @@
 pub(crate) mod app;
 pub(crate) mod frame;
+pub(crate) mod host;
 pub(crate) mod layouts_and_hover;
 pub(crate) mod panels;
 pub(crate) mod paths;

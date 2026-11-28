@@ -317,7 +317,7 @@ fn with_writes_off_every_catalogued_command_but_the_read_ones_is_refused_and_not
         let r = c.exec_raw(id, json!({}));
         assert_eq!(r["isError"], json!(true), "{id} must be refused with writes off: {r}");
         let m = r["content"][0]["text"].as_str().unwrap_or_default().to_string();
-        assert!(m == policy::WRITES_OFF || m == never_msg(id), "{id}: unexpected message {m}");
+        assert!(m == policy::WRITES_OFF || m == never_msg(id) || m == policy::not_offered(id), "{id}: unexpected message {m}");
         checked += 1;
     }
     assert!(checked > 100, "the whole catalogue was walked ({checked})");
@@ -435,10 +435,10 @@ fn raw_cadcraft_edits_through_mcp_match_the_json_forms() {
     }
 }
 
-/// Every command ECAD refuses on its pages gets, through MCP, exactly the refusal a person's JSON
-/// form gets (whichever check refuses it first), and records nothing.
+/// Every command ECAD refuses on its pages is refused for a person, and refused by the agent gate
+/// before it runs through MCP (none is offered to agents); nothing is recorded.
 #[test]
-fn every_command_ecad_refuses_gets_the_persons_refusal_through_mcp() {
+fn every_command_ecad_refuses_is_refused_by_the_gate_through_mcp() {
     let mut d = Direct::new();
     let mut c = writer();
     c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
@@ -449,7 +449,9 @@ fn every_command_ecad_refuses_gets_the_persons_refusal_through_mcp() {
             let person = d.s.execute(cmd, &params).map_err(|e| e.to_string());
             let r = c.exec_raw(cmd, params.clone());
             assert_eq!(r["isError"], json!(true), "{cmd} {params}: {r}");
-            assert_eq!(r["content"][0]["text"].as_str(), person.as_ref().err().map(String::as_str), "{cmd} {params}");
+            assert!(person.is_err(), "{cmd} {params}: refused for a person");
+            let gate = if policy::NEVER_COMMANDS.contains(cmd) { policy::never(cmd) } else { policy::not_offered(cmd) };
+            assert_eq!(r["content"][0]["text"].as_str(), Some(gate.as_str()), "{cmd} {params}");
             assert_eq!(c.log(), before, "{cmd} recorded nothing");
         }
     }

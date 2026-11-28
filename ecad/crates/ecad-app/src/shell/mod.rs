@@ -10,9 +10,9 @@
 //!   ([`left`]);
 //! - main view: the page (CADCraft's drawing through the host's drawing seam, `CadApp::ui_embedded`),
 //!   or Lists, Library and Publish hosting today's Reports, symbol search and Release / Print Book;
-//!   it splits for a companion view ([`layout`]);
+//!   it splits for a companion view ([`mod@layout`]);
 //! - the inspector at the right, a 56 px rail of its Device, Layout and Checks tabs when
-//!   collapsed ([`right`]), with the Text panel over it (Ctrl+/; [`text_panel`]);
+//!   collapsed ([`crate::inspector`]), with the Text panel over it (Ctrl+/; [`text_panel`]);
 //! - the bottom bar: status, the page well and the view ([`status_bar`]);
 //! - the review drawer under the canvas, only while a symbol review or Compare shows
 //!   ([`drawer`]);

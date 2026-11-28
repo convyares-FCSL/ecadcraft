@@ -4,7 +4,7 @@
 //! one headless CADCraft session with the ECAD commands installed and one ECAD project open, as
 //! the desktop app does. On top of CADCraft's server it adds:
 //!
-//! - **a write gate** ([`policy`]): read-only unless started with `--write`, and read-only
+//! - **a write gate** ([`policy`](ecad_engine::agent::policy)): read-only unless started with `--write`, and read-only
 //!   whatever the flag when the project opened read-only. Writes reach the project only through
 //!   `execute`, so every refusal, check and transaction is the one a person gets;
 //! - **agent authorship**: every transaction the agent makes (edits, undos, redos) is recorded as
@@ -12,7 +12,7 @@
 //! - **the ECAD read tools** (`ecad_project`, `ecad_history`, `ecad_inspect`) and **`save`**
 //!   (only with `--write`; save-as, open, new and close stay with the person);
 //! - **caps**: request size ([`MAX_REQUEST_BYTES`]), batch length ([`MAX_BATCH`]) and
-//!   transactions per call ([`MAX_TRANSACTIONS_PER_CALL`]).
+//!   transactions per call (`MAX_TRANSACTIONS_PER_CALL`).
 //!
 //! CADCraft's `command_line`, `script`, `cancel`, `new_drawing` and `open` tools are not offered:
 //! typed lines could reach file commands and several commands per call.
@@ -76,7 +76,7 @@ pub(crate) struct State {
     /// Whether the author name was taken from a client's `initialize` (later ones are ignored).
     pub(crate) named: bool,
     /// Transactions recorded so far by the request line being answered: a batch counts as one
-    /// call ([`MAX_TRANSACTIONS_PER_CALL`]).
+    /// call (`MAX_TRANSACTIONS_PER_CALL`).
     pub(crate) line_transactions: usize,
     /// Request lines answered so far (sent with bridged calls: the window counts per line).
     line: u64,
@@ -139,7 +139,7 @@ impl State {
     /// Why the headless project cannot be written, if it cannot.
     ///
     /// # Errors
-    /// [`UNREADABLE`] when the project cannot be read.
+    /// [`UNREADABLE`](ecad_engine::agent::UNREADABLE) when the project cannot be read.
     pub(crate) fn read_only(&mut self) -> Result<Option<String>, String> {
         let l = self.local()?;
         gate::read_only(&mut l.headless.session, &l.project)
@@ -601,10 +601,26 @@ impl EcadMcp {
                         Err(m) => error(id, INVALID_PARAMS, m),
                     });
                 }
+                if name == "list_commands" {
+                    // Only what the gate offers, each marked; `all` lists every command, the refused ones marked.
+                    let all = params.pointer("/arguments/all").and_then(Value::as_bool).unwrap_or(false);
+                    let mut r = self.inner.handle(msg)?;
+                    if let Some(t) = r.pointer_mut("/result/content/0/text") {
+                        agent_command_text(t, all, true);
+                    }
+                    return Some(r);
+                }
                 if CADCRAFT_TOOLS.contains(&name) {
                     return self.inner.handle(msg);
                 }
                 Some(error(id, INVALID_PARAMS, not_offered(name)))
+            }
+            "resources/read" if params.get("uri").and_then(Value::as_str) == Some("cadcraft://commands") => {
+                let mut r = self.inner.handle(msg)?;
+                if let Some(t) = r.pointer_mut("/result/contents/0/text") {
+                    agent_command_text(t, false, false);
+                }
+                Some(r)
             }
             _ => self.inner.handle(msg),
         }
@@ -632,6 +648,14 @@ impl EcadMcp {
                             o.insert("description".into(), json!(tools::execute_description(writes)));
                         }
                     }
+                    Some("list_commands") => {
+                        if let Some(o) = t.as_object_mut() {
+                            o.insert("description".into(), json!(tools::LIST_COMMANDS));
+                        }
+                        if let Some(p) = t.pointer_mut("/inputSchema/properties").and_then(Value::as_object_mut) {
+                            p.insert("all".into(), json!({"type": "boolean"}));
+                        }
+                    }
                     Some("render") => {
                         if let Some(p) = t.pointer_mut("/inputSchema/properties").and_then(Value::as_object_mut) {
                             p.remove("path");
@@ -645,6 +669,18 @@ impl EcadMcp {
         let live = self.mode().is_some();
         tools.extend(tools::definitions(writes, live));
         json!({ "tools": tools })
+    }
+}
+
+/// Rewrite the JSON command list in `text` (the engine's `engine.commands`) as an agent sees it
+/// ([`tools::agent_commands`]); `pretty` keeps the tool's pretty-printed text. Text that is not a
+/// command list is left as it is.
+fn agent_command_text(text: &mut Value, all: bool, pretty: bool) {
+    let Some(list) = text.as_str().and_then(|s| serde_json::from_str::<Value>(s).ok()) else { return };
+    let list = tools::agent_commands(list, all);
+    let out = if pretty { serde_json::to_string_pretty(&list) } else { serde_json::to_string(&list) };
+    if let Ok(out) = out {
+        *text = Value::String(out);
     }
 }
 

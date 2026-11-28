@@ -1,4 +1,4 @@
-//! [`Variant::Rich`](crate::Variant::Rich): the lean project of a tier plus the domain's other
+//! [`crate::Variant::Rich`]: the lean project of a tier plus the domain's other
 //! objects, so the views that hold them (connectors, PLC, terminal strips, the cover, ratings,
 //! cross-references with contacts) are measured on data and not on an empty corpus.
 //!

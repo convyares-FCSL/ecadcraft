@@ -1591,6 +1591,7 @@ dependencies = [
  "cadcraft-engine",
  "cadcraft-mcp",
  "cadcraft-ui-egui",
+ "chrono",
  "ecad-drawing-style",
  "ecad-electrical",
  "ecad-engine",

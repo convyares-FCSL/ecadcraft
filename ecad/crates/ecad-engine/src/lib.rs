@@ -10,11 +10,11 @@
 //! - [`ProjectHandle`] (the `access` module): the only way to reach a project from outside, under its lock.
 //! - [`cad`]: the CADCraft types and functions the app and the programs may name.
 //! - [`commands`]: the command registry and the shared helpers of session commands.
-//! - [`pointer`]: what is under the cursor, the running tool's intent, the marks drawn over pages, the hover
+//! - [`mod@pointer`]: what is under the cursor, the running tool's intent, the marks drawn over pages, the hover
 //!   text, and what the click-based forms of the commands share (each form is in its feature's `interact` module).
 //! - [`convert`] and each feature's `draw` module: building CADCraft entities, text styles and fonts from
 //!   what the rules decide.
-//! - [`file`]: the project's `.ecad` file on disk, the home folder and path rules.
+//! - [`mod@file`]: the project's `.ecad` file on disk, the home folder and path rules.
 //! - [`history`]: the History tab: versions, points, restore, branches and merging.
 //! - [`agent`]: what an agent may run, its caps, its author name and its read tools.
 //! - [`background`], [`warm`]: work off the UI thread, and the first builds of the kept views.
@@ -65,8 +65,8 @@ pub mod wires;
 pub use crate::access::{BUSY, NOT_ATTACHED, PagesRef, ProjectHandle};
 pub use crate::file::{SaveAsError, SaveAsRefused, ensure_default_folder, home, normalize, normalize_resolved, save_project_as, without_extension};
 pub use crate::project::{
-    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, project_page, project_page_with,
-    session_seed, tree_rows, writer,
+    Change, Faults, HandleMap, Mapped, PageRow, PageView, Persistence, Project, SAVE_UNAVAILABLE, TreeRow, View, now_ms, project_page,
+    project_page_with, session_seed, tree_rows, writer,
 };
 
 /// The incorporated CADCraft commit (see `ecad/UPSTREAM.md`).

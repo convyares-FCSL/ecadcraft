@@ -1,5 +1,6 @@
 //! The crate-map rules: the layer table (Core, Engine, UI kit, App, Programs, Dev) and what each layer may
-//! depend on, in `Cargo.toml` and in its sources; Core reaches no OS except `ecad-store`; the crate rules
+//! depend on, in `Cargo.toml` and in its sources; Core reaches no OS except `ecad-store`, and the app none but
+//! a monotonic clock for UI timing; the crate rules
 //! (`anyhow`, `tokio`, `rayon`); and developer tools kept apart from product code (dev features read only in
 //! a crate's `dev` module, no product source reads a file under `dev/`). The UI source rules
 //! ([`super::ui_style`]) run in the same pass over the product sources.
@@ -86,7 +87,7 @@ pub(crate) const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 pub(crate) const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
 /// Features whose code lives only in a crate's `dev` module.
-pub(crate) const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops"];
+pub(crate) const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops", "test-counts"];
 
 /// The engine files that read a dev feature outside its `dev` module, and why: the fault-injection and
 /// test-ops hooks sit inside the write and access paths they break or open, so a test exercises the
@@ -142,7 +143,12 @@ pub(crate) const CORE_OS: &[&str] = &[
     "OpenOptions",
 ];
 
-/// Crates that find the user's folders: Core other than [`CORE_OS_OK`] may not depend on them.
+/// What the app may use of [`CORE_OS`]: the monotonic clock, for UI timing (animations, flashes,
+/// how long ago an agent called). The wall clock, disk, environment and the rest come from the
+/// host program (`ecad_app::shell::host::Host`).
+pub(crate) const APP_OS_OK: &[&str] = &["Instant::now"];
+
+/// Crates that find the user's folders: Core other than [`CORE_OS_OK`], and the app, may not depend on them.
 pub(crate) const CORE_OS_CRATES: &[&str] = &["dirs", "dirs-next", "dirs-sys", "directories", "directories-next"];
 
 /// Crates besides Programs that may use `anyhow`: xtask and
@@ -281,10 +287,11 @@ pub(crate) fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// The places in one Core source file (`rel`, `/` separated) that reach the OS directly
-/// ([`CORE_OS`]), as `rel:line: text`. `//` comments are skipped, and so is everything from a
-/// `#[cfg(test)]` line followed by a `mod` line (the file's test module) on.
-pub(crate) fn core_os_places(rel: &str, text: &str) -> Vec<String> {
+/// The places in one source file (`rel`, `/` separated) of a crate of `class` that reach the OS
+/// directly ([`CORE_OS`], less [`APP_OS_OK`] in the app), as `rel:line: text`. `//` comments are
+/// skipped, and so is everything from a `#[cfg(test)]` line followed by a `mod` line (the file's
+/// test module) on.
+pub(crate) fn os_places(class: Class, rel: &str, text: &str) -> Vec<String> {
     let code = strip_line_comments(text);
     let lines: Vec<&str> = code.lines().collect();
     let end = (0..lines.len())
@@ -293,7 +300,8 @@ pub(crate) fn core_os_places(rel: &str, text: &str) -> Vec<String> {
                 && lines.get(i + 1).is_some_and(|n| n.trim_start().starts_with("mod ") || n.trim_start().starts_with("pub mod "))
         })
         .unwrap_or(lines.len());
-    name_places(rel, text, lines.get(..end).unwrap_or_default(), CORE_OS)
+    let names: Vec<&str> = CORE_OS.iter().copied().filter(|n| class != Class::App || !APP_OS_OK.contains(n)).collect();
+    name_places(rel, text, lines.get(..end).unwrap_or_default(), &names)
 }
 
 /// The places in one source file (`rel`) of crate `name` that name a path its layer must not
@@ -328,21 +336,26 @@ pub(crate) fn path_violations(meta: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Direct OS access in Core crates other than [`CORE_OS_OK`]: every source
-/// line that reaches the OS outside the test module, and every dependency on a crate that finds
-/// the user's folders ([`CORE_OS_CRATES`]). A hard zero.
-pub(crate) fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
-    const WHY: &str = "Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in";
+/// Direct OS access in Core crates other than [`CORE_OS_OK`] and in the app: every source
+/// line that reaches the OS outside the test module (the app may read the monotonic clock,
+/// [`APP_OS_OK`]), and every dependency on a crate that finds the user's folders
+/// ([`CORE_OS_CRATES`]). A hard zero.
+pub(crate) fn os_violations(meta: &Value) -> Result<Vec<String>, String> {
+    const CORE_WHY: &str =
+        "Core stays pure data and rules, so it is testable and portable: disk access belongs to ecad-store, and the time is passed in";
+    const APP_WHY: &str = "the app has no disk, OS or wall clock of its own: the host program supplies them (shell::host::Host)";
     let root = PathBuf::from(meta["workspace_root"].as_str().ok_or("cargo metadata: no workspace root")?);
     let mut out = Vec::new();
     for (name, class, dir, p) in classed_packages(meta)? {
-        if class != Class::Core || name == CORE_OS_OK {
-            continue;
-        }
+        let why = match class {
+            Class::Core if name != CORE_OS_OK => CORE_WHY,
+            Class::App => APP_WHY,
+            Class::Core | Class::Engine | Class::UiKit | Class::Programs | Class::Dev | Class::Exempt => continue,
+        };
         for d in p["dependencies"].as_array().into_iter().flatten() {
             let dep = d["name"].as_str().unwrap_or_default();
             if CORE_OS_CRATES.contains(&dep) && d["kind"].as_str() != Some("dev") {
-                out.push(format!("{name} must not depend on {dep} ({WHY})"));
+                out.push(format!("{name} must not depend on {dep} ({why})"));
             }
         }
         let Some(dir) = dir else { continue };
@@ -351,7 +364,7 @@ pub(crate) fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
         for f in files {
             let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
-            out.extend(core_os_places(&rel, &text).into_iter().map(|p| format!("{p} ({WHY})")));
+            out.extend(os_places(class, &rel, &text).into_iter().map(|p| format!("{p} ({why})")));
         }
     }
     Ok(out)

@@ -7,7 +7,7 @@
 //!
 //! - [`shell`]: the Graphite shell colours, with the contrast of every stated text pair.
 //! - [`ui_type`]: the UI type ramp (px).
-//! - [`space`], [`size`], [`radius`], [`line`], [`wheel`], [`shadow`]: geometry.
+//! - [`space`], [`size`], [`radius`], [`mod@line`], [`wheel`], [`shadow`]: geometry.
 //! - [`icon`]: the names of the shell's icons (painted by `ecad-widgets`).
 //!
 //! This module **excludes** any drawing, any toolkit type and the drawing style (sheet colours,

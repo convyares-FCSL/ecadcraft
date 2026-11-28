@@ -136,7 +136,7 @@ pub struct Browser {
     pub category: Category,
     pub source: SourceFilter,
     pub selected: Option<Tile>,
-    /// After Save: "Placed next: <name>" with its Place button.
+    /// After Save: "Placed next: `<name>`" with its Place button.
     pub placed_next: Option<String>,
     pub collapsed: BTreeSet<u8>,
 }
