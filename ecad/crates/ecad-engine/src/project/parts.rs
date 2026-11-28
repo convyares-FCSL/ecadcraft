@@ -64,7 +64,7 @@ pub struct Display {
 
 /// The change log and the counts that say what could differ since a copy was read.
 pub struct Counts {
-    /// The last [`super::CHANGE_LOG`] changes, oldest first.
+    /// The last [`CHANGE_LOG`](super::changes::CHANGE_LOG) changes, oldest first.
     pub(super) changes: std::collections::VecDeque<Change>,
     /// Number of the last change (0: none yet).
     pub(super) change_count: u64,
