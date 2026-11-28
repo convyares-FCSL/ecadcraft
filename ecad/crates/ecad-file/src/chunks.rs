@@ -295,7 +295,7 @@ struct ProjectChunkRef<'a> {
     device_links: &'a BTreeMap<ecad_model::LinkId, ecad_model::DeviceLink>,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a [FolderId],
-    /// Left out while empty, so older chunks keep their hashes.
+    /// Left out while empty.
     #[serde(skip_serializing_if = "Option::is_none")]
     standard: Option<&'a Standard>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -561,15 +561,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
     let count = set.buckets.get(kind).copied().ok_or_else(|| FileError::ChunkKindUnknown(key.to_string()))?;
     Ok(match kind {
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
-        "device" => {
-            let m: BTreeMap<DeviceId, Device> = typed(body, key, b, count)?;
-            // Continuations and location boxes are drawing aids, BOM
-            // items loose parts; their old device form is not read.
-            if let Some(e) = m.values().find_map(crate::records::not_device_error) {
-                return Err(FileError::ChunkJson { key: key.to_string(), error: e.to_string() });
-            }
-            Parsed::Device(m)
-        }
+        "device" => Parsed::Device(typed(body, key, b, count)?),
         "connection_point" => Parsed::ConnectionPoint(typed(body, key, b, count)?),
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
