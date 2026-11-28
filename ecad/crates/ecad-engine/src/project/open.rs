@@ -217,8 +217,10 @@ impl Project {
     /// opening found, in words (also recorded as a [`EventKind::ProjectOpened`] event).
     ///
     /// # Errors
-    /// The file cannot be read, or is not a project file this build supports.
-    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(ProjectHandle, String), String> {
+    /// [`crate::file::ProjectFileError`]: the path is refused, there is no file, it is not a project, it is too
+    /// damaged to show anything, it is of another format version this build cannot read to its head, another
+    /// session holds it so it cannot be read, or the system refuses access.
+    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(ProjectHandle, String), crate::file::ProjectFileError> {
         Self::open_file_in(s, path, seed, crate::cables::views::Settings::from_env())
     }
 
@@ -229,7 +231,9 @@ impl Project {
     ///
     /// # Errors
     /// As [`Project::open_file`].
-    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings) -> Result<(ProjectHandle, String), String> {
+    pub fn open_file_in(
+        s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings,
+    ) -> Result<(ProjectHandle, String), crate::file::ProjectFileError> {
         Self::open_file_with(s, path, seed, settings, false)
     }
 
@@ -240,18 +244,19 @@ impl Project {
     /// As [`Project::open_file`].
     pub fn open_file_with(
         s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings, reading: bool,
-    ) -> Result<(ProjectHandle, String), String> {
-        let path = crate::file::normalize(path).map_err(|e| e.to_string())?;
+    ) -> Result<(ProjectHandle, String), crate::file::ProjectFileError> {
+        use crate::file::ProjectFileError as E;
+        let path = crate::file::normalize(path)?;
         let mut o = if reading {
             ecad_file::binding::Binding::open_read_only(&path, seed, &writer())
         } else {
             ecad_file::binding::Binding::open(&path, seed, &writer())
-        }
-        .map_err(|e| e.to_string())?;
+        }?;
         let ledger = o.ledger;
         // Words in values that stay text: read once on open, never per commit.
         o.binding.refuse_unknown_words(ecad_electrical::checks::words_check::check(ledger.document(), &ecad_drawing_style::REGISTRY));
-        let default_layer = ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("no layer 0")?;
+        let default_layer =
+            ledger.document().layers().iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or_else(|| E::Other("no layer 0".into()))?;
         let pages: Vec<PageId> = ledger.document().page_order().to_vec();
         // A fresh ID stream for this session, never reissuing the file's IDs.
         let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
@@ -339,7 +344,7 @@ impl Project {
             },
             caller: super::parts::Caller { author: Author::User, tx_budget: None },
         }));
-        let mut p = crate::access::try_lock(&project)?;
+        let mut p = crate::access::try_lock(&project).map_err(E::Other)?;
         p.me = Arc::downgrade(&project);
         // Read the history once, so tag numbering never reads the log during a prompt.
         p.catch_up_tags();
@@ -348,7 +353,7 @@ impl Project {
         let head = p.ledger.head();
         p.events.record(EventKind::ProjectOpened, None, head, None, summary.clone());
         if let Some(first) = pages.first() {
-            p.open_page(&mut Pages(s), *first)?;
+            p.open_page(&mut Pages(s), *first).map_err(E::Other)?;
         }
         drop(p);
         Ok((ProjectHandle::new(project), summary))

@@ -89,7 +89,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitle
     let mut out = MeasuredTitleBlocks::default();
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let first = project.read(&mut s, |p, _| p.ledger.document().page_order().first().copied())?.ok_or("the project has no page")?;
         out.pages = project.read(&mut s, |p, _| p.ledger.document().page_order().len())?;
         project.open_page(&mut s, first)?;

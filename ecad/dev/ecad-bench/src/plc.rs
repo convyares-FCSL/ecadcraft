@@ -150,13 +150,15 @@ pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<Measur
         ecad_engine::install();
         {
             let mut s = Session::empty();
-            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
             populate(&project, &mut s)?;
             drop(project);
         }
         crate::measure::release_lock_file(&copy);
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED + 1, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let mut out = MeasuredPlc::default();
         let mut build = Vec::new();
         for _ in 0..runs {

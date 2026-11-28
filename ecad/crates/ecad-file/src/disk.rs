@@ -16,7 +16,7 @@ use ecad_model::{Ledger, ProjectId};
 use ecad_store::FileIdentity;
 use ecad_store::disk::{self, LockAttempt, WriterLock};
 
-use super::project::{Opened, Project, Report, SaveError, Saved};
+use super::project::{OpenError, Opened, Project, Report, SaveError, Saved};
 use super::schema::DEFAULT_SNAPSHOT_EVERY;
 use super::store::{Store, StoreError};
 
@@ -102,7 +102,7 @@ pub fn starts_like_project(path: &Path) -> std::io::Result<bool> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum DiskError {
     #[error("could not open {path}: {error}")]
-    Open { path: String, error: String },
+    Open { path: String, error: OpenFailure },
     #[error("not saved: {path} is being edited in another session; nothing was written ({JUST_ENDED})")]
     TargetLocked { path: String },
     #[error("not saved: {step} failed ({error}); the existing file is unchanged")]
@@ -117,6 +117,22 @@ pub enum DiskError {
     ReadOnly(String),
     #[error("not saved: {0}")]
     Save(#[from] SaveError),
+}
+
+/// Why a file on disk could not be opened at all: the variants are the person's choices (find the file, ask
+/// for access, use another build, give up on a damaged file).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum OpenFailure {
+    /// There is no file at the path.
+    #[error("there is no file there")]
+    NoFile,
+    /// The container did not open: access refused, held by another process, or damaged.
+    #[error("{0}")]
+    Store(#[from] StoreError),
+    /// The container opened but the project in it did not: damaged, or another format version this build
+    /// cannot read to its head.
+    #[error("{0}")]
+    Project(#[from] OpenError),
 }
 
 fn show(p: &Path) -> String {
@@ -159,7 +175,8 @@ impl DiskProject {
     /// Open the version 2 project file at `path`. `seed` seeds IDs allocated after opening.
     ///
     /// # Errors
-    /// [`DiskError::Open`]: the file cannot be read or is not a version 2 project.
+    /// [`DiskError::Open`] with its [`OpenFailure`]: no file, a container that does not open, or a project
+    /// that does not.
     pub fn open(path: &Path, seed: u64, writer: &str) -> Result<OpenedDisk, DiskError> {
         Self::open_as(path, seed, writer, false)
     }
@@ -175,9 +192,9 @@ impl DiskProject {
     }
 
     fn open_as(path: &Path, seed: u64, writer: &str, reading: bool) -> Result<OpenedDisk, DiskError> {
-        let open_err = |e: String| DiskError::Open { path: show(path), error: e };
+        let open_err = |e: OpenFailure| DiskError::Open { path: show(path), error: e };
         if !path.is_file() {
-            return Err(open_err("there is no file there".into()));
+            return Err(open_err(OpenFailure::NoFile));
         }
         let attempt = if reading { Ok(LockAttempt::HeldByOther { holder: None }) } else { WriterLock::try_acquire(path, &holder_record(writer)) };
         let (mut lock, mut read_only, reclaimed) = match attempt {
@@ -192,14 +209,14 @@ impl DiskProject {
                 // redb's lock is held by a process without ours (an older build, or a tool).
                 lock = None;
                 read_only = Some(ReadOnly::Locked { holder: None });
-                Store::open(path, false).map_err(|e| open_err(e.to_string()))?
+                Store::open(path, false).map_err(|e| open_err(e.into()))?
             }
-            Err(e) if lock.is_some() && e.to_string().contains("denied") => {
+            Err(e @ StoreError::Denied(_)) if lock.is_some() => {
                 lock = None;
                 read_only = Some(ReadOnly::NotWritable(e.to_string()));
-                Store::open(path, false).map_err(|e| open_err(e.to_string()))?
+                Store::open(path, false).map_err(|e| open_err(e.into()))?
             }
-            Err(e) => return Err(open_err(e.to_string())),
+            Err(e) => return Err(open_err(e.into())),
         };
         let identity = match disk::retry_transient(|| FileIdentity::at(path)) {
             Ok(id) => Some(id),
@@ -209,7 +226,7 @@ impl DiskProject {
                 None
             }
         };
-        let Opened { mut project, ledger, report, unknown_words } = Project::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
+        let Opened { mut project, ledger, report, unknown_words } = Project::open(store, seed, writer).map_err(|e| open_err(e.into()))?;
         // The version first: an older or newer file is never "damaged", and never writable.
         if report.schema_version != crate::SCHEMA_VERSION {
             read_only = read_only.or(Some(ReadOnly::OtherFormat { file: report.schema_version, build: crate::SCHEMA_VERSION }));

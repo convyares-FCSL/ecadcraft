@@ -2,6 +2,7 @@
 
 use super::points::point_at;
 use super::*;
+use crate::file::ProjectFileError;
 
 /// The branch list. Read only.
 #[derive(Deserialize, JsonSchema)]
@@ -109,7 +110,7 @@ impl Command for BranchParams {
             let from = fork_of(p, from.as_ref())?;
             ecad_file::project::check_branch_name(&name).map_err(|e| CmdError::refused(e.to_string()))?;
             // Saved first: the fork point and the branch row are in the file.
-            p.save_pending(pg).map_err(CmdError::refused)?;
+            p.save_pending(pg).map_err(|e| CmdError::refused(e.to_string()))?;
             let by = Some(author_text(&p.caller.author));
             let v = p.storage.file.project_mut().ok_or(CmdError::refused(SAVE_FIRST))?;
             let (id, rec) =
@@ -117,7 +118,7 @@ impl Command for BranchParams {
             p.note_branch_change();
             let mut line = format!("Branch \"{}\" created from {}.", rec.name, from_text(p, &from));
             if switch {
-                switch_to(p, pg, id).map_err(CmdError::refused)?;
+                switch_to(p, pg, id).map_err(|e| CmdError::refused(e.to_string()))?;
                 line.push_str(&format!(" Now on branch \"{}\".", rec.name));
             }
             pg.echo(line.clone());
@@ -129,13 +130,17 @@ impl Command for BranchParams {
 }
 
 /// Show branch `id` (saved already), and say so.
-pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), String> {
+///
+/// # Errors
+/// [`ProjectFileError`]: the project has no file yet, the branch does not read (damaged, or a storage failure),
+/// or its state cannot be shown.
+pub(crate) fn switch_to(p: &mut Project, pg: &mut Pages<'_>, id: BranchId) -> Result<(), ProjectFileError> {
     let seed = crate::project::session_seed();
     let ledger = p.ledger.clone();
-    let v = p.storage.file.project_mut().ok_or("Branches live in the project file. Save it first.")?;
-    let (l, report) = v.switch_to(&ledger, id, seed).map_err(|e| e.to_string())?;
+    let v = p.storage.file.project_mut().ok_or_else(|| ProjectFileError::NoFileYet("Branches live in the project file. Save it first.".into()))?;
+    let (l, report) = v.switch_to(&ledger, id, seed)?;
     let high = v.base_tag_high().clone();
-    p.adopt_branch(pg, l, high)?;
+    p.adopt_branch(pg, l, high).map_err(ProjectFileError::Other)?;
     if let Some(d) = report.damage {
         pg.echo(format!("This branch is damaged ({}); it is shown read-only.", d.detail));
     }
@@ -220,9 +225,9 @@ fn switch_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str, save: bool) -
         if !save {
             return Err(CmdError::refused(unsaved_refusal(p)));
         }
-        p.save_pending(pg).map_err(CmdError::refused)?;
+        p.save_pending(pg).map_err(|e| CmdError::refused(e.to_string()))?;
     }
-    switch_to(p, pg, id).map_err(CmdError::refused)?;
+    switch_to(p, pg, id).map_err(|e| CmdError::refused(e.to_string()))?;
     let from = match rec.fork_point.as_ref() {
         Some(f) => {
             let parent = rec.parent.unwrap_or_else(|| main_of(p));
@@ -272,8 +277,8 @@ fn archive_branch(p: &mut Project, pg: &mut Pages<'_>, which: &str) -> Result<Va
             Some(b) => (main_of(p), format!("Its parent \"{}\" is {}, so the project shows main. ", b.name, status_word(&b.status))),
             None => (main_of(p), String::new()),
         };
-        p.save_pending(pg).map_err(CmdError::refused)?;
-        switch_to(p, pg, to).map_err(CmdError::refused)?;
+        p.save_pending(pg).map_err(|e| CmdError::refused(e.to_string()))?;
+        switch_to(p, pg, to).map_err(|e| CmdError::refused(e.to_string()))?;
         line.push_str(&format!("{why}Now on branch \"{}\". ", current_name(p)));
     }
     let v = p.storage.file.project_mut().ok_or(CmdError::refused(NO_FILE))?;

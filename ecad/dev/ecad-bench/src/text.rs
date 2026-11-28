@@ -44,7 +44,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText,
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let (page, symbols, device) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let page: Option<PageId> = doc.page_order().iter().copied().max_by_key(|pg| doc.representations_on(*pg).count());

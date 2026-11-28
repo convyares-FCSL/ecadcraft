@@ -4,9 +4,20 @@
 use crate::shell::app::*;
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use ecad_engine::history::event_log::EventKind;
-use ecad_engine::{Persistence, Project, ProjectHandle, session_seed};
+use ecad_engine::{Persistence, Project, ProjectFileError, ProjectHandle, session_seed};
 use serde_json::json;
 use std::path::PathBuf;
+
+/// Why the app did not open a project file.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum OpenProjectError {
+    /// A project is open already: close it first.
+    #[error("an ECAD project is already open; close it first")]
+    AlreadyOpen,
+    /// The file did not open; the variant says what the person can do.
+    #[error(transparent)]
+    File(#[from] ProjectFileError),
+}
 
 impl App {
     /// Create a new, unsaved project (only when none is open).
@@ -29,12 +40,12 @@ impl App {
     /// found, in words; anything beyond a clean open is also shown in a dialog.
     ///
     /// # Errors
-    /// A project is already open, or the file could not be opened.
-    pub fn open_project(&mut self, path: &str) -> Result<String, String> {
+    /// [`OpenProjectError::AlreadyOpen`], or the file's [`ProjectFileError`].
+    pub fn open_project(&mut self, path: &str) -> Result<String, OpenProjectError> {
         if self.project_open() {
-            return Err("an ECAD project is already open; close it first".into());
+            return Err(OpenProjectError::AlreadyOpen);
         }
-        let path = self.resolve_ecad(path).map_err(|e| e.to_string())?;
+        let path = self.resolve_ecad(path).map_err(ProjectFileError::from)?;
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -262,7 +273,7 @@ impl App {
         self.files.confirming_close = d.then_close.is_some();
         let path = d.path.trim().to_string();
         let r = match d.kind {
-            DialogKind::Open => self.open_project(&path).map(|_| ()),
+            DialogKind::Open => self.open_project(&path).map(|_| ()).map_err(|e| e.to_string()),
             DialogKind::SaveAs => {
                 let replace = d.confirmed_replace.as_deref() == Some(&path);
                 match self.save_as_checked(&path, replace) {

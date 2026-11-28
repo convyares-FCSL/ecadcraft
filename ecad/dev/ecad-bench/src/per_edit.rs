@@ -75,7 +75,7 @@ pub fn measure(path: Option<&Path>, counts: &[usize], scratch: &Path) -> Result<
     let project = match path {
         Some(p) => {
             std::fs::copy(p, &copy).map_err(|e| format!("copying {} to {}: {e}", p.display(), copy.display()))?;
-            ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::cables::views::Settings::none())?.0
+            ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::cables::views::Settings::none()).map_err(|e| e.to_string())?.0
         }
         None => ecad_engine::Project::create_with(&mut s, "per-edit", SEED, ecad_engine::Persistence::File)?,
     };
@@ -149,7 +149,8 @@ pub fn refusal_snapshot(path: &Path, runs: usize, scratch: &Path) -> Result<Refu
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     ecad_engine::install();
     let mut s = Session::empty();
-    let project = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::cables::views::Settings::none())?.0;
+    let project =
+        ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::cables::views::Settings::none()).map_err(|e| e.to_string())?.0;
     let devices: Vec<String> = project.read(&mut s, |p, _| p.ledger.document().devices().keys().map(|d| d.hex()).collect())?;
     for (k, group) in devices.chunks(DESIGNATION_GROUP).enumerate() {
         run(&mut s, "setlocation", &json!({"devices": group, "value": format!("+CP{k}")}))?;

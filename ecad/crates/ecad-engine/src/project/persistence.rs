@@ -1,5 +1,6 @@
 //! Where a project is saved: the persistence modes, the in-memory store, and the save and branch plumbing.
 
+use crate::file::ProjectFileError;
 use crate::project::*;
 
 /// Injected failures for tests (never set in normal use).
@@ -143,12 +144,12 @@ impl Project {
     /// need before they write: "Save and switch").
     ///
     /// # Errors
-    /// No file, or the save failed (in words).
-    pub(crate) fn save_pending(&mut self, pg: &mut Pages<'_>) -> Result<(), String> {
+    /// As [`Project::save_to_file`], with the project's name: "<name> was not saved: …".
+    pub(crate) fn save_pending(&mut self, pg: &mut Pages<'_>) -> Result<(), ProjectFileError> {
         if !self.unsaved() {
             return Ok(());
         }
-        self.save_file(pg, None, false).map(|_| ()).map_err(|e| e.to_string())
+        self.save_to_file(pg, None, false).map(|_| ()).map_err(|e| e.not_saved(&self.name))
     }
 
     /// Show another branch's state: `ledger` replaces the project's, every view
@@ -253,16 +254,27 @@ impl Project {
         }
     }
 
-    /// Save or Save As to disk (`Persistence::File`).
+    /// Save or Save As to disk (`Persistence::File`), as the `qsave` and `saveas` commands reply.
     pub(super) fn save_file(&mut self, pg: &mut Pages<'_>, path: Option<&str>, save_as: bool) -> cadcraft_engine::Result<Value> {
+        self.save_to_file(pg, path, save_as).map_err(|e| EngineError::Other(format!("{} was not saved: {e}", self.name)))
+    }
+
+    /// Save or Save As to disk (`Persistence::File`); the outcome is recorded as a [`EventKind::Saved`] or
+    /// [`EventKind::SaveFailed`] event either way.
+    ///
+    /// # Errors
+    /// [`ProjectFileError`]: Save As with no path, a refused path, a read-only project, a file replaced since it
+    /// was opened, a Save As target another session holds, a write that could not be confirmed, or another
+    /// failure to write.
+    pub(crate) fn save_to_file(&mut self, pg: &mut Pages<'_>, path: Option<&str>, save_as: bool) -> Result<Value, ProjectFileError> {
         let head = self.ledger.head();
         let what = if save_as { "saveas" } else { "qsave" };
         let target = path.filter(|p| !p.trim().is_empty());
-        let r: Result<(Option<String>, Option<String>), String> = match target {
-            None if save_as => Err(ecad_file::binding::SAVE_AS_NEEDS_PATH.into()),
-            None => self.storage.file.save(&mut self.ledger).map(|()| (None, None)).map_err(|e| e.to_string()),
-            Some(p) => crate::file::normalize(p).map_err(|e| e.to_string()).and_then(|p| {
-                let w = self.storage.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms()).map_err(|e| e.to_string())?;
+        let r: Result<(Option<String>, Option<String>), ProjectFileError> = match target {
+            None if save_as => Err(ecad_file::binding::PathError::Empty.into()),
+            None => self.storage.file.save(&mut self.ledger).map(|()| (None, None)).map_err(ProjectFileError::from),
+            Some(p) => crate::file::normalize(p).map_err(ProjectFileError::from).and_then(|p| {
+                let w = self.storage.file.save_as(&p, self.id, &mut self.ledger, &writer(), now_ms())?;
                 Ok((
                     Some(p),
                     match w {
@@ -279,7 +291,7 @@ impl Project {
                 }
                 match unconfirmed {
                     None => Ok(()),
-                    Some(m) => Err(m),
+                    Some(m) => Err(ProjectFileError::Unconfirmed(m)),
                 }
             }
             Err(e) => Err(e),
@@ -292,8 +304,8 @@ impl Project {
                 Ok(json!({"saved": true, "persisted": n, "path": shown}))
             }
             Err(e) => {
-                self.events.record(EventKind::SaveFailed, Some(what), head, None, e.clone());
-                Err(EngineError::Other(format!("{} was not saved: {e}", self.name)))
+                self.events.record(EventKind::SaveFailed, Some(what), head, None, e.to_string());
+                Err(e)
             }
         };
         self.sync_saved(pg);

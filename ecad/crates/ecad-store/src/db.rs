@@ -30,6 +30,9 @@ pub enum DbError {
     /// Another process has the database open for writing.
     #[error("the file is open for writing in another process")]
     Busy,
+    /// The system refused access to the file (its permissions, or another program holding it).
+    #[error("{0}")]
+    Denied(String),
     /// A new database was asked for where a file already exists; it is never overwritten.
     #[error("{0} already exists; it is never overwritten")]
     Exists(String),
@@ -60,6 +63,9 @@ pub fn engine(e: impl std::fmt::Display) -> DbError {
 fn open_err(e: redb::DatabaseError) -> DbError {
     match e {
         redb::DatabaseError::DatabaseAlreadyOpen => DbError::Busy,
+        redb::DatabaseError::Storage(redb::StorageError::Io(ref io)) if io.kind() == std::io::ErrorKind::PermissionDenied => {
+            DbError::Denied(e.to_string())
+        }
         e => engine(e),
     }
 }

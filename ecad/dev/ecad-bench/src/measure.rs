@@ -281,7 +281,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<(Measured, Do
 fn first_page(path: &str) -> Result<f64, String> {
     let mut s = cadcraft_engine::Session::empty();
     let t = Instant::now();
-    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+    let (project, _) =
+        ecad_engine::ProjectHandle::open_file_in(&mut s, path, OPEN_SEED, ecad_engine::cables::views::Settings::none()).map_err(|e| e.to_string())?;
     let elapsed = ms(t);
     let (pages, read_only) = project.read(&mut s, |p, _| (p.open_pages(), p.file_status().read_only))?;
     if pages != 1 {
@@ -573,7 +574,8 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let one_tx = |before: u64, after: u64, what: &str| {
             if after == before + 1 { Ok(()) } else { Err(format!("the {what} was not recorded as one transaction (head {before} → {after})")) }
         };
@@ -631,7 +633,8 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let before = head(s)?;
@@ -678,7 +681,8 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| -> Result<(f64, serde_json::Value), String> {
             let before = head(s)?;
@@ -788,7 +792,8 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let mut out = DeviceReferenceTimes::default();
         for _ in 0..runs {
@@ -925,7 +930,8 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let t = Instant::now();
             s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
@@ -992,7 +998,8 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
         let (project, _) =
-            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+                .map_err(|e| e.to_string())?;
         let order = project.read(&mut s, |p, _| p.ledger.document().page_order().to_vec())?;
         let first = *order.first().ok_or("the project has no pages")?;
         let pages = spread(&order);

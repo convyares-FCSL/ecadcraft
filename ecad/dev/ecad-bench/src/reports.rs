@@ -101,7 +101,8 @@ pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<Measur
         ecad_engine::install();
         ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let mut out = MeasuredReports::default();
         // First show of the reports (built whole, every table made).
         let mut first = Vec::new();

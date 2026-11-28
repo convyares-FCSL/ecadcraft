@@ -97,7 +97,7 @@ fn enrich(g: &Generated, path: &std::path::Path) -> Result<ecad_model::Ledger, C
     let mut s = Session::empty();
     let (project, _) =
         ProjectHandle::open_file_in(&mut s, path_text(path).map_err(CorpusError::Project)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
-            .map_err(CorpusError::Project)?;
+            .map_err(|e| CorpusError::Project(e.to_string()))?;
     let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order().to_vec()).map_err(CorpusError::Project)?;
     let page1 = *pages.first().ok_or(CorpusError::NoPages)?;
     run(&mut s, "openpage", json!({"page": page1.hex()}))?;

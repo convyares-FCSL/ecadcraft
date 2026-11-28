@@ -27,6 +27,7 @@ test-support = []
 ecad-model = { workspace = true }
 ecad-store = { workspace = true }
 ecad-file = { workspace = true }
+thiserror = { workspace = true }
 # The electrical rules (design 065 §5 step 6), re-exported under their old module names.
 ecad-electrical = { workspace = true }
 ecad-drawing-style = { workspace = true }

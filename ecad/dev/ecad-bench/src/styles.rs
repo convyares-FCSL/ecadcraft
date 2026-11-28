@@ -62,7 +62,8 @@ fn time_open(file: &Path, runs: usize) -> Result<f64, String> {
     for _ in 0..runs.max(1) {
         let mut s = Session::empty();
         let t = Instant::now();
-        let (p, _) = ProjectHandle::open_file_in(&mut s, path_text(file)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (p, _) = ProjectHandle::open_file_in(&mut s, path_text(file)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         v.push(t.elapsed().as_secs_f64() * 1e3);
         drop(p);
         crate::measure::release_lock_file(file);
@@ -85,7 +86,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
     let result = (|| {
         out.open_ms = time_open(&copy, runs)?;
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let (page, device) = densest(&project, &mut s)?;
         project.open_page(&mut s, page)?;
         let (mut style, mut text, mut prop) = (Vec::new(), Vec::new(), Vec::new());

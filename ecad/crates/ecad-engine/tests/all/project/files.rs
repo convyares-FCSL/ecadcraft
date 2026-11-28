@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::common::close_all;
 use cadcraft_engine::Session;
 use common::{H, pts, small_project};
-use ecad_engine::{Persistence, ProjectHandle, normalize};
+use ecad_engine::{Persistence, ProjectFileError, ProjectHandle, normalize};
 use ecad_model::Pt;
 use serde_json::{Value, json};
 
@@ -160,9 +160,62 @@ fn opening_a_file_that_is_not_a_project_reports_why() {
     std::fs::write(&p, b"hello\n").unwrap();
     let mut s = Session::empty();
     let e = ProjectHandle::open_file(&mut s, &p, 1).err().unwrap();
+    assert!(matches!(e, ProjectFileError::NotAProject(_)), "{e:?}");
+    let e = e.to_string();
     assert!(e.contains("could not open") && e.contains("not an ECAD project file"), "{e}");
     assert!(s.docs.is_empty());
-    assert!(ProjectHandle::open_file(&mut s, &d.path("missing"), 1).is_err());
+    let e = ProjectHandle::open_file(&mut s, &d.path("missing"), 1).err().unwrap();
+    assert!(matches!(e, ProjectFileError::NotFound(_)) && e.to_string().contains("there is no file there"), "{e:?}");
+    let e = ProjectHandle::open_file(&mut s, &d.path("plan.dxf"), 1).err().unwrap();
+    assert!(matches!(e, ProjectFileError::Path(_)) && e.to_string().contains(".ecad files, not .dxf"), "{e:?}");
+}
+
+/// Each way opening, saving or switching a branch fails reaches the caller as the variant the person's choice
+/// rests on, in the file layer's own words.
+#[test]
+fn file_failures_are_told_apart_by_variant_in_unchanged_words() {
+    use ecad_file::binding::BindingError as B;
+    use ecad_file::disk::{DiskError as D, OpenFailure as F};
+    use ecad_file::{BranchError, FileError, OpenError, SaveError, StoreError as S};
+    let open = |error: F| B::Disk(D::Open { path: "p.ecad".into(), error });
+    type Is = fn(&ProjectFileError) -> bool;
+    let rows: Vec<(B, Is)> = vec![
+        (B::NotAProject("p.ecad".into()), |e| matches!(e, ProjectFileError::NotAProject(_))),
+        (B::NoFileYet, |e| matches!(e, ProjectFileError::NoFileYet(_))),
+        (open(F::NoFile), |e| matches!(e, ProjectFileError::NotFound(_))),
+        (open(F::Store(S::Halted("a damaged page".into()))), |e| matches!(e, ProjectFileError::Damaged(_))),
+        (open(F::Project(OpenError::Store(S::Halted("a damaged page".into())))), |e| matches!(e, ProjectFileError::Damaged(_))),
+        (open(F::Project(OpenError::Damaged(FileError::SnapshotPoint))), |e| matches!(e, ProjectFileError::Damaged(_))),
+        (open(F::Project(OpenError::Unsupported("older format version".into()))), |e| matches!(e, ProjectFileError::OtherFormat(_))),
+        (open(F::Store(S::Busy)), |e| matches!(e, ProjectFileError::Locked(_))),
+        (open(F::Store(S::Denied("Access is denied.".into()))), |e| matches!(e, ProjectFileError::Denied(_))),
+        (open(F::Store(S::Engine("I/O error".into()))), |e| matches!(e, ProjectFileError::Io(_))),
+        (B::Disk(D::TargetLocked { path: "p.ecad".into() }), |e| matches!(e, ProjectFileError::Locked(_))),
+        (B::Disk(D::ReadOnly("it is damaged".into())), |e| matches!(e, ProjectFileError::ReadOnly(_))),
+        (B::Disk(D::Save(SaveError::ReadOnly("it is damaged".into()))), |e| matches!(e, ProjectFileError::ReadOnly(_))),
+        (B::Disk(D::Replaced("p.ecad".into())), |e| matches!(e, ProjectFileError::Replaced(_))),
+        (B::Disk(D::Save(SaveError::ExternalChange("p.ecad".into()))), |e| matches!(e, ProjectFileError::Replaced(_))),
+        (B::Disk(D::Unconfirmed("no flush".into())), |e| matches!(e, ProjectFileError::Unconfirmed(_))),
+        (B::Disk(D::BeforeReplacement { step: "rename", error: "busy".into() }), |e| matches!(e, ProjectFileError::Io(_))),
+    ];
+    for (b, is) in rows {
+        let words = b.to_string();
+        let e = ProjectFileError::from(b);
+        assert!(is(&e), "{words}: {e:?}");
+        assert_eq!(e.to_string(), words);
+    }
+    for (b, is) in [
+        (BranchError::ReadOnly("it is damaged".into()), (|e| matches!(e, ProjectFileError::ReadOnly(_))) as Is),
+        (BranchError::Refused("That branch does not exist.".into()), |e| matches!(e, ProjectFileError::Refused(_))),
+        (BranchError::Store(S::Halted("a damaged page".into())), |e| matches!(e, ProjectFileError::Damaged(_))),
+    ] {
+        let words = b.to_string();
+        let e = ProjectFileError::from(b);
+        assert!(is(&e), "{words}: {e:?}");
+        assert_eq!(e.to_string(), words);
+    }
+    let e = ProjectFileError::from(B::Disk(D::Replaced("p.ecad".into()))).not_saved("demo");
+    assert!(matches!(&e, ProjectFileError::Replaced(m) if m.starts_with("demo was not saved: not saved: the file at p.ecad")), "{e:?}");
 }
 
 /// The read-only open (an agent with writes off) refuses a file that is not a project in the

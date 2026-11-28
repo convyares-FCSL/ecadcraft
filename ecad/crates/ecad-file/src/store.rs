@@ -34,6 +34,9 @@ pub enum StoreError {
     /// Another process has the database open for writing.
     #[error("the file is open for writing in another process")]
     Busy,
+    /// The system refused access to the file (its permissions, or another program holding it).
+    #[error("{0}")]
+    Denied(String),
     /// A write the append-only API refuses.
     #[error("refused: {0}")]
     Refused(String),
@@ -77,6 +80,7 @@ impl From<DbError> for StoreError {
         match e {
             DbError::Engine(e) => StoreError::Engine(e),
             DbError::Busy => StoreError::Busy,
+            DbError::Denied(e) => StoreError::Denied(e),
             e @ DbError::Exists(_) => StoreError::Refused(e.to_string()),
             DbError::PreviousIo => StoreError::PreviousIo,
             DbError::ReadOnly => StoreError::ReadOnly,

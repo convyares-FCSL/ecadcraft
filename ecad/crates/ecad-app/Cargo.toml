@@ -16,6 +16,7 @@ ecad-model = { workspace = true }
 ecad-file = { workspace = true }
 # The debugger shows times as the store writes them (`ecad_store::disk::utc`).
 ecad-store = { workspace = true }
+thiserror = { workspace = true }
 # Brief 074: the release check plan, by its own path.
 ecad-electrical = { workspace = true }
 ecad-drawing-style = { workspace = true }

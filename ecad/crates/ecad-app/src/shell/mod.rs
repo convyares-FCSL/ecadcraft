@@ -57,6 +57,7 @@ use ecad_model::PageId;
 use eframe::egui::{self, Rect};
 
 use crate::shell::app::App;
+pub use files::OpenProjectError;
 pub use layout::{Slots, layout};
 pub use state::{LeftTab, RightTab, ShellState, Views, Workspace};
 

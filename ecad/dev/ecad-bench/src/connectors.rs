@@ -111,7 +111,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         // Populated and measured in one session (the population's commands are ordinary
         // commits; the measured edits are each undone).
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order().to_vec())?;
         let page1 = *pages.first().ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;

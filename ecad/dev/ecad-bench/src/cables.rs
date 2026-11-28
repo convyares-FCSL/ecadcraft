@@ -60,7 +60,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredCable
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredCables::default();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+    let (project, _) =
+        ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none()).map_err(|e| e.to_string())?;
     if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order().first().copied())? {
         project.open_page(&mut s, p)?;
     }

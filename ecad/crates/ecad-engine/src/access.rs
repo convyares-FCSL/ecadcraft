@@ -182,8 +182,8 @@ impl ProjectHandle {
     /// opening found, in words.
     ///
     /// # Errors
-    /// The file cannot be read or is not a supported project file.
-    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
+    /// As [`Project::open_file`]: the variant says what the person can do.
+    pub fn open_file(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), crate::file::ProjectFileError> {
         Project::open_file(s, path, seed)
     }
 
@@ -192,7 +192,9 @@ impl ProjectHandle {
     ///
     /// # Errors
     /// As [`ProjectHandle::open_file`].
-    pub fn open_file_in(s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings) -> Result<(Self, String), String> {
+    pub fn open_file_in(
+        s: &mut Session, path: &str, seed: u64, settings: crate::cables::views::Settings,
+    ) -> Result<(Self, String), crate::file::ProjectFileError> {
         Project::open_file_in(s, path, seed, settings)
     }
 
@@ -201,7 +203,7 @@ impl ProjectHandle {
     ///
     /// # Errors
     /// As [`ProjectHandle::open_file`].
-    pub fn open_file_read_only(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), String> {
+    pub fn open_file_read_only(s: &mut Session, path: &str, seed: u64) -> Result<(Self, String), crate::file::ProjectFileError> {
         Project::open_file_with(s, path, seed, crate::cables::views::Settings::from_env(), true)
     }
 }

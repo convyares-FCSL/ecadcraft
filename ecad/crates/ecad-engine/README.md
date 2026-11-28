@@ -26,7 +26,9 @@ its own (that is `ecad-file`) and puts no ECAD meaning into upstream crates.
 
 ## Key types
 `Project`, `ProjectHandle`, `commands::specs` (the command registry), `cad` (the engine
-boundary for the app and the programs).
+boundary for the app and the programs), `ProjectFileError` (why opening, saving or switching a branch
+failed, as the choice it leaves the person: damaged, other format, locked, not found, access refused,
+read-only, replaced, other I/O).
 
 ## How to test
 ```bash

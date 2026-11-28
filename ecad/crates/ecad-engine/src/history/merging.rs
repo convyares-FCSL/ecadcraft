@@ -675,8 +675,8 @@ fn merge(
     if sides.target != history::current(p) {
         let left = history::current_name(p);
         let was_unsaved = p.unsaved();
-        p.save_pending(pg).map_err(CmdError::refused)?;
-        history::branches::switch_to(p, pg, sides.target).map_err(CmdError::refused)?;
+        p.save_pending(pg).map_err(|e| CmdError::refused(e.to_string()))?;
+        history::branches::switch_to(p, pg, sides.target).map_err(|e| CmdError::refused(e.to_string()))?;
         if was_unsaved {
             said = format!("\"{left}\" was saved; now on {}. ", sides.target_name);
         } else {

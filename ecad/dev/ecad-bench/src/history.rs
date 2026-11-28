@@ -79,7 +79,8 @@ fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
     let runs = runs.max(3);
     ecad_engine::install();
     let mut s = Session::empty();
-    let (p, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+    let (p, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+        .map_err(|e| e.to_string())?;
     // The history: 20 versions on main, a step apart by 25 toggles, and 5 branches from some of
     // them, each with a few steps of its own.
     let mut n = 0u64;

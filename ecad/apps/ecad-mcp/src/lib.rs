@@ -325,10 +325,11 @@ fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, Strin
     // database's own bookkeeping (a project file is a redb database).
     let seed = ecad_engine::session_seed();
     let (project, summary) = if write {
-        ProjectHandle::open_file(&mut headless.session, &path, seed)?
+        ProjectHandle::open_file(&mut headless.session, &path, seed)
     } else {
-        ProjectHandle::open_file_read_only(&mut headless.session, &path, seed)?
-    };
+        ProjectHandle::open_file_read_only(&mut headless.session, &path, seed)
+    }
+    .map_err(|e| e.to_string())?;
     Ok((headless, project, summary))
 }
 

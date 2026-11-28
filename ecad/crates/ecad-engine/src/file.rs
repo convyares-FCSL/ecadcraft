@@ -40,6 +40,132 @@ pub fn normalize_resolved(path: &std::path::Path) -> Result<String, PathError> {
     normalize_with(text, None)
 }
 
+/// Why a project file could not be opened, saved, saved as, or switched to another branch, by what the person
+/// can do about it. Each variant keeps the words the person sees ([`std::fmt::Display`]); callers decide on the
+/// variant, never on the words.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProjectFileError {
+    /// The path typed is not one a project file can have.
+    #[error(transparent)]
+    Path(#[from] PathError),
+    /// There is no file at the path.
+    #[error("{0}")]
+    NotFound(String),
+    /// The file is not an ECAD project.
+    #[error("{0}")]
+    NotAProject(String),
+    /// The file is damaged so badly that nothing can be shown (a damaged page stopped the storage engine, or the
+    /// container facts do not read). A file damaged further in opens read-only instead.
+    #[error("{0}")]
+    Damaged(String),
+    /// The file is of another format version and this build cannot read all of it: open it with a build that
+    /// reads its format.
+    #[error("{0}")]
+    OtherFormat(String),
+    /// Another session holds the file (a Save As target, or a file no session can read while it is held).
+    #[error("{0}")]
+    Locked(String),
+    /// The system refused access to the file or its folder.
+    #[error("{0}")]
+    Denied(String),
+    /// The project was opened read-only: Save As saves a copy.
+    #[error("{0}")]
+    ReadOnly(String),
+    /// Something else replaced, moved or changed the file since it was opened: Save As saves a copy.
+    #[error("{0}")]
+    Replaced(String),
+    /// Written, but the system could not confirm the change is durable: save again.
+    #[error("{0}")]
+    Unconfirmed(String),
+    /// The project has no file yet: Save As first.
+    #[error("{0}")]
+    NoFileYet(String),
+    /// A branch action refused in its own words (a branch that does not exist, a name taken).
+    #[error("{0}")]
+    Refused(String),
+    /// Any other failure to read or write the file.
+    #[error("{0}")]
+    Io(String),
+    /// The project opened but could not be shown (not expected for a file that verifies).
+    #[error("{0}")]
+    Other(String),
+}
+
+impl ProjectFileError {
+    /// The same failure in the words of a save of project `name`: "<name> was not saved: …". A refused path
+    /// keeps its own words.
+    #[must_use]
+    pub fn not_saved(self, name: &str) -> Self {
+        let say = |m: String| format!("{name} was not saved: {m}");
+        match self {
+            Self::Path(p) => Self::Path(p),
+            Self::NotFound(m) => Self::NotFound(say(m)),
+            Self::NotAProject(m) => Self::NotAProject(say(m)),
+            Self::Damaged(m) => Self::Damaged(say(m)),
+            Self::OtherFormat(m) => Self::OtherFormat(say(m)),
+            Self::Locked(m) => Self::Locked(say(m)),
+            Self::Denied(m) => Self::Denied(say(m)),
+            Self::ReadOnly(m) => Self::ReadOnly(say(m)),
+            Self::Replaced(m) => Self::Replaced(say(m)),
+            Self::Unconfirmed(m) => Self::Unconfirmed(say(m)),
+            Self::NoFileYet(m) => Self::NoFileYet(say(m)),
+            Self::Refused(m) => Self::Refused(say(m)),
+            Self::Io(m) => Self::Io(say(m)),
+            Self::Other(m) => Self::Other(say(m)),
+        }
+    }
+
+    /// A storage failure, by what it means to the person; `message` is what they see.
+    fn of_store(e: &ecad_file::StoreError, message: String) -> Self {
+        use ecad_file::StoreError as S;
+        match e {
+            S::Halted(_) | S::Damaged(_) => Self::Damaged(message),
+            S::Busy => Self::Locked(message),
+            S::Denied(_) => Self::Denied(message),
+            S::ReadOnly => Self::ReadOnly(message),
+            S::Engine(_) | S::Refused(_) | S::PreviousIo => Self::Io(message),
+        }
+    }
+}
+
+impl From<BindingError> for ProjectFileError {
+    fn from(e: BindingError) -> Self {
+        use ecad_file::disk::{DiskError as D, OpenFailure as F};
+        use ecad_file::{OpenError as O, SaveError as S};
+        let message = e.to_string();
+        match &e {
+            BindingError::NotAProject(_) => Self::NotAProject(message),
+            BindingError::NoFileYet => Self::NoFileYet(message),
+            BindingError::Disk(d) => match d {
+                D::Open { error, .. } => match error {
+                    F::NoFile => Self::NotFound(message),
+                    F::Store(s) | F::Project(O::Store(s)) => Self::of_store(s, message),
+                    F::Project(O::Unsupported(_)) => Self::OtherFormat(message),
+                    F::Project(O::Damaged(_)) => Self::Damaged(message),
+                },
+                D::TargetLocked { .. } => Self::Locked(message),
+                D::Unconfirmed(_) => Self::Unconfirmed(message),
+                D::Replaced(_) | D::Save(S::ExternalChange(_)) => Self::Replaced(message),
+                D::ReadOnly(_) | D::Save(S::ReadOnly(_)) => Self::ReadOnly(message),
+                D::Save(S::Store(s)) => Self::of_store(s, message),
+                D::BeforeReplacement { .. } | D::CannotCheck { .. } | D::Save(S::Encode(_)) => Self::Io(message),
+            },
+        }
+    }
+}
+
+impl From<ecad_file::BranchError> for ProjectFileError {
+    fn from(e: ecad_file::BranchError) -> Self {
+        use ecad_file::BranchError as B;
+        let message = e.to_string();
+        match &e {
+            B::ReadOnly(_) => Self::ReadOnly(message),
+            B::Refused(_) | B::NameTaken(_) => Self::Refused(message),
+            B::Store(s) => Self::of_store(s, message),
+        }
+    }
+}
+
 /// Why a Save As was not made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SaveAsRefused {

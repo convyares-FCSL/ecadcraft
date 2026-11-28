@@ -74,7 +74,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
     let result = (|| {
         ecad_engine::install();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
         // The densest page's labels under both rules (read only, on the document). Densest by its

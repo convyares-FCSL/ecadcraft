@@ -86,7 +86,8 @@ pub(crate) fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<Measur
         ecad_engine::install();
         ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let mut out = MeasuredRelease::default();
         run(&mut s, "revision", json!({"description": "Bench", "drawn": "BEN"}))?;
         // The kept lists, as on the dialog's first show.
@@ -186,7 +187,8 @@ pub(crate) fn measure_print(path: &Path, runs: usize, scratch: &Path) -> Result<
         ecad_engine::install();
         ecad_engine::export::printbook::install_io();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())
+            .map_err(|e| e.to_string())?;
         let mut out = MeasuredPrint { pages: project.read(&mut s, |p, _| p.ledger.document().page_order().len())?, ..MeasuredPrint::default() };
         let mut print = Vec::new();
         for _ in 0..runs {
