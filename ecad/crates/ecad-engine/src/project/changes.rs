@@ -154,7 +154,7 @@ impl Project {
     /// Project one page; `committed` is the engine's drawing (with its new handles already in the
     /// map) after a CADCraft commit, used as the base and for the normal-path fidelity check.
     /// `recovery` marks a reprojection with fresh handles (a recovery); it and any rebuild are
-    /// checked by [`verify_page`] instead, which does not rely on handle numbers.
+    /// checked by [`verify_page`](crate::dev::verify::verify_page) instead, which does not rely on handle numbers.
     pub(crate) fn refresh_page(
         &mut self, pg: &mut Pages<'_>, page: PageId, command: Option<&str>, committed: Option<(&Arc<Drawing>, &BTreeSet<Handle>)>, recovery: bool,
     ) {
@@ -292,7 +292,7 @@ impl Project {
     /// After a commit, undo or redo whose touched pages are `pages` (`None`: any page): redraw the
     /// active page only when the change could alter it. The touched set names the page's own objects, its
     /// references, its numbered wires and
-    /// the generated pages whose content changed ([`Project::generated_touched`]); the kept frame
+    /// the generated pages whose content changed ([`ecad_electrical::views::GeneratedView`]); the kept frame
     /// (title block, Total, the pending Rev box) has its own update map, `frame_stale`. A frame
     /// kept for another page means the active page's frame is not kept, so it is drawn.
     pub(super) fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
