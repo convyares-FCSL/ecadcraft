@@ -5,9 +5,10 @@
 //! - A rack is a device whose stored type is a station ([`ecad_model::objects::plc::PlcRack`]), a card one
 //!   whose type is a module ([`ecad_model::objects::plc::PlcModule`]); a module's station, slot, channel
 //!   groups and channels are its fields. Every change is a `ModifyDevice` ([`edit`]).
-//! - The model is kept with the report models: built on first show (`Plc::build`) and built again
-//!   from scratch after every commit (3.9 ms on the large project, under the ~5 ms bar; no update
-//!   map since 0.2.3). What changed is found by comparing with the model before.
+//! - The model is kept with the report models: built on first show (`Plc::build`), then kept by an update
+//!   map ([`kept`]): a commit that changes only devices' own data sets those devices again, with their racks;
+//!   any other commit builds it again (3.6 ms on the large project). What changed is found by comparing with
+//!   the model before.
 //!
 //! Excludes: the PLC manager and the rack overview, any PLC-vendor knowledge.
 

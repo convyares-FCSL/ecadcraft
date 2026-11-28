@@ -122,10 +122,9 @@ impl<'i> DerivedView<Inputs<'i>> for ReportsView {
         // The rack sheet prints each card's place.
         let places_moved = places.touched(doc, &self.model.plc);
         let mut problems = Vec::new();
-        if ecad_model::document::ledger::verify_mode()
-            && let Some(line) = self.model.verify_strips_with(doc)
-        {
-            problems.push(line);
+        if ecad_model::document::ledger::verify_mode() {
+            problems.extend(self.model.verify_strips_with(doc));
+            problems.extend(self.model.verify_plc_with(doc, look));
         }
         let o = &self.model;
         // Each generated page says whether it was rewritten, by its kind's
