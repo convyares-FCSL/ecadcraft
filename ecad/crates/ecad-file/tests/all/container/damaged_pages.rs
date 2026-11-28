@@ -20,7 +20,7 @@ use crate::container::files::TempDir;
 use ecad_file::disk::DiskProject;
 use ecad_file::{Project, Store, StoreError};
 use ecad_model::*;
-use ecad_store::power::Rng;
+use ecad_store::dev::power::Rng;
 
 const GOLDEN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/damaged/base.ecad");
 const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/damaged/redb-panics.txt");

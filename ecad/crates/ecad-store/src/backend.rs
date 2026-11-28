@@ -1,7 +1,7 @@
 //! [`MemoryBackend`]: a redb storage backend held in memory, shared by its clones, with an
 //! injectable write failure. Tests use it to keep a real project file without a disk.
 //!
-//! Excluded: anything a disk adds (locks between processes, power loss: see [`crate::power`]).
+//! Excluded: anything a disk adds (locks between processes, power loss: see `dev::power`, built with `fault-injection`).
 
 use std::io;
 use std::ops::Bound;

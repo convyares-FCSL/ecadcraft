@@ -19,7 +19,7 @@ use crate::container::files::TempDir;
 use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_file::{Project, Store};
 use ecad_model::*;
-use ecad_store::power::{CrashMode, PowerLoss, Rng};
+use ecad_store::dev::power::{CrashMode, PowerLoss, Rng};
 use redb::ReadableDatabase;
 
 type Result<T, E = String> = std::result::Result<T, E>;

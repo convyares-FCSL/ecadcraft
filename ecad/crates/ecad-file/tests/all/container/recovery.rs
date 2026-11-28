@@ -21,7 +21,7 @@ use crate::common::*;
 use ecad_file::schema::{self, RowKind};
 use ecad_file::{Project, Store};
 use ecad_model::*;
-use ecad_store::power::{CrashMode, PowerLoss, Rng};
+use ecad_store::dev::power::{CrashMode, PowerLoss, Rng};
 
 // --- Helpers ----------------------------------------------------------------------------------
 

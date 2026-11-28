@@ -9,6 +9,10 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The power-loss simulator (`power`): only tests and dev tools enable it; the product never ships it.
+fault-injection = []
+
 [dependencies]
 # The project file's engine: `db` opens the database and runs its transactions; the memory and
 # power-loss backends implement its storage backend.

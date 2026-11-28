@@ -27,6 +27,8 @@ zstd = { workspace = true }
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
 [dev-dependencies]
+# The crash tests simulate power loss with the store's simulator.
+ecad-store = { workspace = true, features = ["fault-injection"] }
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
 redb = { workspace = true }

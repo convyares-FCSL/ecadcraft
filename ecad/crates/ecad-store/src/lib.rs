@@ -15,8 +15,8 @@
 //! - [`random_u128`]: the operating system's randomness, for new IDs.
 //! - [`backend`]: [`MemoryBackend`], a redb storage backend in memory, shared by its clones, with an injectable
 //!   write failure (tests keep a real project file without a disk).
-//! - [`power`]: a redb storage backend that simulates power loss (reordered and torn writes since the last
-//!   flush), for the project file's crash tests.
+//! - `dev` (feature `fault-injection`, for tests and dev tools only): `dev::power`, a redb storage backend that
+//!   simulates power loss (reordered and torn writes since the last flush), for the project file's crash tests.
 //!
 //! Excluded: what is written and in which order (`ecad-file`), and any file format: no table, record or `.ecad`
 //! type is known here.
@@ -24,9 +24,10 @@
 
 pub(crate) mod backend;
 pub mod db;
+#[cfg(feature = "fault-injection")]
+pub mod dev;
 pub mod disk;
 pub mod guard;
-pub mod power;
 pub use backend::MemoryBackend;
 pub use disk::{FileIdentity, LockAttempt, WriterLock};
 pub use guard::{Halt, Halted};

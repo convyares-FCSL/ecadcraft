@@ -12,7 +12,7 @@ randomness). It does not know what the bytes mean; that is `ecad-file`.
 - `disk`: `FileIdentity` (which file a path names), `WriterLock` (makes one session the writer), atomic replacement (temporary file, rename, folder flush), and the disk and clock reads that `ecad-file` needs.
 - `random_u128`: the system's randomness, for new ids.
 - `MemoryBackend`: a redb storage backend in memory, shared by its clones, that can be made to fail once (tests keep a real project file without a disk).
-- `power`: a storage backend that simulates power loss, for the container's crash tests.
+- `dev::power` (feature `fault-injection`, which only tests and dev tools enable): a storage backend that simulates power loss, for the container's crash tests.
 
 ## Must not depend on
 Core rules: no `cadcraft-*`, no UI crate, nothing above Core. In Core it is the only crate where
@@ -24,6 +24,7 @@ and does not decide the order of write steps.
 
 ## How to test
 ```bash
-cargo test -p ecad-store
+cargo test -p ecad-store --features fault-injection
 ```
-Tests are in `tests/disk_contracts.rs`. Failure paths are tested with `MemoryBackend` and `power`.
+Tests are in `tests/disk_contracts.rs`; `dev::power`'s own tests need `fault-injection`. Failure paths are tested
+with `MemoryBackend` and `dev::power` (`ecad-file`'s crash tests enable the feature).

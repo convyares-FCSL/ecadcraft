@@ -1,7 +1,7 @@
 //! Crash safety of container version 2: permanent tests, in the slow
 //! set (run at every QA gate with `--include-ignored`).
 //!
-//! - **Power loss** ([`ecad_store::power`]): a save is cut at a random point of its writes and
+//! - **Power loss** ([`ecad_store::dev::power`]): a save is cut at a random point of its writes and
 //!   syncs; the disk then holds the durable image plus any subset of the unsynced writes, in any
 //!   order, each possibly torn at a sector. Reopening must show exactly the last acknowledged
 //!   save, or the cut save complete; never a partial save, never less than what was acknowledged
@@ -22,7 +22,7 @@ use crate::common::{PROJECT, fixture};
 use ecad_file::schema::RowKind;
 use ecad_file::{Project, Store};
 use ecad_model::*;
-use ecad_store::power::{CrashMode, PowerLoss, Rng};
+use ecad_store::dev::power::{CrashMode, PowerLoss, Rng};
 
 fn rounds(default: u64) -> u64 {
     std::env::var("ECAD_CRASH_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(default)
